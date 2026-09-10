@@ -1,0 +1,24 @@
+[Unit]
+Description=Ludo Mada Backend API
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=ludomada
+Group=ludomada
+WorkingDirectory=/opt/LudoMada
+EnvironmentFile=/opt/LudoMada/.env.production
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/node /opt/LudoMada/dist/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/LudoMada
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

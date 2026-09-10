@@ -1,0 +1,34 @@
+config:
+  target: "http://127.0.0.1:3000"
+
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      rampTo: 20
+      name: "Warm up"
+
+    - duration: 60
+      arrivalRate: 20
+      name: "Gameplay load"
+
+  variables:
+    gameId: "cmtttj9k4000rj0s6letwsgjw"
+    accessToken: "{{ $processEnvironment.LOADTEST_TOKEN2 }}"
+
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - http.codes.200: 99
+
+scenarios:
+  - name: "Authenticated game state"
+    flow:
+      - loop:
+          - get:
+              url: "/api/games/{{ gameId }}/state"
+              headers:
+                Authorization: "Bearer {{ accessToken }}"
+
+          - think: 0.5
+
+        count: 5

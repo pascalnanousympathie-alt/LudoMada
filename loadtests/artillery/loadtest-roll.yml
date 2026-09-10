@@ -1,0 +1,23 @@
+config:
+  target: "http://127.0.0.1:3001"
+
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      name: "Roll command test"
+
+  variables:
+    gameId: "{{ $processEnvironment.LOADTEST_GAME_ID }}"
+    accessToken: "{{ $processEnvironment.LOADTEST_TOKEN1 }}"
+
+scenarios:
+  - name: "Authenticated roll command"
+    flow:
+      - post:
+          url: "/api/games/{{ gameId }}/roll"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
+            Content-Type: "application/json"
+            Idempotency-Key: "artillery-roll-{{ $uuid }}"
+          json:
+            expectedVersion: 0

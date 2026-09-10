@@ -1,0 +1,39 @@
+node_modules
+dist
+.env
+.env.production
+.env.staging
+backups/
+production-test.log
+
+ssl/*.key
+loadtests/artillery/.loadtest.env
+
+# Android build outputs
+android-app/.gradle/
+android-app/build/
+android-app/app/build/
+android-app/local.properties
+*.keystore
+*.jks
+# Local debug/test artifacts and backups
+*.backup
+*.backup-*
+*.before-*
+*.orig
+*.pid
+*.out
+*.log
+create-results.txt
+game-create-results.txt
+gcr-*.json
+server.log
+*.tmp
+
+# Local agent/runtime state
+.ludomada-agent/
+audit-backup/
+
+*.bak
+*.bak2
+loadtests/artillery/.tmp-*

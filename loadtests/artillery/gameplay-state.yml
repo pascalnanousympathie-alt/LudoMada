@@ -1,0 +1,39 @@
+config:
+  target: "http://127.0.0.1:3000"
+
+  phases:
+    - duration: 30
+      arrivalRate: 2
+      rampTo: 10
+      name: "Warm up"
+
+    - duration: 60
+      arrivalRate: 10
+      name: "State read load"
+
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - http.codes.200: 99
+
+  variables:
+    gameId: "cmtts2vvx0005lps6wjjve9ng"
+    username: "testplayer1"
+    password: "TestPassword123"
+
+scenarios:
+  - name: "Authenticated game state"
+    flow:
+      - post:
+          url: "/api/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          capture:
+            - json: "$.accessToken"
+              as: "accessToken"
+
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"

@@ -1,0 +1,23 @@
+config:
+  target: "http://127.0.0.1:3000"
+
+  phases:
+    - duration: 30
+      arrivalRate: 150
+      name: "150 RPS controlled load - keep alive"
+
+  http:
+    timeout: 10
+    pool: 20
+
+  variables:
+    gameId: "{{ $env.LOADTEST_GAME_ID }}"
+    accessToken: "{{ $env.LOADTEST_TOKEN2 }}"
+
+scenarios:
+  - name: "Authenticated game state - keep alive"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"

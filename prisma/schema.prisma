@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+enum PaymentMethod {
+  MVOLA
+  AIRTEL_MONEY
+  ORANGE_MONEY
+  BINANCE
+}
+
+enum GameStatus {
+  WAITING
+  PLAYING
+  FINISHED
+  CANCELLED
+}
+
+enum LedgerEntryType {
+  ENTRY_FEE
+  COMMISSION
+  PRIZE_PAYOUT
+  REFUND
+}
+
+model User {
+  id                 String              @id @default(cuid())
+  username           String              @unique
+  passwordHash       String
+  wallet             Wallet?
+  transactions       Transaction[]
+  refreshSessions    RefreshSession[]
+  auditLogs          AuditLog[]
+  idempotencyRecords IdempotencyRecord[]
+  createdAt          DateTime            @default(now())
+  gameParticipants   GameParticipant[]
+  createdGames       Game[]              @relation("GameCreator")
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  balance   BigInt   @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+}
+
+model Transaction {
+  id             String            @id @default(cuid())
+  userId         String
+  type           TransactionType
+  method         PaymentMethod
+  amount         BigInt
+  fee            BigInt            @default(0)
+  status         TransactionStatus @default(PENDING)
+  reference      String?
+  idempotencyKey String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game           Game?             @relation(fields: [gameId], references: [id], onDelete: SetNull)
+  gameId         String?
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+}
+
+model Game {
+  id                      String                   @id @default(cuid())
+  creatorId               String
+  creator                 User                     @relation("GameCreator", fields: [creatorId], references: [id], onDelete: Restrict)
+  status                  GameStatus               @default(WAITING)
+  grossAmount             BigInt                   @default(0)
+  commission              BigInt                   @default(0)
+  prizePool               BigInt                   @default(0)
+  winnerPayout            BigInt                   @default(0)
+  adminRevenue            BigInt                   @default(0)
+  winnerId                String?
+  currentTurnUserId       String?
+  dice                    Int?
+  diceRolled              Boolean                  @default(false)
+  stateVersion            Int                      @default(0)
+  createdAt               DateTime                 @default(now())
+  finishedAt              DateTime?
+  transactions            Transaction[]
+  participants            GameParticipant[]
+  ledgerEntries           LedgerEntry[]
+  moves                   GameMove[]
+  events                  GameEvent[]
+authoritativeGameStates AuthoritativeGameState[]
+
+  @@index([creatorId, createdAt])
+  @@index([status, createdAt])
+
+}
+
+model GameParticipant {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String
+  entryFee  BigInt
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, userId])
+}
+
+model LedgerEntry {
+  id        String          @id @default(cuid())
+  gameId    String
+  userId    String?
+  type      LedgerEntryType
+  amount    BigInt
+  createdAt DateTime        @default(now())
+  game      Game            @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+}
+
+model GameMove {
+  id        String   @id @default(cuid())
+  gameId    String
+  userId    String
+  action    String
+  dice      Int?
+  pawnIndex Int?
+  fromPos   Int?
+  toPos     Int?
+  createdAt DateTime @default(now())
+  game      Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, createdAt])
+}
+
+model RefreshSession {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  requestId String
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([requestId])
+}
+
+model IdempotencyRecord {
+  id             String   @id @default(cuid())
+  userId         String
+  key            String
+  endpoint       String
+  requestHash    String
+  responseStatus Int?
+  responseJson   Json?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, key, endpoint])
+}
+
+model GameEvent {
+  id           String   @id @default(cuid())
+  gameId       String
+  sequence     Int
+  type         String
+  actorUserId  String?
+  payload      Json
+  stateVersion Int
+  createdAt    DateTime @default(now())
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@unique([gameId, sequence])
+  @@index([gameId, createdAt])
+}
+
+model AuthoritativeGameState {
+  gameId       String   @id
+  stateVersion Int
+  state        Json
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+  game         Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  @@index([gameId, stateVersion])
+}
+
+model GameCommand {
+  idempotencyKey  String   @id
+  gameId          String
+  userId          String
+  commandType     String
+  expectedVersion Int
+  payload         Json
+  result          Json?
+  createdAt       DateTime @default(now())
+
+  @@index([gameId, createdAt])
+}

@@ -1,0 +1,11 @@
+package com.ludomadagascar
+import android.app.*; import android.os.*; import android.widget.*; import android.view.*; import android.graphics.Color; import org.json.JSONObject; import java.net.*; import kotlin.concurrent.thread
+class MainActivity: Activity(){
+ private val apiBase="http://10.0.2.2:3000"; private lateinit var status:TextView; private lateinit var box:LinearLayout
+ override fun onCreate(s:Bundle?){super.onCreate(s);login()}
+ fun root()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(32,48,32,32);setBackgroundColor(Color.rgb(245,247,250))}
+ fun add(v:View){box.addView(v,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,8,0,8)})}
+ fun login(){box=root();add(TextView(this).apply{text="Ludo Madagascar";textSize=28f});status=TextView(this);add(status);val e=EditText(this).apply{hint="Email"};val p=EditText(this).apply{hint="Password";inputType=129};add(e);add(p);val l=Button(this).apply{text="Hiditra";setOnClickListener{request("/api/auth/login",JSONObject().put("email",e.text).put("password",p.text)){lobby()}}};add(l);val r=Button(this).apply{text="Hamorona kaonty";setOnClickListener{request("/api/auth/register",JSONObject().put("email",e.text).put("password",p.text)){status.text="Inscription vita"}}};add(r);setContentView(box)}
+ fun lobby(){box=root();add(TextView(this).apply{text="Ludo Madagascar";textSize=28f});listOf("500 Ar","1000 Ar","2000 Ar").forEach{fee->add(Button(this).apply{text="Milalao – "+fee;setOnClickListener{Toast.makeText(this@MainActivity,"Room "+fee,Toast.LENGTH_SHORT).show()}})};setContentView(box)}
+ fun request(path:String,b:JSONObject,ok:(JSONObject)->Unit){status.text="Miandry...";thread{try{val c=(URL(apiBase+path).openConnection() as HttpURLConnection).apply{requestMethod="POST";setRequestProperty("Content-Type","application/json");doOutput=true};c.outputStream.use{it.write(b.toString().toByteArray())};val j=JSONObject(c.inputStream.bufferedReader().readText());runOnUiThread{status.text="OK";ok(j)}}catch(x:Exception){runOnUiThread{status.text="Erreur: "+x.message}}}}
+}

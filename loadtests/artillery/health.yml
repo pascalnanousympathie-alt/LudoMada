@@ -1,0 +1,22 @@
+config:
+  target: "http://127.0.0.1:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 5
+      rampTo: 20
+      name: "Warm up"
+
+    - duration: 60
+      arrivalRate: 20
+      name: "50-ish concurrent load"
+
+  ensure:
+    thresholds:
+      - http.response_time.p95: 500
+      - http.codes.200: 95
+
+scenarios:
+  - name: "Health check"
+    flow:
+      - get:
+          url: "/health"

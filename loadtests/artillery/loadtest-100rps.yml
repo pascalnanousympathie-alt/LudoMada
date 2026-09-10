@@ -1,0 +1,13 @@
+config:
+  target: "http://127.0.0.1:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 100
+
+scenarios:
+  - name: "100 RPS authenticated game state"
+    flow:
+      - get:
+          url: "/api/games/{{ $processEnvironment.LOADTEST_GAME_ID }}/state"
+          headers:
+            Authorization: "Bearer {{ $processEnvironment.LOADTEST_TOKEN1 }}"

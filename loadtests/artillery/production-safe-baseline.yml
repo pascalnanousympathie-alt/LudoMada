@@ -1,0 +1,19 @@
+config:
+  target: "http://127.0.0.1:3000"
+
+  phases:
+    - duration: 60
+      arrivalRate: 1
+      name: "Production safe baseline"
+
+  variables:
+    gameId: "{{ $processEnvironment.LOADTEST_GAME_ID }}"
+    accessToken: "{{ $processEnvironment.LOADTEST_TOKEN2 }}"
+
+scenarios:
+  - name: "Authenticated production state"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"

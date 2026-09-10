@@ -1,0 +1,19 @@
+config:
+  target: "http://127.0.0.1:3000"
+
+  phases:
+    - duration: 5
+      arrivalRate: 2
+      name: "Authenticated smoke test"
+
+  variables:
+    gameId: "{{ $processEnvironment.LOADTEST_GAME_ID }}"
+    accessToken: "{{ $processEnvironment.LOADTEST_TOKEN2 }}"
+
+scenarios:
+  - name: "Authenticated state"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
