@@ -65,16 +65,10 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug assembleDebugAndroidTest --stacktrace
-      - name: Upload final APK
+          ./gradlew clean assembleRelease --stacktrace
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: LudoMada-final-apk
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-      - name: Upload test APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LudoMada-final-test-apk
-          path: android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          name: LudoMada-release-apk
+          path: android-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
