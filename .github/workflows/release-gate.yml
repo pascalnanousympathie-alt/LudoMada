@@ -99,5 +99,6 @@ jobs:
           script: |
             adb -s emulator-5554 wait-for-device
             adb -s emulator-5554 get-state
-            cd android-app
+            cd "$GITHUB_WORKSPACE/android-app"
+            chmod +x gradlew
             ./gradlew connectedDebugAndroidTest --stacktrace
