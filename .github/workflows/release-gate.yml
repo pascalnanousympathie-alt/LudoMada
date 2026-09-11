@@ -23,6 +23,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://ludomada:ludomada@127.0.0.1:54329/ludomada
       NODE_ENV: staging
+      JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
