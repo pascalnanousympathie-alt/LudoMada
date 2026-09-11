@@ -96,4 +96,13 @@ jobs:
           api-level: 29
           target: default
           arch: x86_64
-          script: cd android-app && ./gradlew connectedDebugAndroidTest --stacktrace
+          script: |
+            adb -s emulator-5554 wait-for-device
+            for i in $(seq 1 60); do
+              SDK=$(adb -s emulator-5554 shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' | tr -d ' ' || true)
+              if [ "$SDK" = "29" ]; then break; fi
+              sleep 2
+            done
+            adb -s emulator-5554 shell getprop ro.build.version.sdk
+            cd android-app
+            ./gradlew connectedDebugAndroidTest --stacktrace
