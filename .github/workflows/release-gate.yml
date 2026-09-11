@@ -97,4 +97,4 @@ jobs:
           target: default
           arch: x86_64
           script: |
-            adb -s emulator-5554 wait-for-device && adb -s emulator-5554 get-state && cd "$GITHUB_WORKSPACE/android-app" && chmod +x gradlew && ./gradlew connectedDebugAndroidTest --stacktrace
+            bash -lc 'set -e; for i in $(seq 1 60); do state=$(adb -s emulator-5554 get-state 2>/dev/null || true); sdk=$(adb -s emulator-5554 shell getprop ro.build.version.sdk 2>/dev/null | tr -d "\r" | tr -d " " || true); boot=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" | tr -d " " || true); if [ "$state" = "device" ] && [ "$sdk" = "29" ] && [ "$boot" = "1" ]; then break; fi; sleep 2; done; test "$state" = "device"; test "$sdk" = "29"; test "$boot" = "1"; adb -s emulator-5554 shell true; sleep 5; cd "$GITHUB_WORKSPACE/android-app"; chmod +x gradlew; ./gradlew connectedDebugAndroidTest --stacktrace'
