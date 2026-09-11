@@ -46,8 +46,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
           script: |
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb install -r android-app/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r com.ludomadagascar.test/androidx.test.runner.AndroidJUnitRunner
 
       - name: Upload APK
