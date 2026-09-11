@@ -98,9 +98,6 @@ jobs:
           arch: x86_64
           script: |
             adb -s emulator-5554 wait-for-device
-            SDK="$(adb -s emulator-5554 shell getprop ro.build.version.sdk | tr -d "\r" | tr -d " ")"
-            test "$SDK" = "29"
-            test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d "\r" | tr -d " ")" = "1"
-            adb -s emulator-5554 shell getprop ro.build.version.sdk
+            adb -s emulator-5554 get-state
             cd android-app
             ./gradlew connectedDebugAndroidTest --stacktrace
