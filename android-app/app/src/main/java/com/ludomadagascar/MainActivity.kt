@@ -1,7 +1,7 @@
 package com.ludomadagascar
 import android.app.*; import android.os.*; import android.widget.*; import android.view.*; import android.graphics.Color; import org.json.JSONObject; import java.net.*; import kotlin.concurrent.thread
 class MainActivity: Activity(){
- private val apiBase="http://10.0.2.2:3000"; private lateinit var status:TextView; private lateinit var box:LinearLayout
+ private val apiBase="http://127.0.0.1:3000"; private lateinit var status:TextView; private lateinit var box:LinearLayout
  override fun onCreate(s:Bundle?){super.onCreate(s);login()}
  fun root()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(32,48,32,32);setBackgroundColor(Color.rgb(245,247,250))}
  fun add(v:View){box.addView(v,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,8,0,8)})}
