@@ -15,7 +15,8 @@ import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
     private val apiBase = "http://10.0.2.2:3000"
-    private val entryFee = 500
+    private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
+    private var entryFee = 500
     private var token = ""; private var userId = ""; private var username = ""
     private var gameId = ""; private var version = 0; private var retryCount = 0
     private var state: JSONObject? = null; private var currentScreen = ""
@@ -67,7 +68,7 @@ class MainActivity : Activity() {
     private fun login() {
         page("login","Tongasoa 👋")
         add(label("Lalao Ludo an-tserasera ho an'ny 2–4 mpilalao.",15f,false,Color.rgb(88,99,116)))
-        val info=card("🎯 Mise raikitra", "500 Ar / lalao • Ariary ihany • Tsy misy commission", Color.rgb(37,93,196)); add(info)
+        val info=card("🎯 Mise", "500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar", Color.rgb(37,93,196)); add(info)
         status=label("",13f,false,Color.rgb(190,55,55)); add(status)
         val u=EditText(this).apply{hint="Anaran'ny mpampiasa";textSize=16f;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
         val p=EditText(this).apply{hint="Password (10 caractères minimum)";textSize=16f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
@@ -84,7 +85,7 @@ class MainActivity : Activity() {
         page("home","Accueil")
         add(label("Tongasoa, ${if(username.isBlank())"Mpilalao" else username} 👋",24f,true))
         add(label("Vonona ve ianao handresy?",14f,false,Color.rgb(88,99,116)))
-        val play=card("🎮 Lalao an-tserasera","2–4 mpilalao • Mise 500 Ar • Ny mpandresy mahazo ny prize pool",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
+        val play=card("🎮 Lalao an-tserasera","2–4 mpilalao • Safidio ny mise 500 hatramin’ny 20 000 Ar",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
         val wallet=card("💰 Wallet","Hijery solde, dépôt, retrait ary historique",Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
         val prof=card("👤 Profil","Kaontinao sy ID mpampiasa",Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
         add(button("🚪 Hivoaka",Color.rgb(210,55,65)){token="";userId="";username="";gameId="";login()},52)
@@ -93,8 +94,16 @@ class MainActivity : Activity() {
     private fun profile() {
         page("profile","Profil")
         add(card("👤 Kaonty","Anarana: ${if(username.isBlank())"—" else username}\nUser ID: ${if(userId.isBlank())"—" else userId}",Color.rgb(130,85,180)))
+        add(button("🌐 Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
         add(card("🛡️ Fiarovana","Aza zaraina amin'olona ny password na token. Ny credentials fandoavam-bola dia tsy tafiditra ao amin'ny APK.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
+    }
+
+    private fun languageDialog() {
+        val languages=arrayOf("Malagasy", "Français", "English", "Español", "Português", "Deutsch", "Italiano", "中文", "日本語", "한국어", "العربية", "Русский", "हिन्दी")
+        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,0){d,which->
+            Toast.makeText(this,"${languages[which]}: localisation ready — traduction UI complète à activer par ressources",Toast.LENGTH_LONG).show();d.dismiss()
+        }.setNegativeButton("Fermer",null).show()
     }
 
     private fun wallet() {
@@ -129,27 +138,33 @@ class MainActivity : Activity() {
 
     private fun lobby() {
         page("lobby","Lalao")
-        add(card("🏆 Prize pool","Ny prize pool = isan'ny mpilalao × 500 Ar\nOhatra: 4 mpilalao = 2 000 Ar",Color.rgb(235,170,25)))
-        add(card("🎯 Mise","500 Ar / lalao • 2–4 mpilalao • Tsy misy commission",Color.rgb(37,93,196)))
-        status=label("Vonona hamorona room?",14f,false,Color.rgb(88,99,116));add(status)
-        add(button("🎮 Mamorona room — 500 Ar",Color.rgb(37,93,196)){createGame()},54)
+        add(card("🎯 Safidio ny mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
+        status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
+        val rows=listOf(entryFees.take(3),entryFees.drop(3))
+        rows.forEach { fees ->
+            val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+            fees.forEach { fee -> row.addView(button("${fee.toString().replace(Regex("(?<=\\d)(?=(\\d{3})+$)")," ")} Ar",Color.rgb(37,93,196)){ entryFee=fee; createGame() },LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(3),0,dp(3),0)}) }
+            add(row,52)
+        }
         add(button("🔑 Hiditra amin'ny room",Color.rgb(130,85,180)){joinDialog()},54)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
     }
 
-    private fun createGame() { status.text="Mamorona room...";post("/api/games",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){j->gameId=j.optString("gameId");if(gameId.isBlank())status.text="Tsy nahazo Game ID." else room()} }
+    private fun createGame() { status.text="Mamorona room — $entryFee Ar...";post("/api/games",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){j->gameId=j.optString("gameId");if(gameId.isBlank())status.text="Tsy nahazo Game ID." else room()} }
 
     private fun joinDialog() {
         val id=EditText(this).apply{hint="Game ID";setPadding(dp(12),0,dp(12),0)}
-        AlertDialog.Builder(this).setTitle("Hiditra amin'ny room").setMessage("Mila Game ID an'ilay room. Mise 500 Ar foana.").setView(id)
-            .setPositiveButton("HIDITRA"){_,_->if(id.text.isNotBlank()){gameId=id.text.toString().trim();post("/api/games/$gameId/join",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){room()}}}
+        val choices=entryFees.map { "${it} Ar" }.toTypedArray()
+        var selected=entryFees.indexOf(entryFee).coerceAtLeast(0)
+        AlertDialog.Builder(this).setTitle("Hiditra amin'ny room").setView(id).setSingleChoiceItems(choices,selected){_,which->selected=which}
+            .setPositiveButton("HIDITRA"){_,_->if(id.text.isNotBlank()){gameId=id.text.toString().trim();entryFee=entryFees[selected];post("/api/games/$gameId/join",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){room()}}}
             .setNegativeButton("AOKA",null).show()
     }
 
     private fun room() {
         page("room","Room")
-        add(card("🎯 Mise","500 Ar",Color.rgb(37,93,196)))
-        add(card("💰 Prize pool","Miova araka ny isan'ny mpilalao (500 Ar × mpilalao)",Color.rgb(235,170,25)))
+        add(card("🎯 Mise","$entryFee Ar",Color.rgb(37,93,196)))
+        add(card("💰 Prize pool","Miova araka ny isan'ny mpilalao ($entryFee Ar × mpilalao)",Color.rgb(235,170,25)))
         add(label("Game ID: $gameId",13f,false,Color.rgb(88,99,116)))
         status=label("Miandry mpilalao...",15f,true,Color.rgb(37,93,196));add(status)
         add(button("↻ Havaozina",Color.rgb(37,93,196)){refreshLobby()},52);add(button("← Lalao",Color.rgb(70,82,100)){gameId="";lobby()},52)
@@ -161,7 +176,7 @@ class MainActivity : Activity() {
 
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("500 Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
+        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
         val host=LudoBoardView(this);root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         status=st;add(button("🎲 Atsipazo ny dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
