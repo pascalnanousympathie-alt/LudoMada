@@ -97,8 +97,4 @@ jobs:
           target: default
           arch: x86_64
           script: |
-            adb -s emulator-5554 wait-for-device
-            adb -s emulator-5554 get-state
-            cd "$GITHUB_WORKSPACE/android-app"
-            chmod +x gradlew
-            ./gradlew connectedDebugAndroidTest --stacktrace
+            adb -s emulator-5554 wait-for-device && adb -s emulator-5554 get-state && cd "$GITHUB_WORKSPACE/android-app" && chmod +x gradlew && ./gradlew connectedDebugAndroidTest --stacktrace
