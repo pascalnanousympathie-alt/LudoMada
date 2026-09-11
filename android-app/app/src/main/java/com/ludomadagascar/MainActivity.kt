@@ -6,6 +6,7 @@ import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.view.*
 import android.content.Context
+import java.util.Locale
 import android.widget.*
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -20,6 +21,7 @@ class MainActivity : Activity() {
     private var token = ""; private var userId = ""; private var username = ""
     private var gameId = ""; private var version = 0; private var retryCount = 0
     private var state: JSONObject? = null; private var currentScreen = ""
+    private var selectedLanguage = "fr"
     private lateinit var root: LinearLayout; private lateinit var status: TextView
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
@@ -101,7 +103,7 @@ class MainActivity : Activity() {
 
     private fun languageDialog() {
         val languages=arrayOf("Malagasy", "Français", "English", "Español", "Português", "Deutsch", "Italiano", "中文", "日本語", "한국어", "العربية", "Русский", "हिन्दी")
-        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,0){d,which->
+        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";2->"en";3->"es";4->"pt";5->"de";6->"it";7->"zh";8->"ja";9->"ko";10->"ar";11->"ru";else->"hi"};
             Toast.makeText(this,"${languages[which]}: localisation ready — traduction UI complète à activer par ressources",Toast.LENGTH_LONG).show();d.dismiss()
         }.setNegativeButton("Fermer",null).show()
     }
