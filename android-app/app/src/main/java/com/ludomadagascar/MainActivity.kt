@@ -103,7 +103,7 @@ class MainActivity : Activity() {
     }
 
     private fun validAuth(u:EditText,p:EditText):Boolean { if(u.text.isBlank()||p.text.length<10){status.text="Fenoy tsara ny anarana sy password (10+).";return false}; return true }
-    private fun auth(path:String,u:String,p:String) { status.text="Mampifandray..."; post(path,JSONObject().put("username",u).put("password",p)){j->token=j.optString("accessToken");userId=j.optJSONObject("user")?.optString("id").orEmpty();username=u;if(token.isBlank())status.text="Tsy tafiditra. Jereo indray." else home()} }
+    private fun auth(path:String,u:String,p:String) { status.text="Mampifandray..."; post(path,JSONObject().put("identifier",u).put("password",p)){j->token=j.optString("accessToken");userId=j.optJSONObject("user")?.optString("id").orEmpty();username=u;if(token.isBlank())status.text="Tsy tafiditra. Jereo indray." else home()} }
 
     private fun home() {
         page("home","Accueil")

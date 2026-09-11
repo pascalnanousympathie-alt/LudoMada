@@ -259,12 +259,18 @@ app.post("/api/auth/register",async(req,res)=>{
 app.post("/api/auth/login",authRateLimit,async(req,res)=>{
   try{
     const b=z.object({
-      username:z.string().min(1).max(32),
+      identifier:z.string().min(1).max(128).optional(),
+      username:z.string().min(1).max(128).optional(),
       password:z.string().min(1).max(128)
     }).parse(req.body);
 
     const user=await prisma.user.findUnique({
-      where:{username:b.username}
+      where:{
+        OR:[
+          ...(b.identifier || b.username ? [{username:(b.identifier ?? b.username)!}] : []),
+          ...(b.identifier ? [{email:b.identifier},{phoneNumber:b.identifier}] : [])
+        ]
+      }
     });
 
     if(!user || !(await bcrypt.compare(b.password,user.passwordHash))){
