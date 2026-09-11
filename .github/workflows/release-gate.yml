@@ -83,7 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew clean assembleDebug assembleRelease test --stacktrace
+          sh ./gradlew clean assembleDebug assembleRelease test --stacktrace
           test -f app/build/outputs/apk/release/app-release-unsigned.apk || test -f app/build/outputs/apk/release/app-release.apk
           test -f app/build/outputs/apk/debug/app-debug.apk
 
@@ -125,7 +125,7 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build instrumentation APKs
         working-directory: android-app
-        run: ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+        run: sh ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
       - name: Emulator smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -133,4 +133,4 @@ jobs:
           target: default
           arch: x86_64
           script: |
-            bash -lc 'set -e; for i in $(seq 1 60); do state=$(adb -s emulator-5554 get-state 2>/dev/null || true); sdk=$(adb -s emulator-5554 shell getprop ro.build.version.sdk 2>/dev/null | tr -d "\r" | tr -d " " || true); boot=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" | tr -d " " || true); if [ "$state" = "device" ] && [ "$sdk" = "29" ] && [ "$boot" = "1" ]; then break; fi; sleep 2; done; test "$state" = "device"; test "$sdk" = "29"; test "$boot" = "1"; adb -s emulator-5554 shell true; sleep 5; cd "$GITHUB_WORKSPACE/android-app"; chmod +x gradlew; ./gradlew connectedDebugAndroidTest --stacktrace'
+            bash -lc 'set -e; for i in $(seq 1 60); do state=$(adb -s emulator-5554 get-state 2>/dev/null || true); sdk=$(adb -s emulator-5554 shell getprop ro.build.version.sdk 2>/dev/null | tr -d "\r" | tr -d " " || true); boot=$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d "\r" | tr -d " " || true); if [ "$state" = "device" ] && [ "$sdk" = "29" ] && [ "$boot" = "1" ]; then break; fi; sleep 2; done; test "$state" = "device"; test "$sdk" = "29"; test "$boot" = "1"; adb -s emulator-5554 shell true; sleep 5; cd "$GITHUB_WORKSPACE/android-app"; chmod +x gradlew; sh ./gradlew connectedDebugAndroidTest --stacktrace'

@@ -25,8 +25,8 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - run: ./gradlew --version
-      - run: ./gradlew assembleDebug --stacktrace
+      - run: sh ./gradlew --version
+      - run: sh ./gradlew assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:

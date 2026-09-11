@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "client"
 }
 
@@ -43,6 +43,8 @@ enum LedgerEntryType {
 model User {
   id                 String              @id @default(cuid())
   username           String              @unique
+  email              String?             @unique
+  phoneNumber        String?             @unique
   passwordHash       String
   wallet             Wallet?
   transactions       Transaction[]
@@ -104,11 +106,10 @@ model Game {
   ledgerEntries           LedgerEntry[]
   moves                   GameMove[]
   events                  GameEvent[]
-authoritativeGameStates AuthoritativeGameState[]
+  authoritativeGameStates AuthoritativeGameState[]
 
   @@index([creatorId, createdAt])
   @@index([status, createdAt])
-
 }
 
 model GameParticipant {

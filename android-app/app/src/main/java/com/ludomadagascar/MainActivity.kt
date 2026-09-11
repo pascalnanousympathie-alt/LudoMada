@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.view.*
+import android.content.Intent
+import android.net.Uri
 import android.content.Context
 import java.util.Locale
 import android.widget.*
@@ -21,6 +23,7 @@ class MainActivity : Activity() {
     private var token = ""; private var userId = ""; private var username = ""
     private var gameId = ""; private var version = 0; private var retryCount = 0
     private var state: JSONObject? = null; private var currentScreen = ""
+    private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
     private var selectedLanguage = "fr"
     private lateinit var root: LinearLayout; private lateinit var status: TextView
 
@@ -77,7 +80,25 @@ class MainActivity : Activity() {
         add(u,54);add(p,54)
         add(button("Hiditra",Color.rgb(37,93,196), { if(validAuth(u,p)) auth("/api/auth/login",u.text.toString().trim(),p.text.toString()) }),54)
         add(button("Hamorona kaonty",Color.rgb(35,150,84), { if(validAuth(u,p)) auth("/api/auth/register",u.text.toString().trim(),p.text.toString()) }),54)
+        add(button("🔵 Continuer avec Google",Color.rgb(60,60,60)){googleSignup()},52)
+        add(button("✉️ Inscription Email / 📱 Mobile",Color.rgb(130,85,180)){registerDialog()},52)
         add(label("Ny kaonty sy ny lalao dia voatahiry amin'ny serveur.",12f,false,Color.rgb(120,128,140)))
+    }
+
+    private fun googleSignup() {
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://accounts.google.com/"))) }
+        catch (_:Exception) { status.text="Google tsy azo sokafana amin'ity appareil ity." }
+    }
+
+    private fun registerDialog() {
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        val u=EditText(this).apply{hint="Username (3+ caractères)"};val email=EditText(this).apply{hint="Email (optionnel)";inputType=33}
+        val phone=EditText(this).apply{hint="Numéro mobile (optionnel)";inputType=3};val pass=EditText(this).apply{hint="Password (10+ caractères)";inputType=129}
+        listOf(u,email,phone,pass).forEach{box.addView(it,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(6)})}
+        AlertDialog.Builder(this).setTitle("Créer un compte").setView(box).setPositiveButton("S'inscrire"){_,_->
+            if(u.text.length<3||pass.text.length<10){status.text="Username 3+ sy password 10+ ilaina.";return@setPositiveButton}
+            post("/api/auth/register",JSONObject().put("username",u.text.toString().trim()).put("password",pass.text.toString()).apply{if(email.text.isNotBlank())put("email",email.text.toString().trim());if(phone.text.isNotBlank())put("phoneNumber",phone.text.toString().trim())}){j->token=j.optString("accessToken");userId=j.optJSONObject("user")?.optString("id").orEmpty();username=u.text.toString().trim();home()}
+        }.setNegativeButton("Aoka",null).show()
     }
 
     private fun validAuth(u:EditText,p:EditText):Boolean { if(u.text.isBlank()||p.text.length<10){status.text="Fenoy tsara ny anarana sy password (10+).";return false}; return true }
@@ -90,6 +111,7 @@ class MainActivity : Activity() {
         val play=card("🎮 Lalao an-tserasera","2–4 mpilalao • Safidio ny mise 500 hatramin’ny 20 000 Ar",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
         val wallet=card("💰 Wallet","Hijery solde, dépôt, retrait ary historique",Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
         val prof=card("👤 Profil","Kaontinao sy ID mpampiasa",Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
+        add(button("🕹️ Lalao hors-ligne",Color.rgb(130,85,180)){offlineMenu()},54)
         add(button("🚪 Hivoaka",Color.rgb(210,55,65)){token="";userId="";username="";gameId="";login()},52)
     }
 
@@ -175,6 +197,37 @@ class MainActivity : Activity() {
 
     private fun scheduleLobbyRefresh(){root.postDelayed({if(currentScreen=="room"&&gameId.isNotBlank())refreshLobby()},3000)}
     private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->retryCount=0;val n=j.optJSONArray("participants")?.length()?:0;val prize=n*entryFee;runOnUiThread{if(currentScreen=="room"){status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar";if(n>=2)refreshState() else scheduleLobbyRefresh()}}}}
+
+    private fun offlineMenu() {
+        page("offlineMenu","Hors-ligne")
+        add(card("🕹️ Ludo manuel","Milalao tsy misy Internet. 2–4 joueurs, tour par tour, dé ary pion manuel.",Color.rgb(130,85,180)))
+        add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
+        add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
+        add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+    }
+
+    private fun startOffline(players:Int) {
+        offlineTurn=0;offlineDice=0
+        val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
+        offlineState=JSONObject().put("players",arr)
+        offlineGame(players)
+    }
+
+    private fun offlineGame(players:Int) {
+        page("offline","Ludo hors-ligne")
+        val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
+        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("MANUEL",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
+        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn
+        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        add(button("🎲 Atsipazo ny dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
+        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+    }
+
+    private fun offlineRoll(host:LudoBoardView){offlineDice=(1..6).random();status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()}
+    private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return};val ps=offlineState?.optJSONArray("players")?:return;val p=ps.optJSONObject(offlineTurn)?:return;val ts=p.optJSONArray("tokens")?:return;val tok=ts.optJSONObject(tokenIndex)?:return;val old=tok.optInt("pos",-1);tok.put("pos",if(old<0&&offlineDice>=6)0 else if(old<0)-1 else old+offlineDice);offlineDice=0;offlineTurn=(offlineTurn+1)%players;host.state=offlineState;host.player=offlineTurn;offlineGame(players)}
 
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}

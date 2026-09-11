@@ -245,9 +245,9 @@ if (process.env.NODE_ENV !== "loadtest") {
 
 app.post("/api/auth/register",async(req,res)=>{
   try {
-    const b=z.object({username:z.string().min(3).max(32).regex(/^[A-Za-z0-9_]+$/),password:z.string().min(10).max(128)}).parse(req.body);
+    const b=z.object({username:z.string().min(3).max(32).regex(/^[A-Za-z0-9_]+$/),password:z.string().min(10).max(128),email:z.string().email().optional(),phoneNumber:z.string().min(7).max(20).regex(/^\+?[0-9() .-]+$/).optional()}).parse(req.body);
     const hash=await bcrypt.hash(b.password,12);
-    const user=await prisma.user.create({data:{username:b.username,passwordHash:hash,wallet:{create:{}}}});
+    const user=await prisma.user.create({data:{username:b.username,email:b.email ?? undefined,phoneNumber:b.phoneNumber ?? undefined,passwordHash:hash,wallet:{create:{}}}});
     const refresh=refreshToken();
     await prisma.refreshSession.create({data:{userId:user.id,tokenHash:hashToken(refresh),expiresAt:new Date(Date.now()+REFRESH_DAYS*86400000)}});
     const access=issueAccessToken(user.id,"PLAYER",JWT_SECRET);
