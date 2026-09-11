@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Ludo Madagascar</string>
+    <string name="welcome">Welcome</string>
+    <string name="online_game">Online game</string>
+    <string name="offline_game">Offline game</string>
+    <string name="wallet">Wallet</string>
+    <string name="profile">Profile</string>
+    <string name="language">Language</string>
+</resources>

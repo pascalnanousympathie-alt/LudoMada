@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">Ludo Madagascar</string>
+    <string name="welcome">Tongasoa</string>
+    <string name="online_game">Lalao an-tserasera</string>
+    <string name="offline_game">Lalao hors-ligne</string>
+    <string name="wallet">Wallet</string>
+    <string name="profile">Profil</string>
+    <string name="language">Fiteny</string>
+</resources>

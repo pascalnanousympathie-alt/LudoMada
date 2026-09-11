@@ -25,6 +25,7 @@ class MainActivity : Activity() {
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
     private var selectedLanguage = "fr"
+    private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
@@ -106,12 +107,12 @@ class MainActivity : Activity() {
 
     private fun home() {
         page("home","Accueil")
-        add(label("Tongasoa, ${if(username.isBlank())"Mpilalao" else username} 👋",24f,true))
+        add(label("${t("Welcome", "Bienvenue", "Tongasoa")}, ${if(username.isBlank())t("Player", "Joueur", "Mpilalao") else username} 👋",24f,true))
         add(label("Vonona ve ianao handresy?",14f,false,Color.rgb(88,99,116)))
-        val play=card("🎮 Lalao an-tserasera","2–4 mpilalao • Safidio ny mise 500 hatramin’ny 20 000 Ar",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
-        val wallet=card("💰 Wallet","Hijery solde, dépôt, retrait ary historique",Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
-        val prof=card("👤 Profil","Kaontinao sy ID mpampiasa",Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
-        add(button("🕹️ Lalao hors-ligne",Color.rgb(130,85,180)){offlineMenu()},54)
+        val play=card("🎮 ${t("Online game", "Jeu en ligne", "Lalao an-tserasera")}",t("2–4 players • Choose your stake from 500 to 20,000 Ar", "2–4 joueurs • Choisissez votre mise de 500 à 20 000 Ar", "2–4 mpilalao • Safidio ny mise 500 hatramin’ny 20 000 Ar"),Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
+        val wallet=card("💰 ${t("Wallet", "Portefeuille", "Wallet")}",t("Balance, deposit, withdrawal and history", "Solde, dépôt, retrait et historique", "Hijery solde, dépôt, retrait ary historique"),Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
+        val prof=card("👤 ${t("Profile", "Profil", "Profil")}",t("Your account and player ID", "Votre compte et votre identifiant", "Kaontinao sy ID mpampiasa"),Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
+        add(button("🕹️ ${t("Offline game", "Jeu hors ligne", "Lalao hors-ligne")}",Color.rgb(130,85,180)){offlineMenu()},54)
         add(button("🚪 Hivoaka",Color.rgb(210,55,65)){token="";userId="";username="";gameId="";login()},52)
     }
 
@@ -126,7 +127,7 @@ class MainActivity : Activity() {
     private fun languageDialog() {
         val languages=arrayOf("Malagasy", "Français", "English", "Español", "Português", "Deutsch", "Italiano", "中文", "日本語", "한국어", "العربية", "Русский", "हिन्दी")
         AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";2->"en";3->"es";4->"pt";5->"de";6->"it";7->"zh";8->"ja";9->"ko";10->"ar";11->"ru";else->"hi"};
-            Toast.makeText(this,"${languages[which]}: localisation ready — traduction UI complète à activer par ressources",Toast.LENGTH_LONG).show();d.dismiss()
+            recreate();Toast.makeText(this,"${languages[which]}",Toast.LENGTH_SHORT).show();d.dismiss()
         }.setNegativeButton("Fermer",null).show()
     }
 
