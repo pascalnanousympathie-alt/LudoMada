@@ -1516,6 +1516,26 @@ app.post("/api/games/:gameId/start",auth,async(req:any,res)=>{
 
 
 
+app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
+  try{
+    const game=await prisma.game.findUnique({
+      where:{id:req.params.gameId},
+      include:{participants:{orderBy:{createdAt:"asc"},select:{userId:true}}}
+    });
+    if(!game) return res.status(404).json({error:"Game not found"});
+    const isParticipant=game.participants.some((p:any)=>p.userId===req.userId);
+    if(!isParticipant) return res.status(403).json({error:"Forbidden"});
+    return res.json({
+      gameId:game.id,
+      status:game.status,
+      participants:game.participants.map((p:any)=>({userId:p.userId}))
+    });
+  }catch(e:any){
+    console.error("GAME LOBBY ERROR:",e?.message);
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
 app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
   const totalStart=process.hrtime.bigint();
 

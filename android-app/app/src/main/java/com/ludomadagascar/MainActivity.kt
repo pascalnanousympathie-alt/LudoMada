@@ -85,7 +85,7 @@ class MainActivity: Activity() {
 
     private fun refreshGame() {
         if(currentGameId.isBlank()) return
-        get("/api/games/"+currentGameId+"/state") { j ->
+        get("/api/games/"+currentGameId+"/lobby") { j ->
             val n=j.optJSONArray("participants")?.length() ?: 0
             status.text="Mpilalao ao amin'ny room: "+n+" / 4"
         }
