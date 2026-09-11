@@ -72,8 +72,8 @@ class MainActivity : Activity() {
         val u=EditText(this).apply{hint="Anaran'ny mpampiasa";textSize=16f;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
         val p=EditText(this).apply{hint="Password (10 caractères minimum)";textSize=16f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
         add(u,54);add(p,54)
-        add(button("Hiditra",Color.rgb(37,93,196){ if(validAuth(u,p)) auth("/api/auth/login",u.text.toString().trim(),p.text.toString()) }),54)
-        add(button("Hamorona kaonty",Color.rgb(35,150,84){ if(validAuth(u,p)) auth("/api/auth/register",u.text.toString().trim(),p.text.toString()) }),54)
+        add(button("Hiditra",Color.rgb(37,93,196), { if(validAuth(u,p)) auth("/api/auth/login",u.text.toString().trim(),p.text.toString()) }),54)
+        add(button("Hamorona kaonty",Color.rgb(35,150,84), { if(validAuth(u,p)) auth("/api/auth/register",u.text.toString().trim(),p.text.toString()) }),54)
         add(label("Ny kaonty sy ny lalao dia voatahiry amin'ny serveur.",12f,false,Color.rgb(120,128,140)))
     }
 
