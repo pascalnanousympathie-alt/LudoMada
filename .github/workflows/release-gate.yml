@@ -1,0 +1,79 @@
+name: LudoMada Release Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  backend-staging:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ludomada
+          POSTGRES_PASSWORD: ludomada
+          POSTGRES_DB: ludomada
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U ludomada -d ludomada"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ludomada:ludomada@127.0.0.1:54329/ludomada
+      NODE_ENV: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:migrate
+      - run: npm run test:all
+      - run: npm run build
+      - name: Start staging API
+        run: |
+          nohup npm run start:prod > /tmp/ludomada-api.log 2>&1 &
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3000/ready && break; sleep 2; done
+          curl -fsS http://127.0.0.1:3000/health
+      - name: Run staging load smoke
+        run: npx artillery run loadtests/artillery/loadtest-health-80rps.yml
+      - name: Upload API log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-api-log
+          path: /tmp/ludomada-api.log
+          if-no-files-found: ignore
+
+  android-final:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build final test APK
+        working-directory: android-app
+        run: |
+          chmod +x gradlew
+          ./gradlew clean assembleDebug assembleDebugAndroidTest --stacktrace
+      - name: Upload final APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-final-apk
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-final-test-apk
+          path: android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: error
