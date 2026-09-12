@@ -37,3 +37,5 @@ audit-backup/
 *.bak
 *.bak2
 loadtests/artillery/.tmp-*
+
+.ludomada-signing/
