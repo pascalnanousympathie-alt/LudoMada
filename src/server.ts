@@ -264,7 +264,7 @@ app.post("/api/auth/login",authRateLimit,async(req,res)=>{
       password:z.string().min(1).max(128)
     }).parse(req.body);
 
-    const user=await prisma.user.findUnique({
+    const user=await prisma.user.findFirst({
       where:{
         OR:[
           ...(b.identifier || b.username ? [{username:(b.identifier ?? b.username)!}] : []),
