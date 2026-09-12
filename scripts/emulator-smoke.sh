@@ -35,4 +35,5 @@ install_with_retry() {
 
 install_with_retry "$APP_APK"
 install_with_retry "$TEST_APK"
-adb shell am instrument -w -r "$TEST_RUNNER"
+echo "Starting instrumentation smoke tests..."
+timeout 180s adb shell am instrument -w -r "$TEST_RUNNER"
