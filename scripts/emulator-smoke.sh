@@ -24,6 +24,9 @@ done
 [ "$booted" = "1" ]
 
 adb_timeout 30s adb shell input keyevent 82 || true
+# Reduce flaky emulator background-service contention during instrumentation.
+adb_timeout 30s adb shell svc bluetooth disable || true
+adb_timeout 30s adb shell am force-stop com.google.android.googlequicksearchbox || true
 
 install_with_retry() {
   apk="$1"
@@ -39,6 +42,14 @@ install_with_retry() {
 
 install_with_retry "$APP_APK"
 install_with_retry "$TEST_APK"
+# Verify the real application launches independently of the instrumentation runner.
+adb_timeout 60s adb shell am force-stop com.ludomadagascar || true
+adb_timeout 60s adb shell monkey -p com.ludomadagascar 1 >/dev/null
+sleep 3
+app_pid="$(adb_timeout 15s adb shell pidof com.ludomadagascar 2>/dev/null | tr -d "\r" || true)"
+[ -n "$app_pid" ] || { echo "Application did not stay running after launch." >&2; adb_timeout 30s adb logcat -d -t 300 || true; exit 1; }
+echo "Application launch smoke passed (pid=$app_pid)."
+
 echo "Starting instrumentation smoke tests..."
 log_file="${RUNNER_TEMP:-.}/ludomada-instrumentation.log"
 set +e
