@@ -137,20 +137,4 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 1200
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: |
-            set -eu
-            adb wait-for-device
-            adb shell getprop sys.boot_completed | grep -m1 '^1$'
-            for attempt in 1 2 3; do
-              adb install --no-streaming -r android-app/app/build/outputs/apk/debug/app-debug.apk && break
-              adb wait-for-device
-              sleep 5
-              if [ "$attempt" = 3 ]; then exit 1; fi
-            done
-            for attempt in 1 2 3; do
-              adb install --no-streaming -r android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk && break
-              adb wait-for-device
-              sleep 5
-              if [ "$attempt" = 3 ]; then exit 1; fi
-            done
-            adb shell am instrument -w -r com.ludomadagascar.test/androidx.test.runner.AndroidJUnitRunner
+          script: sh scripts/emulator-smoke.sh
