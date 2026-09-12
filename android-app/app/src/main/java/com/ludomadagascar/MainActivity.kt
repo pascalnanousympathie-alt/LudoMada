@@ -18,7 +18,7 @@ import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
     private val apiBase = "http://10.0.2.2:3000"
-    private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
+    private val entryFees = listOf(500, 1000, 2000)
     private var entryFee = 500
     private var token = ""; private var userId = ""; private var username = ""
     private var gameId = ""; private var version = 0; private var retryCount = 0
@@ -74,14 +74,14 @@ class MainActivity : Activity() {
     private fun login() {
         page("login","Tongasoa 👋")
         add(label("Lalao Ludo an-tserasera ho an'ny 2–4 mpilalao.",15f,false,Color.rgb(88,99,116)))
-        val info=card("🎯 Mise", "500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar", Color.rgb(37,93,196)); add(info)
+        val info=card("🎯 Mise", "500 • 1 000 • 2 000 Ar", Color.rgb(37,93,196)); add(info)
         status=label("",13f,false,Color.rgb(190,55,55)); add(status)
         val u=EditText(this).apply{hint="Anaran'ny mpampiasa";textSize=16f;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
         val p=EditText(this).apply{hint="Password (10 caractères minimum)";textSize=16f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
         add(u,54);add(p,54)
         add(button("Hiditra",Color.rgb(37,93,196), { if(validAuth(u,p)) auth("/api/auth/login",u.text.toString().trim(),p.text.toString()) }),54)
         add(button("Hamorona kaonty",Color.rgb(35,150,84), { if(validAuth(u,p)) auth("/api/auth/register",u.text.toString().trim(),p.text.toString()) }),54)
-        add(button("🔵 Continuer avec Google",Color.rgb(60,60,60)){googleSignup()},52)
+        add(card("🔵 Google", "Connexion Google sécurisée — bientôt disponible.", Color.rgb(70,82,100)))
         add(button("✉️ Inscription Email / 📱 Mobile",Color.rgb(130,85,180)){registerDialog()},52)
         add(label("Ny kaonty sy ny lalao dia voatahiry amin'ny serveur.",12f,false,Color.rgb(120,128,140)))
     }
@@ -109,7 +109,7 @@ class MainActivity : Activity() {
         page("home","Accueil")
         add(label("${t("Welcome", "Bienvenue", "Tongasoa")}, ${if(username.isBlank())t("Player", "Joueur", "Mpilalao") else username} 👋",24f,true))
         add(label("Vonona ve ianao handresy?",14f,false,Color.rgb(88,99,116)))
-        val play=card("🎮 ${t("Online game", "Jeu en ligne", "Lalao an-tserasera")}",t("2–4 players • Choose your stake from 500 to 20,000 Ar", "2–4 joueurs • Choisissez votre mise de 500 à 20 000 Ar", "2–4 mpilalao • Safidio ny mise 500 hatramin’ny 20 000 Ar"),Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
+        val play=card("🎮 ${t("Online game", "Jeu en ligne", "Lalao an-tserasera")}",t("2–4 players • Choose a 500, 1,000 or 2,000 Ar stake", "2–4 joueurs • Choisissez une mise de 500, 1 000 ou 2 000 Ar", "2–4 mpilalao • Safidio ny mise 500, 1 000 na 2 000 Ar"),Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
         val wallet=card("💰 ${t("Wallet", "Portefeuille", "Wallet")}",t("Balance, deposit, withdrawal and history", "Solde, dépôt, retrait et historique", "Hijery solde, dépôt, retrait ary historique"),Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
         val prof=card("👤 ${t("Profile", "Profil", "Profil")}",t("Your account and player ID", "Votre compte et votre identifiant", "Kaontinao sy ID mpampiasa"),Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
         add(button("🕹️ ${t("Offline game", "Jeu hors ligne", "Lalao hors-ligne")}",Color.rgb(130,85,180)){offlineMenu()},54)
@@ -125,8 +125,8 @@ class MainActivity : Activity() {
     }
 
     private fun languageDialog() {
-        val languages=arrayOf("Malagasy", "Français", "English", "Español", "Português", "Deutsch", "Italiano", "中文", "日本語", "한국어", "العربية", "Русский", "हिन्दी")
-        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";2->"en";3->"es";4->"pt";5->"de";6->"it";7->"zh";8->"ja";9->"ko";10->"ar";11->"ru";else->"hi"};
+        val languages=arrayOf("Malagasy", "Français", "English")
+        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";else->"en"};
             recreate();Toast.makeText(this,"${languages[which]}",Toast.LENGTH_SHORT).show();d.dismiss()
         }.setNegativeButton("Fermer",null).show()
     }
@@ -163,7 +163,7 @@ class MainActivity : Activity() {
 
     private fun lobby() {
         page("lobby","Lalao")
-        add(card("🎯 Safidio ny mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
+        add(card("🎯 Safidio ny mise","500 • 1 000 • 2 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
         rows.forEach { fees ->
