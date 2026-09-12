@@ -5,12 +5,16 @@ APP_APK="android-app/app/build/outputs/apk/debug/app-debug.apk"
 TEST_APK="android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk"
 TEST_RUNNER="com.ludomadagascar.test/androidx.test.runner.AndroidJUnitRunner"
 
-adb start-server || true
-adb wait-for-device
+adb_timeout() {
+  timeout --foreground --kill-after=10s "$@"
+}
+
+adb_timeout 30s adb start-server || true
+adb_timeout 120s adb wait-for-device
 
 booted=0
 for i in $(seq 1 120); do
-  state="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+  state="$(adb_timeout 15s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
   if [ "$state" = "1" ]; then
     booted=1
     break
@@ -19,15 +23,15 @@ for i in $(seq 1 120); do
 done
 [ "$booted" = "1" ]
 
-adb shell input keyevent 82 || true
+adb_timeout 30s adb shell input keyevent 82 || true
 
 install_with_retry() {
   apk="$1"
   for attempt in 1 2 3; do
-    if adb install --no-streaming -r "$apk"; then
+    if adb_timeout 90s adb install --no-streaming -r "$apk"; then
       return 0
     fi
-    adb wait-for-device
+    adb_timeout 120s adb wait-for-device || true
     sleep 5
   done
   return 1
@@ -36,4 +40,4 @@ install_with_retry() {
 install_with_retry "$APP_APK"
 install_with_retry "$TEST_APK"
 echo "Starting instrumentation smoke tests..."
-timeout 300s adb shell am instrument -w -r "$TEST_RUNNER"
+adb_timeout 330s adb shell am instrument -w -r "$TEST_RUNNER"
