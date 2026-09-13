@@ -21,7 +21,7 @@ class MainActivity : Activity() {
     private val entryFees = listOf(500, 1000, 2000)
     private var entryFee = 500
     private var token = ""; private var userId = ""; private var username = ""
-    private var gameId = ""; private var version = 0; private var retryCount = 0
+    private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
     private var selectedLanguage = "fr"
@@ -196,8 +196,20 @@ class MainActivity : Activity() {
         refreshLobby()
     }
 
+    private fun startGame(){
+        startingGame=true
+        status.text="Manomboka ny lalao..."
+        post("/api/games/$gameId/start",JSONObject(),UUID.randomUUID().toString(),{
+            startingGame=false
+            refreshState()
+        },{msg->
+            startingGame=false
+            status.text=msg
+        })
+    }
+
     private fun scheduleLobbyRefresh(){root.postDelayed({if(currentScreen=="room"&&gameId.isNotBlank())refreshLobby()},3000)}
-    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->retryCount=0;val n=j.optJSONArray("participants")?.length()?:0;val prize=n*entryFee;runOnUiThread{if(currentScreen=="room"){status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar";if(n>=2)refreshState() else scheduleLobbyRefresh()}}}}
+    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->retryCount=0;val n=j.optJSONArray("participants")?.length()?:0;val prize=n*entryFee;runOnUiThread{if(currentScreen=="room"){status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar";if(n>=2){if(j.optString("creatorId")==userId && j.optString("status")=="WAITING" && !startingGame)startGame();else refreshState()} else scheduleLobbyRefresh()}}}}
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
@@ -249,8 +261,8 @@ class MainActivity : Activity() {
     private fun move(i:Int){post("/api/games/$gameId/move",JSONObject().put("tokenIndex",i).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
 
     private fun get(path:String, ok:(JSONObject)->Unit)=request("GET",path,null,null,ok)
-    private fun post(path:String, body:JSONObject, id:String?=null, ok:(JSONObject)->Unit)=request("POST",path,body,id,ok)
-    private fun request(method:String,path:String,body:JSONObject?,id:String?,ok:(JSONObject)->Unit){
+    private fun post(path:String, body:JSONObject, id:String?=null, ok:(JSONObject)->Unit, fail:((String)->Unit)?=null)=request("POST",path,body,id,ok,fail)
+    private fun request(method:String,path:String,body:JSONObject?,id:String?,ok:(JSONObject)->Unit, fail:((String)->Unit)?=null){
         if(::status.isInitialized) runOnUiThread{status.text="Mampifandray..."}
         thread {
             try {
@@ -259,9 +271,9 @@ class MainActivity : Activity() {
                     if(body!=null)doOutput=true}
                 if(body!=null)c.outputStream.use{it.write(body.toString().toByteArray())}
                 val code=c.responseCode;val input=if(code in 200..299)c.inputStream else c.errorStream;val tx=input?.bufferedReader()?.readText().orEmpty()
-                if(code !in 200..299){val msg=try{JSONObject(tx).optString("error","Erreur HTTP $code")}catch(_:Exception){"Erreur HTTP $code"};runOnUiThread{if(::status.isInitialized)status.text=msg};return@thread}
+                if(code !in 200..299){val msg=try{JSONObject(tx).optString("error","Erreur HTTP $code")}catch(_:Exception){"Erreur HTTP $code"};runOnUiThread{if(fail!=null)fail.invoke(msg) else if(::status.isInitialized)status.text=msg};return@thread}
                 runOnUiThread{ok(if(tx.isBlank())JSONObject()else JSONObject(tx))}
-            } catch(e:Exception){retryCount++;runOnUiThread{if(::status.isInitialized)status.text="Connexion tapaka. Averina... ($retryCount)";if(currentScreen=="room")root.postDelayed({if(currentScreen=="room")refreshLobby()},minOf(15000L,3000L*retryCount))}}
+            } catch(e:Exception){retryCount++;runOnUiThread{if(fail!=null)fail.invoke("Connexion tapaka. Averina... ($retryCount)") else if(::status.isInitialized)status.text="Connexion tapaka. Averina... ($retryCount)";if(currentScreen=="room")root.postDelayed({if(currentScreen=="room")refreshLobby()},minOf(15000L,3000L*retryCount))}}
         }
     }
 

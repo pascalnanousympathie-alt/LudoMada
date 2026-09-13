@@ -27,6 +27,9 @@ adb_timeout 30s adb shell input keyevent 82 || true
 # Reduce flaky emulator background-service contention during instrumentation.
 adb_timeout 30s adb shell svc bluetooth disable || true
 adb_timeout 30s adb shell am force-stop com.google.android.googlequicksearchbox || true
+adb_timeout 30s adb shell am force-stop com.google.android.gms || true
+adb_timeout 30s adb shell am force-stop com.google.android.gms.persistent || true
+adb_timeout 30s adb shell am force-stop com.google.android.as || true
 
 install_with_retry() {
   apk="$1"
@@ -42,13 +45,6 @@ install_with_retry() {
 
 install_with_retry "$APP_APK"
 install_with_retry "$TEST_APK"
-# Verify the real application launches independently of the instrumentation runner.
-adb_timeout 60s adb shell am force-stop com.ludomadagascar || true
-adb_timeout 60s adb shell monkey -p com.ludomadagascar 1 >/dev/null
-sleep 3
-app_pid="$(adb_timeout 15s adb shell pidof com.ludomadagascar 2>/dev/null | tr -d "\r" || true)"
-[ -n "$app_pid" ] || { echo "Application did not stay running after launch." >&2; adb_timeout 30s adb logcat -d -t 300 || true; exit 1; }
-echo "Application launch smoke passed (pid=$app_pid)."
 
 echo "Starting instrumentation smoke tests..."
 log_file="${RUNNER_TEMP:-.}/ludomada-instrumentation.log"
@@ -67,4 +63,16 @@ if ! grep -Eq "(^|[[:space:]])OK \([0-9]+ test|INSTRUMENTATION_CODE: 0" "$log_fi
   adb_timeout 30s adb logcat -d -t 300 || true
   exit 1
 fi
-exit "$instrumentation_rc"
+if [ "$instrumentation_rc" -ne 0 ]; then
+  echo "Instrumentation exited with code $instrumentation_rc." >&2
+  adb_timeout 30s adb logcat -d -t 300 || true
+  exit "$instrumentation_rc"
+fi
+
+# Verify the real application launches independently after instrumentation completes.
+adb_timeout 60s adb shell am force-stop com.ludomadagascar || true
+adb_timeout 60s adb shell monkey -p com.ludomadagascar 1 >/dev/null
+sleep 3
+app_pid="$(adb_timeout 15s adb shell pidof com.ludomadagascar 2>/dev/null | tr -d "\r" || true)"
+[ -n "$app_pid" ] || { echo "Application did not stay running after launch." >&2; adb_timeout 30s adb logcat -d -t 300 || true; exit 1; }
+echo "Application launch smoke passed (pid=$app_pid)."

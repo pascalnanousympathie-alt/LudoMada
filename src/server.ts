@@ -1533,6 +1533,7 @@ app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
     if(!isParticipant) return res.status(403).json({error:"Forbidden"});
     return res.json({
       gameId:game.id,
+      creatorId:game.creatorId,
       status:game.status,
       participants:game.participants.map((p:any)=>({userId:p.userId}))
     });
