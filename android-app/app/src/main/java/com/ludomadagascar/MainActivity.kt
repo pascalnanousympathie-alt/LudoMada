@@ -261,7 +261,8 @@ class MainActivity : Activity() {
     private fun move(i:Int){post("/api/games/$gameId/move",JSONObject().put("tokenIndex",i).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
 
     private fun get(path:String, ok:(JSONObject)->Unit)=request("GET",path,null,null,ok)
-    private fun post(path:String, body:JSONObject, id:String?=null, ok:(JSONObject)->Unit, fail:((String)->Unit)?=null)=request("POST",path,body,id,ok,fail)
+    private fun post(path:String, body:JSONObject, id:String?=null, ok:(JSONObject)->Unit)=request("POST",path,body,id,ok)
+    private fun post(path:String, body:JSONObject, id:String?, ok:(JSONObject)->Unit, fail:((String)->Unit))=request("POST",path,body,id,ok,fail)
     private fun request(method:String,path:String,body:JSONObject?,id:String?,ok:(JSONObject)->Unit, fail:((String)->Unit)?=null){
         if(::status.isInitialized) runOnUiThread{status.text="Mampifandray..."}
         thread {
