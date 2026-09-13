@@ -16,6 +16,8 @@ import { GameStateRepository } from "./game/gameStateRepository";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
 import crypto from "node:crypto";
+import { paymentConfig } from "./payments/config";
+import { providerFor } from "./payments/providers";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -156,7 +158,7 @@ app.use(cors({
   maxAge: 86400
 }));
 
-app.use(express.json({ limit: "32kb" }));
+app.use(express.json({ limit: "32kb", verify: (req:any,_res,buf)=>{ req.rawBody=buf.toString("utf8"); } }));
 
 app.use((req:any,res,next)=>{
   req.requestId=requestId(req);
@@ -399,7 +401,37 @@ app.get("/api/wallet",auth,async(req:any,res)=>{
   res.json({balanceMGA:(w?.balance??0n).toString()});
 });
 
-const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod)});
+const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional()});
+
+app.get("/api/payments/config",auth,async(_req,res)=>{
+  res.json(paymentConfig());
+});
+
+app.get("/api/payments/:transactionId",auth,async(req:any,res)=>{
+  const tx=await prisma.transaction.findFirst({where:{id:req.params.transactionId,userId:req.userId}});
+  if(!tx) return res.status(404).json({error:"Transaction not found"});
+  res.json({transactionId:tx.id,status:tx.status,method:tx.method,amountMGA:tx.amount.toString(),reference:tx.reference,providerReference:tx.providerReference,providerStatus:tx.providerStatus});
+});
+
+app.post("/api/payments/:method/webhook",async(req:any,res)=>{
+  const method=String(req.params.method).toUpperCase() as PaymentMethod;
+  if(!Object.values(PaymentMethod).includes(method)) return res.status(400).json({error:"Unsupported payment method"});
+  const provider=providerFor(method);
+  if(!provider.enabled() || !provider.verifyWebhook(req.headers as any, req.rawBody || JSON.stringify(req.body))) return res.status(401).json({error:"Invalid provider webhook"});
+  const providerReference=String(req.body?.prepayId || req.body?.transactionId || req.body?.merchantTradeNo || "").trim();
+  if(!providerReference) return res.status(400).json({error:"Missing provider reference"});
+  const tx=await prisma.transaction.findFirst({where:{providerReference}});
+  if(!tx) return res.status(404).json({error:"Transaction not found"});
+  const paid=String(req.body?.status || req.body?.bizStatus || "").toUpperCase()==="PAID" || String(req.body?.status || "").toUpperCase()==="SUCCESS";
+  await prisma.$transaction(async(t)=>{
+    const current=await t.transaction.findUnique({where:{id:tx.id}});
+    if(!current || current.status!=="PENDING") return;
+    await t.transaction.update({where:{id:tx.id},data:{status:paid?"SUCCESS":"FAILED",providerStatus:String(req.body?.status || "UNKNOWN"),providerPayload:req.body}});
+    if(paid && current.type===TransactionType.DEPOSIT){ await t.wallet.upsert({where:{userId:current.userId},create:{userId:current.userId,balance:current.amount},update:{balance:{increment:current.amount}}}); }
+    if(!paid && current.type===TransactionType.WITHDRAWAL){ await t.wallet.update({where:{userId:current.userId},data:{balance:{increment:current.amount}}}); }
+  });
+  res.json({ok:true});
+});
 
 app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
   const p=payment.safeParse(req.body);
@@ -452,6 +484,12 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
         status:"PENDING"
       }
     });
+
+    const provider=providerFor(p.data.method);
+    if(provider.enabled()){
+      const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone});
+      await prisma.transaction.update({where:{id:tx.id},data:{providerReference:pr.providerReference,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
+    }
 
     await audit(
       prisma,
@@ -599,6 +637,12 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
     },{
       isolationLevel:"Serializable"
     });
+
+    const provider=providerFor(p.data.method);
+    if(provider.enabled()){
+      const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone});
+      await prisma.transaction.update({where:{id:r.id},data:{providerReference:pr.providerReference,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
+    }
 
     await audit(
       prisma,

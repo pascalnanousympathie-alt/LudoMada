@@ -5,6 +5,10 @@ source "$BASE/.ludomada-agent/pipeline.conf"
 mkdir -p "$STATE_DIR" "$LOG_DIR"
 PID_FILE="$STATE_DIR/pipeline.pid"
 SUP_LOG="$LOG_DIR/supervisor.log"
+SUP_LOCK="$STATE_DIR/supervisor.lock"
+exec 8>"$SUP_LOCK"
+if [ "${1:-once}" = "daemon" ]; then flock -n 8 || { echo "SUPERVISOR=ALREADY_RUNNING"; exit 0; }; fi
+STATE="$STATE_DIR/release-state.env"
 
 is_running() {
   [ -f "$PID_FILE" ] || return 1
@@ -12,23 +16,31 @@ is_running() {
   [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
 }
 
+terminal_state() {
+  [ -f "$STATE" ] || return 1
+  unset status phase next
+  # State is generated locally by release-orchestrator.sh; no secrets are written.
+  source "$STATE"
+  [ "${status:-}" = BLOCKED ] || [ "${phase:-}" = FINAL_RELEASE ]
+}
+
 start_pipeline() {
-  if is_running; then return 0; fi
+  if is_running || terminal_state; then return 0; fi
   nohup "$BASE/.ludomada-agent/pipeline.sh" >>"$SUP_LOG" 2>&1 &
   echo $! > "$PID_FILE"
   echo "SUPERVISOR=STARTED PID=$(cat "$PID_FILE")" >> "$SUP_LOG"
 }
-
 check_once() {
   if ! is_running; then
     rm -f "$PID_FILE"
     start_pipeline
   fi
-  if [ -f "$STATE_DIR/last-result" ]; then
-    result=$(cat "$STATE_DIR/last-result")
-    printf 'SUPERVISOR health=%s result=%s\n' "$(cat "$HEALTH_FILE" 2>/dev/null || echo unknown)" "$result"
+  if [ -f "$STATE" ]; then
+    unset status phase next updated_at
+    source "$STATE"
+    printf 'SUPERVISOR phase=%s status=%s next=%s updated=%s\n' "${phase:-unknown}" "${status:-unknown}" "${next:-}" "${updated_at:-}"
   else
-    echo "SUPERVISOR health=starting result=none"
+    echo "SUPERVISOR phase=starting status=none"
   fi
 }
 
