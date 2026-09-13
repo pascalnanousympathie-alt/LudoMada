@@ -23,13 +23,24 @@ for i in $(seq 1 120); do
 done
 [ "$booted" = "1" ]
 
+# sys.boot_completed can be reported before Android framework services are stable.
+# Require package + activity services to answer successfully before touching APK install/instrumentation.
+framework_ready=0
+for i in $(seq 1 90); do
+  if adb_timeout 15s adb shell pm list packages >/dev/null 2>&1 &&
+     adb_timeout 15s adb shell cmd activity get-config >/dev/null 2>&1; then
+    framework_ready=$((framework_ready + 1))
+    if [ "$framework_ready" -ge 3 ]; then
+      break
+    fi
+  else
+    framework_ready=0
+  fi
+  sleep 2
+done
+[ "$framework_ready" -ge 3 ] || { echo "Android framework services did not stabilize." >&2; adb_timeout 30s adb logcat -d -t 300 || true; exit 1; }
+
 adb_timeout 30s adb shell input keyevent 82 || true
-# Reduce flaky emulator background-service contention during instrumentation.
-adb_timeout 30s adb shell svc bluetooth disable || true
-adb_timeout 30s adb shell am force-stop com.google.android.googlequicksearchbox || true
-adb_timeout 30s adb shell am force-stop com.google.android.gms || true
-adb_timeout 30s adb shell am force-stop com.google.android.gms.persistent || true
-adb_timeout 30s adb shell am force-stop com.google.android.as || true
 
 install_with_retry() {
   apk="$1"
