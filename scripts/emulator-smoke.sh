@@ -81,8 +81,24 @@ if [ "$instrumentation_rc" -ne 0 ]; then
 fi
 
 # Verify the real application launches independently after instrumentation completes.
+# Use an explicit activity start instead of monkey: monkey can trigger Google system
+# services and ANRs on heavily loaded CI emulators unrelated to the application.
 adb_timeout 60s adb shell am force-stop com.ludomadagascar || true
-adb_timeout 60s adb shell monkey -p com.ludomadagascar 1 >/dev/null
+launch_output="$(adb_timeout 60s adb shell am start -W -n com.ludomadagascar/.MainActivity 2>&1)" || {
+  echo "$launch_output"
+  echo "Application activity failed to start." >&2
+  adb_timeout 30s adb logcat -d -t 300 || true
+  exit 1
+}
+echo "$launch_output"
+case "$launch_output" in
+  *"Status: ok"*|*"Activity: com.ludomadagascar/.MainActivity"*) : ;;
+  *)
+    echo "Application activity did not report a successful launch." >&2
+    adb_timeout 30s adb logcat -d -t 300 || true
+    exit 1
+    ;;
+esac
 sleep 3
 app_pid="$(adb_timeout 15s adb shell pidof com.ludomadagascar 2>/dev/null | tr -d "\r" || true)"
 [ -n "$app_pid" ] || { echo "Application did not stay running after launch." >&2; adb_timeout 30s adb logcat -d -t 300 || true; exit 1; }

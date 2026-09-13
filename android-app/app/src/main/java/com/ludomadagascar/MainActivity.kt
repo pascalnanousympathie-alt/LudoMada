@@ -17,7 +17,7 @@ import java.util.UUID
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
-    private val apiBase = "http://10.0.2.2:3000"
+    private val apiBase = BuildConfig.API_BASE_URL
     private val entryFees = listOf(500, 1000, 2000)
     private var entryFee = 500
     private var token = ""; private var userId = ""; private var username = ""
