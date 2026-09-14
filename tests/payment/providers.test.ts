@@ -5,6 +5,11 @@ import { providerFor } from "../../src/payments/providers";
 describe("payment providers", () => {
   const oldFetch = global.fetch;
   beforeEach(() => {
+    delete process.env.MVOLA_API_KEY;
+    delete process.env.MVOLA_CLIENT_ID;
+    delete process.env.MVOLA_CLIENT_SECRET;
+    delete process.env.MVOLA_PARTNER_MSISDN;
+    delete process.env.MVOLA_PARTNER_NAME;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
     process.env.BINANCE_PAY_CURRENCY = "USDT";
@@ -13,9 +18,19 @@ describe("payment providers", () => {
   afterEach(() => { global.fetch = oldFetch; });
 
   test("local-money providers remain disabled without credentials", () => {
+    delete process.env.MVOLA_API_KEY; delete process.env.MVOLA_CLIENT_ID; delete process.env.MVOLA_CLIENT_SECRET; delete process.env.MVOLA_PARTNER_MSISDN; delete process.env.MVOLA_PARTNER_NAME;
     expect(providerFor(PaymentMethod.MVOLA).enabled()).toBe(false);
     expect(providerFor(PaymentMethod.AIRTEL_MONEY).enabled()).toBe(false);
     expect(providerFor(PaymentMethod.ORANGE_MONEY).enabled()).toBe(false);
+  });
+
+
+  test("MVola API-key configuration enables provider only with partner identity", () => {
+    process.env.MVOLA_API_KEY = "test-api-key";
+    process.env.MVOLA_PARTNER_MSISDN = "0343500004";
+    process.env.MVOLA_PARTNER_NAME = "LudoMada";
+    const p = providerFor(PaymentMethod.MVOLA);
+    expect(p.enabled()).toBe(true);
   });
 
   test("Binance webhook signature is verified safely", () => {

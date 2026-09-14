@@ -407,10 +407,35 @@ app.get("/api/payments/config",auth,async(_req,res)=>{
   res.json(paymentConfig());
 });
 
+async function reconcilePayment(txId:string){
+  const tx=await prisma.transaction.findUnique({where:{id:txId}});
+  if(!tx || tx.status!=="PENDING" || !tx.providerReference) return tx;
+  const provider=providerFor(tx.method);
+  if(!provider.enabled()) return tx;
+  const pr=await provider.query(tx.providerReference);
+  return prisma.$transaction(async(t)=>{
+    const current=await t.transaction.findUnique({where:{id:txId}});
+    if(!current || current.status!=="PENDING") return current;
+    const status=String(pr.providerStatus||"").toUpperCase();
+    const failed=["FAILED","CANCELLED","CANCELED","REJECTED","EXPIRED"].includes(status);
+    if(!pr.accepted && !failed) return current;
+    const nextStatus=pr.accepted?"SUCCESS":"FAILED";
+    const updated=await t.transaction.update({where:{id:txId},data:{status:nextStatus,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
+    if(pr.accepted && current.type===TransactionType.DEPOSIT){
+      await t.wallet.upsert({where:{userId:current.userId},create:{userId:current.userId,balance:current.amount},update:{balance:{increment:current.amount}}});
+    }
+    if(failed && current.type===TransactionType.WITHDRAWAL){
+      await t.wallet.update({where:{userId:current.userId},data:{balance:{increment:current.amount}}});
+    }
+    return updated;
+  });
+}
+
 app.get("/api/payments/:transactionId",auth,async(req:any,res)=>{
   const tx=await prisma.transaction.findFirst({where:{id:req.params.transactionId,userId:req.userId}});
   if(!tx) return res.status(404).json({error:"Transaction not found"});
-  res.json({transactionId:tx.id,status:tx.status,method:tx.method,amountMGA:tx.amount.toString(),reference:tx.reference,providerReference:tx.providerReference,providerStatus:tx.providerStatus});
+  const reconciled=tx.status==="PENDING" ? await reconcilePayment(tx.id) : tx;
+  res.json({transactionId:reconciled?.id,status:reconciled?.status,method:reconciled?.method,amountMGA:reconciled?.amount.toString(),reference:reconciled?.reference,providerReference:reconciled?.providerReference,providerStatus:reconciled?.providerStatus});
 });
 
 app.post("/api/payments/:method/webhook",async(req:any,res)=>{
