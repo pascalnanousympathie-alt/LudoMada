@@ -43,7 +43,7 @@ class MvolaProvider implements PaymentProvider {
   private async accessToken(): Promise<string> {
     if (process.env.MVOLA_CLIENT_ID?.trim() && process.env.MVOLA_CLIENT_SECRET?.trim()) {
       const basic = Buffer.from(`${process.env.MVOLA_CLIENT_ID}:${process.env.MVOLA_CLIENT_SECRET}`).toString("base64");
-      const body = new URLSearchParams({ grant_type: "client_credentials" });
+      const body = new URLSearchParams({ grant_type: "client_credentials", ...(process.env.MVOLA_OAUTH_SCOPE?.trim() ? { scope: process.env.MVOLA_OAUTH_SCOPE.trim() } : {}) });
       const response = await fetch(this.tokenUrl(), {
         method: "POST",
         headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded", Accept: "application/json" },
