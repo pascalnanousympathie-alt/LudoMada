@@ -46,4 +46,12 @@ Record the exact values supplied by MVola in the secure production secret store;
 
 **BLOCKED — waiting for official MVola production credentials + current approved API specification + GO LIVE approval.**
 
+## Runtime safety gate
+
+MVola is disabled unless both its required configuration and
+`PAYMENTS_MVOLA_LIVE_ENABLED=true` are present. The switch is deliberately
+provider-specific and must only be set after this checklist is complete. A
+disabled provider is rejected before the wallet routes create a transaction or
+debit a balance.
+
 This is intentional. Credentials are never fabricated and the provider remains disabled until the official production contract is available.

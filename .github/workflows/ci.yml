@@ -1,8 +1,31 @@
 name: Ludo Mada V6.3 CI
 
 on:
+  workflow_dispatch:
   push:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "jest.config.cjs"
+      - ".github/workflows/ci.yml"
   pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "jest.config.cjs"
+      - ".github/workflows/ci.yml"
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -33,4 +56,4 @@ jobs:
       - run: npm ci
       - run: npx prisma generate
       - run: npx prisma migrate deploy
-      - run: npm test
+      - run: npm test -- --maxWorkers=2

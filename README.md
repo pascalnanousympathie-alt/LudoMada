@@ -22,7 +22,7 @@ Features:
 - Idempotency key for money-moving requests
 - Server-side balance updates in DB transactions
 
-Payment provider calls are intentionally mocked in V1. Connect only official MVola/Airtel Money/Orange Money/Binance APIs after merchant/KYC credentials are available.
+Payment provider calls are disabled by default. A wallet deposit or withdrawal for a disabled provider is rejected before a transaction or wallet mutation is created. Do not enable a provider merely by injecting credentials: MVola and Binance each require their own explicit live switch (`PAYMENTS_MVOLA_LIVE_ENABLED=true` or `PAYMENTS_BINANCE_LIVE_ENABLED=true`) as well as the approved provider contract and operational approval. Airtel Money and Orange Money remain non-networking until their official merchant API contracts are supplied and reviewed.
 
 ## Run
 

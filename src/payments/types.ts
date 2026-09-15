@@ -9,7 +9,10 @@ export type PaymentRequest = {
 };
 
 export type ProviderResult = {
+  /** `accepted` means the provider accepted the API request, not that money settled. */
   accepted: boolean;
+  /** Set only after an authoritative provider query confirms settlement. */
+  settled?: boolean;
   providerReference?: string;
   providerStatus?: string;
   checkoutUrl?: string;

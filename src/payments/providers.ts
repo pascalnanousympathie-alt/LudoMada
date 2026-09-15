@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { PaymentMethod } from "@prisma/client";
 import { PaymentProvider, PaymentRequest, ProviderResult } from "./types";
+import { mvolaSandboxEnabled, providerLiveEnabled } from "./config";
 
 function disabled(method: PaymentMethod): PaymentProvider {
   return {
@@ -12,12 +13,28 @@ function disabled(method: PaymentMethod): PaymentProvider {
   };
 }
 
+/**
+ * A credential gate for providers whose approved merchant API contract has not
+ * been supplied.  It intentionally performs no network I/O: guessing a mobile
+ * money endpoint, request signature, or callback format is unsafe.
+ */
+function officialContractRequired(method: PaymentMethod): PaymentProvider {
+  return {
+    method,
+    enabled: () => false,
+    async create() { return { accepted: false, errorCode: "OFFICIAL_PROVIDER_API_CONTRACT_REQUIRED" }; },
+    async query() { return { accepted: false, errorCode: "OFFICIAL_PROVIDER_API_CONTRACT_REQUIRED" }; },
+    verifyWebhook() { return false; },
+  };
+}
+
 class MvolaProvider implements PaymentProvider {
   method = PaymentMethod.MVOLA;
   private baseUrl() { return (process.env.MVOLA_BASE_URL || "https://pre-api.mvola.mg").replace(/\/$/, ""); }
   private tokenUrl() { return process.env.MVOLA_TOKEN_URL || "https://developer.mvola.mg/oauth2/token"; }
   enabled() {
     return Boolean(
+      (mvolaSandboxEnabled() || providerLiveEnabled("MVOLA")) &&
       (process.env.MVOLA_API_KEY?.trim() || (process.env.MVOLA_CLIENT_ID?.trim() && process.env.MVOLA_CLIENT_SECRET?.trim())) &&
       process.env.MVOLA_PARTNER_MSISDN?.trim() &&
       process.env.MVOLA_PARTNER_NAME?.trim()
@@ -86,30 +103,40 @@ class MvolaProvider implements PaymentProvider {
     });
     const data: any = await response.json().catch(() => ({}));
     const status = String(data?.status || data?.transactionStatus || "").toLowerCase();
-    return { accepted: response.ok && status === "completed", providerReference: data?.objectReference || providerReference, providerStatus: data?.status || data?.transactionStatus, raw: data, errorCode: response.ok ? undefined : `MVOLA_HTTP_${response.status}` };
+    const settled = response.ok && status === "completed";
+    return { accepted: response.ok, settled, providerReference: data?.objectReference || providerReference, providerStatus: data?.status || data?.transactionStatus, raw: data, errorCode: response.ok ? undefined : `MVOLA_HTTP_${response.status}` };
   }
   verifyWebhook() { return false; }
 }
 
 class BinancePayProvider implements PaymentProvider {
   method = PaymentMethod.BINANCE;
-  enabled() { return Boolean(process.env.BINANCE_PAY_CERTIFICATE_SN && process.env.BINANCE_PAY_API_SECRET && process.env.BINANCE_PAY_CURRENCY && process.env.BINANCE_PAY_MGA_RATE); }
+  enabled() { return Boolean(providerLiveEnabled("BINANCE") && process.env.BINANCE_PAY_CERTIFICATE_SN?.trim() && process.env.BINANCE_PAY_API_SECRET?.trim() && process.env.BINANCE_PAY_CURRENCY?.trim() && process.env.BINANCE_PAY_MGA_RATE?.trim()); }
   private sign(timestamp: string, nonce: string, body: string) { return crypto.createHmac("sha512", process.env.BINANCE_PAY_API_SECRET!).update(`${timestamp}\n${nonce}\n${body}\n`).digest("hex").toUpperCase(); }
-  private async post(path: string, payload: unknown): Promise<any> {
+  private async post(path: string, payload: unknown): Promise<{ ok: boolean; body: any; errorCode?: string }> {
     const body = JSON.stringify(payload), timestamp = Date.now().toString(), nonce = crypto.randomBytes(16).toString("hex");
-    const r = await fetch(`https://bpay.binanceapi.com${path}`, { method: "POST", headers: { "content-type": "application/json", "BinancePay-Timestamp": timestamp, "BinancePay-Nonce": nonce, "BinancePay-Certificate-SN": process.env.BINANCE_PAY_CERTIFICATE_SN!, "BinancePay-Signature": this.sign(timestamp, nonce, body) }, body });
-    return r.json();
+    try {
+      const r = await fetch(`https://bpay.binanceapi.com${path}`, { method: "POST", headers: { "content-type": "application/json", "BinancePay-Timestamp": timestamp, "BinancePay-Nonce": nonce, "BinancePay-Certificate-SN": process.env.BINANCE_PAY_CERTIFICATE_SN!, "BinancePay-Signature": this.sign(timestamp, nonce, body) }, body });
+      const responseBody = await r.json().catch(() => ({}));
+      return { ok: r.ok, body: responseBody, errorCode: r.ok ? undefined : `BINANCE_HTTP_${r.status}` };
+    } catch {
+      return { ok: false, body: {}, errorCode: "BINANCE_NETWORK_ERROR" };
+    }
   }
   async create(r: PaymentRequest): Promise<ProviderResult> {
     const merchantTradeNo = r.transactionId.replace(/[^A-Za-z0-9]/g, "").slice(0, 32), rate = Number(process.env.BINANCE_PAY_MGA_RATE), currency = String(process.env.BINANCE_PAY_CURRENCY).toUpperCase();
     if (!merchantTradeNo || !Number.isFinite(rate) || rate <= 0 || !currency) return { accepted: false, errorCode: "BINANCE_CURRENCY_RATE_NOT_CONFIGURED" };
-    const amount = Number(r.amountMGA) / rate, x = await this.post("/binancepay/openapi/order", { merchantTradeNo, orderAmount: Number(amount.toFixed(8)), currency, description: `LudoMada ${merchantTradeNo}`, goodsType: "02" });
-    return { accepted: x?.status === "SUCCESS", providerReference: x?.data?.prepayId, providerStatus: x?.data?.status, checkoutUrl: x?.data?.checkoutUrl, raw: x, errorCode: x?.status === "SUCCESS" ? undefined : x?.code };
+    const amount = Number(r.amountMGA) / rate, response = await this.post("/binancepay/openapi/order", { merchantTradeNo, orderAmount: Number(amount.toFixed(8)), currency, description: `LudoMada ${merchantTradeNo}`, goodsType: "02" }), x = response.body;
+    const accepted = response.ok && x?.status === "SUCCESS";
+    return { accepted, providerReference: x?.data?.prepayId, providerStatus: x?.data?.status, checkoutUrl: x?.data?.checkoutUrl, raw: x, errorCode: accepted ? undefined : response.errorCode || x?.code || "BINANCE_ORDER_REJECTED" };
   }
-  async query(providerReference: string): Promise<ProviderResult> { const x = await this.post("/binancepay/openapi/order/query", { prepayId: providerReference }); return { accepted: x?.status === "SUCCESS", providerReference: x?.data?.transactionId || providerReference, providerStatus: x?.data?.status, raw: x, errorCode: x?.status === "SUCCESS" ? undefined : x?.code }; }
+  async query(providerReference: string): Promise<ProviderResult> { const response = await this.post("/binancepay/openapi/order/query", { prepayId: providerReference }), x = response.body, accepted = response.ok && x?.status === "SUCCESS", settled = accepted && x?.data?.status === "PAID"; return { accepted, settled, providerReference: x?.data?.transactionId || providerReference, providerStatus: x?.data?.status, raw: x, errorCode: accepted ? undefined : response.errorCode || x?.code || "BINANCE_QUERY_REJECTED" }; }
   verifyWebhook(headers: Record<string, string | undefined>, rawBody: string) {
     const ts = headers["binancepay-timestamp"], nonce = headers["binancepay-nonce"], sig = headers["binancepay-signature"];
-    if (!ts || !nonce || !sig || Math.abs(Date.now() - Number(ts)) > 60_000) return false;
+    const timestamp = Number(ts);
+    // Binance Pay specifies a 32-character alphanumeric nonce and a one-second
+    // timestamp window. Reject stale or malformed signed requests before HMAC.
+    if (!ts || !nonce || !sig || !/^[A-Za-z0-9]{32}$/.test(nonce) || !Number.isSafeInteger(timestamp) || Math.abs(Date.now() - timestamp) > 1_000) return false;
     const expected = this.sign(ts, nonce, rawBody), a = Buffer.from(sig), b = Buffer.from(expected); return a.length === b.length && crypto.timingSafeEqual(a, b);
   }
 }
@@ -117,5 +144,6 @@ class BinancePayProvider implements PaymentProvider {
 export function providerFor(method: PaymentMethod): PaymentProvider {
   if (method === PaymentMethod.MVOLA) return new MvolaProvider();
   if (method === PaymentMethod.BINANCE) return new BinancePayProvider();
+  if (method === PaymentMethod.AIRTEL_MONEY || method === PaymentMethod.ORANGE_MONEY) return officialContractRequired(method);
   return disabled(method);
 }

@@ -2,6 +2,7 @@
 set -u
 BASE="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 source "$BASE/asep-v2.conf"
+source "$BASE/credential-policy.sh"
 mkdir -p "$STATE_DIR" "$LOG_DIR" "$BROWSER_DIR"
 PID_FILE="$STATE_DIR/asep-v2.pid"
 LOCK_FILE="$STATE_DIR/asep-v2.lock"
@@ -51,15 +52,34 @@ run_browser(){
   timeout "$WORKER_TIMEOUT" python3 "$BROWSER_DIR/multiworker-smoke.py" >>"$LOG" 2>&1
 }
 
+TREE_STATE="$STATE_DIR/validated-tree.sha"
+tree_fingerprint(){
+  git -C "$PROJECT" status --porcelain=v1 --untracked-files=all | sha256sum | awk '{print $1}'
+}
 run_checks(){
   cd "$PROJECT" || return 1
-  timeout "$WORKER_TIMEOUT" npm test -- --runInBand tests/payment/providers.test.ts >>"$LOG" 2>&1
+  local fp current
+  current="$(tree_fingerprint)"
+  if [ -f "$TREE_STATE" ] && [ "$(cat "$TREE_STATE")" = "$current" ]; then
+    echo "[$(now)] FAST_GATE=SKIPPED tree-unchanged" >>"$LOG"
+    return 0
+  fi
+  # Fast local gate: no database migration on the phone. GitHub CI owns the
+  # disposable PostgreSQL migration gate; this keeps Termux responsive.
+  timeout "$WORKER_TIMEOUT" npm run verify:local >>"$LOG" 2>&1 || return $?
+  fp="$(tree_fingerprint)"
+  printf '%s\n' "$fp" > "$TREE_STATE"
 }
 
+run_codex(){
+  [ -x "$BASE/codex-worker.sh" ] || return 1
+  "$BASE/codex-worker.sh" >>"$LOG" 2>&1
+}
 
 loop(){
   wake_lock
   write_status BOOT RUNNING BROWSER "Starting autonomous control plane"
+  load_autonomous_credentials
   while :; do
     wake_lock
     if ! cdp_up; then
@@ -83,8 +103,22 @@ loop(){
     fi
 
     if run_checks; then
-      write_status PAYMENT PASS NEXT "Payment provider tests PASS; continue provider validation"
-      echo "[$(now)] CHECKPOINT=PAYMENT_PROVIDER_TESTS_PASS" >>"$LOG"
+      write_status VALIDATION PASS NEXT "Fast local gate PASS; continue remote CI validation"
+      credential_policy_snapshot > "$STATE_DIR/credential-flags.env"
+      echo "[$(now)] CHECKPOINT=FAST_LOCAL_GATE_PASS" >>"$LOG"
+      if [ "${CODEX_BLOCKED_UNTIL:-0}" -gt "$(date +%s)" ]; then
+        echo "[$(now)] CODEX_WORKER=SKIPPED_QUOTA_BACKOFF" >>"$LOG"
+      elif run_codex; then
+        echo "[$(now)] CODEX_WORKER=PASS" >>"$LOG"
+      else
+        codex_rc=$?
+        if [ "$codex_rc" -eq 75 ]; then
+          echo "[$(now)] CODEX_WORKER=QUOTA_BACKOFF" >>"$LOG"
+          CODEX_BLOCKED_UNTIL=$(( $(date +%s) + 21600 ))
+        else
+          echo "[$(now)] CODEX_WORKER=BLOCKED rc=$codex_rc" >>"$LOG"
+        fi
+      fi
     else
       write_status PAYMENT RETRYING PAYMENT_TESTS "Payment provider tests failed; retrying"
     fi

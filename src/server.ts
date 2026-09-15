@@ -24,11 +24,19 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL_IS_REQUIRED");
 }
 
+function poolSize(value: string | undefined, fallback: number) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
+  return parsed;
+}
+
+const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5);
+
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
-  max: 20,
-  min: 20,
-  idleTimeoutMillis: 0,
+  max: pgPoolMax,
+  min: 0,
+  idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5000,
 });
 
@@ -418,10 +426,12 @@ async function reconcilePayment(txId:string){
     if(!current || current.status!=="PENDING") return current;
     const status=String(pr.providerStatus||"").toUpperCase();
     const failed=["FAILED","CANCELLED","CANCELED","REJECTED","EXPIRED"].includes(status);
-    if(!pr.accepted && !failed) return current;
-    const nextStatus=pr.accepted?"SUCCESS":"FAILED";
+    if(!pr.settled && !failed) return current;
+    const nextStatus=pr.settled?"SUCCESS":"FAILED";
     const updated=await t.transaction.update({where:{id:txId},data:{status:nextStatus,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
-    if(pr.accepted && current.type===TransactionType.DEPOSIT){
+    // A successful status-query call only confirms that Binance accepted the
+    // query. Credit a deposit solely after the provider reports settlement.
+    if(pr.settled && current.type===TransactionType.DEPOSIT){
       await t.wallet.upsert({where:{userId:current.userId},create:{userId:current.userId,balance:current.amount},update:{balance:{increment:current.amount}}});
     }
     if(failed && current.type===TransactionType.WITHDRAWAL){
@@ -466,6 +476,10 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
     return res.status(400).json({
       error:"Invalid request or Idempotency-Key"
     });
+  }
+
+  if (!providerFor(p.data.method).enabled()) {
+    return res.status(503).json({error:"PAYMENT_PROVIDER_NOT_AVAILABLE"});
   }
 
   try{
@@ -586,6 +600,10 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
     return res.status(400).json({
       error:"Invalid request or Idempotency-Key"
     });
+  }
+
+  if (!providerFor(p.data.method).enabled()) {
+    return res.status(503).json({error:"PAYMENT_PROVIDER_NOT_AVAILABLE"});
   }
 
   try{
@@ -1956,30 +1974,10 @@ app.use((err:any,req:any,res:any,_next:any)=>{
   });
 });
 async function startServer() {
-  try {
-    console.log("PG_POOL_PREWARM_STARTING");
-
-    await prewarmPgPool();
-
-    console.log("PG_POOL_PREWARM_READY", {
-      total: pool.totalCount,
-      idle: pool.idleCount,
-      waiting: pool.waitingCount
-    });
-
-    const server = app.listen(port, () => {
-      console.log(`Ludo Mada V4 API listening on :${port}`);
-    });
-
-    return server;
-  } catch (e: any) {
-    console.error("PG_POOL_PREWARM_ERROR", {
-      code: e?.code,
-      message: e?.message
-    });
-
-    process.exit(1);
-  }
+  const server = app.listen(port, () => {
+    console.log(`Ludo Mada V4 API listening on :${port}`);
+  });
+  return server;
 }
 
 const serverPromise = startServer();

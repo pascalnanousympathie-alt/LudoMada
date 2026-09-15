@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: release-gate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-staging:
     runs-on: ubuntu-latest
