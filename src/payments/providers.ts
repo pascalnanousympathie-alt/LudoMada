@@ -41,6 +41,18 @@ class MvolaProvider implements PaymentProvider {
     );
   }
   private async accessToken(): Promise<string> {
+    if (process.env.MVOLA_CLIENT_ID?.trim() && process.env.MVOLA_CLIENT_SECRET?.trim()) {
+      const basic = Buffer.from(`${process.env.MVOLA_CLIENT_ID}:${process.env.MVOLA_CLIENT_SECRET}`).toString("base64");
+      const body = new URLSearchParams({ grant_type: "client_credentials" });
+      const response = await fetch(this.tokenUrl(), {
+        method: "POST",
+        headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body,
+      });
+      const data: any = await response.json().catch(() => ({}));
+      if (!response.ok || !data?.access_token) throw new Error(`MVOLA_TOKEN_HTTP_${response.status}`);
+      return String(data.access_token);
+    }
     if (process.env.MVOLA_API_KEY?.trim()) return process.env.MVOLA_API_KEY.trim();
     const basic = Buffer.from(`${process.env.MVOLA_CLIENT_ID}:${process.env.MVOLA_CLIENT_SECRET}`).toString("base64");
     const body = new URLSearchParams({ grant_type: "client_credentials" });
@@ -55,7 +67,7 @@ class MvolaProvider implements PaymentProvider {
   }
   private headers(token: string, correlationId: string) {
     return {
-      ...(process.env.MVOLA_API_KEY?.trim() ? { apikey: token } : { Authorization: `Bearer ${token}` }),
+      ...(process.env.MVOLA_CLIENT_ID?.trim() && process.env.MVOLA_CLIENT_SECRET?.trim() ? { Authorization: `Bearer ${token}` } : { apikey: token }),
       Version: "1.0", "X-CorrelationID": correlationId,
       UserLanguage: process.env.MVOLA_USER_LANGUAGE || "MG",
       UserAccountIdentifier: `msisdn;${process.env.MVOLA_PARTNER_MSISDN}`,
@@ -92,7 +104,7 @@ class MvolaProvider implements PaymentProvider {
       providerReference: data?.serverCorrelationId,
       providerStatus: data?.status,
       raw: data,
-      errorCode: accepted ? undefined : `MVOLA_HTTP_${response.status}`,
+      errorCode: accepted ? undefined : String(data?.code || "") === "900910" ? "MVOLA_OAUTH_SCOPE_NOT_AUTHORIZED" : `MVOLA_HTTP_${response.status}`,
     };
   }
   async query(providerReference: string): Promise<ProviderResult> {
@@ -104,7 +116,7 @@ class MvolaProvider implements PaymentProvider {
     const data: any = await response.json().catch(() => ({}));
     const status = String(data?.status || data?.transactionStatus || "").toLowerCase();
     const settled = response.ok && status === "completed";
-    return { accepted: response.ok, settled, providerReference: data?.objectReference || providerReference, providerStatus: data?.status || data?.transactionStatus, raw: data, errorCode: response.ok ? undefined : `MVOLA_HTTP_${response.status}` };
+    return { accepted: response.ok, settled, providerReference: data?.objectReference || providerReference, providerStatus: data?.status || data?.transactionStatus, raw: data, errorCode: response.ok ? undefined : String(data?.code || "") === "900910" ? "MVOLA_OAUTH_SCOPE_NOT_AUTHORIZED" : `MVOLA_HTTP_${response.status}` };
   }
   verifyWebhook() { return false; }
 }
