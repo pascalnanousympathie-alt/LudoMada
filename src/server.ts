@@ -420,7 +420,7 @@ async function reconcilePayment(txId:string){
   if(!tx || tx.status!=="PENDING" || !tx.providerReference) return tx;
   const provider=providerFor(tx.method);
   if(!provider.enabled()) return tx;
-  const pr=await provider.query(tx.providerReference);
+  const pr=await provider.query(tx.providerReference,{expectedAmountMGA:tx.amount,customerPhone:tx.customerPhone||undefined,type:tx.type});
   return prisma.$transaction(async(t)=>{
     const current=await t.transaction.findUnique({where:{id:txId}});
     if(!current || current.status!=="PENDING") return current;
@@ -519,6 +519,7 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
         type:TransactionType.DEPOSIT,
         method:p.data.method,
         amount,
+        customerPhone:p.data.customerPhone,
         idempotencyKey:key,
         status:"PENDING"
       }
@@ -606,6 +607,10 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
     return res.status(503).json({error:"PAYMENT_PROVIDER_NOT_AVAILABLE"});
   }
 
+  if (p.data.method === PaymentMethod.MVOLA) {
+    return res.status(400).json({error:"MVOLA_WITHDRAWAL_API_NOT_SUPPORTED"});
+  }
+
   try{
     /*
      * First check: if this idempotency key already exists,
@@ -652,6 +657,7 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
           type:TransactionType.WITHDRAWAL,
           method:p.data.method,
           amount,
+          customerPhone:p.data.customerPhone,
           idempotencyKey:key,
           status:"PENDING"
         }

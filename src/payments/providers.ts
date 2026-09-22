@@ -88,6 +88,7 @@ class MvolaProvider implements PaymentProvider {
     };
   }
   async create(r: PaymentRequest): Promise<ProviderResult> {
+    if (r.type === "WITHDRAWAL") return { accepted: false, errorCode: "MVOLA_WITHDRAWAL_API_NOT_SUPPORTED" };
     if (!r.customerPhone) return { accepted: false, errorCode: "MVOLA_CUSTOMER_PHONE_REQUIRED" };
     const token = await this.accessToken();
     const correlationId = crypto.randomUUID();
@@ -120,16 +121,43 @@ class MvolaProvider implements PaymentProvider {
       errorCode: accepted ? undefined : String(data?.code || "") === "900910" ? "MVOLA_OAUTH_SCOPE_NOT_AUTHORIZED" : `MVOLA_HTTP_${response.status}`,
     };
   }
-  async query(providerReference: string): Promise<ProviderResult> {
+  async query(providerReference: string, context?: { expectedAmountMGA?: bigint; customerPhone?: string; type?: "DEPOSIT" | "WITHDRAWAL" }): Promise<ProviderResult> {
     const token = await this.accessToken();
     const correlationId = crypto.randomUUID();
+    const headers = this.headers(token, correlationId);
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/status/${encodeURIComponent(providerReference)}`, {
-      method: "GET", headers: this.headers(token, correlationId),
+      method: "GET", headers,
     });
     const data: any = await response.json().catch(() => ({}));
     const status = String(data?.status || data?.transactionStatus || "").toLowerCase();
-    const settled = response.ok && status === "completed";
-    return { accepted: response.ok, settled, providerReference: data?.objectReference || providerReference, providerStatus: data?.status || data?.transactionStatus, raw: data, errorCode: response.ok ? undefined : String(data?.code || "") === "900910" ? "MVOLA_OAUTH_SCOPE_NOT_AUTHORIZED" : `MVOLA_HTTP_${response.status}` };
+    let settled = response.ok && status === "completed";
+    let details: any = undefined;
+    let errorCode: string | undefined = response.ok ? undefined : String(data?.code || "") === "900910" ? "MVOLA_OAUTH_SCOPE_NOT_AUTHORIZED" : `MVOLA_HTTP_${response.status}`;
+    const transactionId = String(data?.objectReference || "").trim();
+    if (settled && transactionId) {
+      const detailsResponse = await this.fetchWithTimeout(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/${encodeURIComponent(transactionId)}`, {
+        method: "GET", headers: this.headers(token, crypto.randomUUID()),
+      });
+      details = await detailsResponse.json().catch(() => ({}));
+      const amount = String(details?.amount ?? "").trim();
+      const currency = String(details?.currency ?? "").trim();
+      const debit = String(details?.debitParty?.find?.((x: any) => x?.key === "msisdn")?.value ?? "").trim();
+      const credit = String(details?.creditParty?.find?.((x: any) => x?.key === "msisdn")?.value ?? "").trim();
+      const detailStatus = String(details?.transactionStatus ?? "").toLowerCase();
+      const amountMatches = context?.expectedAmountMGA === undefined || amount === context.expectedAmountMGA.toString();
+      const debitMatches = !context?.customerPhone || debit === context.customerPhone.trim();
+      const creditMatches = !process.env.MVOLA_PARTNER_MSISDN?.trim() || credit === process.env.MVOLA_PARTNER_MSISDN.trim();
+      settled = detailsResponse.ok && detailStatus === "completed" && currency === "Ar" && amountMatches && debitMatches && creditMatches;
+      if (!settled) errorCode = "MVOLA_TRANSACTION_DETAILS_MISMATCH";
+    }
+    return {
+      accepted: response.ok,
+      settled,
+      providerReference: transactionId || providerReference,
+      providerStatus: data?.status || data?.transactionStatus,
+      raw: details ? { status: data, details } : data,
+      errorCode,
+    };
   }
   verifyWebhook() { return false; }
 }

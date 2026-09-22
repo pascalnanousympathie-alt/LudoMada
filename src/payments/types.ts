@@ -8,6 +8,12 @@ export type PaymentRequest = {
   customerPhone?: string;
 };
 
+export type ProviderQueryContext = {
+  expectedAmountMGA?: bigint;
+  customerPhone?: string;
+  type?: TransactionType;
+};
+
 export type ProviderResult = {
   /** `accepted` means the provider accepted the API request, not that money settled. */
   accepted: boolean;
@@ -24,6 +30,6 @@ export interface PaymentProvider {
   method: PaymentMethod;
   enabled(): boolean;
   create(request: PaymentRequest): Promise<ProviderResult>;
-  query(providerReference: string): Promise<ProviderResult>;
+  query(providerReference: string, context?: ProviderQueryContext): Promise<ProviderResult>;
   verifyWebhook(headers: Record<string,string|undefined>, rawBody: string): boolean;
 }

@@ -59,6 +59,44 @@ describe("payment providers", () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  test("MVola withdrawal is rejected because Merchant Pay is inbound-only", async () => {
+    process.env.MVOLA_API_KEY = "test-api-key";
+    process.env.MVOLA_PARTNER_MSISDN = "0343500004";
+    process.env.MVOLA_PARTNER_NAME = "LudoMada";
+    process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED = "true";
+    await expect(providerFor(PaymentMethod.MVOLA).create({ transactionId: "test-withdrawal", amountMGA: 500n, method: PaymentMethod.MVOLA, type: "WITHDRAWAL", customerPhone: "0343500003" })).resolves.toMatchObject({ accepted: false, errorCode: "MVOLA_WITHDRAWAL_API_NOT_SUPPORTED" });
+  });
+
+  test("MVola completed status is settled only when transaction details match", async () => {
+    process.env.MVOLA_API_KEY = "test-api-key";
+    process.env.MVOLA_PARTNER_MSISDN = "0343500004";
+    process.env.MVOLA_PARTNER_NAME = "LudoMada";
+    process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED = "true";
+    let call = 0;
+    global.fetch = jest.fn(async () => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ status: "completed", serverCorrelationId: "corr-1", objectReference: "tx-1" }), { status: 200 });
+      return new Response(JSON.stringify({ amount: "500", currency: "Ar", transactionReference: "tx-1", transactionStatus: "completed", debitParty: [{ key: "msisdn", value: "0343500003" }], creditParty: [{ key: "msisdn", value: "0343500004" }] }), { status: 200 });
+    }) as any;
+    await expect(providerFor(PaymentMethod.MVOLA).query("corr-1", { expectedAmountMGA: 500n, customerPhone: "0343500003", type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: true, providerReference: "tx-1" });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("MVola completed status is not settled when transaction details mismatch", async () => {
+    process.env.MVOLA_API_KEY = "test-api-key";
+    process.env.MVOLA_PARTNER_MSISDN = "0343500004";
+    process.env.MVOLA_PARTNER_NAME = "LudoMada";
+    process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED = "true";
+    let call = 0;
+    global.fetch = jest.fn(async () => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ status: "completed", serverCorrelationId: "corr-2", objectReference: "tx-2" }), { status: 200 });
+      return new Response(JSON.stringify({ amount: "501", currency: "Ar", transactionReference: "tx-2", transactionStatus: "completed", debitParty: [{ key: "msisdn", value: "0343500003" }], creditParty: [{ key: "msisdn", value: "0343500004" }] }), { status: 200 });
+    }) as any;
+    await expect(providerFor(PaymentMethod.MVOLA).query("corr-2", { expectedAmountMGA: 500n, customerPhone: "0343500003", type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: false, errorCode: "MVOLA_TRANSACTION_DETAILS_MISMATCH" });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
   test("Binance webhook signature is verified safely", () => {
     const p = providerFor(PaymentMethod.BINANCE);
     const ts = Date.now().toString();
