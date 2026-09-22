@@ -10,6 +10,7 @@ describe("payment providers", () => {
     delete process.env.MVOLA_CLIENT_SECRET;
     delete process.env.MVOLA_PARTNER_MSISDN;
     delete process.env.MVOLA_PARTNER_NAME;
+    delete process.env.MVOLA_TIMEOUT_MS;
     delete process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
@@ -43,6 +44,19 @@ describe("payment providers", () => {
     process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED = "true";
     expect(providerFor(PaymentMethod.MVOLA).enabled()).toBe(true);
     expect(process.env.PAYMENTS_MVOLA_LIVE_ENABLED).toBeUndefined();
+  });
+
+  test("MVola request timeout aborts stalled network calls", async () => {
+    process.env.MVOLA_API_KEY = "test-api-key";
+    process.env.MVOLA_PARTNER_MSISDN = "0343500004";
+    process.env.MVOLA_PARTNER_NAME = "LudoMada";
+    process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED = "true";
+    process.env.MVOLA_TIMEOUT_MS = "20";
+    global.fetch = jest.fn(async (_url: any, init: any) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    })) as any;
+    await expect(providerFor(PaymentMethod.MVOLA).create({ transactionId: "test-timeout", amountMGA: 500n, method: PaymentMethod.MVOLA, type: "DEPOSIT", customerPhone: "0343500003" })).rejects.toThrow("aborted");
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   test("Binance webhook signature is verified safely", () => {

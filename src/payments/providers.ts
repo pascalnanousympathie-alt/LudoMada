@@ -32,6 +32,19 @@ class MvolaProvider implements PaymentProvider {
   method = PaymentMethod.MVOLA;
   private baseUrl() { return (process.env.MVOLA_BASE_URL || "https://pre-api.mvola.mg").replace(/\/$/, ""); }
   private tokenUrl() { return process.env.MVOLA_TOKEN_URL || "https://developer.mvola.mg/oauth2/token"; }
+  private timeoutMs() {
+    const value = Number(process.env.MVOLA_TIMEOUT_MS || 15000);
+    return Number.isFinite(value) && value > 0 ? Math.min(value, 60000) : 15000;
+  }
+  private async fetchWithTimeout(url: string, init: RequestInit) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs());
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   enabled() {
     return Boolean(
       (mvolaSandboxEnabled() || providerLiveEnabled("MVOLA")) &&
@@ -44,7 +57,7 @@ class MvolaProvider implements PaymentProvider {
     if (process.env.MVOLA_CLIENT_ID?.trim() && process.env.MVOLA_CLIENT_SECRET?.trim()) {
       const basic = Buffer.from(`${process.env.MVOLA_CLIENT_ID}:${process.env.MVOLA_CLIENT_SECRET}`).toString("base64");
       const body = new URLSearchParams({ grant_type: "client_credentials", ...(process.env.MVOLA_OAUTH_SCOPE?.trim() ? { scope: process.env.MVOLA_OAUTH_SCOPE.trim() } : {}) });
-      const response = await fetch(this.tokenUrl(), {
+      const response = await this.fetchWithTimeout(this.tokenUrl(), {
         method: "POST",
         headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded", Accept: "application/json" },
         body,
@@ -56,7 +69,7 @@ class MvolaProvider implements PaymentProvider {
     if (process.env.MVOLA_API_KEY?.trim()) return process.env.MVOLA_API_KEY.trim();
     const basic = Buffer.from(`${process.env.MVOLA_CLIENT_ID}:${process.env.MVOLA_CLIENT_SECRET}`).toString("base64");
     const body = new URLSearchParams({ grant_type: "client_credentials" });
-    const response = await fetch(this.tokenUrl(), {
+    const response = await this.fetchWithTimeout(this.tokenUrl(), {
       method: "POST",
       headers: { Authorization: `Basic ${basic}`, "content-type": "application/x-www-form-urlencoded", Accept: "application/json" },
       body,
@@ -94,7 +107,7 @@ class MvolaProvider implements PaymentProvider {
     const callback = process.env.MVOLA_CALLBACK_URL?.trim();
     const headers: Record<string, string> = this.headers(token, correlationId);
     if (callback) headers["X-Callback-URL"] = callback;
-    const response = await fetch(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/`, {
       method: "POST", headers, body: JSON.stringify(payload),
     });
     const data: any = await response.json().catch(() => ({}));
@@ -110,7 +123,7 @@ class MvolaProvider implements PaymentProvider {
   async query(providerReference: string): Promise<ProviderResult> {
     const token = await this.accessToken();
     const correlationId = crypto.randomUUID();
-    const response = await fetch(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/status/${encodeURIComponent(providerReference)}`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/mvola/mm/transactions/type/merchantpay/1.0.0/status/${encodeURIComponent(providerReference)}`, {
       method: "GET", headers: this.headers(token, correlationId),
     });
     const data: any = await response.json().catch(() => ({}));
