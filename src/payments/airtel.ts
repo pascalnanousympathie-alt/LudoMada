@@ -200,7 +200,16 @@ export class AirtelMoneyProvider implements PaymentProvider {
     };
   }
 
-  async uatDiagnostics(): Promise<{ oauthStatus: number; tokenSet: boolean; rsaStatus?: number; keySet?: boolean }> {
+  async uatDiagnostics(): Promise<{
+    oauthStatus: number;
+    tokenSet: boolean;
+    oauthError?: string;
+    oauthErrorDescription?: string;
+    clientIdLength: number;
+    clientSecretLength: number;
+    rsaStatus?: number;
+    keySet?: boolean;
+  }> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/auth/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "*/*", ...this.relayHeaders() },
@@ -212,9 +221,22 @@ export class AirtelMoneyProvider implements PaymentProvider {
     });
     const data: any = await response.json().catch(() => ({}));
     const token = text(data?.access_token);
-    const result: { oauthStatus: number; tokenSet: boolean; rsaStatus?: number; keySet?: boolean } = {
+    const result: {
+      oauthStatus: number;
+      tokenSet: boolean;
+      oauthError?: string;
+      oauthErrorDescription?: string;
+      clientIdLength: number;
+      clientSecretLength: number;
+      rsaStatus?: number;
+      keySet?: boolean;
+    } = {
       oauthStatus: response.status,
       tokenSet: Boolean(token),
+      oauthError: text(data?.error) || undefined,
+      oauthErrorDescription: text(data?.error_description) || undefined,
+      clientIdLength: String(process.env.AIRTEL_CLIENT_ID || "").trim().length,
+      clientSecretLength: String(process.env.AIRTEL_CLIENT_SECRET || "").trim().length,
     };
     if (!response.ok || !token) return result;
     try {
