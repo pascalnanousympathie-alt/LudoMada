@@ -146,7 +146,7 @@ describe("payment providers", () => {
     }) as any;
     const result = await providerFor(PaymentMethod.AIRTEL_MONEY).create({ transactionId: "test-airtel-1", amountMGA: 500n, method: PaymentMethod.AIRTEL_MONEY, type: "DEPOSIT", customerPhone: "+261 33 123 4567" });
     expect(result).toMatchObject({ accepted: true, providerReference: "test-airtel-1", providerStatus: "TIP" });
-    expect(paymentRequest.url).toBe("https://openapiuat.airtel.africa/merchant/v2/payments/");
+    expect(paymentRequest.url).toBe("https://openapiuat.airtel.mg/merchant/v2/payments/");
     expect(paymentRequest.headers.Authorization).toBe("Bearer uat-token");
     expect(paymentRequest.headers["X-Country"]).toBe("MG");
     expect(paymentRequest.headers["X-Currency"]).toBe("MGA");
@@ -199,7 +199,7 @@ describe("payment providers", () => {
       return new Response(JSON.stringify({ status: { success: true }, data: { transaction: { id: "merchant-id-1", airtel_money_id: "am-1", message: "success", status: "TS" } } }), { status: 200 });
     }) as any;
     await expect(providerFor(PaymentMethod.AIRTEL_MONEY).query("merchant-id-1", { type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: true, providerStatus: "TS", providerReference: "merchant-id-1" });
-    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe("https://openapiuat.airtel.africa/standard/v1/payments/merchant-id-1");
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe("https://openapiuat.airtel.mg/standard/v1/payments/merchant-id-1");
   });
 
   test("Airtel non-success status never settles", async () => {

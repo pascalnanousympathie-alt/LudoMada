@@ -3,7 +3,7 @@ import { PaymentMethod } from "@prisma/client";
 import { airtelSandboxEnabled } from "./config";
 import { PaymentProvider, PaymentRequest, ProviderQueryContext, ProviderResult } from "./types";
 
-const UAT_BASE_URL = "https://openapiuat.airtel.africa";
+const UAT_BASE_URL = "https://openapiuat.airtel.mg";
 const SUCCESS_STATUS = "TS";
 const RSA_KEY_CACHE_MS = 5 * 60 * 1000;
 
