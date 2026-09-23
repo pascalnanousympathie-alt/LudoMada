@@ -20,6 +20,7 @@ describe("payment providers", () => {
     delete process.env.AIRTEL_CURRENCY;
     delete process.env.AIRTEL_TIMEOUT_MS;
     delete process.env.AIRTEL_MESSAGE_SIGNING_ENABLED;
+    delete process.env.AIRTEL_RELAY_TOKEN;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
     process.env.BINANCE_PAY_CURRENCY = "USDT";
@@ -167,6 +168,30 @@ describe("payment providers", () => {
     const decrypted = Buffer.concat([decipher.update(Buffer.from(paymentRequest.headers["x-signature"], "base64")), decipher.final()]).toString("utf8");
     expect(decrypted).toBe(paymentRequest.rawBody);
     expect(call).toBe(3);
+  });
+
+  test("Airtel relay transport requires HTTPS and authenticates relay requests", async () => {
+    process.env.AIRTEL_CLIENT_ID = "test-client";
+    process.env.AIRTEL_CLIENT_SECRET = "test-secret";
+    process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED = "true";
+    process.env.AIRTEL_API_BASE_URL = "https://oracle-relay.example.test";
+    process.env.AIRTEL_RELAY_TOKEN = "relay-test-token";
+    process.env.AIRTEL_MESSAGE_SIGNING_ENABLED = "false";
+    let paymentRequest: any;
+    let call = 0;
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      call += 1;
+      expect(String(init.headers["X-Relay-Token"])).toBe("relay-test-token");
+      if (call === 1) return new Response(JSON.stringify({ access_token: "uat-token", expires_in: 180 }), { status: 200 });
+      paymentRequest = { url: String(url), headers: init.headers };
+      return new Response(JSON.stringify({ data: { transaction: { id: "relay-airtel-1", status: "TIP" } }, status: { success: true } }), { status: 202 });
+    }) as any;
+    await expect(providerFor(PaymentMethod.AIRTEL_MONEY).create({ transactionId: "relay-airtel-1", amountMGA: 500n, method: PaymentMethod.AIRTEL_MONEY, type: "DEPOSIT", customerPhone: "+261 33 123 4567" })).resolves.toMatchObject({ accepted: true, providerReference: "relay-airtel-1" });
+    expect(paymentRequest.url).toBe("https://oracle-relay.example.test/merchant/v2/payments/");
+    expect(paymentRequest.headers["X-Relay-Token"]).toBe("relay-test-token");
+    expect(call).toBe(2);
+    delete process.env.AIRTEL_RELAY_TOKEN;
+    await expect(providerFor(PaymentMethod.AIRTEL_MONEY).create({ transactionId: "relay-airtel-2", amountMGA: 500n, method: PaymentMethod.AIRTEL_MONEY, type: "DEPOSIT", customerPhone: "+261 33 123 4567" })).rejects.toThrow("AIRTEL_RELAY_TOKEN_REQUIRED");
   });
 
   test("Airtel collection can omit message signing when explicitly disabled", async () => {

@@ -1,0 +1,53 @@
+{$AIRTEL_RELAY_DOMAIN} {
+    @token {
+        method POST
+        path /auth/oauth2/token
+        header X-Relay-Token {$AIRTEL_RELAY_TOKEN}
+    }
+    @rsa {
+        method GET
+        path /v1/rsa/encryption-keys
+        header X-Relay-Token {$AIRTEL_RELAY_TOKEN}
+    }
+    @payment {
+        method POST
+        path /merchant/v2/payments/*
+        header X-Relay-Token {$AIRTEL_RELAY_TOKEN}
+    }
+    @status {
+        method GET
+        path /standard/v1/payments/*
+        header X-Relay-Token {$AIRTEL_RELAY_TOKEN}
+    }
+
+    handle @token {
+        header -X-Relay-Token
+        reverse_proxy https://openapiuat.airtel.mg {
+            header_up Host openapiuat.airtel.mg
+        }
+    }
+    handle @rsa {
+        header -X-Relay-Token
+        reverse_proxy https://openapiuat.airtel.mg {
+            header_up Host openapiuat.airtel.mg
+        }
+    }
+
+    handle @payment {
+        header -X-Relay-Token
+        reverse_proxy https://openapiuat.airtel.mg {
+            header_up Host openapiuat.airtel.mg
+        }
+    }
+
+    handle @status {
+        header -X-Relay-Token
+        reverse_proxy https://openapiuat.airtel.mg {
+            header_up Host openapiuat.airtel.mg
+        }
+    }
+
+    handle {
+        respond "not found" 404
+    }
+}

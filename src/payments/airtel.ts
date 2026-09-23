@@ -44,6 +44,21 @@ export class AirtelMoneyProvider implements PaymentProvider {
 
   private country(): string { return (process.env.AIRTEL_COUNTRY || "MG").trim().toUpperCase(); }
   private currency(): string { return (process.env.AIRTEL_CURRENCY || "MGA").trim().toUpperCase(); }
+  private baseUrl(): string {
+    const base = (process.env.AIRTEL_API_BASE_URL || UAT_BASE_URL).trim().replace(/\/$/, "");
+    let parsed: URL;
+    try { parsed = new URL(base); } catch { throw new Error("AIRTEL_API_BASE_URL_INVALID"); }
+    if (parsed.protocol !== "https:") throw new Error("AIRTEL_API_BASE_URL_MUST_USE_HTTPS");
+    if (base !== UAT_BASE_URL && !process.env.AIRTEL_RELAY_TOKEN?.trim()) {
+      throw new Error("AIRTEL_RELAY_TOKEN_REQUIRED");
+    }
+    return base;
+  }
+  private relayHeaders(): Record<string, string> {
+    const base = this.baseUrl();
+    if (base === UAT_BASE_URL) return {};
+    return { "X-Relay-Token": process.env.AIRTEL_RELAY_TOKEN!.trim() };
+  }
 
   enabled(): boolean {
     return airtelSandboxEnabled() &&
@@ -62,9 +77,9 @@ export class AirtelMoneyProvider implements PaymentProvider {
   private async accessToken(): Promise<string> {
     if (!this.enabled()) throw new Error("AIRTEL_PROVIDER_NOT_ENABLED");
     if (this.token && Date.now() < this.token.expiresAt) return this.token.value;
-    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/auth/oauth2/token`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/auth/oauth2/token`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "*/*" },
+      headers: { "Content-Type": "application/json", Accept: "*/*", ...this.relayHeaders() },
       body: JSON.stringify({
         client_id: process.env.AIRTEL_CLIENT_ID,
         client_secret: process.env.AIRTEL_CLIENT_SECRET,
@@ -101,13 +116,14 @@ export class AirtelMoneyProvider implements PaymentProvider {
 
   private async encryptionKey(token: string): Promise<crypto.KeyObject> {
     if (rsaKeyCache && Date.now() < rsaKeyCache.expiresAt) return rsaKeyCache.key;
-    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/v1/rsa/encryption-keys`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/v1/rsa/encryption-keys`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "*/*",
         "X-Country": this.country(),
         "X-Currency": this.currency(),
+        ...this.relayHeaders(),
       },
     });
     const data: any = await response.json().catch(() => ({}));
@@ -165,9 +181,9 @@ export class AirtelMoneyProvider implements PaymentProvider {
       ...this.headers(token),
       ...(await this.signingHeaders(token, payloadJson)),
     };
-    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/merchant/v2/payments/`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/merchant/v2/payments/`, {
       method: "POST",
-      headers,
+      headers: { ...headers, ...this.relayHeaders() },
       body: payloadJson,
     });
     const data: any = await response.json().catch(() => ({}));
@@ -186,9 +202,9 @@ export class AirtelMoneyProvider implements PaymentProvider {
 
   async query(providerReference: string, _context?: ProviderQueryContext): Promise<ProviderResult> {
     const token = await this.accessToken();
-    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/standard/v1/payments/${encodeURIComponent(providerReference)}`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/standard/v1/payments/${encodeURIComponent(providerReference)}`, {
       method: "GET",
-      headers: this.headers(token),
+      headers: { ...this.headers(token), ...this.relayHeaders() },
     });
     const data: any = await response.json().catch(() => ({}));
     const transaction = transactionOf(data);
