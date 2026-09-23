@@ -12,6 +12,13 @@ describe("payment providers", () => {
     delete process.env.MVOLA_PARTNER_NAME;
     delete process.env.MVOLA_TIMEOUT_MS;
     delete process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED;
+    delete process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED;
+    delete process.env.AIRTEL_CLIENT_ID;
+    delete process.env.AIRTEL_CLIENT_SECRET;
+    delete process.env.AIRTEL_API_BASE_URL;
+    delete process.env.AIRTEL_COUNTRY;
+    delete process.env.AIRTEL_CURRENCY;
+    delete process.env.AIRTEL_TIMEOUT_MS;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
     process.env.BINANCE_PAY_CURRENCY = "USDT";
@@ -113,12 +120,69 @@ describe("payment providers", () => {
     expect(p.verifyWebhook({ "binancepay-timestamp": staleTimestamp, "binancepay-nonce": nonce, "binancepay-signature": staleSignature }, body)).toBe(false);
   });
 
-  test("Airtel and Orange never call an undocumented provider API", async () => {
-    for (const method of [PaymentMethod.AIRTEL_MONEY, PaymentMethod.ORANGE_MONEY]) {
-      const provider = providerFor(method);
-      expect(provider.enabled()).toBe(false);
-      await expect(provider.create({ transactionId: "test", amountMGA: 1n, method, type: "DEPOSIT" as any })).resolves.toMatchObject({ accepted: false, errorCode: "OFFICIAL_PROVIDER_API_CONTRACT_REQUIRED" });
-    }
+  test("Airtel sandbox is enabled only with credentials and explicit sandbox gate", () => {
+    process.env.AIRTEL_CLIENT_ID = "test-client";
+    process.env.AIRTEL_CLIENT_SECRET = "test-secret";
+    expect(providerFor(PaymentMethod.AIRTEL_MONEY).enabled()).toBe(false);
+    process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED = "true";
+    expect(providerFor(PaymentMethod.AIRTEL_MONEY).enabled()).toBe(true);
+    process.env.AIRTEL_API_BASE_URL = "https://openapi.airtel.africa";
+    expect(providerFor(PaymentMethod.AIRTEL_MONEY).enabled()).toBe(false);
+  });
+
+  test("Airtel v1 collection performs OAuth then sandbox payment request", async () => {
+    process.env.AIRTEL_CLIENT_ID = "test-client";
+    process.env.AIRTEL_CLIENT_SECRET = "test-secret";
+    process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED = "true";
+    let call = 0;
+    let paymentRequest: any;
+    global.fetch = jest.fn(async (url: any, init: any) => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ access_token: "uat-token", expires_in: 3600 }), { status: 200 });
+      paymentRequest = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
+      return new Response(JSON.stringify({ status: { success: true }, data: { transaction: { id: "airtel-tx-1", status: "TIP" } } }), { status: 200 });
+    }) as any;
+    const result = await providerFor(PaymentMethod.AIRTEL_MONEY).create({ transactionId: "test-airtel-1", amountMGA: 500n, method: PaymentMethod.AIRTEL_MONEY, type: "DEPOSIT", customerPhone: "0331234567" });
+    expect(result).toMatchObject({ accepted: true, providerReference: "airtel-tx-1", providerStatus: "TIP" });
+    expect(paymentRequest.url).toBe("https://openapiuat.airtel.africa/merchant/v1/payments/");
+    expect(paymentRequest.headers.Authorization).toBe("Bearer uat-token");
+    expect(paymentRequest.headers["X-Country"]).toBe("MG");
+    expect(paymentRequest.headers["X-Currency"]).toBe("MGA");
+    expect(paymentRequest.body).toEqual({ reference: "test-airtel-1", subscriber: { country: "MG", currency: "MGA", msisdn: "0331234567" }, transaction: { amount: 500, country: "MG", currency: "MGA", id: "test-airtel-1" } });
+    expect(call).toBe(2);
+  });
+
+  test("Airtel status settles only TS with matching context", async () => {
+    process.env.AIRTEL_CLIENT_ID = "test-client";
+    process.env.AIRTEL_CLIENT_SECRET = "test-secret";
+    process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED = "true";
+    let call = 0;
+    global.fetch = jest.fn(async () => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ access_token: "uat-token", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ status: { success: true }, data: { transaction: { id: "airtel-tx-1", status: "TS", amount: 500, msisdn: "0331234567", airtel_money_id: "am-1" } } }), { status: 200 });
+    }) as any;
+    await expect(providerFor(PaymentMethod.AIRTEL_MONEY).query("airtel-tx-1", { expectedAmountMGA: 500n, customerPhone: "0331234567", type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: true, providerStatus: "TS", providerReference: "airtel-tx-1" });
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toBe("https://openapiuat.airtel.africa/standard/v1/payments/airtel-tx-1");
+  });
+
+  test("Airtel status mismatch never settles", async () => {
+    process.env.AIRTEL_CLIENT_ID = "test-client";
+    process.env.AIRTEL_CLIENT_SECRET = "test-secret";
+    process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED = "true";
+    let call = 0;
+    global.fetch = jest.fn(async () => {
+      call += 1;
+      if (call === 1) return new Response(JSON.stringify({ access_token: "uat-token", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ status: { success: true }, data: { transaction: { id: "airtel-tx-2", status: "TS", amount: 501, msisdn: "0331234567" } } }), { status: 200 });
+    }) as any;
+    await expect(providerFor(PaymentMethod.AIRTEL_MONEY).query("airtel-tx-2", { expectedAmountMGA: 500n, customerPhone: "0331234567", type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: false, errorCode: "AIRTEL_TRANSACTION_AMOUNT_MISMATCH" });
+  });
+
+  test("Orange remains blocked until its official contract is available", async () => {
+    const provider = providerFor(PaymentMethod.ORANGE_MONEY);
+    expect(provider.enabled()).toBe(false);
+    await expect(provider.create({ transactionId: "test", amountMGA: 1n, method: PaymentMethod.ORANGE_MONEY, type: "DEPOSIT" as any })).resolves.toMatchObject({ accepted: false, errorCode: "OFFICIAL_PROVIDER_API_CONTRACT_REQUIRED" });
   });
 
   test("Binance create converts MGA and sanitizes merchant trade number", async () => {

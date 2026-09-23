@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { PaymentMethod } from "@prisma/client";
 import { PaymentProvider, PaymentRequest, ProviderResult } from "./types";
 import { mvolaSandboxEnabled, providerLiveEnabled } from "./config";
+import { AirtelMoneyProvider } from "./airtel";
 
 function disabled(method: PaymentMethod): PaymentProvider {
   return {
@@ -196,7 +197,8 @@ class BinancePayProvider implements PaymentProvider {
 
 export function providerFor(method: PaymentMethod): PaymentProvider {
   if (method === PaymentMethod.MVOLA) return new MvolaProvider();
+  if (method === PaymentMethod.AIRTEL_MONEY) return new AirtelMoneyProvider();
   if (method === PaymentMethod.BINANCE) return new BinancePayProvider();
-  if (method === PaymentMethod.AIRTEL_MONEY || method === PaymentMethod.ORANGE_MONEY) return officialContractRequired(method);
+  if (method === PaymentMethod.ORANGE_MONEY) return officialContractRequired(method);
   return disabled(method);
 }
