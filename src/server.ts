@@ -18,6 +18,7 @@ import { appendGameEvent } from "./game/gameEventStore";
 import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
+import { AirtelMoneyProvider } from "./payments/airtel";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -413,6 +414,19 @@ const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),m
 
 app.get("/api/payments/config",auth,async(_req,res)=>{
   res.json(paymentConfig());
+});
+
+app.get("/internal/airtel-smoke", async (req, res) => {
+  const expected = process.env.AIRTEL_SMOKE_TOKEN?.trim();
+  if (!expected || req.get("X-Airtel-Smoke-Token") !== expected) {
+    return res.status(404).json({error:"Not found"});
+  }
+  try {
+    const result = await new AirtelMoneyProvider().uatDiagnostics();
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(502).json({error:"AIRTEL_SMOKE_FAILED", code:String(error?.message || "UNKNOWN").slice(0,80)});
+  }
 });
 
 async function reconcilePayment(txId:string){

@@ -200,6 +200,35 @@ export class AirtelMoneyProvider implements PaymentProvider {
     };
   }
 
+  async uatDiagnostics(): Promise<{ oauthStatus: number; tokenSet: boolean; rsaStatus?: number; keySet?: boolean }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/auth/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "*/*", ...this.relayHeaders() },
+      body: JSON.stringify({
+        client_id: process.env.AIRTEL_CLIENT_ID,
+        client_secret: process.env.AIRTEL_CLIENT_SECRET,
+        grant_type: "client_credentials",
+      }),
+    });
+    const data: any = await response.json().catch(() => ({}));
+    const token = text(data?.access_token);
+    const result: { oauthStatus: number; tokenSet: boolean; rsaStatus?: number; keySet?: boolean } = {
+      oauthStatus: response.status,
+      tokenSet: Boolean(token),
+    };
+    if (!response.ok || !token) return result;
+    try {
+      const key = await this.encryptionKey(token);
+      result.rsaStatus = 200;
+      result.keySet = Boolean(key);
+    } catch (error: any) {
+      const match = String(error?.message || "").match(/AIRTEL_RSA_KEY_HTTP_(\\d+)/);
+      result.rsaStatus = match ? Number(match[1]) : 0;
+      result.keySet = false;
+    }
+    return result;
+  }
+
   async query(providerReference: string, _context?: ProviderQueryContext): Promise<ProviderResult> {
     const token = await this.accessToken();
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/standard/v1/payments/${encodeURIComponent(providerReference)}`, {
