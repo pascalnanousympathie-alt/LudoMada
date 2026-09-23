@@ -205,6 +205,9 @@ export class AirtelMoneyProvider implements PaymentProvider {
     tokenSet: boolean;
     oauthError?: string;
     oauthErrorDescription?: string;
+    alternateStatus?: number;
+    alternateTokenSet?: boolean;
+    alternateError?: string;
     clientIdLength: number;
     clientSecretLength: number;
     rsaStatus?: number;
@@ -221,11 +224,34 @@ export class AirtelMoneyProvider implements PaymentProvider {
     });
     const data: any = await response.json().catch(() => ({}));
     const token = text(data?.access_token);
+    let alternateStatus: number | undefined;
+    let alternateTokenSet: boolean | undefined;
+    let alternateError: string | undefined;
+    try {
+      const alt = await this.fetchWithTimeout("https://openapiuat.airtel.africa/auth/oauth2/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "*/*" },
+        body: JSON.stringify({
+          client_id: process.env.AIRTEL_CLIENT_ID,
+          client_secret: process.env.AIRTEL_CLIENT_SECRET,
+          grant_type: "client_credentials",
+        }),
+      });
+      const altData: any = await alt.json().catch(() => ({}));
+      alternateStatus = alt.status;
+      alternateTokenSet = Boolean(text(altData?.access_token));
+      alternateError = text(altData?.error) || undefined;
+    } catch (error: any) {
+      alternateError = String(error?.message || "NETWORK_ERROR").slice(0,80);
+    }
     const result: {
       oauthStatus: number;
       tokenSet: boolean;
       oauthError?: string;
       oauthErrorDescription?: string;
+      alternateStatus?: number;
+      alternateTokenSet?: boolean;
+      alternateError?: string;
       clientIdLength: number;
       clientSecretLength: number;
       rsaStatus?: number;
@@ -235,6 +261,9 @@ export class AirtelMoneyProvider implements PaymentProvider {
       tokenSet: Boolean(token),
       oauthError: text(data?.error) || undefined,
       oauthErrorDescription: text(data?.error_description) || undefined,
+      alternateStatus,
+      alternateTokenSet,
+      alternateError,
       clientIdLength: String(process.env.AIRTEL_CLIENT_ID || "").trim().length,
       clientSecretLength: String(process.env.AIRTEL_CLIENT_SECRET || "").trim().length,
     };
