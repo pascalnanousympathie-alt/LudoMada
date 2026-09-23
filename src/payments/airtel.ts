@@ -1,9 +1,13 @@
+import crypto from "node:crypto";
 import { PaymentMethod } from "@prisma/client";
 import { airtelSandboxEnabled } from "./config";
 import { PaymentProvider, PaymentRequest, ProviderQueryContext, ProviderResult } from "./types";
 
 const UAT_BASE_URL = "https://openapiuat.airtel.africa";
-const SUCCESS_STATUS_CODES = new Set(["TS", "SUCCESS"]);
+const SUCCESS_STATUS = "TS";
+const RSA_KEY_CACHE_MS = 5 * 60 * 1000;
+
+let rsaKeyCache: { key: crypto.KeyObject; expiresAt: number } | undefined;
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : value == null ? "" : String(value).trim();
@@ -13,22 +17,25 @@ function transactionOf(data: any): any {
   return data?.data?.transaction ?? data?.transaction ?? {};
 }
 
+function messageSigningEnabled(): boolean {
+  return process.env.AIRTEL_MESSAGE_SIGNING_ENABLED !== "false";
+}
+
+function rsaPublicKey(value: string): crypto.KeyObject {
+  const normalized = value.trim();
+  if (normalized.includes("BEGIN PUBLIC KEY")) {
+    return crypto.createPublicKey(normalized);
+  }
+  return crypto.createPublicKey({
+    key: Buffer.from(normalized, "base64"),
+    format: "der",
+    type: "spki",
+  });
+}
+
 export class AirtelMoneyProvider implements PaymentProvider {
   method = PaymentMethod.AIRTEL_MONEY;
   private token?: { value: string; expiresAt: number };
-
-  private baseUrl(): string {
-    return (process.env.AIRTEL_API_BASE_URL || UAT_BASE_URL).replace(/\/$/, "");
-  }
-
-  private sandboxBaseUrl(): boolean {
-    try {
-      const url = new URL(this.baseUrl());
-      return url.protocol === "https:" && url.hostname === "openapiuat.airtel.africa";
-    } catch {
-      return false;
-    }
-  }
 
   private timeoutMs(): number {
     const value = Number(process.env.AIRTEL_TIMEOUT_MS || 15000);
@@ -39,7 +46,7 @@ export class AirtelMoneyProvider implements PaymentProvider {
   private currency(): string { return (process.env.AIRTEL_CURRENCY || "MGA").trim().toUpperCase(); }
 
   enabled(): boolean {
-    return airtelSandboxEnabled() && this.sandboxBaseUrl() &&
+    return airtelSandboxEnabled() &&
       Boolean(process.env.AIRTEL_CLIENT_ID?.trim() && process.env.AIRTEL_CLIENT_SECRET?.trim());
   }
 
@@ -55,7 +62,7 @@ export class AirtelMoneyProvider implements PaymentProvider {
   private async accessToken(): Promise<string> {
     if (!this.enabled()) throw new Error("AIRTEL_PROVIDER_NOT_ENABLED");
     if (this.token && Date.now() < this.token.expiresAt) return this.token.value;
-    const response = await this.fetchWithTimeout(`${this.baseUrl()}/auth/oauth2/token`, {
+    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/auth/oauth2/token`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "*/*" },
       body: JSON.stringify({
@@ -67,8 +74,11 @@ export class AirtelMoneyProvider implements PaymentProvider {
     const data: any = await response.json().catch(() => ({}));
     const token = text(data?.access_token);
     if (!response.ok || !token) throw new Error(`AIRTEL_AUTH_HTTP_${response.status}`);
-    const expiresIn = Number(data?.expires_in || 3600);
-    this.token = { value: token, expiresAt: Date.now() + Math.max(60, expiresIn - 60) * 1000 };
+    const expiresIn = Number(data?.expires_in || 180);
+    this.token = {
+      value: token,
+      expiresAt: Date.now() + Math.max(30, Number.isFinite(expiresIn) ? expiresIn - 30 : 150) * 1000,
+    };
     return token;
   }
 
@@ -83,63 +93,116 @@ export class AirtelMoneyProvider implements PaymentProvider {
   }
 
   private normalizeMsisdn(value: string): string {
-    return value.trim().replace(/^\+/, "").replace(/[\s()-]/g, "");
+    let phone = value.trim().replace(/[\s()-]/g, "").replace(/^\+/, "");
+    if (phone.startsWith("261") && phone.length >= 11) phone = phone.slice(3);
+    if (phone.length === 10 && phone.startsWith("0")) phone = phone.slice(1);
+    return phone;
+  }
+
+  private async encryptionKey(token: string): Promise<crypto.KeyObject> {
+    if (rsaKeyCache && Date.now() < rsaKeyCache.expiresAt) return rsaKeyCache.key;
+    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/v1/rsa/encryption-keys`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "*/*",
+        "X-Country": this.country(),
+        "X-Currency": this.currency(),
+      },
+    });
+    const data: any = await response.json().catch(() => ({}));
+    const keyText = text(data?.data?.key);
+    if (!response.ok || !keyText) throw new Error(`AIRTEL_RSA_KEY_HTTP_${response.status}`);
+    const key = rsaPublicKey(keyText);
+    rsaKeyCache = { key, expiresAt: Date.now() + RSA_KEY_CACHE_MS };
+    return key;
+  }
+
+  private async signingHeaders(token: string, payloadJson: string): Promise<Record<string, string>> {
+    if (!messageSigningEnabled()) return {};
+    const publicKey = await this.encryptionKey(token);
+    const aesKey = crypto.randomBytes(32);
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv("aes-256-cbc", aesKey, iv);
+    const encryptedPayload = Buffer.concat([cipher.update(payloadJson, "utf8"), cipher.final()]).toString("base64");
+    const keyIv = `${aesKey.toString("base64")}:${iv.toString("base64")}`;
+    const encryptedKeyIv = crypto.publicEncrypt({
+      key: publicKey,
+      padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+      oaepHash: "sha256",
+    }, Buffer.from(keyIv, "utf8")).toString("base64");
+    return { "x-signature": encryptedPayload, "x-key": encryptedKeyIv };
   }
   async create(request: PaymentRequest): Promise<ProviderResult> {
-    if (request.type === "WITHDRAWAL") return { accepted: false, errorCode: "AIRTEL_WITHDRAWAL_API_NOT_SUPPORTED" };
-    if (!request.customerPhone) return { accepted: false, errorCode: "AIRTEL_CUSTOMER_PHONE_REQUIRED" };
-    if (request.amountMGA <= 0n || request.amountMGA > BigInt(Number.MAX_SAFE_INTEGER)) return { accepted: false, errorCode: "AIRTEL_AMOUNT_INVALID" };
+    if (request.type === "WITHDRAWAL") {
+      return { accepted: false, errorCode: "AIRTEL_WITHDRAWAL_API_NOT_SUPPORTED" };
+    }
+    if (!request.customerPhone) {
+      return { accepted: false, errorCode: "AIRTEL_CUSTOMER_PHONE_REQUIRED" };
+    }
+    if (request.amountMGA <= 0n || request.amountMGA > BigInt(Number.MAX_SAFE_INTEGER)) {
+      return { accepted: false, errorCode: "AIRTEL_AMOUNT_INVALID" };
+    }
     const msisdn = this.normalizeMsisdn(request.customerPhone);
-    if (!/^\d{8,15}$/.test(msisdn)) return { accepted: false, errorCode: "AIRTEL_CUSTOMER_PHONE_INVALID" };
+    if (!/^\d{8,15}$/.test(msisdn)) {
+      return { accepted: false, errorCode: "AIRTEL_CUSTOMER_PHONE_INVALID" };
+    }
+
     const token = await this.accessToken();
     const reference = request.transactionId.slice(0, 64);
     const payload = {
       reference,
       subscriber: { country: this.country(), currency: this.currency(), msisdn },
-      transaction: { amount: Number(request.amountMGA), country: this.country(), currency: this.currency(), id: reference },
+      transaction: {
+        amount: Number(request.amountMGA),
+        country: this.country(),
+        currency: this.currency(),
+        id: reference,
+      },
     };
-    const response = await this.fetchWithTimeout(`${this.baseUrl()}/merchant/v1/payments/`, {
-      method: "POST", headers: this.headers(token), body: JSON.stringify(payload),
+    const payloadJson = JSON.stringify(payload);
+    const headers: Record<string, string> = {
+      ...this.headers(token),
+      ...(await this.signingHeaders(token, payloadJson)),
+    };
+    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/merchant/v2/payments/`, {
+      method: "POST",
+      headers,
+      body: payloadJson,
     });
     const data: any = await response.json().catch(() => ({}));
     const transaction = transactionOf(data);
-    const providerReference = text(transaction?.id || transaction?.airtel_money_id || data?.data?.transactionId);
-    const apiSuccess = data?.status?.success;
-    const accepted = response.ok && apiSuccess !== false && Boolean(providerReference);
+    const providerReference = text(transaction?.id || data?.data?.transactionId);
+    const providerStatus = text(transaction?.status);
+    const accepted = response.ok && Boolean(providerReference);
     return {
       accepted,
       providerReference: providerReference || undefined,
-      providerStatus: text(transaction?.status || transaction?.status_code) || undefined,
+      providerStatus: providerStatus || undefined,
       raw: data,
       errorCode: accepted ? undefined : response.ok ? "AIRTEL_API_REJECTED" : `AIRTEL_HTTP_${response.status}`,
     };
   }
 
-  async query(providerReference: string, context?: ProviderQueryContext): Promise<ProviderResult> {
+  async query(providerReference: string, _context?: ProviderQueryContext): Promise<ProviderResult> {
     const token = await this.accessToken();
-    const response = await this.fetchWithTimeout(`${this.baseUrl()}/standard/v1/payments/${encodeURIComponent(providerReference)}`, {
-      method: "GET", headers: this.headers(token),
+    const response = await this.fetchWithTimeout(`${UAT_BASE_URL}/standard/v1/payments/${encodeURIComponent(providerReference)}`, {
+      method: "GET",
+      headers: this.headers(token),
     });
     const data: any = await response.json().catch(() => ({}));
     const transaction = transactionOf(data);
-    const status = text(transaction?.status || transaction?.status_code).toUpperCase();
-    const amountText = text(transaction?.amount);
-    const phoneText = text(transaction?.msisdn || transaction?.subscriber?.msisdn);
-    const amountMatches = !context?.expectedAmountMGA || !amountText || amountText === context.expectedAmountMGA.toString();
-    const phoneMatches = !context?.customerPhone || !phoneText || this.normalizeMsisdn(phoneText) === this.normalizeMsisdn(context.customerPhone);
+    const status = text(transaction?.status).toUpperCase();
     const apiSuccess = data?.status?.success;
     const accepted = response.ok && apiSuccess !== false;
-    const settled = accepted && SUCCESS_STATUS_CODES.has(status) && amountMatches && phoneMatches;
-    let errorCode: string | undefined;
-    if (!accepted) errorCode = response.ok ? "AIRTEL_API_REJECTED" : `AIRTEL_HTTP_${response.status}`;
-    else if (SUCCESS_STATUS_CODES.has(status) && !amountMatches) errorCode = "AIRTEL_TRANSACTION_AMOUNT_MISMATCH";
-    else if (SUCCESS_STATUS_CODES.has(status) && !phoneMatches) errorCode = "AIRTEL_TRANSACTION_PHONE_MISMATCH";
+    const settled = accepted && status === SUCCESS_STATUS;
     return {
-      accepted, settled,
+      accepted,
+      settled,
       providerReference: text(transaction?.id || providerReference),
       providerStatus: status || undefined,
       raw: data,
-      errorCode,
+      errorCode: settled ? undefined : accepted ? undefined : response.ok ? "AIRTEL_API_REJECTED" : `AIRTEL_HTTP_${response.status}`,
     };
   }
 
