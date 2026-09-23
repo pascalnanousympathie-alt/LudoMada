@@ -16,6 +16,9 @@ case "${1:-once}" in
     "$BASE/.ludomada-agent/supervisor.sh" once
     ;;
   daemon)
+    SCHEDULER_LOCK="$STATE_DIR/scheduler.lock"
+    exec 9>"$SCHEDULER_LOCK"
+    flock -n 9 || { echo "SCHEDULER=ALREADY_RUNNING"; exit 0; }
     while :; do
       "$BASE/.ludomada-agent/supervisor.sh" once
       sleep "$SCHEDULER_INTERVAL"
