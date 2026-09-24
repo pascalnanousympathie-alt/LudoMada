@@ -40,9 +40,11 @@ class MainActivity : Activity() {
     private fun add(v:View, h:Int=-2, top:Int=7, bottom:Int=7) {
         root.addView(v, LinearLayout.LayoutParams(-1, if(h==-1) -1 else dp(h)).apply { setMargins(0,dp(top),0,dp(bottom)) })
     }
+    private fun darker(c:Int):Int = Color.rgb((Color.red(c)*.70f).toInt(),(Color.green(c)*.70f).toInt(),(Color.blue(c)*.70f).toInt())
     private fun button(s:String, accent:Int=Color.rgb(37,93,196), action:(()->Unit)?=null) = Button(this).apply {
         text=s; textSize=14f; isAllCaps=false; setTextColor(Color.WHITE); setTypeface(null,android.graphics.Typeface.BOLD)
-        background=shape(accent,18f); minHeight=dp(50); elevation=dp(2).toFloat(); setOnClickListener { action?.invoke() }
+        setPadding(dp(16),0,dp(16),0); background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(18).toFloat();setStroke(dp(1),0x33FFFFFF)}
+        minHeight=dp(52); stateListAnimator=null; elevation=dp(4).toFloat(); setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
@@ -61,9 +63,12 @@ class MainActivity : Activity() {
         root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(14)) })
     }
     private fun card(title:String, body:String, accent:Int=Color.rgb(37,93,196)): LinearLayout {
-        val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)); background=shape(Color.WHITE,22f,Color.rgb(225,230,238)); elevation=dp(1).toFloat() }
-        box.addView(label(title,18f,true,accent)); box.addView(label(body,14f,false,Color.rgb(88,99,116)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(6)})
-        return box
+        val outer=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(5),dp(4),dp(5),dp(4));background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(240,244,250))).apply{cornerRadius=dp(22).toFloat();setStroke(dp(1),Color.rgb(220,227,237))};elevation=dp(3).toFloat()}
+        outer.addView(View(this).apply{background=shape(accent,6f)},LinearLayout.LayoutParams(dp(5),dp(62)))
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(13),dp(9),dp(13),dp(9))}
+        box.addView(label(title,17f,true,Color.rgb(28,43,65)))
+        box.addView(label(body,13f,false,Color.rgb(95,106,122)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(4)})
+        outer.addView(box,LinearLayout.LayoutParams(0,-2,1f)); return outer
     }
 
     override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); window.statusBarColor=Color.rgb(246,248,252); splash() }
@@ -78,18 +83,20 @@ class MainActivity : Activity() {
     }
 
     private fun login() {
-        page("login","Tongasoa 👋")
-        add(label("Lalao Ludo an-tserasera ho an'ny 2–4 mpilalao.",15f,false,Color.rgb(88,99,116)))
-        val info=card("🎯 Mise", "500 • 1 000 • 2 000 Ar", Color.rgb(37,93,196)); add(info)
-        status=label("",13f,false,Color.rgb(190,55,55)); add(status)
-        val u=EditText(this).apply{hint="Anaran'ny mpampiasa";textSize=16f;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
-        val p=EditText(this).apply{hint="Password (10 caractères minimum)";textSize=16f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(225,230,238));setPadding(dp(14),0,dp(14),0)}
-        add(u,54);add(p,54)
-        add(button("Hiditra",Color.rgb(37,93,196), { if(validAuth(u,p)) auth("/api/auth/login",u.text.toString().trim(),p.text.toString()) }),54)
-        add(button("Hamorona kaonty",Color.rgb(35,150,84), { if(validAuth(u,p)) auth("/api/auth/register",u.text.toString().trim(),p.text.toString()) }),54)
-        add(card("🔵 Google", "Connexion Google sécurisée — bientôt disponible.", Color.rgb(70,82,100)))
-        add(button("✉️ Inscription Email / 📱 Mobile",Color.rgb(130,85,180)){registerDialog()},52)
-        add(label("Ny kaonty sy ny lalao dia voatahiry amin'ny serveur.",12f,false,Color.rgb(120,128,140)))
+        page("login","Connexion")
+        val brand=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL}
+        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(82),dp(82)))
+        brand.addView(label("LudoMada",28f,true,Color.rgb(15,79,199)))
+        brand.addView(label("Jouer. Gagner. Profiter.",12f,false,Color.rgb(105,116,132)))
+        add(brand,112,0,10)
+        status=label("",13f,false,Color.rgb(190,55,55));add(status,38,2,6)
+        val u=EditText(this).apply{hint="Nom, email ou mobile";textSize=15f;background=shape(Color.WHITE,18f,Color.rgb(220,226,235));setPadding(dp(14),0,dp(14),0);setSingleLine(true)}
+        val p=EditText(this).apply{hint="Mot de passe";textSize=15f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(220,226,235));setPadding(dp(14),0,dp(14),0);setSingleLine(true)}
+        add(u,54,5,6);add(p,54,5,10)
+        add(button("Se connecter",Color.rgb(30,100,230)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},54,5,7)
+        add(button("Créer un compte",Color.rgb(18,150,105)){registerDialog()},54,5,7)
+        add(card("Accès sécurisé","Connexion par nom, email ou numéro. Les paiements restent côté serveur.",Color.rgb(207,217,230)),82,6,6)
+        add(button(musicLabel(),Color.rgb(70,82,100)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},48,5,2)
     }
 
     private fun googleSignup() {
@@ -108,25 +115,26 @@ class MainActivity : Activity() {
         }.setNegativeButton("Aoka",null).show()
     }
 
-    private fun validAuth(u:EditText,p:EditText):Boolean { if(u.text.isBlank()||p.text.length<10){status.text="Fenoy tsara ny anarana sy password (10+).";return false}; return true }
-    private fun auth(path:String,u:String,p:String) { status.text="Mampifandray..."; post(path,JSONObject().put("identifier",u).put("password",p)){j->token=j.optString("accessToken");userId=j.optJSONObject("user")?.optString("id").orEmpty();username=u;if(token.isBlank())status.text="Tsy tafiditra. Jereo indray." else home()} }
+    private fun validAuth(u:EditText,p:EditText):Boolean { if(u.text.isBlank()||p.text.isBlank()){status.text="Fenoy ny identifiant sy mot de passe.";return false}; return true }
+    private fun auth(path:String,u:String,p:String) { status.text="Connexion..."; post(path,JSONObject().put("identifier",u).put("password",p)){j->token=j.optString("accessToken");val usr=j.optJSONObject("user");userId=usr?.optString("id").orEmpty();username=usr?.optString("username").orEmpty();if(token.isBlank())status.text="Connexion refusée. Vérifiez vos identifiants." else home()} }
 
     private fun home() {
         page("home","Accueil")
-        add(label("${t("Welcome", "Bienvenue", "Tongasoa")}, ${if(username.isBlank())t("Player", "Joueur", "Mpilalao") else username} 👋",24f,true))
-        add(label("Vonona ve ianao handresy?",14f,false,Color.rgb(88,99,116)))
-        val play=card("🎮 ${t("Online game", "Jeu en ligne", "Lalao an-tserasera")}",t("2–4 players • Choose a 500, 1,000 or 2,000 Ar stake", "2–4 joueurs • Choisissez une mise de 500, 1 000 ou 2 000 Ar", "2–4 mpilalao • Safidio ny mise 500, 1 000 na 2 000 Ar"),Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play)
-        val wallet=card("💰 ${t("Wallet", "Portefeuille", "Wallet")}",t("Balance, deposit, withdrawal and history", "Solde, dépôt, retrait et historique", "Hijery solde, dépôt, retrait ary historique"),Color.rgb(35,150,84));wallet.setOnClickListener{wallet()};add(wallet)
-        val prof=card("👤 ${t("Profile", "Profil", "Profil")}",t("Your account and player ID", "Votre compte et votre identifiant", "Kaontinao sy ID mpampiasa"),Color.rgb(130,85,180));prof.setOnClickListener{profile()};add(prof)
-        add(button("🕹️ ${t("Offline game", "Jeu hors ligne", "Lalao hors-ligne")}",Color.rgb(130,85,180)){offlineMenu()},54)
-        add(button("🚪 Hivoaka",Color.rgb(210,55,65)){token="";userId="";username="";gameId="";login()},52)
+        add(label("${if(username.isBlank())"Bienvenue" else username}",24f,true,Color.rgb(18,30,48)),40,2,4)
+        add(label("Choisissez votre mode de jeu",14f,false,Color.rgb(105,116,132)),28,0,8)
+        val play=card("Jouer en ligne","2–4 joueurs  •  à partir de 500 Ar",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play,78,4,6)
+        val walletCard=card("Portefeuille","Solde  •  dépôt  •  retrait",Color.rgb(35,150,84));walletCard.setOnClickListener{wallet()};add(walletCard,78,4,6)
+        add(button("Jouer hors-ligne",Color.rgb(115,78,190)){offlineMenu()},52,5,5)
+        add(button("Profil & langue",Color.rgb(70,82,100)){profile()},50,5,5)
+        musicButton=button(musicLabel(),Color.rgb(45,55,72)){music.toggle();updateMusicButton()};add(musicButton,48,5,5)
+        add(button("Se déconnecter",Color.rgb(190,55,65)){token="";userId="";username="";gameId="";login()},48,5,2)
     }
 
     private fun profile() {
         page("profile","Profil")
-        add(card("👤 Kaonty","Anarana: ${if(username.isBlank())"—" else username}\nUser ID: ${if(userId.isBlank())"—" else userId}",Color.rgb(130,85,180)))
-        add(button("🌐 Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
-        add(card("🛡️ Fiarovana","Aza zaraina amin'olona ny password na token. Ny credentials fandoavam-bola dia tsy tafiditra ao amin'ny APK.",Color.rgb(37,93,196)))
+        add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
+        add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
+        add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
     }
 
@@ -169,7 +177,7 @@ class MainActivity : Activity() {
 
     private fun lobby() {
         page("lobby","Lalao")
-        add(card("🎯 Safidio ny mise","500 • 1 000 • 2 000 Ar",Color.rgb(37,93,196)))
+        add(card("Choisir la mise","500 • 1 000 • 2 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
         rows.forEach { fees ->
@@ -194,8 +202,8 @@ class MainActivity : Activity() {
 
     private fun room() {
         page("room","Room")
-        add(card("🎯 Mise","$entryFee Ar",Color.rgb(37,93,196)))
-        add(card("💰 Prize pool","Miova araka ny isan'ny mpilalao ($entryFee Ar × mpilalao)",Color.rgb(235,170,25)))
+        add(card("Mise","$entryFee Ar",Color.rgb(37,93,196)))
+        add(card("Prize pool","$entryFee Ar × joueurs",Color.rgb(235,170,25)))
         add(label("Game ID: $gameId",13f,false,Color.rgb(88,99,116)))
         status=label("Miandry mpilalao...",15f,true,Color.rgb(37,93,196));add(status)
         add(button("↻ Havaozina",Color.rgb(37,93,196)){refreshLobby()},52);add(button("← Lalao",Color.rgb(70,82,100)){gameId="";lobby()},52)
@@ -219,7 +227,7 @@ class MainActivity : Activity() {
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
-        add(card("🕹️ Ludo manuel","Milalao tsy misy Internet. 2–4 joueurs, tour par tour, dé ary pion manuel.",Color.rgb(130,85,180)))
+        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)))
         add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
         add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
         add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
@@ -239,7 +247,7 @@ class MainActivity : Activity() {
         status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("MANUEL",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
         val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        add(button("🎲 Atsipazo ny dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+        add(button("Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
         add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
@@ -252,7 +260,7 @@ class MainActivity : Activity() {
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
         val host=LudoBoardView(this);root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        status=st;add(button("🎲 Atsipazo ny dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
+        status=st;add(button("Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
         add(label("Safidio ny pion-nao rehefa nahazo dé.",12f,false,Color.rgb(120,128,140)),30,0,0)
