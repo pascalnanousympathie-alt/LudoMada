@@ -26,7 +26,7 @@ class MainActivity : Activity() {
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
-    private lateinit var root: LinearLayout; private lateinit var status: TextView
+    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun shape(color:Int, radius:Float=20f, stroke:Int?=null) = GradientDrawable().apply {
@@ -63,7 +63,7 @@ class MainActivity : Activity() {
         return box
     }
 
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); window.statusBarColor=Color.rgb(246,248,252); splash() }
+    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); window.statusBarColor=Color.rgb(246,248,252); splash() }
 
     private fun splash() {
         currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(246,248,252))};setContentView(root)
@@ -319,4 +319,9 @@ class MainActivity : Activity() {
         }
         private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
     }
+    private fun musicLabel():String = if(music.enabled()) "🎵 Mozika: MISOKATRA" else "🎵 Mozika: NOKATONA"
+    private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
+    override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
+    override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
+
 }
