@@ -53,9 +53,12 @@ class MainActivity : Activity() {
     }
     private fun addTopBar(title:String) {
         val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        val t=label(title,24f,true); bar.addView(t,LinearLayout.LayoutParams(0,-2,1f))
-        bar.addView(label("LUDO\nMADAGASCAR",10f,true,Color.rgb(37,93,196)))
-        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(12)) })
+        bar.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(50),dp(50)))
+        val wrap=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),0,0,0) }
+        wrap.addView(label("LudoMada",19f,true,Color.rgb(15,79,199)))
+        wrap.addView(label(title,12f,false,Color.rgb(88,99,116)))
+        bar.addView(wrap,LinearLayout.LayoutParams(0,-2,1f))
+        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(14)) })
     }
     private fun card(title:String, body:String, accent:Int=Color.rgb(37,93,196)): LinearLayout {
         val box=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)); background=shape(Color.WHITE,22f,Color.rgb(225,230,238)); elevation=dp(1).toFloat() }
@@ -66,8 +69,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); window.statusBarColor=Color.rgb(246,248,252); splash() }
 
     private fun splash() {
-        currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(246,248,252))};setContentView(root)
-        add(label("🎲",64f,true,Color.rgb(37,93,196))); add(label("Ludo Madagascar",31f,true,Color.rgb(30,45,70))); add(label("Milalao • Mandresy • Mifaly",16f,false,Color.rgb(88,99,116)))
+        currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
+        root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
+        add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
+        add(label("Joue • Gagne • Profite",15f,false,Color.rgb(88,99,116)),28,0,8)
+        add(label("Jeu en ligne + hors-ligne",13f,true,Color.rgb(15,79,199)),30,0,12)
         root.postDelayed({login()},700)
     }
 
@@ -319,7 +325,7 @@ class MainActivity : Activity() {
         }
         private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
     }
-    private fun musicLabel():String = if(music.enabled()) "🎵 Mozika: MISOKATRA" else "🎵 Mozika: NOKATONA"
+    private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }

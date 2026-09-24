@@ -3,7 +3,7 @@ android { namespace="com.ludomadagascar"; compileSdk=35
  buildFeatures { buildConfig = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  kotlinOptions { jvmTarget = "17" }
- defaultConfig { applicationId="com.ludomadagascar"; minSdk=24; targetSdk=35; versionCode=1; versionName="1.0.0"; testInstrumentationRunner="androidx.test.runner.AndroidJUnitRunner"
+ defaultConfig { applicationId="com.ludomadagascar"; minSdk=24; targetSdk=35; versionCode=2; versionName="1.0.1"; testInstrumentationRunner="androidx.test.runner.AndroidJUnitRunner"
      val apiBaseUrl = providers.gradleProperty("LUDOMADA_API_BASE_URL").orElse("http://10.0.2.2:3000").get()
      buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
  }
