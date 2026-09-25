@@ -26,6 +26,9 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v

@@ -21,6 +21,9 @@ jobs:
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
@@ -57,6 +60,9 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
       - run: java -version
       - name: Prepare release signing (when secrets are configured)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
@@ -112,6 +118,9 @@ jobs:
     needs: android-final
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
       - run: java -version
       - name: Build instrumentation APKs
         working-directory: android-app
