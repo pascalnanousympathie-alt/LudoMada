@@ -11,8 +11,8 @@ const prisma = new PrismaClient({
   })
 });
 
-const USER_1 = "cmtrfzi6n001as6fnijnw4eky";
-const USER_2 = "cmtrh9or7001ws6fnvdmxw5kb";
+let USER_1;
+let USER_2;
 
 let service;
 let gameId;
@@ -68,6 +68,15 @@ async function cleanup(id) {
 before(async () => {
   const { AuthoritativeCommandService } =
     await import("./src/game/authoritativeCommandService.ts");
+
+  const users = await prisma.user.findMany({
+    where: { username: { in: ["testplayer1", "testplayer2"] } },
+    select: { id: true, username: true }
+  });
+
+  assert.equal(users.length, 2, "Expected testplayer1 and testplayer2 to exist");
+  USER_1 = users.find(u => u.username === "testplayer1").id;
+  USER_2 = users.find(u => u.username === "testplayer2").id;
 
   service = new AuthoritativeCommandService(prisma);
 

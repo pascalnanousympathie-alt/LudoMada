@@ -17,6 +17,8 @@ const USER_1 = "testplayer1";
 const USER_2 = "testplayer2";
 const PASSWORD = "TestPassword123";
 
+let user1Id;
+let user2Id;
 let token1;
 let token2;
 let gameId;
@@ -43,6 +45,14 @@ async function login(username) {
 }
 
 before(async () => {
+  const users = await prisma.user.findMany({
+    where: { username: { in: [USER_1, USER_2] } },
+    select: { id: true, username: true }
+  });
+  assert.equal(users.length, 2, "Expected testplayer1 and testplayer2 to exist");
+  user1Id = users.find(u => u.username === USER_1).id;
+  user2Id = users.find(u => u.username === USER_2).id;
+
   token1 = await login(USER_1);
   token2 = await login(USER_2);
 
@@ -51,14 +61,14 @@ before(async () => {
   await prisma.game.create({
     data: {
       id: gameId,
-      creatorId: "cmtrfzi6n001as6fnijnw4eky",
+      creatorId: user1Id,
       status: "PLAYING",
       grossAmount: 1000n,
       commission: 100n,
       prizePool: 900n,
       winnerPayout: 0n,
       adminRevenue: 100n,
-      currentTurnUserId: "cmtrfzi6n001as6fnijnw4eky",
+      currentTurnUserId: user1Id,
       stateVersion: 0
     }
   });
@@ -66,7 +76,7 @@ before(async () => {
   await prisma.gameParticipant.create({
     data: {
       gameId,
-      userId: "cmtrfzi6n001as6fnijnw4eky",
+      userId: user1Id,
       entryFee: 500n
     }
   });
@@ -75,8 +85,8 @@ before(async () => {
     await import("./src/game/ludoEngine.ts");
 
   const state = newGame([
-    "cmtrfzi6n001as6fnijnw4eky",
-    "cmtrh9or7001ws6fnvdmxw5kb"
+    user1Id,
+    user2Id
   ]);
 
   state.players[0].tokens[0].pos = 0;
@@ -219,7 +229,7 @@ test("participant MOVE succeeds and creates audit log", async () => {
   assert.ok(audit);
   assert.equal(
     audit.userId,
-    "cmtrfzi6n001as6fnijnw4eky"
+    user1Id
   );
   assert.equal(audit.action, "GAME_MOVE");
   assert.equal(audit.requestId, requestId);
@@ -244,7 +254,7 @@ test("participant ROLL succeeds and creates audit log", async () => {
         phase: "PLAYING",
         players: [
           {
-            id: "cmtrfzi6n001as6fnijnw4eky",
+            id: user1Id,
             color: "RED",
             tokens: [
               { pos: 0 },
@@ -254,7 +264,7 @@ test("participant ROLL succeeds and creates audit log", async () => {
             ]
           },
           {
-            id: "cmtrh9or7001ws6fnvdmxw5kb",
+            id: user2Id,
             color: "GREEN",
             tokens: [
               { pos: -1 },
@@ -275,7 +285,7 @@ test("participant ROLL succeeds and creates audit log", async () => {
   await prisma.game.update({
     where: { id: gameId },
     data: {
-      currentTurnUserId: "cmtrfzi6n001as6fnijnw4eky",
+      currentTurnUserId: user1Id,
       stateVersion: 0,
       dice: null,
       diceRolled: false
@@ -326,7 +336,7 @@ test("participant ROLL succeeds and creates audit log", async () => {
   assert.ok(audit);
   assert.equal(
     audit.userId,
-    "cmtrfzi6n001as6fnijnw4eky"
+    user1Id
   );
   assert.equal(audit.action, "GAME_ROLL");
   assert.equal(audit.requestId, requestId);

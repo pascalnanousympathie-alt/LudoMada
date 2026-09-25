@@ -19,8 +19,8 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter });
 const service = new AuthoritativeCommandService(prisma);
 
-const USER_1 = "cmtrfzi6n001as6fnijnw4eky";
-const USER_2 = "cmtrh9or7001ws6fnvdmxw5kb";
+let USER_1;
+let USER_2;
 
 let gameId;
 
@@ -83,14 +83,8 @@ before(async () => {
   await prisma.$connect();
 
   const users = await prisma.user.findMany({
-    where: {
-      id: {
-        in: [USER_1, USER_2]
-      }
-    },
-    select: {
-      id: true
-    }
+    where: { username: { in: ["testplayer1", "testplayer2"] } },
+    select: { id: true, username: true }
   });
 
   assert.equal(
@@ -98,6 +92,9 @@ before(async () => {
     2,
     "Expected testplayer1 and testplayer2 to exist"
   );
+
+  USER_1 = users.find(u => u.username === "testplayer1").id;
+  USER_2 = users.find(u => u.username === "testplayer2").id;
 });
 
 beforeEach(async () => {

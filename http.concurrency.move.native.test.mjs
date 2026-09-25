@@ -17,6 +17,8 @@ const PASSWORD = "TestPassword123";
 
 let gameId;
 let token;
+let userId;
+let user2Id;
 
 async function login() {
   const res = await fetch(`${BASE}/api/auth/login`, {
@@ -37,6 +39,13 @@ async function login() {
 }
 
 before(async () => {
+  const users = await prisma.user.findMany({
+    where: { username: { in: ["testplayer1", "testplayer2"] } },
+    select: { id: true, username: true }
+  });
+  assert.equal(users.length, 2, "Expected testplayer1 and testplayer2 to exist");
+  userId = users.find(u => u.username === "testplayer1").id;
+  user2Id = users.find(u => u.username === "testplayer2").id;
   token = await login();
 });
 
@@ -75,14 +84,14 @@ test("HTTP concurrent MOVE: only one request can mutate the same version", async
   await prisma.game.create({
     data: {
       id: gameId,
-      creatorId: "cmtrfzi6n001as6fnijnw4eky",
+      creatorId: userId,
       status: "PLAYING",
       grossAmount: 1000n,
       commission: 100n,
       prizePool: 900n,
       winnerPayout: 0n,
       adminRevenue: 100n,
-      currentTurnUserId: "cmtrfzi6n001as6fnijnw4eky",
+      currentTurnUserId: userId,
       stateVersion: 0
     }
   });
@@ -90,14 +99,14 @@ test("HTTP concurrent MOVE: only one request can mutate the same version", async
   await prisma.gameParticipant.create({
     data: {
       gameId,
-      userId: "cmtrfzi6n001as6fnijnw4eky",
+      userId: userId,
       entryFee: 500n
     }
   });
 
   const state = newGame([
-    "cmtrfzi6n001as6fnijnw4eky",
-    "cmtrh9or7001ws6fnvdmxw5kb"
+    userId,
+    user2Id
   ]);
 
   state.players[0].tokens[0].pos = 0;
