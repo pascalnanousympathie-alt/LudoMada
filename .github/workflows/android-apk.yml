@@ -23,7 +23,9 @@ jobs:
         working-directory: android-app
     steps:
       - uses: actions/checkout@v4
-
+        with:
+          clean: false
+          fetch-depth: 1
 
       - run: sh ./gradlew --version
       - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
