@@ -10,6 +10,13 @@ on:
 jobs:
   build:
     runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 20
+    concurrency:
+      group: android-apk-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
     defaults:
       run:
         working-directory: android-app

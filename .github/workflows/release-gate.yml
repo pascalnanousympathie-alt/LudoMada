@@ -15,6 +15,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
       NODE_ENV: staging
+      PORT: 3101
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +31,8 @@ jobs:
       - name: Start staging API
         run: |
           nohup npm run start:prod > /tmp/ludomada-api.log 2>&1 &
-          for i in {1..30}; do curl -fsS http://127.0.0.1:3000/ready && break; sleep 2; done
-          curl -fsS http://127.0.0.1:3000/health
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3101/ready && break; sleep 2; done
+          curl -fsS http://127.0.0.1:3101/health
       - name: Run staging load smoke
         run: npx artillery run loadtests/artillery/loadtest-health-80rps.yml
       - name: Upload API log
@@ -45,6 +46,8 @@ jobs:
   android-final:
     runs-on: [self-hosted, linux, ARM64]
     env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
