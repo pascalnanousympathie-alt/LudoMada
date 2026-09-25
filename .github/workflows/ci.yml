@@ -2,16 +2,6 @@ name: Ludo Mada V6.3 CI
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "prisma/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "jest.config.cjs"
-      - ".github/workflows/ci.yml"
   pull_request:
     paths:
       - "src/**"
@@ -39,7 +29,7 @@ jobs:
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
-      - run: npm ci --prefer-offline --no-audit --no-fund
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm test -- --maxWorkers=2
