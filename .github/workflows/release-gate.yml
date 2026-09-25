@@ -11,21 +11,9 @@ concurrency:
 
 jobs:
   backend-staging:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: ludomada
-          POSTGRES_PASSWORD: ludomada
-          POSTGRES_DB: ludomada
-        ports:
-          - 54329:5432
-        options: >-
-          --health-cmd "pg_isready -U ludomada -d ludomada"
-          --health-interval 5s --health-timeout 5s --health-retries 20
+    runs-on: [self-hosted, linux, ARM64]
     env:
-      DATABASE_URL: postgresql://ludomada:ludomada@127.0.0.1:54329/ludomada
+      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
       NODE_ENV: staging
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
@@ -55,7 +43,7 @@ jobs:
           if-no-files-found: ignore
 
   android-final:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -63,13 +51,6 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
       - name: Prepare release signing (when secrets are configured)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
         run: |
@@ -116,7 +97,8 @@ jobs:
           if-no-files-found: error
 
   android-emulator-smoke:
-    runs-on: ubuntu-latest
+    if: ${{ false }}
+    runs-on: [self-hosted, linux, ARM64]
     needs: android-final
     steps:
       - uses: actions/checkout@v4

@@ -29,23 +29,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: ludomada_test
-          POSTGRES_PASSWORD: ludomada_test
-          POSTGRES_DB: ludomada_test
-        ports:
-          - 54329:5432
-        options: >-
-          --health-cmd "pg_isready -U ludomada_test -d ludomada_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
+    runs-on: [self-hosted, linux, ARM64]
     env:
-      DATABASE_URL: postgresql://ludomada_test:ludomada_test@localhost:54329/ludomada_test
+      DATABASE_URL: postgresql://u0_a214@localhost:5432/ludomada_ci
       NODE_ENV: test
     steps:
       - uses: actions/checkout@v4
