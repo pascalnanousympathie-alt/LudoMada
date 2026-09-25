@@ -27,8 +27,10 @@ class MainActivity : Activity() {
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
+    private var boardHost: LudoBoardView? = null
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
     private fun shape(color:Int, radius:Float=20f, stroke:Int?=null) = GradientDrawable().apply {
         setColor(color); cornerRadius = dp(radius.toInt()).toFloat()
         if (stroke != null) setStroke(dp(1), stroke)
@@ -83,20 +85,26 @@ class MainActivity : Activity() {
     }
 
     private fun login() {
-        page("login","Connexion")
+        currentScreen="login"
+        root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
+        root.background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(5,23,55),Color.rgb(11,70,145),Color.rgb(3,27,67)))
+        setContentView(root)
         val brand=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL}
-        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(82),dp(82)))
-        brand.addView(label("LudoMada",28f,true,Color.rgb(15,79,199)))
-        brand.addView(label("Jouer. Gagner. Profiter.",12f,false,Color.rgb(105,116,132)))
-        add(brand,112,0,10)
-        status=label("",13f,false,Color.rgb(190,55,55));add(status,38,2,6)
-        val u=EditText(this).apply{hint="Nom, email ou mobile";textSize=15f;background=shape(Color.WHITE,18f,Color.rgb(220,226,235));setPadding(dp(14),0,dp(14),0);setSingleLine(true)}
-        val p=EditText(this).apply{hint="Mot de passe";textSize=15f;inputType=129;background=shape(Color.WHITE,18f,Color.rgb(220,226,235));setPadding(dp(14),0,dp(14),0);setSingleLine(true)}
-        add(u,54,5,6);add(p,54,5,10)
-        add(button("Se connecter",Color.rgb(30,100,230)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},54,5,7)
-        add(button("Créer un compte",Color.rgb(18,150,105)){registerDialog()},54,5,7)
-        add(card("Accès sécurisé","Connexion par nom, email ou numéro. Les paiements restent côté serveur.",Color.rgb(207,217,230)),82,6,6)
-        add(button(musicLabel(),Color.rgb(70,82,100)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},48,5,2)
+        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(104),dp(104)))
+        brand.addView(label("LudoMada",27f,true,Color.WHITE))
+        brand.addView(label("Le Ludo malagasy, en ligne ou hors-ligne",12f,false,Color.argb(217,233,243,255)))
+        add(brand,152,0,7)
+        add(label("2–4 joueurs  •  mises dès 500 Ar",12f,true,Color.WHITE),25,1,4)
+        status=label("",12f,false,Color.rgb(255,181,188));add(status,28,0,4)
+        val fieldBg=Color.argb(235,255,255,255)
+        val u=EditText(this).apply{hint="Nom, email ou mobile";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
+        val p=EditText(this).apply{hint="Mot de passe";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));inputType=129;background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
+        add(u,52,5,5);add(p,52,5,9)
+        add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
+        add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,7)
+        val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
+        add(secure,28,2,3)
+        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
     }
 
     private fun googleSignup() {
@@ -259,7 +267,7 @@ class MainActivity : Activity() {
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
-        val host=LudoBoardView(this);root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         status=st;add(button("Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
@@ -267,9 +275,16 @@ class MainActivity : Activity() {
         updateBoard(host);root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
     }
 
-    private fun updateBoard(host:LudoBoardView){host.state=state;host.player=playerIndex();host.invalidate();val i=state?.optInt("currentPlayerIndex",0)?:0;val d=state?.optInt("dice",0)?:0;status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"}
+    private fun updateBoard(host:LudoBoardView){
+        host.state=state;host.player=playerIndex();host.animateState();
+        val i=state?.optInt("currentPlayerIndex",0)?:0;val d=state?.optInt("dice",0)?:0
+        status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"
+    }
 
-    private fun refreshState(){get("/api/games/$gameId/state"){j->retryCount=0;state=j;version=j.optInt("stateVersion",0);runOnUiThread{if(currentScreen=="board")board()}}}
+    private fun refreshState(){get("/api/games/$gameId/state"){j->
+        retryCount=0;state=j;version=j.optInt("stateVersion",0)
+        runOnUiThread{if(currentScreen=="board" && boardHost!=null)updateBoard(boardHost!!) else if(currentScreen=="board")board()}
+    }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
     private fun roll(){post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
     private fun move(i:Int){post("/api/games/$gameId/move",JSONObject().put("tokenIndex",i).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
@@ -295,41 +310,170 @@ class MainActivity : Activity() {
     private inner class LudoBoardView(context:Context):View(context){
         var state:JSONObject?=null;var player=-1;private val paints=Array(4){Paint(Paint.ANTI_ALIAS_FLAG)}
         private val cols=intArrayOf(Color.rgb(218,60,65),Color.rgb(42,155,86),Color.rgb(232,178,34),Color.rgb(54,105,205))
+        private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
+        private var stateAnimator:android.animation.ValueAnimator?=null
         init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
-        override fun onDraw(canvas:Canvas){super.onDraw(canvas);val w=width.toFloat();val h=height.toFloat();val s=minOf(w,h);val ox=(w-s)/2;val oy=(h-s)/2
-            val bg=Paint(Paint.ANTI_ALIAS_FLAG);bg.color=Color.WHITE;bg.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x22000000);canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(22).toFloat(),dp(22).toFloat(),bg)
-            val cell=s/15f;drawZone(canvas,ox,oy,0,0,5,cols[0],bg);drawZone(canvas,ox,oy,10,0,5,cols[1],bg);drawZone(canvas,ox,oy,0,10,5,cols[2],bg);drawZone(canvas,ox,oy,10,10,5,cols[3],bg)
-            val pathPaint=Paint(Paint.ANTI_ALIAS_FLAG);pathPaint.color=Color.rgb(239,242,247);pathPaint.style=Paint.Style.FILL
-            for(c in 1..13){canvas.drawRect(ox+c*cell,oy,ox+(c+1)*cell,oy+cell,pathPaint);canvas.drawRect(ox+c*cell,oy+14*cell,ox+(c+1)*cell,oy+15*cell,pathPaint)}
-            for(r in 1..13){canvas.drawRect(ox,oy+r*cell,ox+cell,oy+(r+1)*cell,pathPaint);canvas.drawRect(ox+14*cell,oy+r*cell,ox+15*cell,oy+(r+1)*cell,pathPaint)}
-            val center=Paint(Paint.ANTI_ALIAS_FLAG);center.color=Color.rgb(250,251,253);canvas.drawRect(ox+5*cell,oy+5*cell,ox+10*cell,oy+10*cell,center)
-            val stroke=Paint(Paint.ANTI_ALIAS_FLAG);stroke.color=Color.rgb(210,216,226);stroke.style=Paint.Style.STROKE;stroke.strokeWidth=dp(1).toFloat();for(i in 0..15){canvas.drawLine(ox+i*cell,oy,ox+i*cell,oy+s,stroke);canvas.drawLine(ox,oy+i*cell,ox+s,oy+i*cell,stroke)}
+        override fun onDraw(canvas:Canvas){
+            super.onDraw(canvas)
+            val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
+            val ox=(w-s)/2f; val oy=(h-s)/2f; val cell=s/15f
+            val board=Paint(Paint.ANTI_ALIAS_FLAG)
+            board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
+            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(24).toFloat(),dp(24).toFloat(),board)
+            board.clearShadowLayer(); board.shader=null
+            drawZone(canvas,ox,oy,0,0,Color.rgb(220,60,66),cell)
+            drawZone(canvas,ox,oy,9,0,Color.rgb(42,158,92),cell)
+            drawZone(canvas,ox,oy,0,9,Color.rgb(238,184,43),cell)
+            drawZone(canvas,ox,oy,9,9,Color.rgb(58,109,211),cell)
+            val pathPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(246,248,251);style=Paint.Style.FILL}
+            val pathStroke=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(222,228,236);style=Paint.Style.STROKE;strokeWidth=dp(0.8f).toFloat();setStrokeCap(Paint.Cap.ROUND)}
+            for((r,c) in visualPath()){drawCell(canvas,ox,oy,cell,r,c,pathPaint,pathStroke)}
+            val homePaints=arrayOf(
+                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55DC3C42},
+                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x5542AE68},
+                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55EEB82B},
+                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x553A79D5}
+            )
+            for(i in 1..5){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[0])}
+            for(i in 9..13){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[1])}
+            for(i in 9..13){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[2])}
+            for(i in 1..5){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[3])}
+            val starCells=arrayOf(1 to 6,6 to 1,8 to 13,13 to 8)
+            for((r,c) in starCells){drawSafe(canvas,ox,oy,cell,r,c)}
+            drawCenter(canvas,ox,oy,cell)
+            drawStartMarkers(canvas,ox,oy,cell)
             drawTokens(canvas,ox,oy,cell)
         }
-        private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,n:Int,color:Int,bg:Paint){bg.color=Color.WHITE;c.drawRoundRect(ox+r*(width.coerceAtMost(height).toFloat()/15f)+dp(5),oy+col*(width.coerceAtMost(height).toFloat()/15f)+dp(5),ox+(r+5)*(width.coerceAtMost(height).toFloat()/15f)-dp(5),oy+(col+5)*(width.coerceAtMost(height).toFloat()/15f)-dp(5),dp(14).toFloat(),dp(14).toFloat(),bg);bg.color=color;c.drawRoundRect(ox+(r+0.5f)*(width.coerceAtMost(height).toFloat()/15f),oy+(col+0.5f)*(width.coerceAtMost(height).toFloat()/15f),ox+(r+4.5f)*(width.coerceAtMost(height).toFloat()/15f),oy+(col+4.5f)*(width.coerceAtMost(height).toFloat()/15f),dp(12).toFloat(),dp(12).toFloat(),bg)}
+        private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,color:Int,cell:Float){
+            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color}
+            outer.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x33000000)
+            c.drawRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,outer)
+            outer.clearShadowLayer()
+            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE}
+            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(12).toFloat(),dp(12).toFloat(),inner)
+            val shade=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x12000000}
+            c.drawRoundRect(ox+(r+1.15f)*cell,oy+(col+1.2f)*cell,ox+(r+4.85f)*cell,oy+(col+4.85f)*cell,dp(10).toFloat(),dp(10).toFloat(),shade)
+            val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
+            for((sx,sy) in sockets){
+                val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
+                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x17000000}
+                c.drawCircle(cx,cy,cell*.53f,ring)
+                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;alpha=120}
+                c.drawCircle(cx,cy,cell*.40f,hole)
+            }
+        }
 
         private fun drawTokens(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val ps=state?.optJSONArray("players")
-            val fallback=arrayOf(arrayOf(2 to 2,2 to 4,4 to 2,4 to 4),arrayOf(2 to 10,2 to 12,4 to 10,4 to 12),arrayOf(10 to 2,10 to 4,12 to 2,12 to 4),arrayOf(10 to 10,10 to 12,12 to 10,12 to 12))
-            for(pi in 0..3){
-                val tokens=ps?.optJSONObject(pi)?.optJSONArray("tokens")
-                for(ti in 0..3){
-                    val q=fallback[pi][ti];var rr=q.first.toFloat()+0.5f;var cc=q.second.toFloat()+0.5f
-                    val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                    if(pos>=0){val p=path()[(pi*13+pos)%52];rr=p.first+0.5f;cc=p.second+0.5f}
-                    val paint=paints[pi];val rad=cell*0.28f;paint.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x55000000)
-                    c.drawCircle(ox+cc*cell,oy+rr*cell,rad,paint);paint.clearShadowLayer()
-                }
+            for(pi in 0..3)for(ti in 0..3){
+                val q=tokenCoord(pi,ti)
+                val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
+                val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
+                drawToken(c,ox+cc*cell,oy+rr*cell,cell,cols[pi],pi==player)
             }
+        }
+        private fun tokenCoord(pi:Int,ti:Int):FloatArray{
+            val fallback=arrayOf(
+                arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f),
+                arrayOf(10.8f to 1.8f,13.2f to 1.8f,10.8f to 4.2f,13.2f to 4.2f),
+                arrayOf(1.8f to 10.8f,4.2f to 10.8f,1.8f to 13.2f,4.2f to 13.2f),
+                arrayOf(10.8f to 10.8f,13.2f to 10.8f,10.8f to 13.2f,13.2f to 13.2f))
+            var rr=fallback[pi][ti].first;var cc=fallback[pi][ti].second
+            val ps=state?.optJSONArray("players");val ts=ps?.optJSONObject(pi)?.optJSONArray("tokens")
+            val pos=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+            if(pos>=0){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
+            return floatArrayOf(rr,cc)
+        }
+        fun animateState(){
+            val from=Array(4){Array(4){FloatArray(2)}};val to=Array(4){Array(4){FloatArray(2)}}
+            for(pi in 0..3)for(ti in 0..3){
+                val q=tokenCoord(pi,ti);to[pi][ti][0]=q[0];to[pi][ti][1]=q[1]
+                if(display[pi][ti][0].isNaN()){display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]}
+                from[pi][ti][0]=display[pi][ti][0];from[pi][ti][1]=display[pi][ti][1]
+            }
+            stateAnimator?.cancel()
+            stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
+                duration=280L;interpolator=android.view.animation.DecelerateInterpolator(1.6f)
+                addUpdateListener{a->val f=a.animatedValue as Float;for(pi in 0..3)for(ti in 0..3){display[pi][ti][0]=from[pi][ti][0]+(to[pi][ti][0]-from[pi][ti][0])*f;display[pi][ti][1]=from[pi][ti][1]+(to[pi][ti][1]-from[pi][ti][1])*f};invalidate()}
+                start()
+            }
+        }
+        private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
+            val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
+            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
+            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),stroke)
+        }
+        private fun drawSafe(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int){
+            val cx=ox+(col+.5f)*cell;val cy=oy+(r+.5f)*cell
+            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(205,211,221)}
+            c.drawCircle(cx,cy,cell*.28f,p);p.color=Color.WHITE;c.drawCircle(cx,cy,cell*.18f,p)
+            p.color=Color.rgb(159,170,187);val star=Path()
+            for(i in 0..9){val a=-Math.PI/2+i*Math.PI/5;val rad=if(i%2==0)cell*.27f else cell*.12f;val x=cx+(kotlin.math.cos(a)*rad).toFloat();val y=cy+(kotlin.math.sin(a)*rad).toFloat();if(i==0)star.moveTo(x,y)else star.lineTo(x,y)}
+            star.close();c.drawPath(star,p)
+        }
+        private fun drawCenter(c:Canvas,ox:Float,oy:Float,cell:Float){
+            val pts=arrayOf(floatArrayOf(ox+6*cell,oy+6*cell,ox+9*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell),
+                floatArrayOf(ox+9*cell,oy+6*cell,ox+9*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
+                floatArrayOf(ox+9*cell,oy+9*cell,ox+6*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
+                floatArrayOf(ox+6*cell,oy+9*cell,ox+6*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell))
+            for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
+            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
+            c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
+        }
+        private fun drawStartMarkers(c:Canvas,ox:Float,oy:Float,cell:Float){
+            val starts=arrayOf(6 to 1,1 to 8,8 to 13,13 to 6)
+            for(i in starts.indices){
+                val (r,col)=starts[i];val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i];alpha=90}
+                c.drawRoundRect(ox+col*cell+dp(1f),oy+r*cell+dp(1f),ox+(col+1)*cell-dp(1f),oy+(r+1)*cell-dp(1f),dp(4f).toFloat(),dp(4f).toFloat(),p)
+                val mark=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat()}
+                c.drawCircle(ox+(col+.5f)*cell,oy+(r+.5f)*cell,cell*.22f,mark)
+            }
+        }
+        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
+            val rad=cell*.31f
+            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
+            shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
+            val body=Paint(Paint.ANTI_ALIAS_FLAG)
+            body.shader=RadialGradient(cx-rad*.32f,cy-rad*.38f,rad*.95f,color,Color.rgb((Color.red(color)*.45f).toInt(),(Color.green(color)*.45f).toInt(),(Color.blue(color)*.45f).toInt()),Shader.TileMode.CLAMP)
+            c.drawCircle(cx,cy,rad,body);body.shader=null
+            if(active){val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.7f).toFloat()};c.drawCircle(cx,cy,rad+dp(2f),glow)}
+            val hi=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x99FFFFFF.toInt()};c.drawCircle(cx-rad*.30f,cy-rad*.34f,rad*.18f,hi)
+        }
+        private fun visualPath():List<Pair<Int,Int>>{
+            return listOf(
+                6 to 0,6 to 1,6 to 2,6 to 3,6 to 4,6 to 5,5 to 6,4 to 6,3 to 6,2 to 6,1 to 6,0 to 6,
+                0 to 7,0 to 8,1 to 8,2 to 8,3 to 8,4 to 8,5 to 8,6 to 9,6 to 10,6 to 11,6 to 12,6 to 13,6 to 14,
+                7 to 14,8 to 14,8 to 13,8 to 12,8 to 11,8 to 10,8 to 9,9 to 8,10 to 8,11 to 8,12 to 8,13 to 8,14 to 8,
+                14 to 7,14 to 6,13 to 6,12 to 6,11 to 6,10 to 6,9 to 6,8 to 5,8 to 4,8 to 3,8 to 2,8 to 1,8 to 0,7 to 0
+            )
         }
         override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
             if(e.action==MotionEvent.ACTION_UP && player in 0..3){
-                val s=minOf(width,height).toFloat();val ox=(width-s)/2;val oy=(height-s)/2;val cell=s/15f
-                val gx=((e.x-ox)/cell).toInt().coerceIn(0,14);val gy=((e.y-oy)/cell).toInt().coerceIn(0,14)
-                val zone=when{gx<7&&gy<7->0;gx>=7&&gy<7->1;gx<7&&gy>=7->2;else->3}
-                if(zone==player){val idx=when((gx+gy)%4){0->0;1->1;2->2;else->3};post("/api/games/$gameId/move",JSONObject().put("tokenIndex",idx).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()};return true}
+                val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
+                val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
+                if(touched>=0){
+                    performClick()
+                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    post("/api/games/$gameId/move",JSONObject().put("tokenIndex",touched).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}
+                    return true
+                }
             }
             return true
+        }
+        override fun performClick():Boolean{super.performClick();return true}
+        private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
+            val ps=state?.optJSONArray("players")
+            val tokens=ps?.optJSONObject(player)?.optJSONArray("tokens")
+            val fallback=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
+            var best=-1; var bestD2=Float.MAX_VALUE
+            for(ti in 0..3){
+                var rr=fallback[ti].first; var cc=fallback[ti].second
+                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+                if(pos>=0){val q=visualPath()[(player*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
+                val dx=x-(ox+cc*cell); val dy=y-(oy+rr*cell); val d2=dx*dx+dy*dy
+                if(d2<bestD2){bestD2=d2;best=ti}
+            }
+            return if(best>=0 && bestD2 <= (cell*0.82f)*(cell*0.82f)) best else -1
         }
         private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
     }
