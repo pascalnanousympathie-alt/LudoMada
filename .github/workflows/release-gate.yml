@@ -63,6 +63,9 @@ jobs:
         with:
           clean: false
           fetch-depth: 1
+      - name: Configure Android SDK path
+        working-directory: android-app
+        run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
       - run: java -version
       - name: Prepare release signing (when secrets are configured)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
