@@ -30,7 +30,7 @@ jobs:
 
 
       - run: sh ./gradlew --version
-      - run: sh ./gradlew assembleDebug --stacktrace
+      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
