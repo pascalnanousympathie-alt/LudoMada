@@ -9,7 +9,7 @@ module.exports = {
   // `npm run build` remains the strict type-check gate.  Tests only need
   // transpilation, avoiding a second full TypeScript program build per run.
   transform: {
-    "^.+\\.tsx?$": ["ts-jest", { isolatedModules: true }]
+    "^.+\\.tsx?$": ["ts-jest"]
   },
   testMatch: ["**/tests/**/*.test.ts"]
 };
