@@ -86,9 +86,12 @@ jobs:
           release_apk="app/build/outputs/apk/release/app-release.apk"
           unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
           if [ -f "$release_apk" ]; then
-            apksigner="$(find "$ANDROID_HOME" -type f -name apksigner -print -quit)"
+            apksigner="/data/data/com.termux/files/usr/bin/apksigner"
+            if [ ! -x "$apksigner" ]; then
+              apksigner="$(find "$ANDROID_HOME" -type f -name apksigner -print -quit)"
+            fi
             test -n "$apksigner"
-            "$apksigner" verify --verbose "$release_apk"
+            "$apksigner" verify --verbose --print-certs "$release_apk"
             sha256sum "$release_apk"
             echo "RELEASE_SIGNED=true"
           else
