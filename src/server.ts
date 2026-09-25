@@ -15,6 +15,7 @@ import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
 import { GameStateRepository } from "./game/gameStateRepository";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
+import { isValidEntryFee } from "./game/entryFees";
 import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
@@ -846,7 +847,7 @@ app.post("/api/games",auth,async(req:any,res)=>{
 
   const entryFee=b.data.entryFeeMGA;
 
-  if(!new Set([500,1000,2000]).has(entryFee)){
+  if(!isValidEntryFee(entryFee)){
     return res.status(400).json({
       error:"Invalid entry fee"
     });
@@ -1077,7 +1078,7 @@ app.post("/api/games/:gameId/join",auth,async(req:any,res)=>{
 
   const entryFee=b.data.entryFeeMGA;
 
-  if(!new Set([500,1000,2000]).has(entryFee)){
+  if(!isValidEntryFee(entryFee)){
     return res.status(400).json({
       error:"Invalid entry fee"
     });

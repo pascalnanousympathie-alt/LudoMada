@@ -18,7 +18,7 @@ import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
     private val apiBase = BuildConfig.API_BASE_URL
-    private val entryFees = listOf(500, 1000, 2000)
+    private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
     private var entryFee = 500
     private var token = ""; private var userId = ""; private var username = ""
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
@@ -185,7 +185,7 @@ class MainActivity : Activity() {
 
     private fun lobby() {
         page("lobby","Lalao")
-        add(card("Choisir la mise","500 • 1 000 • 2 000 Ar",Color.rgb(37,93,196)))
+        add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
         rows.forEach { fees ->
