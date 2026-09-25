@@ -33,6 +33,7 @@ jobs:
     env:
       DATABASE_URL: postgresql://u0_a214@localhost:5432/ludomada_ci
       NODE_ENV: test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Use runner Linux Node

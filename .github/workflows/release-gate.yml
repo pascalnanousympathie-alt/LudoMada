@@ -17,6 +17,7 @@ jobs:
       NODE_ENV: staging
       PORT: 3101
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - uses: actions/checkout@v4
