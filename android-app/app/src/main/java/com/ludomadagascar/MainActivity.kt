@@ -42,38 +42,135 @@ class MainActivity : Activity() {
     private fun add(v:View, h:Int=-2, top:Int=7, bottom:Int=7) {
         root.addView(v, LinearLayout.LayoutParams(-1, if(h==-1) -1 else dp(h)).apply { setMargins(0,dp(top),0,dp(bottom)) })
     }
-    private fun darker(c:Int):Int = Color.rgb((Color.red(c)*.70f).toInt(),(Color.green(c)*.70f).toInt(),(Color.blue(c)*.70f).toInt())
-    private fun button(s:String, accent:Int=Color.rgb(37,93,196), action:(()->Unit)?=null) = Button(this).apply {
+    private val navy = Color.rgb(8,24,54)
+    private val royal = Color.rgb(24,92,210)
+    private val cyan = Color.rgb(34,171,255)
+    private val emerald = Color.rgb(19,166,112)
+    private val gold = Color.rgb(237,183,52)
+    private fun darker(c:Int):Int = Color.rgb((Color.red(c)*.62f).toInt(),(Color.green(c)*.62f).toInt(),(Color.blue(c)*.62f).toInt())
+    private fun button(s:String, accent:Int=royal, action:(()->Unit)?=null) = Button(this).apply {
         text=s; textSize=14f; isAllCaps=false; setTextColor(Color.WHITE); setTypeface(null,android.graphics.Typeface.BOLD)
-        setPadding(dp(16),0,dp(16),0); background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(18).toFloat();setStroke(dp(1),0x33FFFFFF)}
-        minHeight=dp(52); stateListAnimator=null; elevation=dp(4).toFloat(); setOnClickListener { action?.invoke() }
+        letterSpacing=.01f; setPadding(dp(16),0,dp(16),0)
+        background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{
+            cornerRadius=dp(18).toFloat(); setStroke(dp(1),0x44FFFFFF)
+        }
+        minHeight=dp(54); stateListAnimator=null; elevation=dp(5).toFloat()
+        setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
-        return LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(18));
-            setBackgroundColor(Color.rgb(246,248,252));
-        }.also { root=it; setContentView(root); addTopBar(title) }
+        val content=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(247,249,253),Color.rgb(236,242,250)))
+        }
+        root=content
+        if(name=="board" || name=="offline") setContentView(root)
+        else {
+            val scroll=ScrollView(this)
+            scroll.addView(content); setContentView(scroll)
+        }
+        addTopBar(title); return content
     }
     private fun addTopBar(title:String) {
-        val bar=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
-        bar.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(50),dp(50)))
-        val wrap=LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),0,0,0) }
-        wrap.addView(label("LudoMada",19f,true,Color.rgb(15,79,199)))
-        wrap.addView(label(title,12f,false,Color.rgb(88,99,116)))
+        val bar=LinearLayout(this).apply {
+            gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(7),dp(8),dp(7))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.argb(248,255,255,255),Color.argb(236,246,250,255))).apply{
+                cornerRadius=dp(22).toFloat(); setStroke(dp(1),Color.rgb(223,231,241))
+            }; elevation=dp(4).toFloat()
+        }
+        bar.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(46),dp(46)))
+        val wrap=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,0,0)}
+        wrap.addView(label("LudoMada",18f,true,royal))
+        wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,Color.rgb(104,116,134)))
         bar.addView(wrap,LinearLayout.LayoutParams(0,-2,1f))
-        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply { setMargins(0,0,0,dp(14)) })
+        val badge=TextView(this).apply{
+            text="PREMIUM";textSize=9f;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.WHITE);gravity=Gravity.CENTER
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(gold,Color.rgb(206,139,25))).apply{cornerRadius=dp(11).toFloat()}
+        }
+        bar.addView(badge,LinearLayout.LayoutParams(dp(68),dp(26)))
+        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,dp(14))})
     }
-    private fun card(title:String, body:String, accent:Int=Color.rgb(37,93,196)): LinearLayout {
-        val outer=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(5),dp(4),dp(5),dp(4));background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(240,244,250))).apply{cornerRadius=dp(22).toFloat();setStroke(dp(1),Color.rgb(220,227,237))};elevation=dp(3).toFloat()}
-        outer.addView(View(this).apply{background=shape(accent,6f)},LinearLayout.LayoutParams(dp(5),dp(62)))
-        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(13),dp(9),dp(13),dp(9))}
-        box.addView(label(title,17f,true,Color.rgb(28,43,65)))
-        box.addView(label(body,13f,false,Color.rgb(95,106,122)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(4)})
+    private fun card(title:String, body:String, accent:Int=royal): LinearLayout {
+        val outer=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(6),dp(5),dp(8),dp(5))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(239,244,251))).apply{
+                cornerRadius=dp(23).toFloat();setStroke(dp(1),Color.rgb(219,228,239))
+            };elevation=dp(4).toFloat()
+        }
+        outer.addView(View(this).apply{background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(8).toFloat()}},LinearLayout.LayoutParams(dp(7),dp(68)))
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(13),dp(10),dp(10),dp(10))}
+        box.addView(label(title,17f,true,Color.rgb(24,41,65)))
+        box.addView(label(body,13f,false,Color.rgb(95,107,125)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(4)})
         outer.addView(box,LinearLayout.LayoutParams(0,-2,1f)); return outer
     }
 
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); window.statusBarColor=Color.rgb(246,248,252); splash() }
+    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroView(this).apply{
+        setOnClickListener{onPlay?.invoke()}
+    }
+
+    private fun premiumTile(icon:String,title:String,body:String,accent:Int,action:(()->Unit)):LinearLayout{
+        val box=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(9),dp(8),dp(9),dp(8))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(239,244,251))).apply{
+                cornerRadius=dp(20).toFloat();setStroke(dp(1),Color.rgb(220,228,240))
+            };elevation=dp(3).toFloat();setOnClickListener{action()}
+        }
+        val iconView=TextView(this).apply{text=icon;textSize=22f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(14).toFloat()}}
+        box.addView(iconView,LinearLayout.LayoutParams(dp(50),dp(50)))
+        val tx=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,0,0)}
+        tx.addView(label(title,14f,true,Color.rgb(25,41,65)))
+        tx.addView(label(body,11f,false,Color.rgb(102,114,132)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(2)})
+        box.addView(tx,LinearLayout.LayoutParams(0,-2,1f));box.addView(label("›",24f,true,Color.rgb(149,159,174)))
+        return box
+    }
+
+    private fun sectionTitle(title:String,subtitle:String=""){
+        add(label(title,19f,true,Color.rgb(24,39,63)),31,4,1)
+        if(subtitle.isNotBlank())add(label(subtitle,12f,false,Color.rgb(108,119,137)),24,0,6)
+    }
+
+    private fun bottomNav(active:String){
+        val row=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER;setPadding(dp(6),dp(5),dp(6),dp(5))
+            background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(Color.WHITE,Color.rgb(235,241,249))).apply{
+                cornerRadius=dp(21).toFloat();setStroke(dp(1),Color.rgb(218,227,238))
+            };elevation=dp(6).toFloat()
+        }
+        listOf("home" to ("⌂" to "Accueil"),"play" to ("●" to "Jouer"),"wallet" to ("¤" to "Wallet"),"social" to ("♟" to "Social"),"profile" to ("◉" to "Profil")).forEach{(key,pair)->
+            val b=TextView(this).apply{
+                text=pair.first + "\n" + pair.second;textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD)
+                setTextColor(if(key==active)royal else Color.rgb(102,113,130));setPadding(0,dp(4),0,dp(4))
+                setOnClickListener{when(key){"home"->home();"play"->lobby();"wallet"->wallet();"social"->social();"profile"->profile()}}
+            }
+            row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
+        }
+        root.addView(row,LinearLayout.LayoutParams(-1,dp(66)).apply{setMargins(0,dp(10),0,0)})
+    }
+
+    private class PremiumHeroView(context:Context):View(context){
+        private val p=Paint(Paint.ANTI_ALIAS_FLAG)
+        private fun dpv(v:Int)= (v*resources.displayMetrics.density).toInt()
+        override fun onDraw(c:Canvas){
+            val w=width.toFloat();val h=height.toFloat();val r=dpv(24).toFloat()
+            p.shader=LinearGradient(0f,0f,w,h,Color.rgb(6,29,69),Color.rgb(26,114,222),Shader.TileMode.CLAMP)
+            p.setShadowLayer(dpv(8).toFloat(),0f,dpv(3).toFloat(),0x55000000);c.drawRoundRect(0f,0f,w,h,r,r,p);p.clearShadowLayer();p.shader=null
+            p.color=0x20FFFFFF;c.drawCircle(w*.87f,h*.18f,h*.34f,p);p.color=0x12FFFFFF;c.drawCircle(w*.18f,h*.92f,h*.26f,p)
+            p.color=Color.WHITE;p.typeface=android.graphics.Typeface.DEFAULT_BOLD;p.textSize=dpv(12).toFloat();c.drawText("LUDOMADA",dpv(20).toFloat(),dpv(29).toFloat(),p)
+            p.textSize=dpv(23).toFloat();c.drawText("Joue. Gagne. Profite.",dpv(20).toFloat(),dpv(62).toFloat(),p)
+            p.color=0xD9FFFFFF.toInt();p.textSize=dpv(12).toFloat();c.drawText("Ludo premium • 2 à 4 joueurs",dpv(20).toFloat(),dpv(86).toFloat(),p)
+            val colors=intArrayOf(Color.rgb(220,58,68),Color.rgb(37,166,103),Color.rgb(238,183,39),Color.rgb(55,105,211));val rad=minOf(w,h)*.075f;val bx=w*.76f;val by=h*.68f
+            for(i in 0..3){
+                val a=Math.toRadians((i*90-45).toDouble());val x=bx+(Math.cos(a)*w*.15f).toFloat();val y=by+(Math.sin(a)*h*.17f).toFloat()
+                val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x66000000;setShadowLayer(dpv(3).toFloat(),0f,dpv(2).toFloat(),0x66000000)};c.drawCircle(x,y+rad*.15f,rad,sh);sh.clearShadowLayer()
+                val b=Paint(Paint.ANTI_ALIAS_FLAG);b.shader=RadialGradient(x-rad*.35f,y-rad*.4f,rad*1.1f,Color.WHITE,colors[i],Shader.TileMode.CLAMP);c.drawCircle(x,y,rad,b);b.shader=null
+            }
+            p.style=Paint.Style.STROKE;p.strokeWidth=dpv(2).toFloat();p.color=Color.rgb(237,183,52);c.drawRoundRect(w*.66f,h*.12f,w*.93f,h*.42f,dpv(12).toFloat(),dpv(12).toFloat(),p)
+            p.style=Paint.Style.FILL;p.color=0x40FFFFFF;c.drawCircle(w*.795f,h*.27f,rad*.75f,p)
+        }
+    }
+
+    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); splash() }
 
     private fun splash() {
         currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
@@ -128,14 +225,32 @@ class MainActivity : Activity() {
 
     private fun home() {
         page("home","Accueil")
-        add(label("${if(username.isBlank())"Bienvenue" else username}",24f,true,Color.rgb(18,30,48)),40,2,4)
-        add(label("Choisissez votre mode de jeu",14f,false,Color.rgb(105,116,132)),28,0,8)
-        val play=card("Jouer en ligne","2–4 joueurs  •  à partir de 500 Ar",Color.rgb(37,93,196));play.setOnClickListener{lobby()};add(play,78,4,6)
-        val walletCard=card("Portefeuille","Solde  •  dépôt  •  retrait",Color.rgb(35,150,84));walletCard.setOnClickListener{wallet()};add(walletCard,78,4,6)
-        add(button("Jouer hors-ligne",Color.rgb(115,78,190)){offlineMenu()},52,5,5)
-        add(button("Profil & langue",Color.rgb(70,82,100)){profile()},50,5,5)
-        musicButton=button(musicLabel(),Color.rgb(45,55,72)){music.toggle();updateMusicButton()};add(musicButton,48,5,5)
-        add(button("Se déconnecter",Color.rgb(190,55,65)){token="";userId="";username="";gameId="";login()},48,5,2)
+        add(label(if(username.isBlank())"Bienvenue" else "Bonjour, $username",25f,true,Color.rgb(18,30,48)),36,0,2)
+        add(label("Ton espace de jeu premium",13f,false,Color.rgb(105,116,134)),24,0,8)
+        root.addView(premiumHero{lobby()},LinearLayout.LayoutParams(-1,dp(212)).apply{setMargins(0,dp(2),0,dp(10))})
+
+        val walletCard=card("Portefeuille","Solde • dépôt • retrait",emerald).apply{setOnClickListener{wallet()}}
+        add(walletCard,78,3,5)
+
+        sectionTitle("Jouer maintenant","Choisis ton expérience")
+        add(button("🎲  Jouer en ligne  •  dès 500 Ar",royal){lobby()},54,3,5)
+        add(button("☼  Jouer hors-ligne  •  sans Internet",Color.rgb(121,82,188)){offlineMenu()},54,2,8)
+
+        sectionTitle("Explorer","Tout LudoMada au même endroit")
+        val grid1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        grid1.addView(premiumTile("▣","Tutoriels","Apprendre à jouer",Color.rgb(66,113,196)){tutorials()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(0,0,dp(4),dp(4))})
+        grid1.addView(premiumTile("★","Événements","Défis & bonus",Color.rgb(214,151,29)){events()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(dp(4),0,0,dp(4))})
+        add(grid1)
+        val grid2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        grid2.addView(premiumTile("♟","Social","Amis & parties",Color.rgb(126,82,188)){social()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(0,0,dp(4),dp(4))})
+        grid2.addView(premiumTile("◆","Boutique","Objets premium",Color.rgb(19,153,125)){shop()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(dp(4),0,0,dp(4))})
+        add(grid2)
+
+        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        actions.addView(button(musicLabel(),Color.rgb(43,57,79)){music.toggle();updateMusicButton()},LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(7),dp(4),0)})
+        actions.addView(button("Déconnexion",Color.rgb(181,57,68)){token="";userId="";username="";gameId="";login()},LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(7),0,0)})
+        root.addView(actions)
+        bottomNav("home")
     }
 
     private fun profile() {
@@ -144,6 +259,44 @@ class MainActivity : Activity() {
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
+    }
+
+    private fun tutorials() {
+        page("tutorials","Tutoriels")
+        sectionTitle("Maîtriser le Ludo","Les bases en quelques écrans")
+        add(card("1 • Préparer la partie","Rejoins un lobby et choisis une mise.",royal),82,3,5)
+        add(card("2 • Lancer le dé","Chaque lancer est validé côté serveur.",emerald),82,3,5)
+        add(card("3 • Déplacer un pion","Choisis un pion autorisé après le dé.",Color.rgb(126,82,188)),82,3,5)
+        add(card("4 • Gagner","La partie et le portefeuille sont réconciliés côté serveur.",gold),82,3,8)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+    }
+
+    private fun events() {
+        page("events","Événements")
+        add(card("Défi de la semaine","Parties spéciales et objectifs à suivre.",gold),88,3,8)
+        add(premiumTile("✦","Prochain challenge","Bientôt disponible",gold){Toast.makeText(this,"Événement en préparation.",Toast.LENGTH_SHORT).show()},76,3,5)
+        add(premiumTile("♛","Classement","Voir les meilleurs joueurs",royal){Toast.makeText(this,"Classement bientôt disponible.",Toast.LENGTH_SHORT).show()},76,3,8)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+    }
+
+    private fun social() {
+        page("social","Social")
+        sectionTitle("Social","Retrouver tes amis et tes parties")
+        add(premiumTile("♟","Amis","Invitations et joueurs récents",Color.rgb(126,82,188)){Toast.makeText(this,"Fonction sociale en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
+        add(premiumTile("◉","Inviter","Partager une room",royal){joinDialog()},78,3,5)
+        add(premiumTile("★","Défis","Jouer",emerald){lobby()},78,3,8)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        bottomNav("social")
+    }
+
+    private fun shop() {
+        page("shop","Boutique")
+        sectionTitle("Boutique premium","Une identité visuelle prête pour les futurs objets")
+        add(premiumTile("✦","Thèmes de plateau","Bientôt disponible",royal){Toast.makeText(this,"Boutique en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
+        add(premiumTile("◆","Avatars","Profils et badges",Color.rgb(126,82,188)){Toast.makeText(this,"Avatars bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,5)
+        add(premiumTile("◈","Effets premium","Animations et styles",gold){Toast.makeText(this,"Effets bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,8)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        bottomNav("home")
     }
 
     private fun languageDialog() {
@@ -172,7 +325,7 @@ class MainActivity : Activity() {
         add(button("↻ Havaozina",Color.rgb(37,93,196)){loadHistory()},52);add(button("← Wallet",Color.rgb(70,82,100)){wallet()},52);loadHistory()
     }
 
-    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${x?.optString("type",x?.optString("kind","TRANSACTION"))}: ${x?.optString("amount","0")} Ar — ${x?.optString("status","")}\n")}}}} }
+    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}\n")}}}} }
 
     private fun pay(deposit:Boolean) {
         val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
