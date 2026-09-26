@@ -29,6 +29,8 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
+    private var moveOverlay: View? = null
+    private var movePending = false
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
@@ -493,7 +495,8 @@ class MainActivity : Activity() {
         status.text="Manomboka ny lalao..."
         post("/api/games/$gameId/start",JSONObject(),UUID.randomUUID().toString(),{
             startingGame=false
-            refreshState()
+            showGameEntryLoading()
+            root.postDelayed({ if(gameId.isNotBlank()) refreshState() }, 350L)
         },{msg->
             startingGame=false
             status.text=msg
@@ -553,11 +556,115 @@ class MainActivity : Activity() {
 
     private fun refreshState(){get("/api/games/$gameId/state"){j->
         retryCount=0;state=j;version=j.optInt("stateVersion",0)
-        runOnUiThread{if(currentScreen=="board" && boardHost!=null)updateBoard(boardHost!!) else if(currentScreen=="board")board()}
+        runOnUiThread{
+            val serverStatus=j.optString("status")
+            if(serverStatus=="PLAYING" && currentScreen!="board"){
+                showBoardEntry()
+                return@runOnUiThread
+            }
+            if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
+            else if(currentScreen=="board") board()
+        }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
     private fun roll(){post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
-    private fun move(i:Int){post("/api/games/$gameId/move",JSONObject().put("tokenIndex",i).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
+    private fun move(i:Int){ requestMove(i) }
+
+    private fun showGameEntryLoading() {
+        if(moveOverlay!=null) return
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(0x66081936)
+            isClickable=true
+            isFocusable=true
+        }
+        val card=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(26),dp(22),dp(26),dp(22))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.WHITE,Color.rgb(234,242,253))
+            ).apply{
+                cornerRadius=dp(22).toFloat()
+                setStroke(dp(1),Color.rgb(212,225,242))
+            }
+            elevation=dp(12).toFloat()
+        }
+        card.addView(ProgressBar(this).apply{isIndeterminate=true},LinearLayout.LayoutParams(dp(42),dp(42)))
+        card.addView(label("Préparation de la partie…",16f,true,Color.rgb(25,52,88)).apply{
+            gravity=Gravity.CENTER
+            setPadding(0,dp(10),0,0)
+        })
+        card.addView(label("Synchronisation du plateau",11f,false,Color.rgb(106,120,140)).apply{
+            gravity=Gravity.CENTER
+            setPadding(0,dp(4),0,0)
+        })
+        overlay.addView(card,FrameLayout.LayoutParams(dp(285),-2,Gravity.CENTER))
+        (window.decorView as ViewGroup).addView(overlay,ViewGroup.LayoutParams(-1,-1))
+        moveOverlay=overlay
+    }
+
+    private fun showMoveProgress(){
+        if(moveOverlay!=null) return
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(0x33081936)
+            isClickable=true
+            isFocusable=true
+        }
+        val box=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER
+            setPadding(dp(18),dp(12),dp(18),dp(12))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.WHITE,Color.rgb(239,246,255))
+            ).apply{
+                cornerRadius=dp(18).toFloat()
+                setStroke(dp(1),Color.rgb(213,226,242))
+            }
+            elevation=dp(9).toFloat()
+        }
+        box.addView(ProgressBar(this).apply{isIndeterminate=true},LinearLayout.LayoutParams(dp(28),dp(28)))
+        box.addView(label("Déplacement…",14f,true,Color.rgb(31,82,150)).apply{
+            setPadding(dp(12),0,0,0)
+        })
+        overlay.addView(box,FrameLayout.LayoutParams(-2,-2,Gravity.CENTER))
+        (window.decorView as ViewGroup).addView(overlay,ViewGroup.LayoutParams(-1,-1))
+        moveOverlay=overlay
+    }
+
+    private fun hideTransientOverlay(){
+        val v=moveOverlay ?: return
+        (v.parent as? ViewGroup)?.removeView(v)
+        moveOverlay=null
+    }
+
+    private fun requestMove(i:Int){
+        if(gameId.isBlank() || movePending) return
+        movePending=true
+        showMoveProgress()
+        post(
+            "/api/games/$gameId/move",
+            JSONObject().put("tokenIndex",i).put("expectedVersion",version),
+            UUID.randomUUID().toString(),
+            {
+                movePending=false
+                hideTransientOverlay()
+                refreshState()
+            },
+            {msg->
+                movePending=false
+                hideTransientOverlay()
+                if(::status.isInitialized) status.text=msg
+            }
+        )
+    }
+
+    private fun showBoardEntry(){
+        hideTransientOverlay()
+        currentScreen="board"
+        board()
+    }
 
     private fun clearSession() {
         token=""
@@ -642,6 +749,7 @@ class MainActivity : Activity() {
         var state:JSONObject?=null;var player=-1;private val paints=Array(4){Paint(Paint.ANTI_ALIAS_FLAG)}
         private val cols=intArrayOf(Color.rgb(218,60,65),Color.rgb(42,155,86),Color.rgb(232,178,34),Color.rgb(54,105,205))
         private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
+        private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
         private var stateAnimator:android.animation.ValueAnimator?=null
         init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         override fun onDraw(canvas:Canvas){
@@ -716,19 +824,65 @@ class MainActivity : Activity() {
             return floatArrayOf(rr,cc)
         }
         fun animateState(){
-            val from=Array(4){Array(4){FloatArray(2)}};val to=Array(4){Array(4){FloatArray(2)}}
+            val targets=Array(4){Array(4){FloatArray(2)}}
+            val oldPos=Array(4){IntArray(4){Int.MIN_VALUE}}
+            val newPos=Array(4){IntArray(4){-1}}
             for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti);to[pi][ti][0]=q[0];to[pi][ti][1]=q[1]
-                if(display[pi][ti][0].isNaN()){display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]}
-                from[pi][ti][0]=display[pi][ti][0];from[pi][ti][1]=display[pi][ti][1]
+                val q=tokenCoord(pi,ti)
+                targets[pi][ti][0]=q[0];targets[pi][ti][1]=q[1]
+                val ts=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")
+                newPos[pi][ti]=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+                if(display[pi][ti][0].isNaN()){
+                    display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]
+                }
+                oldPos[pi][ti]=lastPos[pi][ti]
+                if(oldPos[pi][ti]==Int.MIN_VALUE) lastPos[pi][ti]=newPos[pi][ti]
             }
             stateAnimator?.cancel()
+            var maxSteps=0
+            for(pi in 0..3)for(ti in 0..3){
+                val from=oldPos[pi][ti];val to=newPos[pi][ti]
+                if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
+            }
+            val duration=maxSteps*115L+320L
             stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
-                duration=280L;interpolator=android.view.animation.DecelerateInterpolator(1.6f)
-                addUpdateListener{a->val f=a.animatedValue as Float;for(pi in 0..3)for(ti in 0..3){display[pi][ti][0]=from[pi][ti][0]+(to[pi][ti][0]-from[pi][ti][0])*f;display[pi][ti][1]=from[pi][ti][1]+(to[pi][ti][1]-from[pi][ti][1])*f};invalidate()}
+                this.duration=duration
+                interpolator=android.view.animation.DecelerateInterpolator(1.5f)
+                addUpdateListener{va->
+                    val f=va.animatedValue as Float
+                    for(pi in 0..3)for(ti in 0..3){
+                        val from=oldPos[pi][ti];val to=newPos[pi][ti]
+                        if(from>=0 && to>from){
+                            val span=(to-from).coerceAtLeast(1)
+                            val u=f*span
+                            val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
+                            val local=u-step
+                            val base=((pi*13)+from+step)%52
+                            val q1=visualPath()[base]
+                            val q2=visualPath()[(base+1)%52]
+                            display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
+                            display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
+                        }else if(f>=1f){
+                            display[pi][ti][0]=targets[pi][ti][0]
+                            display[pi][ti][1]=targets[pi][ti][1]
+                        }
+                    }
+                    invalidate()
+                }
+                addListener(object:android.animation.AnimatorListenerAdapter(){
+                    override fun onAnimationEnd(animation:android.animation.Animator){
+                        for(pi in 0..3)for(ti in 0..3){
+                            display[pi][ti][0]=targets[pi][ti][0]
+                            display[pi][ti][1]=targets[pi][ti][1]
+                            lastPos[pi][ti]=newPos[pi][ti]
+                        }
+                        invalidate()
+                    }
+                })
                 start()
             }
         }
+
         private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
             val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
             c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
@@ -785,7 +939,7 @@ class MainActivity : Activity() {
                 if(touched>=0){
                     performClick()
                     performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    post("/api/games/$gameId/move",JSONObject().put("tokenIndex",touched).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}
+                    requestMove(touched)
                     return true
                 }
             }
