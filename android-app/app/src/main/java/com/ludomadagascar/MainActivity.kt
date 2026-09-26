@@ -116,7 +116,7 @@ class MainActivity : Activity() {
         outer.addView(box,LinearLayout.LayoutParams(0,-2,1f)); return outer
     }
 
-    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroViewV2(this).apply{
+    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroView(this).apply{
         setOnClickListener{onPlay?.invoke()}
     }
 
