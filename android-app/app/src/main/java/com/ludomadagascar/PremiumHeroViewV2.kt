@@ -95,14 +95,32 @@ class PremiumHeroViewV2(context: Context) : View(context) {
             paint.color = 0xBFFFFFFF.toInt()
             c.drawCircle(x - rad * .30f, y - rad * .34f, rad * .18f, paint)
         }
+        paint.style = Paint.Style.FILL
+        paint.shader = LinearGradient(w * .65f, h * .10f, w * .95f, h * .43f, 0x24FFFFFF, 0x0FFFFFFF, Shader.TileMode.CLAMP)
+        c.drawRoundRect(w * .65f, h * .10f, w * .95f, h * .43f, d(15f), d(15f), paint)
+        paint.shader = null
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = d(2f)
         paint.color = Color.rgb(243, 193, 67)
         c.drawRoundRect(w * .65f, h * .10f, w * .95f, h * .43f, d(15f), d(15f), paint)
         paint.style = Paint.Style.FILL
-        paint.color = 0x38FFFFFF
-        c.drawCircle(w * .80f, h * .26f, rad * .80f, paint)
-
+        paint.shader = RadialGradient(w * .80f, h * .23f, rad * 1.45f, Color.WHITE, Color.rgb(43, 126, 235), Shader.TileMode.CLAMP)
+        c.drawCircle(w * .80f, h * .23f, rad * 1.05f, paint)
+        paint.shader = null
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = d(1.3f)
+        paint.color = 0x88FFFFFF.toInt()
+        c.drawCircle(w * .80f, h * .23f, rad * 1.05f, paint)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        paint.typeface = Typeface.DEFAULT_BOLD
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = d(19f)
+        c.drawText("LM", w * .80f, h * .255f, paint)
+        paint.textSize = d(8.5f)
+        paint.color = 0xD9FFFFFF.toInt()
+        c.drawText("4 JOUEURS", w * .80f, h * .365f, paint)
+        paint.textAlign = Paint.Align.LEFT
         paint.color = 0xCFFFFFFF.toInt()
         for (star in arrayOf(
             floatArrayOf(.56f, .19f, 2.8f),
