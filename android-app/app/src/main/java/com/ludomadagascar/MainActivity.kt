@@ -20,7 +20,8 @@ class MainActivity : Activity() {
     private val apiBase = BuildConfig.API_BASE_URL
     private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
     private var entryFee = 500
-    private var token = ""; private var userId = ""; private var username = ""
+    private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
+    private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
@@ -54,14 +55,15 @@ class MainActivity : Activity() {
         background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{
             cornerRadius=dp(18).toFloat(); setStroke(dp(1),0x44FFFFFF)
         }
-        minHeight=dp(54); stateListAnimator=null; elevation=dp(5).toFloat()
+        minHeight=dp(54); stateListAnimator=null; elevation=dp(7).toFloat(); isHapticFeedbackEnabled=true
+        setOnTouchListener { v,e -> when(e.actionMasked){ MotionEvent.ACTION_DOWN -> v.animate().scaleX(.985f).scaleY(.985f).setDuration(70L).start(); MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(110L).start() }; false }
         setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(247,249,253),Color.rgb(236,242,250)))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
         }
         root=content
         if(name=="board" || name=="offline") setContentView(root)
@@ -69,8 +71,10 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
-        addTopBar(title); return content
+        addTopBar(title)
+        return content
     }
+
     private fun addTopBar(title:String) {
         val bar=LinearLayout(this).apply {
             gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(7),dp(8),dp(7))
@@ -83,11 +87,17 @@ class MainActivity : Activity() {
         wrap.addView(label("LudoMada",18f,true,royal))
         wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,Color.rgb(104,116,134)))
         bar.addView(wrap,LinearLayout.LayoutParams(0,-2,1f))
-        val badge=TextView(this).apply{
-            text="PREMIUM";textSize=9f;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.WHITE);gravity=Gravity.CENTER
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(gold,Color.rgb(206,139,25))).apply{cornerRadius=dp(11).toFloat()}
+        val balanceBox=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(8),dp(3),dp(8),dp(3))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(8,42,88),Color.rgb(24,92,160))).apply{
+                cornerRadius=dp(13).toFloat();setStroke(dp(1),0x66FFFFFF)
+            }
+            setOnClickListener{if(token.isNotBlank())wallet() else login()}
         }
-        bar.addView(badge,LinearLayout.LayoutParams(dp(68),dp(26)))
+        balanceBox.addView(label("SOLDE DU COMPTE",8.5f,true,Color.WHITE))
+        topBalanceView=label("— Ar",12f,true,gold);topBalanceView!!.gravity=Gravity.CENTER
+        balanceBox.addView(topBalanceView,LinearLayout.LayoutParams(-2,dp(22)))
+        bar.addView(balanceBox,LinearLayout.LayoutParams(dp(112),dp(48)))
         root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,dp(14))})
     }
     private fun card(title:String, body:String, accent:Int=royal): LinearLayout {
@@ -104,7 +114,7 @@ class MainActivity : Activity() {
         outer.addView(box,LinearLayout.LayoutParams(0,-2,1f)); return outer
     }
 
-    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroView(this).apply{
+    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroViewV2(this).apply{
         setOnClickListener{onPlay?.invoke()}
     }
 
@@ -170,7 +180,33 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onCreate(savedInstanceState:Bundle?) { super.onCreate(savedInstanceState); music=CalmMusic(this); splash() }
+    private val sessionPrefs by lazy { getSharedPreferences("ludomada_session", Context.MODE_PRIVATE) }
+
+    private fun saveSession() {
+        sessionPrefs.edit()
+            .putString("token", token)
+            .putString("refreshToken", refreshToken)
+            .putString("userId", userId)
+            .putString("username", username)
+            .apply()
+    }
+
+    private fun restoreSession():Boolean {
+        val savedToken=sessionPrefs.getString("token","").orEmpty()
+        if(savedToken.isBlank()) return false
+        token=savedToken
+        refreshToken=sessionPrefs.getString("refreshToken","").orEmpty()
+        userId=sessionPrefs.getString("userId","").orEmpty()
+        username=sessionPrefs.getString("username","").orEmpty()
+        return true
+    }
+
+    override fun onCreate(savedInstanceState:Bundle?) {
+        super.onCreate(savedInstanceState)
+        music=CalmMusic(this)
+        restoreSession()
+        home()
+    }
 
     private fun splash() {
         currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
@@ -198,15 +234,19 @@ class MainActivity : Activity() {
         val p=EditText(this).apply{hint="Mot de passe";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));inputType=129;background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
         add(u,52,5,5);add(p,52,5,9)
         add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
-        add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,7)
+        add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,5)
+        add(button("G  Créer un compte avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
         add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
     }
 
     private fun googleSignup() {
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://accounts.google.com/"))) }
-        catch (_:Exception) { status.text="Google tsy azo sokafana amin'ity appareil ity." }
+        AlertDialog.Builder(this)
+            .setTitle("Google")
+            .setMessage("Ny connexion Google dia mbola tsy configurée amin'ny serveur LudoMada. Ampiasao aloha Nom/email/mobile + mot de passe.")
+            .setPositiveButton("AOKA", null)
+            .show()
     }
 
     private fun registerDialog() {
@@ -216,21 +256,67 @@ class MainActivity : Activity() {
         listOf(u,email,phone,pass).forEach{box.addView(it,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(6)})}
         AlertDialog.Builder(this).setTitle("Créer un compte").setView(box).setPositiveButton("S'inscrire"){_,_->
             if(u.text.length<3||pass.text.length<10){status.text="Username 3+ sy password 10+ ilaina.";return@setPositiveButton}
-            post("/api/auth/register",JSONObject().put("username",u.text.toString().trim()).put("password",pass.text.toString()).apply{if(email.text.isNotBlank())put("email",email.text.toString().trim());if(phone.text.isNotBlank())put("phoneNumber",phone.text.toString().trim())}){j->token=j.optString("accessToken");userId=j.optJSONObject("user")?.optString("id").orEmpty();username=u.text.toString().trim();home()}
+            post("/api/auth/register",JSONObject().put("username",u.text.toString().trim()).put("password",pass.text.toString()).apply{if(email.text.isNotBlank())put("email",email.text.toString().trim());if(phone.text.isNotBlank())put("phoneNumber",phone.text.toString().trim())}){j->username=u.text.toString().trim();auth("/api/auth/login",u.text.toString().trim(),pass.text.toString())}
         }.setNegativeButton("Aoka",null).show()
     }
 
     private fun validAuth(u:EditText,p:EditText):Boolean { if(u.text.isBlank()||p.text.isBlank()){status.text="Fenoy ny identifiant sy mot de passe.";return false}; return true }
-    private fun auth(path:String,u:String,p:String) { status.text="Connexion..."; post(path,JSONObject().put("identifier",u).put("password",p)){j->token=j.optString("accessToken");val usr=j.optJSONObject("user");userId=usr?.optString("id").orEmpty();username=usr?.optString("username").orEmpty();if(token.isBlank())status.text="Connexion refusée. Vérifiez vos identifiants." else home()} }
+    private fun auth(path:String,u:String,p:String) {
+        status.text="Connexion..."
+        post(path,JSONObject().put("identifier",u).put("password",p)){j->
+            token=j.optString("accessToken")
+            refreshToken=j.optString("refreshToken")
+            val usr=j.optJSONObject("user")
+            userId=usr?.optString("id").orEmpty()
+            username=usr?.optString("username").orEmpty()
+            if(token.isBlank()) status.text="Connexion refusée. Vérifiez vos identifiants." else { saveSession(); home() }
+        }
+    }
+
+    private fun formatMGA(value:Long):String {
+        val s=value.toString(); return s.reversed().chunked(3).joinToString(" ").reversed()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
+    }
+
+    private fun refreshAccountBalance() {
+        if(token.isBlank()){
+            accountBalanceMGA=0L
+            topBalanceView?.text="— Ar"
+            return
+        }
+        topBalanceView?.text="… Ar"
+        get("/api/wallet"){j->
+            val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
+            accountBalanceMGA=value
+            runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar"}
+        }
+    }
 
     private fun home() {
         page("home","Accueil")
+        refreshAccountBalance()
         add(label(if(username.isBlank())"Bienvenue" else "Bonjour, $username",25f,true,Color.rgb(18,30,48)),36,0,2)
-        add(label("Ton espace de jeu premium",13f,false,Color.rgb(105,116,134)),24,0,8)
+        add(label("Ton espace de jeu premium",13f,false,Color.rgb(105,116,134)),24,0,7)
+        val metrics=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        fun m(v:String,t:String)=TextView(this).apply{text="$v\n$t";textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.rgb(61,77,100));background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(Color.WHITE,Color.rgb(235,243,253))).apply{cornerRadius=dp(15).toFloat();setStroke(dp(1),Color.rgb(216,227,241))}}
+        metrics.addView(m("2–4","JOUEURS"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(4),0)})
+        metrics.addView(m("500+","MISES AR"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(2),0,dp(2),0)})
+        metrics.addView(m("24/7","JEU"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),0,0,0)})
+        add(metrics,48,0,9)
         root.addView(premiumHero{lobby()},LinearLayout.LayoutParams(-1,dp(212)).apply{setMargins(0,dp(2),0,dp(10))})
 
         val walletCard=card("Portefeuille","Solde • dépôt • retrait",emerald).apply{setOnClickListener{wallet()}}
         add(walletCard,78,3,5)
+
+        if(token.isBlank()){
+            add(button("♙  Se connecter / Inscription",Color.rgb(43,110,205)){login()},50,2,8)
+        } else {
+            add(card("Compte connecté",if(username.isBlank())"Session LudoMada active" else username,emerald),66,2,8)
+        }
 
         sectionTitle("Jouer maintenant","Choisis ton expérience")
         add(button("🎲  Jouer en ligne  •  dès 500 Ar",royal){lobby()},54,3,5)
@@ -248,7 +334,13 @@ class MainActivity : Activity() {
 
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
         actions.addView(button(musicLabel(),Color.rgb(43,57,79)){music.toggle();updateMusicButton()},LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(7),dp(4),0)})
-        actions.addView(button("Déconnexion",Color.rgb(181,57,68)){token="";userId="";username="";gameId="";login()},LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(7),0,0)})
+        actions.addView(
+            if(token.isBlank())
+                button("♙  Se connecter",Color.rgb(43,110,205)){login()}
+            else
+                button("Déconnexion",Color.rgb(181,57,68)){token="";refreshToken="";userId="";username="";gameId="";accountBalanceMGA=0L;sessionPrefs.edit().clear().apply();home()},
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(7),0,0)}
+        )
         root.addView(actions)
         bottomNav("home")
     }
@@ -317,7 +409,19 @@ class MainActivity : Activity() {
         loadWallet()
     }
 
-    private fun loadWallet() { get("/api/wallet"){j->val bal=j.optLong("balance",j.optLong("balanceMGA",0));runOnUiThread{if(currentScreen=="wallet"){status.text="Solde disponible";root.addView(card("💳 Solde","${bal} Ar",Color.rgb(35,150,84)),2)}}} }
+    private fun loadWallet() {
+        get("/api/wallet"){j->
+            val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
+            accountBalanceMGA=value
+            runOnUiThread{
+                topBalanceView?.text="${formatMGA(value)} Ar"
+                if(currentScreen=="wallet"){
+                    status.text="Solde disponible"
+                    root.addView(card("💳 Solde","${formatMGA(value)} Ar",Color.rgb(35,150,84)),2)
+                }
+            }
+        }
+    }
 
     private fun history() {
         page("history","Historique")
@@ -350,14 +454,27 @@ class MainActivity : Activity() {
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
     }
 
-    private fun createGame() { status.text="Mamorona room — $entryFee Ar...";post("/api/games",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){j->gameId=j.optString("gameId");if(gameId.isBlank())status.text="Tsy nahazo Game ID." else room()} }
+    private fun createGame() {
+        if(token.isBlank()){ login(); return }
+        status.text="Mamorona room — $entryFee Ar..."
+        post("/api/games",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){j->
+            gameId=j.optString("gameId")
+            if(gameId.isBlank())status.text="Tsy nahazo Game ID." else room()
+        }
+    }
 
     private fun joinDialog() {
         val id=EditText(this).apply{hint="Game ID";setPadding(dp(12),0,dp(12),0)}
         val choices=entryFees.map { "${it} Ar" }.toTypedArray()
         var selected=entryFees.indexOf(entryFee).coerceAtLeast(0)
         AlertDialog.Builder(this).setTitle("Hiditra amin'ny room").setView(id).setSingleChoiceItems(choices,selected){_,which->selected=which}
-            .setPositiveButton("HIDITRA"){_,_->if(id.text.isNotBlank()){gameId=id.text.toString().trim();entryFee=entryFees[selected];post("/api/games/$gameId/join",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){room()}}}
+            .setPositiveButton("HIDITRA"){_,_->
+                if(token.isBlank()){ login(); return@setPositiveButton }
+                if(id.text.isNotBlank()){
+                    gameId=id.text.toString().trim();entryFee=entryFees[selected]
+                    post("/api/games/$gameId/join",JSONObject().put("entryFeeMGA",entryFee),UUID.randomUUID().toString()){room()}
+                }
+            }
             .setNegativeButton("AOKA",null).show()
     }
 
@@ -442,20 +559,81 @@ class MainActivity : Activity() {
     private fun roll(){post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
     private fun move(i:Int){post("/api/games/$gameId/move",JSONObject().put("tokenIndex",i).put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
 
+    private fun clearSession() {
+        token=""
+        refreshToken=""
+        userId=""
+        username=""
+        gameId=""
+        accountBalanceMGA=0L
+        sessionPrefs.edit().clear().apply()
+    }
+
+    private fun refreshAccessToken(failedToken:String):Boolean {
+        synchronized(sessionRefreshLock) {
+            if(token.isNotBlank() && token != failedToken) return true
+            val rt=refreshToken
+            if(rt.isBlank()) return false
+            return try {
+                val c=(URL(apiBase+"/api/auth/refresh").openConnection() as HttpURLConnection).apply {
+                    requestMethod="POST"
+                    connectTimeout=10000
+                    readTimeout=10000
+                    doInput=true
+                    doOutput=true
+                    setRequestProperty("Content-Type","application/json")
+                }
+                c.outputStream.use { it.write(JSONObject().put("refreshToken",rt).toString().toByteArray()) }
+                val code=c.responseCode
+                val tx=(if(code in 200..299)c.inputStream else c.errorStream)?.bufferedReader()?.readText().orEmpty()
+                if(code !in 200..299) return false
+                val j=JSONObject(tx)
+                val newAccess=j.optString("accessToken")
+                val newRefresh=j.optString("refreshToken")
+                if(newAccess.isBlank() || newRefresh.isBlank()) return false
+                token=newAccess
+                refreshToken=newRefresh
+                saveSession()
+                true
+            } catch(_:Exception) { false }
+        }
+    }
+
+    private val sessionRefreshLock=Any()
+
     private fun get(path:String, ok:(JSONObject)->Unit)=request("GET",path,null,null,ok)
     private fun post(path:String, body:JSONObject, id:String?=null, ok:(JSONObject)->Unit)=request("POST",path,body,id,ok)
     private fun post(path:String, body:JSONObject, id:String?, ok:(JSONObject)->Unit, fail:((String)->Unit))=request("POST",path,body,id,ok,fail)
-    private fun request(method:String,path:String,body:JSONObject?,id:String?,ok:(JSONObject)->Unit, fail:((String)->Unit)?=null){
+    private fun request(method:String,path:String,body:JSONObject?,id:String?,ok:(JSONObject)->Unit, fail:((String)->Unit)?=null, allowRefresh:Boolean=true){
         if(::status.isInitialized) runOnUiThread{status.text="Mampifandray..."}
         thread {
             try {
+                val requestToken=token
                 val c=(URL(apiBase+path).openConnection() as HttpURLConnection).apply{requestMethod=method;connectTimeout=10000;readTimeout=10000;doInput=true
-                    setRequestProperty("Content-Type","application/json");if(token.isNotBlank())setRequestProperty("Authorization","Bearer $token");if(!id.isNullOrBlank())setRequestProperty("Idempotency-Key",id)
+                    setRequestProperty("Content-Type","application/json");if(requestToken.isNotBlank())setRequestProperty("Authorization","Bearer $requestToken");if(!id.isNullOrBlank())setRequestProperty("Idempotency-Key",id)
                     if(body!=null)doOutput=true}
                 if(body!=null)c.outputStream.use{it.write(body.toString().toByteArray())}
                 val code=c.responseCode;val input=if(code in 200..299)c.inputStream else c.errorStream;val tx=input?.bufferedReader()?.readText().orEmpty()
-                if(code !in 200..299){val msg=try{JSONObject(tx).optString("error","Erreur HTTP $code")}catch(_:Exception){"Erreur HTTP $code"};runOnUiThread{if(fail!=null)fail.invoke(msg) else if(::status.isInitialized)status.text=msg};return@thread}
-                runOnUiThread{ok(if(tx.isBlank())JSONObject()else JSONObject(tx))}
+                if(code==401 && allowRefresh && path!="/api/auth/refresh" && refreshAccessToken(requestToken)) {
+                    return@thread request(method,path,body,id,ok,fail,false)
+                }
+                if(code !in 200..299){
+                    val msg=try{
+                        val e=JSONObject(tx).optJSONObject("error")
+                        e?.optString("message").takeUnless{it.isNullOrBlank()} ?: JSONObject(tx).optString("error","Erreur HTTP $code")
+                    }catch(_:Exception){"Erreur HTTP $code"}
+                    runOnUiThread{
+                        if(code==401 && path!="/api/auth/login" && path!="/api/auth/register"){
+                            clearSession()
+                            if(currentScreen!="login") login()
+                        }
+                        if(fail!=null)fail.invoke(msg) else if(::status.isInitialized)status.text=msg
+                    };return@thread
+                }
+                runOnUiThread{
+                    val payload=if(tx.isBlank())JSONObject()else JSONObject(tx)
+                    ok(payload.optJSONObject("data") ?: payload)
+                }
             } catch(e:Exception){retryCount++;runOnUiThread{if(fail!=null)fail.invoke("Connexion tapaka. Averina... ($retryCount)") else if(::status.isInitialized)status.text="Connexion tapaka. Averina... ($retryCount)";if(currentScreen=="room")root.postDelayed({if(currentScreen=="room")refreshLobby()},minOf(15000L,3000L*retryCount))}}
         }
     }
