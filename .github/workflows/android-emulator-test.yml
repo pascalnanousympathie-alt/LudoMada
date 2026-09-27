@@ -55,6 +55,7 @@ jobs:
           RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
         run: |
           set -o pipefail
+          export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
 
       - name: Upload APK
