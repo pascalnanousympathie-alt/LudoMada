@@ -505,7 +505,7 @@ class MainActivity : Activity() {
         val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         host.animateState()
-        add(button("Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
         add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
@@ -524,6 +524,7 @@ class MainActivity : Activity() {
         status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
     }
     private fun offlineRoll(host:LudoBoardView){
+        if(host.isDiceRolling())return
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
@@ -576,10 +577,10 @@ class MainActivity : Activity() {
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
         val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        status=st;add(button("Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
+        status=st;add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("Safidio ny pion-nao rehefa nahazo dé.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
         updateBoard(host);root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
     }
 
@@ -602,7 +603,14 @@ class MainActivity : Activity() {
         }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
-    private fun roll(){boardHost?.startDiceAnimation();post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
+    private fun roll(){
+        if(gameId.isBlank() || movePending || boardHost==null) return
+        val host=boardHost ?: return
+        host.startDiceAnimation()
+        post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString(),{
+            refreshState()
+        },{msg->if(::status.isInitialized)status.text=msg})
+    }
     private fun move(i:Int){ requestMove(i) }
 
     private fun showGameEntryLoading() {
@@ -789,6 +797,7 @@ class MainActivity : Activity() {
         private var stateAnimator:android.animation.ValueAnimator?=null
         private var diceRolling=false
         private var dicePhase=0f
+        private val jumpLift=Array(4){FloatArray(4)}
         init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
@@ -847,7 +856,9 @@ class MainActivity : Activity() {
                 val q=tokenCoord(pi,ti)
                 val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
                 val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
-                drawToken(c,ox+cc*cell,oy+rr*cell,cell,cols[pi],pi==player)
+                val lift=jumpLift[pi][ti]
+                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player)
+                if(pi==player && tokenCanMoveForUi(pi,ti)) drawLegalHint(c,ox+cc*cell,oy+(rr-lift)*cell,cell)
             }
         }
         private fun tokenCoord(pi:Int,ti:Int):FloatArray{
@@ -891,7 +902,7 @@ class MainActivity : Activity() {
                 val from=oldPos[pi][ti];val to=newPos[pi][ti]
                 if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
             }
-            val duration=maxSteps*115L+320L
+            val duration=maxSteps*125L+340L
             stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
                 this.duration=duration
                 interpolator=android.view.animation.DecelerateInterpolator(1.5f)
@@ -904,12 +915,14 @@ class MainActivity : Activity() {
                             val u=f*span
                             val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
                             val local=u-step
+                            jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
                             val base=((pi*13)+from+step)%52
                             val q1=visualPath()[base]
                             val q2=visualPath()[(base+1)%52]
                             display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
                             display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
                         }else if(f>=1f){
+                            jumpLift[pi][ti]=0f
                             display[pi][ti][0]=targets[pi][ti][0]
                             display[pi][ti][1]=targets[pi][ti][1]
                         }
@@ -921,6 +934,7 @@ class MainActivity : Activity() {
                         for(pi in 0..3)for(ti in 0..3){
                             display[pi][ti][0]=targets[pi][ti][0]
                             display[pi][ti][1]=targets[pi][ti][1]
+                            jumpLift[pi][ti]=0f
                             lastPos[pi][ti]=newPos[pi][ti]
                         }
                         invalidate()
@@ -973,7 +987,9 @@ class MainActivity : Activity() {
             for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
             c.restore()
         }
+        fun isDiceRolling():Boolean = diceRolling
         fun startDiceAnimation(){
+            if(diceRolling)return
             diceRolling=true;dicePhase=0f
             val start=System.currentTimeMillis()
             fun tick(){
@@ -992,6 +1008,21 @@ class MainActivity : Activity() {
                 val mark=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat()}
                 c.drawCircle(ox+(col+.5f)*cell,oy+(r+.5f)*cell,cell*.22f,mark)
             }
+        }
+        private fun drawLegalHint(c:Canvas,cx:Float,cy:Float,cell:Float){
+            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xFFEBC348.toInt();style=Paint.Style.STROKE;strokeWidth=dp(2.2f).toFloat()}
+            c.drawCircle(cx,cy,cell*.39f,p)
+            p.style=Paint.Style.FILL; p.color=0x55EBC348
+            c.drawCircle(cx,cy,cell*.44f,p)
+        }
+        private fun tokenCanMoveForUi(pi:Int,ti:Int):Boolean{
+            val activePlayer=if(currentScreen=="offline") offlineTurn else player
+            if(pi!=activePlayer)return false
+            val dice=if(currentScreen=="offline") offlineDice else state?.optInt("dice",0)?:0
+            if(dice !in 1..6)return false
+            val ps=if(currentScreen=="offline") offlineState?.optJSONArray("players") else state?.optJSONArray("players")
+            val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+            return if(pos<0) dice==6 else pos+dice<=57
         }
         private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
             val rad=cell*.31f
