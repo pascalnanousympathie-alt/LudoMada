@@ -32,10 +32,7 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          bash ./gradlew \
-            -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 \
-            -Dorg.gradle.workers.max=2 \
-            assembleDebug assembleDebugAndroidTest --stacktrace
+          bash ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
 
       - name: Install Ramus CLI
         run: |
