@@ -6,7 +6,7 @@ SYSROOT="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian-
 WRAPPER_DIR="$HOME/.local/bin"
 STATE_DIR="$HOME/.local/share/ludomada"
 AAPT2_PATH_FILE="$STATE_DIR/aapt2.path"
-LAUNCHER="$WRAPPER_DIR/aapt2-launcher"
+LAUNCHER="$WRAPPER_DIR/aapt2"
 
 test -x "$QEMU_X86_64"
 test -x "$SYSROOT/lib64/ld-linux-x86-64.so.2"
