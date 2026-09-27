@@ -31,22 +31,12 @@ jobs:
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
 
       - name: Build debug APK
         working-directory: android-app
         run: |
           chmod +x gradlew
-          bash ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+          bash ./gradlew --no-daemon --no-parallel -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
       - name: Install Ramus CLI
         run: |
@@ -60,6 +50,7 @@ jobs:
 
       - name: Run cloud Android smoke test with Ramus
         env:
+          HOME: /data/data/com.termux/files/home
           RAMUS_APK: ${{ github.workspace }}/android-app/app/build/outputs/apk/debug/app-debug.apk
           RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
         run: |
