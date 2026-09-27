@@ -677,7 +677,17 @@ class MainActivity : Activity() {
             refreshState()
         },{msg->if(::status.isInitialized)status.text=msg})
     }
-    private fun move(i:Int){ requestMove(i) }
+    private fun move(i:Int){
+        val ps=state?.optJSONArray("players")
+        val pi=playerIndex()
+        val dice=state?.optInt("dice",0)?:0
+        val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(i)?.optInt("pos",-1)?:-1
+        if(pi !in 0..3 || dice !in 1..6 || (pos<0 && dice!=6) || (pos>=0 && pos+dice>57)){
+            if(::status.isInitialized) status.text="Tsy afaka mihetsika io pion io amin'ity dé ity."
+            return
+        }
+        requestMove(i)
+    }
 
     private fun showGameEntryLoading() {
         if(moveOverlay!=null) return
@@ -864,6 +874,7 @@ class MainActivity : Activity() {
         private var diceRolling=false
         private var dicePhase=0f
         private val jumpLift=Array(4){FloatArray(4)}
+        private val spawnScale=Array(4){FloatArray(4){1f}}
         init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
@@ -923,7 +934,7 @@ class MainActivity : Activity() {
                 val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
                 val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
                 val lift=jumpLift[pi][ti]
-                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player)
+                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player,spawnScale[pi][ti])
                 if(pi==player && tokenCanMoveForUi(pi,ti)) drawLegalHint(c,ox+cc*cell,oy+(rr-lift)*cell,cell)
             }
         }
@@ -967,6 +978,7 @@ class MainActivity : Activity() {
             for(pi in 0..3)for(ti in 0..3){
                 val from=oldPos[pi][ti];val to=newPos[pi][ti]
                 if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
+                if(from<0 && to>=0) maxSteps=maxOf(maxSteps,1)
             }
             val duration=maxSteps*125L+340L
             stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
@@ -982,13 +994,23 @@ class MainActivity : Activity() {
                             val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
                             val local=u-step
                             jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
+                            spawnScale[pi][ti]=1f
                             val base=((pi*13)+from+step)%52
                             val q1=visualPath()[base]
                             val q2=visualPath()[(base+1)%52]
                             display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
                             display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
+                        }else if(from<0 && to>=0){
+                            val targetR=targets[pi][ti][0];val targetC=targets[pi][ti][1]
+                            val baseR=display[pi][ti][0];val baseC=display[pi][ti][1]
+                            val local=f.coerceIn(0f,1f)
+                            jumpLift[pi][ti]=kotlin.math.sin(local*Math.PI).toFloat()*0.30f
+                            spawnScale[pi][ti]=0.72f+0.28f*kotlin.math.sin(local*Math.PI*0.5).toFloat()
+                            display[pi][ti][0]=baseR+(targetR-baseR)*local
+                            display[pi][ti][1]=baseC+(targetC-baseC)*local
                         }else if(f>=1f){
                             jumpLift[pi][ti]=0f
+                            spawnScale[pi][ti]=1f
                             display[pi][ti][0]=targets[pi][ti][0]
                             display[pi][ti][1]=targets[pi][ti][1]
                         }
@@ -1001,6 +1023,7 @@ class MainActivity : Activity() {
                             display[pi][ti][0]=targets[pi][ti][0]
                             display[pi][ti][1]=targets[pi][ti][1]
                             jumpLift[pi][ti]=0f
+                            spawnScale[pi][ti]=1f
                             lastPos[pi][ti]=newPos[pi][ti]
                         }
                         invalidate()
@@ -1090,8 +1113,8 @@ class MainActivity : Activity() {
             val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
             return if(pos<0) dice==6 else pos+dice<=57
         }
-        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
-            val rad=cell*.31f
+        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean,scale:Float=1f){
+            val rad=cell*.31f*scale
             val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
             shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
             val body=Paint(Paint.ANTI_ALIAS_FLAG)
@@ -1115,7 +1138,7 @@ class MainActivity : Activity() {
                 if(touched>=0){
                     performClick()
                     performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else requestMove(touched)
+                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else move(touched)
                     return true
                 }
             }
