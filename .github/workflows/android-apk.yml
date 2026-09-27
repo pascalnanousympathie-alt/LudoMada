@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'android-app/**'
+      - 'scripts/setup-termux-aapt2.sh'
       - '.github/workflows/android-apk.yml'
 
 jobs:
