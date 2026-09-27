@@ -772,6 +772,7 @@ class MainActivity : Activity() {
                     };return@thread
                 }
                 runOnUiThread{
+                    retryCount=0
                     val payload=if(tx.isBlank())JSONObject()else JSONObject(tx)
                     ok(payload.optJSONObject("data") ?: payload)
                 }
