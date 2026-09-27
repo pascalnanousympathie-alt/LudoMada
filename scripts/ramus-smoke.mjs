@@ -56,7 +56,7 @@ try {
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
 
-  run("screenshot", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
