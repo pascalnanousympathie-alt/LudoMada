@@ -43,7 +43,14 @@ public class PremiumHeroViewV2 extends View {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
-    HomeView(Context c){super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_SOFTWARE,null);}
+    Bitmap bgA,bgB;
+    HomeView(Context c){
+      super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_SOFTWARE,null);
+      int a=getResources().getIdentifier("bg_baobab","drawable",getContext().getPackageName());
+      int b=getResources().getIdentifier("bg_alt","drawable",getContext().getPackageName());
+      if(a!=0)bgA=BitmapFactory.decodeResource(getResources(),a);
+      if(b!=0)bgB=BitmapFactory.decodeResource(getResources(),b);
+    }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
@@ -60,16 +67,47 @@ public class PremiumHeroViewV2 extends View {
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
       box(c,l,y,r,b,16,fill,stroke);t(c,icon,l+17,(y+b)/2f+2,18,gold2,true,true);t(c,title,l+34,y+21,10.5f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.5f,0xD8FFFFFF,false,false);
     }
+    void drawCover(Canvas c,Bitmap bm,float alpha,float W,float H){
+      if(bm==null)return;
+      p.setShader(null);p.setAlpha((int)(255*alpha));
+      float bw=bm.getWidth(),bh=bm.getHeight(),scale=Math.max(W/bw,H/bh);
+      float dw=bw*scale,dh=bh*scale,left=(W-dw)/2f,top=(H-dh)/2f;
+      c.drawBitmap(bm,null,new RectF(left,top,left+dw,top+dh),p);p.setAlpha(255);
+    }
+    void background(Canvas c,float W,float H){
+      long now=System.currentTimeMillis()%10000L;
+      boolean first=now<5000L;
+      float f=now<1800L?now/1800f:now>5000L?(now-5000L)/1800f:0f;
+      if(first){drawCover(c,bgA,1f-f,W,H);drawCover(c,bgB,f,W,H);}
+      else {float q=Math.min(1f,(now-5000L)/1800f);drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
+      p.setShader(new LinearGradient(0,0,0,H,0x77030D2E,0xCC07102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
+      p.setShader(new RadialGradient(W*.5f,H*.38f,W*.55f,0x22FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.5f,H*.38f,W*.55f,p);p.setShader(null);
+      postInvalidateDelayed(80);
+    }
     void board(Canvas c){
-      box(c,122,214,268,392,25,Color.rgb(243,235,216),Color.rgb(208,166,68));
-      p.setShader(new LinearGradient(d(122),d(214),d(268),d(392),Color.rgb(255,255,255),Color.rgb(231,222,203),Shader.TileMode.CLAMP));c.drawRoundRect(d(122),d(214),d(268),d(392),d(25),d(25),p);p.setShader(null);
-      float x0=129,y0=221,cs=34.5f;
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(0.7f));p.setColor(0x88999999);
-      for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+138),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+138),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
-      p.setColor(red);c.drawRect(d(x0),d(y0),d(x0+69),d(y0+69),p);p.setColor(blue);c.drawRect(d(x0+69),d(y0),d(x0+138),d(y0+69),p);p.setColor(green);c.drawRect(d(x0+69),d(y0+69),d(x0+138),d(y0+138),p);p.setColor(yellow);c.drawRect(d(x0),d(y0+69),d(x0+69),d(y0+138),p);
-      pawn(c,x0+34.5f,y0+34.5f,17,red);pawn(c,x0+103.5f,y0+34.5f,17,blue);pawn(c,x0+34.5f,y0+103.5f,17,yellow);pawn(c,x0+103.5f,y0+103.5f,17,green);
-      float phase=(System.currentTimeMillis()%2200L)/2200f; float angle=(float)Math.sin(phase*Math.PI*2.0)*7.0f; c.save();c.rotate(angle,d(200),d(297));
-      box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);c.restore();postInvalidateDelayed(50);
+      float pulse=1f+(float)Math.sin(System.currentTimeMillis()/900.0)*.018f;
+      c.save();c.scale(pulse,pulse,d(195),d(296));
+      p.setShadowLayer(d(16),0,d(10),0x99000000);
+      Path wood=new Path();wood.moveTo(d(101),d(218));wood.quadTo(d(101),d(208),d(112),d(204));wood.lineTo(d(278),d(204));wood.quadTo(d(289),d(208),d(289),d(218));wood.lineTo(d(283),d(385));wood.quadTo(d(282),d(395),d(270),d(399));wood.lineTo(d(120),d(399));wood.quadTo(d(108),d(395),d(107),d(385));wood.close();
+      p.setShader(new LinearGradient(d(105),d(205),d(285),d(400),Color.rgb(100,48,18),Color.rgb(33,16,11),Shader.TileMode.CLAMP));p.setStyle(Paint.Style.FILL);c.drawPath(wood,p);p.setShader(null);p.clearShadowLayer();
+      box(c,110,214,280,388,22,Color.rgb(246,237,214),Color.rgb(244,191,67));
+      p.setShader(new LinearGradient(d(112),d(216),d(278),d(388),Color.WHITE,Color.rgb(216,202,174),Shader.TileMode.CLAMP));c.drawRoundRect(d(112),d(216),d(278),d(388),d(22),d(22),p);p.setShader(null);
+      float x0=116,y0=220,cs=40.5f;
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x907C6D58);
+      for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+162),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+162),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
+      p.setColor(red);c.drawRoundRect(d(x0),d(y0),d(x0+81),d(y0+81),d(10),d(10),p);
+      p.setColor(blue);c.drawRoundRect(d(x0+81),d(y0),d(x0+162),d(y0+81),d(10),d(10),p);
+      p.setColor(yellow);c.drawRoundRect(d(x0),d(y0+81),d(x0+81),d(y0+162),d(10),d(10),p);
+      p.setColor(green);c.drawRoundRect(d(x0+81),d(y0+81),d(x0+162),d(y0+162),d(10),d(10),p);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(0xAAFFFFFF);
+      c.drawRoundRect(d(x0+8),d(y0+8),d(x0+73),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+8),d(x0+154),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+8),d(y0+89),d(x0+73),d(y0+154),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+89),d(x0+154),d(y0+154),d(12),d(12),p);p.setStyle(Paint.Style.FILL);
+      pawn(c,x0+40.5f,y0+40.5f,16.5f,red);pawn(c,x0+121.5f,y0+40.5f,16.5f,blue);pawn(c,x0+40.5f,y0+121.5f,16.5f,yellow);pawn(c,x0+121.5f,y0+121.5f,16.5f,green);
+      Path cross=new Path();cross.moveTo(d(178),d(220));cross.lineTo(d(199),d(241));cross.lineTo(d(220),d(220));cross.lineTo(d(220),d(301));cross.lineTo(d(199),d(322));cross.lineTo(d(178),d(301));cross.close();p.setColor(Color.rgb(255,195,53));c.drawPath(cross,p);
+      float spin=(System.currentTimeMillis()%2400L)/2400f*360f;c.save();c.rotate(spin,d(199),d(299));
+      p.setShadowLayer(d(7),0,d(4),0xA0000000);p.setShader(new LinearGradient(d(179),d(276),d(219),d(322),Color.WHITE,Color.rgb(205,194,169),Shader.TileMode.CLAMP));c.drawRoundRect(d(177),d(274),d(221),d(320),d(9),d(9),p);p.setShader(null);p.clearShadowLayer();
+      p.setColor(0xFF7C5B20);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(199+v[0]),d(297+v[1]),d(2.6f),p);c.restore();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.3f));p.setColor(0x99FFF1A6);c.drawRoundRect(d(102),d(218),d(278),d(388),d(22),d(22),p);p.setStyle(Paint.Style.FILL);
+      c.restore();postInvalidateDelayed(50);
     }
     private int bottomInsetPx(){
       WindowInsets insets=getRootWindowInsets();
@@ -82,8 +120,7 @@ public class PremiumHeroViewV2 extends View {
       s=Math.min(getWidth()/(390f*den),availableH/(710f*den));
       float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(availableH-710f*sc)/2f;
       c.save();c.translate(ox,oy);
-      p.setShader(new LinearGradient(0,0,0,d(710),Color.rgb(3,16,56),Color.rgb(74,20,78),Shader.TileMode.CLAMP));c.drawRect(0,0,d(390),d(710),p);
-      p.setShader(new RadialGradient(d(195),d(255),d(280),Color.rgb(22,112,226),Color.TRANSPARENT,Shader.TileMode.CLAMP));c.drawCircle(d(195),d(255),d(280),p);p.setShader(null);
+      background(c,d(390),d(710));
       p.setColor(0x223C8FE8);c.drawCircle(d(77),d(190),d(88),p);p.setColor(0x2848D5B1);c.drawCircle(d(329),d(246),d(105),p);
       Path m=new Path();m.moveTo(d(0),d(318));m.lineTo(d(62),d(250));m.lineTo(d(104),d(301));m.lineTo(d(151),d(252));m.lineTo(d(207),d(311));m.lineTo(d(271),d(247));m.lineTo(d(325),d(300));m.lineTo(d(390),d(242));m.lineTo(d(390),d(365));m.lineTo(d(0),d(365));m.close();p.setColor(0x55224B8D);c.drawPath(m,p);
       p.setShader(new RadialGradient(d(55),d(555),d(42),Color.rgb(255,205,88),0x00FFC95C,Shader.TileMode.CLAMP));c.drawCircle(d(55),d(555),d(42),p);p.setShader(null);

@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 
 const cli = process.env.RAMUS_CLI;
 const apk = process.env.RAMUS_APK;

@@ -19,7 +19,7 @@ import kotlin.concurrent.thread
 import androidx.credentials.CredentialManager
 import androidx.credentials.CredentialManagerCallback
 import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
