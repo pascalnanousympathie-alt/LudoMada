@@ -10,17 +10,26 @@ on:
 
 jobs:
   emulator-test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 30
     concurrency:
       group: ramus-android-${{ github.ref }}
       cancel-in-progress: true
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          clean: false
           fetch-depth: 1
+
+      - name: Configure Android SDK
+        working-directory: android-app
+        run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -37,7 +46,7 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          bash ./gradlew assembleDebug --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
       - name: Install Ramus CLI
         run: |
