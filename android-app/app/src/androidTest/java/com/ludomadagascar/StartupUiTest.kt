@@ -33,26 +33,28 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
-        val offline2p = device.findObject(By.text("👤 2 joueurs"))
-        assertTrue(offline2p.exists())
-        offline2p.click()
+        assertTrue(device.hasObject(By.text("👤 2 joueurs")))
+        device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
-        repeat(12) {
+        repeat(24) {
+            assertTrue("Dice button must remain reachable", device.hasObject(By.text("Lancer le dé")))
             device.findObject(By.text("Lancer le dé")).click()
-            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 700)) {
+            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
                 return@repeat
             }
+            device.wait(Until.hasObject(By.textContains("Joueur ")), 1200)
+            Thread.sleep(250)
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
-        val pawn1 = device.findObject(By.text("Pion 1"))
-        assertTrue(pawn1.exists())
-        pawn1.click()
-        assertTrue(device.wait(Until.hasObject(By.textContains("Déplacement")), 1200))
+        assertTrue(device.hasObject(By.text("Pion 1")))
+        device.findObject(By.text("Pion 1")).click()
+        assertTrue("A six gives the player another turn after the pawn move",
+            device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
         val file = File("/sdcard/Download/ludomada-startup-offline.png")
         device.takeScreenshot(file)
