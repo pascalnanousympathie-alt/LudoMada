@@ -1918,14 +1918,14 @@ app.post("/api/games/:gameId/move",auth,async(req:any,res)=>{
     const out=await authoritativeCommands.move(
       req.params.gameId,
       req.userId,
-      b.tokenIndex,
-      b.expectedVersion,
+      b!.tokenIndex,
+      b!.expectedVersion,
       idempotencyKey
     );
 
     await audit(prisma,req,"GAME_MOVE",{
       gameId:req.params.gameId,
-      tokenIndex:b.tokenIndex,
+      tokenIndex:b!.tokenIndex,
       stateVersion:out.result.stateVersion
     });
 

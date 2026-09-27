@@ -13,8 +13,8 @@ export function paymentConfig() {
     AIRTEL_MONEY: { configured: env("AIRTEL_CLIENT_ID") && env("AIRTEL_CLIENT_SECRET"), enabled: airtelSandboxEnabled() && env("AIRTEL_CLIENT_ID") && env("AIRTEL_CLIENT_SECRET") },
     // Orange remains blocked until its approved merchant API contract is available.
     ORANGE_MONEY: { configured: env("ORANGE_CLIENT_ID") && env("ORANGE_CLIENT_SECRET"), enabled: false },
-    BINANCE: { configured: env("BINANCE_PAY_CERTIFICATE_SN") && env("BINANCE_PAY_API_SECRET") && env("BINANCE_PAY_CURRENCY") && env("BINANCE_PAY_MGA_RATE"), enabled: providerLiveEnabled("BINANCE") },
-  } satisfies Record<PaymentMethod, { configured: boolean; enabled: boolean }>;
+    BINANCE: { configured: env("BINANCE_PAY_CERTIFICATE_SN") && env("BINANCE_PAY_API_SECRET") && env("BINANCE_PAY_CURRENCY") && env("BINANCE_PAY_MGA_RATE"), enabled: providerLiveEnabled("BINANCE"), currency: process.env.BINANCE_PAY_CURRENCY || null, mgaRate: Number.isFinite(Number(process.env.BINANCE_PAY_MGA_RATE)) ? Number(process.env.BINANCE_PAY_MGA_RATE) : null },
+  } satisfies Record<PaymentMethod, { configured: boolean; enabled: boolean; [key: string]: unknown }>;
 }
 
 export { providerLiveEnabled, mvolaSandboxEnabled, airtelSandboxEnabled };

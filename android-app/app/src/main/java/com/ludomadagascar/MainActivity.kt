@@ -154,7 +154,7 @@ class MainActivity : Activity() {
             val b=TextView(this).apply{
                 text=pair.first + "\n" + pair.second;textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD)
                 setTextColor(if(key==active)royal else Color.rgb(102,113,130));setPadding(0,dp(4),0,dp(4))
-                setOnClickListener{when(key){"home"->home();"play"->lobby();"wallet"->wallet();"social"->social();"profile"->profile()}}
+                setOnClickListener{when(key){"home"->home();"play"->gameModeDialog();"wallet"->wallet();"social"->social();"profile"->profile()}}
             }
             row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
         }
@@ -371,7 +371,7 @@ class MainActivity : Activity() {
         actions.addView(button("➕ Dépôt",Color.rgb(35,150,84)){pay(true)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
         actions.addView(button("➖ Retrait",Color.rgb(210,55,65)){pay(false)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
         add(actions,52)
-        add(button("💠 Binance Pay / Crypto",Color.rgb(45,105,210)){Toast.makeText(this,"Crypto: MGA ↔ crypto use server/provider rate; aucun solde fictif n'est ajouté.",Toast.LENGTH_LONG).show()},52)
+        add(button("💠 Binance Pay / Crypto — Conversion",Color.rgb(45,105,210)){cryptoDialog()},52)
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
         bottomNav("wallet")
         loadWallet()
@@ -411,6 +411,37 @@ class MainActivity : Activity() {
             .setNegativeButton("Aoka",null).show()
     }
 
+    private fun gameModeDialog() {
+        AlertDialog.Builder(this).setTitle("Choisissez le mode")
+            .setItems(arrayOf("🌐 En ligne — Joueurs réels","👥 Hors-ligne — 2 à 4 joueurs")){_,which->if(which==0)lobby() else offlineMenu()}
+            .setNegativeButton("Aoka",null).show()
+    }
+
+    private fun cryptoDialog() {
+        if(token.isBlank()){login();return}
+        val crypto=EditText(this).apply{hint="Montant crypto (0.1 / 0.5 / 1 / 2 / 5)";inputType=8194;setPadding(dp(12),0,dp(12),0)}
+        val mga=EditText(this).apply{hint="Montant MGA";inputType=2;setPadding(dp(12),0,dp(12),0)}
+        val info=label("Récupération du taux serveur…",11f,false,Color.rgb(95,107,125))
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        box.addView(crypto,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
+        box.addView(mga,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
+        box.addView(info,LinearLayout.LayoutParams(-1,dp(42)))
+        AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
+            .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
+                val rateHolder=info.tag as? Double ?: 0.0
+                if(rateHolder>0){
+                    if(which==0){val v=crypto.text.toString().toDoubleOrNull()?:0.0;mga.setText(if(v>0)formatDecimal(v*rateHolder) else "")}
+                    else{val v=mga.text.toString().toDoubleOrNull()?:0.0;crypto.setText(if(v>0)formatDecimal(v/rateHolder) else "")}
+                }
+            }
+            .setPositiveButton("CONVERTIR"){_,_->Toast.makeText(this,"Conversion calculée avec le taux serveur. Aucun solde n’est crédité sans provider actif.",Toast.LENGTH_LONG).show()}
+            .setNegativeButton("Aoka",null).show()
+        get("/api/payments/config"){j->
+            val b=j.optJSONObject("BINANCE");val rate=b?.optDouble("mgaRate",0.0)?:0.0;val cur=b?.optString("currency","CRYPTO")?:"CRYPTO";info.tag=rate
+            runOnUiThread{info.text=if(rate>0) "Taux: 1 $cur = ${formatDecimal(rate)} Ar • Provider ${if(b?.optBoolean("enabled",false)==true) "ACTIF" else "non activé"}" else "Taux crypto non configuré sur le serveur. Provider non activé."}
+        }
+    }
+    private fun formatDecimal(v:Double):String = String.format(java.util.Locale.US,"%.8f",v).trimEnd('0').trimEnd('.')
     private fun lobby() {
         page("lobby","Lalao")
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
