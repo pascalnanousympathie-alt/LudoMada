@@ -543,6 +543,11 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
       const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone});
+      if(!pr.accepted){
+        await prisma.transaction.update({where:{id:tx.id},data:{status:"FAILED",providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
+        await audit(prisma,req,"WALLET_DEPOSIT_REJECTED",{transactionId:tx.id,amount:p.data.amountMGA,method:p.data.method,errorCode:pr.errorCode});
+        return res.status(502).json({transactionId:tx.id,status:"FAILED",error:pr.errorCode||"PAYMENT_PROVIDER_REJECTED"});
+      }
       await prisma.transaction.update({where:{id:tx.id},data:{providerReference:pr.providerReference,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
     }
 
@@ -705,6 +710,17 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
       const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone});
+      if(!pr.accepted){
+        await prisma.$transaction(async(tx)=>{
+          const current=await tx.transaction.findUnique({where:{id:r.id}});
+          if(current?.status==="PENDING"){
+            await tx.transaction.update({where:{id:r.id},data:{status:"FAILED",providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
+            await tx.wallet.update({where:{userId:current.userId},data:{balance:{increment:current.amount}}});
+          }
+        });
+        await audit(prisma,req,"WALLET_WITHDRAW_REJECTED",{transactionId:r.id,amount:p.data.amountMGA,method:p.data.method,errorCode:pr.errorCode});
+        return res.status(502).json({transactionId:r.id,status:"FAILED",error:pr.errorCode||"PAYMENT_PROVIDER_REJECTED"});
+      }
       await prisma.transaction.update({where:{id:r.id},data:{providerReference:pr.providerReference,providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
     }
 
