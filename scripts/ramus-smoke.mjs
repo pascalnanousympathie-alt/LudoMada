@@ -50,6 +50,41 @@ function waitForSix(timeoutMs) {
   return snapshot.ok && snapshot.value.elements?.length > 0;
 }
 
+function assertMenuButton(text) {
+  const result = runAllowError("snapshot", "--session", session, "--find", text);
+  if (!result.ok || !result.value.elements?.some((e) => e.text === text)) {
+    throw new Error(`Expected offline menu button: ${text}`);
+  }
+}
+
+function assertTurn(text) {
+  const result = runAllowError("snapshot", "--session", session, "--find", text);
+  if (!result.ok || !result.value.elements?.some((e) => e.text?.startsWith(text))) {
+    throw new Error(`Expected turn state: ${text}`);
+  }
+}
+
+function advanceToTurn(targetTurn) {
+  for (let i = 0; i < 12; i++) {
+    if (runAllowError("snapshot", "--session", session, "--find", targetTurn).value?.elements?.length) {
+      return;
+    }
+
+    const roll = runAllowError("snapshot", "--session", session, "--find", "Lancer le dé");
+    if (!roll.ok || !roll.value.elements?.length) {
+      throw new Error(`Dice button missing while waiting for ${targetTurn}`);
+    }
+    const ref = roll.value.elements[0];
+    run("tap", ref.ref, "--gen", String(roll.value.gen), "--session", session);
+
+    const waited = runAllowError(
+      "wait", "--text", targetTurn, "--timeout", "2200", "--session", session
+    );
+    if (waited.ok) return;
+  }
+  throw new Error(`Turn did not reach ${targetTurn} within 12 rolls`);
+}
+
 let session = "";
 let success = false;
 try {
@@ -66,6 +101,27 @@ try {
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
+
+  // Verify the 4-player mode and its complete turn rotation.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertMenuButton("👥 3 joueurs");
+  assertMenuButton("👥 4 joueurs");
+  target = findRef("👥 4 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertTurn("Joueur 1/4");
+  for (const nextTurn of ["Joueur 2/4", "Joueur 3/4", "Joueur 4/4", "Joueur 1/4"]) {
+    advanceToTurn(nextTurn);
+  }
+  console.log("4-PLAYER TURN ROTATION PASS");
+
+  // Return to the 2-player board for the dice/pawn validation.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  target = findRef("👤 2 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertTurn("Joueur 1/2");
+  console.log("2-PLAYER REENTRY PASS");
 
   let gotSix = false;
   for (let i = 0; i < 24; i++) {
