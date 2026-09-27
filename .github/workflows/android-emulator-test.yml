@@ -36,7 +36,7 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          bash ./gradlew --no-daemon --no-parallel -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+          bash ./gradlew --no-daemon --no-parallel -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
       - name: Install Ramus CLI
         run: |
