@@ -29,9 +29,12 @@ jobs:
       - name: Configure Android SDK path
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
+      - name: Configure ARM64 AAPT2
+        working-directory: .
+        run: bash scripts/setup-termux-aapt2.sh
 
       - run: sh ./gradlew --version
-      - run: sh ./gradlew -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
