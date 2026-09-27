@@ -258,6 +258,8 @@ if (process.env.NODE_ENV !== "loadtest") {
 
 app.post("/api/auth/google/challenge",authRateLimit,async(_req,res)=>{
   try{
+    const audience=(process.env.GOOGLE_WEB_CLIENT_ID??"").trim();
+    if(!audience) return res.status(503).json({error:"GOOGLE_AUTH_NOT_CONFIGURED"});
     const now=new Date();
     await prisma.googleAuthChallenge.deleteMany({where:{expiresAt:{lt:now}}});
     const nonce=newGoogleNonce();
