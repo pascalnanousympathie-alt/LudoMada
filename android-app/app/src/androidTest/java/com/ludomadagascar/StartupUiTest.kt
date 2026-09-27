@@ -19,6 +19,7 @@ class StartupUiTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
+        context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -27,26 +28,14 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
-        assertTrue(device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 8000))
-        assertTrue(device.wait(Until.hasObject(By.descContains("Player profile")), 2000))
-        assertTrue(device.wait(Until.hasObject(By.descContains("coins")), 2000))
-        assertTrue(device.wait(Until.hasObject(By.descContains("gems")), 1000))
-        assertTrue(device.wait(Until.hasObject(By.descContains("Joue. Gagne. Grandis")), 1000))
-
-        val animA = File("/sdcard/Download/ludomada-home-animation-a.png")
-        val animB = File("/sdcard/Download/ludomada-home-animation-b.png")
-        device.takeScreenshot(animA)
-        Thread.sleep(240)
-        device.takeScreenshot(animB)
-        assertTrue("Home animation should change rendered frame", animA.exists() && animB.exists() && !animA.readBytes().contentEquals(animB.readBytes()))
-
-        val w = device.displayWidth
-        val h = device.displayHeight
-        device.click((w * 195) / 390, (h * 335) / 710)
-        assertTrue(device.wait(Until.hasObject(By.text("Choisissez le mode")), 3000))
-        val offlineOption = device.findObject(By.text("👥 Hors-ligne — 2 à 4 joueurs"))
-        assertTrue(offlineOption.exists())
-        offlineOption.click()
+        assertTrue(device.wait(Until.hasObject(By.text("Se connecter")), 8000))
+        assertTrue(device.hasObject(By.text("Créer un compte")))
+        assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
+        device.findObject(By.text("👥 Jouer hors-ligne")).click()
+        assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        val offline2p = device.findObject(By.text("👤 2 joueurs"))
+        assertTrue(offline2p.exists())
+        offline2p.click()
         assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 

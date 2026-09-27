@@ -182,8 +182,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         music=CalmMusic(this)
-        restoreSession()
-        home()
+        val hasSession = restoreSession()
+        if (hasSession && token.isNotBlank()) home() else splash()
     }
 
     private fun splash() {
@@ -213,7 +213,8 @@ class MainActivity : Activity() {
         add(u,52,5,5);add(p,52,5,9)
         add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
         add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,5)
-        add(button("G  Créer un compte avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,7)
+        add(button("G  Créer un compte avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,5)
+        add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
         add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
