@@ -39,3 +39,5 @@ audit-backup/
 loadtests/artillery/.tmp-*
 
 .ludomada-signing/
+
+_artifacts/

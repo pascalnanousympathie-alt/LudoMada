@@ -117,9 +117,6 @@ class MainActivity : Activity() {
         outer.addView(box,LinearLayout.LayoutParams(0,-2,1f)); return outer
     }
 
-    private fun premiumHero(onPlay:(()->Unit)?=null):View = PremiumHeroView(this).apply{
-        setOnClickListener{onPlay?.invoke()}
-    }
 
     private fun premiumTile(icon:String,title:String,body:String,accent:Int,action:(()->Unit)):LinearLayout{
         val box=LinearLayout(this).apply{
@@ -159,28 +156,6 @@ class MainActivity : Activity() {
             row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
         }
         root.addView(row,LinearLayout.LayoutParams(-1,dp(66)).apply{setMargins(0,dp(10),0,0)})
-    }
-
-    private class PremiumHeroView(context:Context):View(context){
-        private val p=Paint(Paint.ANTI_ALIAS_FLAG)
-        private fun dpv(v:Int)= (v*resources.displayMetrics.density).toInt()
-        override fun onDraw(c:Canvas){
-            val w=width.toFloat();val h=height.toFloat();val r=dpv(24).toFloat()
-            p.shader=LinearGradient(0f,0f,w,h,Color.rgb(6,29,69),Color.rgb(26,114,222),Shader.TileMode.CLAMP)
-            p.setShadowLayer(dpv(8).toFloat(),0f,dpv(3).toFloat(),0x55000000);c.drawRoundRect(0f,0f,w,h,r,r,p);p.clearShadowLayer();p.shader=null
-            p.color=0x20FFFFFF;c.drawCircle(w*.87f,h*.18f,h*.34f,p);p.color=0x12FFFFFF;c.drawCircle(w*.18f,h*.92f,h*.26f,p)
-            p.color=Color.WHITE;p.typeface=android.graphics.Typeface.DEFAULT_BOLD;p.textSize=dpv(12).toFloat();c.drawText("LUDOMADA",dpv(20).toFloat(),dpv(29).toFloat(),p)
-            p.textSize=dpv(23).toFloat();c.drawText("Joue. Gagne. Profite.",dpv(20).toFloat(),dpv(62).toFloat(),p)
-            p.color=0xD9FFFFFF.toInt();p.textSize=dpv(12).toFloat();c.drawText("Ludo premium • 2 à 4 joueurs",dpv(20).toFloat(),dpv(86).toFloat(),p)
-            val colors=intArrayOf(Color.rgb(220,58,68),Color.rgb(37,166,103),Color.rgb(238,183,39),Color.rgb(55,105,211));val rad=minOf(w,h)*.075f;val bx=w*.76f;val by=h*.68f
-            for(i in 0..3){
-                val a=Math.toRadians((i*90-45).toDouble());val x=bx+(Math.cos(a)*w*.15f).toFloat();val y=by+(Math.sin(a)*h*.17f).toFloat()
-                val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x66000000;setShadowLayer(dpv(3).toFloat(),0f,dpv(2).toFloat(),0x66000000)};c.drawCircle(x,y+rad*.15f,rad,sh);sh.clearShadowLayer()
-                val b=Paint(Paint.ANTI_ALIAS_FLAG);b.shader=RadialGradient(x-rad*.35f,y-rad*.4f,rad*1.1f,Color.WHITE,colors[i],Shader.TileMode.CLAMP);c.drawCircle(x,y,rad,b);b.shader=null
-            }
-            p.style=Paint.Style.STROKE;p.strokeWidth=dpv(2).toFloat();p.color=Color.rgb(237,183,52);c.drawRoundRect(w*.66f,h*.12f,w*.93f,h*.42f,dpv(12).toFloat(),dpv(12).toFloat(),p)
-            p.style=Paint.Style.FILL;p.color=0x40FFFFFF;c.drawCircle(w*.795f,h*.27f,rad*.75f,p)
-        }
     }
 
     private val sessionPrefs by lazy { getSharedPreferences("ludomada_session", Context.MODE_PRIVATE) }
@@ -535,19 +510,66 @@ class MainActivity : Activity() {
         add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
     }
 
-    private fun offlineRoll(host:LudoBoardView){offlineDice=(1..6).random();status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()}
+    private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
+    private fun offlineCanMove(pos:Int,dice:Int):Boolean = if(dice !in 1..6) false else if(pos<0) dice==6 else pos+dice<=57
+    private fun offlineHasLegalMove(playersState:org.json.JSONArray,dice:Int,player:Int):Boolean {
+        val p=playersState.optJSONObject(player)?:return false
+        val ts=p.optJSONArray("tokens")?:return false
+        for(i in 0 until minOf(4,ts.length())) if(offlineCanMove(ts.optJSONObject(i)?.optInt("pos",-1)?:-1,dice)) return true
+        return false
+    }
+    private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
+        offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
+        status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
+    }
+    private fun offlineRoll(host:LudoBoardView){
+        val ps=offlineState?.optJSONArray("players")?:return
+        offlineDice=(1..6).random()
+        if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
+            status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
+            offlineDice=0
+            root.postDelayed({if(currentScreen=="offline")advanceOfflineTurn(offlinePlayers,host)},550L)
+            return
+        }
+        status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()
+    }
     private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){
         if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return}
-        val ps=offlineState?.optJSONArray("players")?:return;val p=ps.optJSONObject(offlineTurn)?:return;val ts=p.optJSONArray("tokens")?:return;val tok=ts.optJSONObject(tokenIndex)?:return
+        val ps=offlineState?.optJSONArray("players")?:return
+        val p=ps.optJSONObject(offlineTurn)?:return
+        val ts=p.optJSONArray("tokens")?:return
+        val tok=ts.optJSONObject(tokenIndex)?:return
         val old=tok.optInt("pos",-1);val dice=offlineDice
-        if(old<0 && dice!=6){status.text="Mila 6 vao mivoaka ny pion.";return}
+        if(!offlineCanMove(old,dice)){status.text=if(old<0)"Mila 6 vao mivoaka ny pion." else "Tsy afaka mihetsika: tsy ampy ny toerana sisa.";return}
         val next=if(old<0)0 else old+dice
-        if(next>51){status.text="Tsy afaka mihetsika: mihoatra ny farany.";return}
-        tok.put("pos",next);offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
-        status.text="Joueur ${offlineTurn+1} • Dé: 0 • Déplacement…"
-        root.postDelayed({offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn;status.text="Joueur ${offlineTurn+1}/$players • Dé: $offlineDice";host.invalidate()},700L)
+        tok.put("pos",next)
+        var captured=0
+        val landing=offlineGlobalSquare(offlineTurn,next)
+        if(landing!=null){
+            val safe=intArrayOf(0,8,13,21,26,34,39,47).contains(landing)
+            if(!safe){
+                for(pi in 0 until minOf(players,ps.length())){
+                    if(pi==offlineTurn)continue
+                    val other=ps.optJSONObject(pi)?:continue
+                    val ots=other.optJSONArray("tokens")?:continue
+                    for(ti in 0 until minOf(4,ots.length())){
+                        val ot=ots.optJSONObject(ti)?:continue
+                        if(offlineGlobalSquare(pi,ot.optInt("pos",-1))==landing){ot.put("pos",-1);captured++}
+                    }
+                }
+            }
+        }
+        offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        val finished=(0 until minOf(4,ts.length())).all{ts.optJSONObject(it)?.optInt("pos",-1)==57}
+        if(finished){
+            offlineState?.put("phase","FINISHED")?.put("winnerId","offline-$offlineTurn")
+            status.text="🏆 Joueur ${offlineTurn+1} gagne la partie !"
+            host.invalidate();return
+        }
+        val extra=dice==6 || captured>0
+        status.text="Joueur ${offlineTurn+1} • Dé: 0 • ${if(captured>0)"Capture ! " else ""}Déplacement…"
+        root.postDelayed({if(currentScreen=="offline"){if(extra){status.text="Joueur ${offlineTurn+1}/$players • Rejouez — Dé: 0"}else advanceOfflineTurn(players,host)}},700L)
     }
-
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
@@ -831,7 +853,15 @@ class MainActivity : Activity() {
             var rr=fallback[pi][ti].first;var cc=fallback[pi][ti].second
             val ps=state?.optJSONArray("players");val ts=ps?.optJSONObject(pi)?.optJSONArray("tokens")
             val pos=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            if(pos>=0){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
+            if(pos in 0..51){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
+            else if(pos in 52..57){
+                val finish=arrayOf(
+                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f))
+                val k=(pos-52)*2;rr=finish[pi][k];cc=finish[pi][k+1]
+            }
             return floatArrayOf(rr,cc)
         }
         fun animateState(){

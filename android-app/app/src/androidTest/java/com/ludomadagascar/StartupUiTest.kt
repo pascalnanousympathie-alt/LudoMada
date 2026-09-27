@@ -44,11 +44,10 @@ class StartupUiTest {
         var gotSix = false
         repeat(12) {
             device.findObject(By.text("Lancer le dé")).click()
-            if (device.wait(Until.hasObject(By.text("Joueur 1 • Dé: 6")), 700)) {
+            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 700)) {
                 gotSix = true
                 return@repeat
             }
-            if (device.wait(Until.hasObject(By.text("Joueur 1 • Dé: 6")), 150)) gotSix = true
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
