@@ -9,15 +9,21 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends View {
-  public PremiumHeroViewV2(Context c){super(c);setVisibility(INVISIBLE);}
-  @Override protected void onAttachedToWindow(){super.onAttachedToWindow();postDelayed(()->install(),80);}
-  private void install(){
+  private final HomeView home;
+  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
+  @Override protected void onAttachedToWindow(){super.onAttachedToWindow();invalidate();}
+  @Override protected void onDraw(Canvas c){
+    home.layout(0,0,getWidth(),getHeight());
+    home.draw(c);
+  }
+  @Override public boolean onTouchEvent(MotionEvent e){return home.onTouchEvent(e);}
+  private void install() {
     if(!(getParent() instanceof ViewGroup))return;
     Activity a=(Activity)getContext(); ViewGroup host=(ViewGroup)getParent();
     host.removeAllViews();
     FrameLayout f=new FrameLayout(a); f.setBackgroundColor(Color.rgb(7,8,37));
     host.addView(f,new ViewGroup.LayoutParams(-1,-1));
-    f.addView(new HomeView(a),new FrameLayout.LayoutParams(-1,-1));
+    f.addView(home,new FrameLayout.LayoutParams(-1,-1));
   }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}

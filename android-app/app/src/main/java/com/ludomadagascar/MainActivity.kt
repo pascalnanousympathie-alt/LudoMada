@@ -299,52 +299,9 @@ class MainActivity : Activity() {
     }
 
     private fun home() {
-        page("home","Accueil")
+        currentScreen="home"
+        setContentView(PremiumHeroViewV2(this))
         refreshAccountBalance()
-        add(label(if(username.isBlank())"Bienvenue" else "Bonjour, $username",25f,true,Color.rgb(18,30,48)),36,0,2)
-        add(label("Ton espace de jeu premium",13f,false,Color.rgb(105,116,134)),24,0,7)
-        val metrics=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        fun m(v:String,t:String)=TextView(this).apply{text="$v\n$t";textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.rgb(61,77,100));background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(Color.WHITE,Color.rgb(235,243,253))).apply{cornerRadius=dp(15).toFloat();setStroke(dp(1),Color.rgb(216,227,241))}}
-        metrics.addView(m("2–4","JOUEURS"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(4),0)})
-        metrics.addView(m("500+","MISES AR"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        metrics.addView(m("24/7","JEU"),LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),0,0,0)})
-        add(metrics,48,0,9)
-        root.addView(premiumHero{lobby()},LinearLayout.LayoutParams(-1,dp(212)).apply{setMargins(0,dp(2),0,dp(10))})
-
-        val walletCard=card("Portefeuille","Solde • dépôt • retrait",emerald).apply{setOnClickListener{wallet()}}
-        add(walletCard,78,3,5)
-
-        if(token.isBlank()){
-            add(button("♙  Se connecter / Inscription",Color.rgb(43,110,205)){login()},50,2,8)
-        } else {
-            add(card("Compte connecté",if(username.isBlank())"Session LudoMada active" else username,emerald),66,2,8)
-        }
-
-        sectionTitle("Jouer maintenant","Choisis ton expérience")
-        add(button("🎲  Jouer en ligne  •  dès 500 Ar",royal){lobby()},54,3,5)
-        add(button("☼  Jouer hors-ligne  •  sans Internet",Color.rgb(121,82,188)){offlineMenu()},54,2,8)
-
-        sectionTitle("Explorer","Tout LudoMada au même endroit")
-        val grid1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        grid1.addView(premiumTile("▣","Tutoriels","Apprendre à jouer",Color.rgb(66,113,196)){tutorials()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(0,0,dp(4),dp(4))})
-        grid1.addView(premiumTile("★","Événements","Défis & bonus",Color.rgb(214,151,29)){events()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(dp(4),0,0,dp(4))})
-        add(grid1)
-        val grid2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        grid2.addView(premiumTile("♟","Social","Amis & parties",Color.rgb(126,82,188)){social()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(0,0,dp(4),dp(4))})
-        grid2.addView(premiumTile("◆","Boutique","Objets premium",Color.rgb(19,153,125)){shop()},LinearLayout.LayoutParams(0,-2,1f).apply{setMargins(dp(4),0,0,dp(4))})
-        add(grid2)
-
-        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        actions.addView(button(musicLabel(),Color.rgb(43,57,79)){music.toggle();updateMusicButton()},LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(7),dp(4),0)})
-        actions.addView(
-            if(token.isBlank())
-                button("♙  Se connecter",Color.rgb(43,110,205)){login()}
-            else
-                button("Déconnexion",Color.rgb(181,57,68)){token="";refreshToken="";userId="";username="";gameId="";accountBalanceMGA=0L;sessionPrefs.edit().clear().apply();home()},
-            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(7),0,0)}
-        )
-        root.addView(actions)
-        bottomNav("home")
     }
 
     private fun profile() {
