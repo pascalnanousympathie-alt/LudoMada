@@ -3,6 +3,7 @@ package com.ludomadagascar;
 import android.app.Activity;
 import android.content.Context;
 import android.graphics.*;
+import com.ludomadagascar.R;
 import android.view.*;
 import android.widget.*;
 import java.lang.reflect.Field;
@@ -10,8 +11,18 @@ import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends View {
   private final HomeView home;
+  private final Runnable homeBgFlip=new Runnable(){
+    @Override public void run(){
+      home.flipBackground();invalidate();postDelayed(this,6000L);
+    }
+  };
   public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
-  @Override protected void onAttachedToWindow(){super.onAttachedToWindow();invalidate();}
+  @Override protected void onAttachedToWindow(){
+    super.onAttachedToWindow();postDelayed(homeBgFlip,6000L);invalidate();
+  }
+  @Override protected void onDetachedFromWindow(){
+    removeCallbacks(homeBgFlip);super.onDetachedFromWindow();
+  }
   @Override protected void onDraw(Canvas c){
     setContentDescription("LudoMada Premium Home | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
     home.layout(0,0,getWidth(),getHeight());
@@ -44,12 +55,16 @@ public class PremiumHeroViewV2 extends View {
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
     Bitmap bgA,bgB;
+    boolean bgBActive=false;
+    long bgSwitchMs=0L;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_SOFTWARE,null);
-      int a=getResources().getIdentifier("bg_baobab","drawable",getContext().getPackageName());
-      int b=getResources().getIdentifier("bg_alt","drawable",getContext().getPackageName());
-      if(a!=0)bgA=BitmapFactory.decodeResource(getResources(),a);
-      if(b!=0)bgB=BitmapFactory.decodeResource(getResources(),b);
+      bgA=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab);
+      bgB=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt);
+      p.setFilterBitmap(true);
+    }
+    void flipBackground(){
+      bgBActive=!bgBActive;bgSwitchMs=System.currentTimeMillis();invalidate();
     }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
@@ -64,6 +79,21 @@ public class PremiumHeroViewV2 extends View {
       p.setShadowLayer(d(4),0,d(2),0xAA000000);p.setShader(new RadialGradient(d(x-r*.35f),d(y-r*.45f),d(r*1.3f),Color.WHITE,col,Shader.TileMode.CLAMP));
       c.drawCircle(d(x),d(y),d(r),p);p.setShader(null);p.clearShadowLayer();p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.28f),d(y-r*.34f),d(r*.18f),p);
     }
+    void boardPawn(Canvas c,float x,float y,float r,int col){
+      p.setShadowLayer(d(6),0,d(4),0xAA000000);
+      Path q=new Path();
+      q.moveTo(d(x-r*.9f),d(y+r*.65f));
+      q.cubicTo(d(x-r*.72f),d(y+r*.95f),d(x+r*.72f),d(y+r*.95f),d(x+r*.9f),d(y+r*.65f));
+      q.cubicTo(d(x+r*.55f),d(y+r*.35f),d(x+r*.46f),d(y+r*.15f),d(x+r*.38f),d(y-r*.05f));
+      q.cubicTo(d(x+r*.68f),d(y-r*.28f),d(x+r*.55f),d(y-r*.8f),d(x),d(y-r*.92f));
+      q.cubicTo(d(x-r*.55f),d(y-r*.8f),d(x-r*.68f),d(y-r*.28f),d(x-r*.38f),d(y-r*.05f));
+      q.cubicTo(d(x-r*.46f),d(y+r*.15f),d(x-r*.55f),d(y+r*.35f),d(x-r*.9f),d(y+r*.65f));q.close();
+      int hi=Color.rgb(Math.min(255,Color.red(col)+90),Math.min(255,Color.green(col)+90),Math.min(255,Color.blue(col)+90));
+      p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.7f),d(y+r),hi,col,Shader.TileMode.CLAMP));
+      c.drawPath(q,p);p.setShader(null);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x80FFFFFF);c.drawPath(q,p);p.setStyle(Paint.Style.FILL);
+      p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.25f),d(y-r*.48f),d(r*.16f),p);
+    }
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
       box(c,l,y,r,b,16,fill,stroke);t(c,icon,l+17,(y+b)/2f+2,18,gold2,true,true);t(c,title,l+34,y+21,10.5f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.5f,0xD8FFFFFF,false,false);
     }
@@ -75,21 +105,21 @@ public class PremiumHeroViewV2 extends View {
       c.drawBitmap(bm,null,new RectF(left,top,left+dw,top+dh),p);p.setAlpha(255);
     }
     void background(Canvas c,float W,float H){
-      long now=System.currentTimeMillis()%10000L;
-      boolean first=now<5000L;
-      float f=now<1800L?now/1800f:now>5000L?(now-5000L)/1800f:0f;
-      if(first){drawCover(c,bgA,1f-f,W,H);drawCover(c,bgB,f,W,H);}
-      else {float q=Math.min(1f,(now-5000L)/1800f);drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
-      p.setShader(new LinearGradient(0,0,0,H,0x77030D2E,0xCC07102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
-      p.setShader(new RadialGradient(W*.5f,H*.38f,W*.55f,0x22FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.5f,H*.38f,W*.55f,p);p.setShader(null);
-      postInvalidateDelayed(80);
+      float q=Math.min(1f,Math.max(0f,(System.currentTimeMillis()-bgSwitchMs)/1200f));
+      if(bgBActive){drawCover(c,bgA,1f-q,W,H);drawCover(c,bgB,q,W,H);}
+      else {drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
+      p.setShader(new LinearGradient(0,0,0,H,0x55030D2E,0xB807102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
+      p.setShader(new RadialGradient(W*.5f,H*.38f,W*.55f,0x20FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.5f,H*.38f,W*.55f,p);p.setShader(null);
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/900.0)*.018f;
       c.save();c.scale(pulse,pulse,d(195),d(296));
       p.setShadowLayer(d(16),0,d(10),0x99000000);
       Path wood=new Path();wood.moveTo(d(101),d(218));wood.quadTo(d(101),d(208),d(112),d(204));wood.lineTo(d(278),d(204));wood.quadTo(d(289),d(208),d(289),d(218));wood.lineTo(d(283),d(385));wood.quadTo(d(282),d(395),d(270),d(399));wood.lineTo(d(120),d(399));wood.quadTo(d(108),d(395),d(107),d(385));wood.close();
-      p.setShader(new LinearGradient(d(105),d(205),d(285),d(400),Color.rgb(100,48,18),Color.rgb(33,16,11),Shader.TileMode.CLAMP));p.setStyle(Paint.Style.FILL);c.drawPath(wood,p);p.setShader(null);p.clearShadowLayer();
+      p.setShader(new LinearGradient(d(105),d(205),d(285),d(400),Color.rgb(118,61,23),Color.rgb(31,14,9),Shader.TileMode.CLAMP));p.setStyle(Paint.Style.FILL);c.drawPath(wood,p);p.setShader(null);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x443D1A09);
+      for(int i=0;i<9;i++){float yy=224+i*18;c.drawLine(d(110+i*0.4f),d(yy),d(280-i*0.6f),d(yy+((i&1)==0?1:-1)),p);}
+      p.setStyle(Paint.Style.FILL);
       box(c,110,214,280,388,22,Color.rgb(246,237,214),Color.rgb(244,191,67));
       p.setShader(new LinearGradient(d(112),d(216),d(278),d(388),Color.WHITE,Color.rgb(216,202,174),Shader.TileMode.CLAMP));c.drawRoundRect(d(112),d(216),d(278),d(388),d(22),d(22),p);p.setShader(null);
       float x0=116,y0=220,cs=40.5f;
@@ -101,7 +131,7 @@ public class PremiumHeroViewV2 extends View {
       p.setColor(green);c.drawRoundRect(d(x0+81),d(y0+81),d(x0+162),d(y0+162),d(10),d(10),p);
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(0xAAFFFFFF);
       c.drawRoundRect(d(x0+8),d(y0+8),d(x0+73),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+8),d(x0+154),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+8),d(y0+89),d(x0+73),d(y0+154),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+89),d(x0+154),d(y0+154),d(12),d(12),p);p.setStyle(Paint.Style.FILL);
-      pawn(c,x0+40.5f,y0+40.5f,16.5f,red);pawn(c,x0+121.5f,y0+40.5f,16.5f,blue);pawn(c,x0+40.5f,y0+121.5f,16.5f,yellow);pawn(c,x0+121.5f,y0+121.5f,16.5f,green);
+      boardPawn(c,x0+40.5f,y0+46f,16.5f,red);boardPawn(c,x0+121.5f,y0+46f,16.5f,blue);boardPawn(c,x0+40.5f,y0+127f,16.5f,yellow);boardPawn(c,x0+121.5f,y0+127f,16.5f,green);
       Path cross=new Path();cross.moveTo(d(178),d(220));cross.lineTo(d(199),d(241));cross.lineTo(d(220),d(220));cross.lineTo(d(220),d(301));cross.lineTo(d(199),d(322));cross.lineTo(d(178),d(301));cross.close();p.setColor(Color.rgb(255,195,53));c.drawPath(cross,p);
       float spin=(System.currentTimeMillis()%2400L)/2400f*360f;c.save();c.rotate(spin,d(199),d(299));
       p.setShadowLayer(d(7),0,d(4),0xA0000000);p.setShader(new LinearGradient(d(179),d(276),d(219),d(322),Color.WHITE,Color.rgb(205,194,169),Shader.TileMode.CLAMP));c.drawRoundRect(d(177),d(274),d(221),d(320),d(9),d(9),p);p.setShader(null);p.clearShadowLayer();
@@ -109,28 +139,34 @@ public class PremiumHeroViewV2 extends View {
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.3f));p.setColor(0x99FFF1A6);c.drawRoundRect(d(102),d(218),d(278),d(388),d(22),d(22),p);p.setStyle(Paint.Style.FILL);
       c.restore();postInvalidateDelayed(50);
     }
+    private int topInsetPx(){
+      WindowInsets insets=getRootWindowInsets();
+      return insets==null?0:Math.max(0,insets.getSystemWindowInsetTop());
+    }
     private int bottomInsetPx(){
       WindowInsets insets=getRootWindowInsets();
       return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
     }
     @Override protected void onDraw(Canvas c){
       float den=getResources().getDisplayMetrics().density;
-      int bottomInset=bottomInsetPx();
-      float availableH=Math.max(1f,getHeight()-bottomInset);
+      int topInset=topInsetPx(),bottomInset=bottomInsetPx();
+      float availableH=Math.max(1f,getHeight()-topInset-bottomInset);
       s=Math.min(getWidth()/(390f*den),availableH/(710f*den));
-      float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(availableH-710f*sc)/2f;
-      c.save();c.translate(ox,oy);
-      background(c,d(390),d(710));
+      float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=topInset+(availableH-710f*sc)/2f;
+      c.save();
+      background(c,getWidth(),getHeight());
+      c.translate(ox,oy);
       p.setColor(0x223C8FE8);c.drawCircle(d(77),d(190),d(88),p);p.setColor(0x2848D5B1);c.drawCircle(d(329),d(246),d(105),p);
       Path m=new Path();m.moveTo(d(0),d(318));m.lineTo(d(62),d(250));m.lineTo(d(104),d(301));m.lineTo(d(151),d(252));m.lineTo(d(207),d(311));m.lineTo(d(271),d(247));m.lineTo(d(325),d(300));m.lineTo(d(390),d(242));m.lineTo(d(390),d(365));m.lineTo(d(0),d(365));m.close();p.setColor(0x55224B8D);c.drawPath(m,p);
       p.setShader(new RadialGradient(d(55),d(555),d(42),Color.rgb(255,205,88),0x00FFC95C,Shader.TileMode.CLAMP));c.drawCircle(d(55),d(555),d(42),p);p.setShader(null);
       p.setColor(0x5532141E);c.drawRect(d(37),d(548),d(44),d(640),p);c.drawCircle(d(28),d(545),d(18),p);c.drawCircle(d(47),d(540),d(22),p);c.drawCircle(d(15),d(548),d(15),p);
       p.setColor(0x48201418);c.drawRect(d(354),d(560),d(361),d(640),p);c.drawCircle(d(343),d(555),d(20),p);c.drawCircle(d(364),d(550),d(24),p);c.drawCircle(d(379),d(558),d(16),p);
       String u=str("username"),tok=str("token");long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>10?u.substring(0,10)+"…":u);
       box(c,7,6,383,68,24,Color.rgb(9,25,71),Color.rgb(37,116,236));
       p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,11,blue);
       p.setColor(Color.WHITE);c.drawRect(d(59),d(26),d(78),d(36),p);p.setColor(Color.rgb(239,63,75));c.drawRect(d(59),d(26),d(78),d(31),p);p.setColor(Color.rgb(37,166,105));c.drawRect(d(59),d(31),d(78),d(36),p);
-      t(c,u.isEmpty()?"Player_Mada":u,84,31,12.5f,Color.WHITE,true,false);t(c,"Joueur LudoMada",84,50,8.5f,0xE1FFFFFF,false,false);
+      t(c,dn,84,31,12.5f,Color.WHITE,true,false);t(c,"Joueur LudoMada",84,50,8.5f,0xE1FFFFFF,false,false);
       box(c,84,55,145,63,4,Color.rgb(5,18,48),Color.rgb(37,71,126));box(c,85,56,121,62,3,Color.rgb(34,221,112),0);
       box(c,151,17,222,57,19,Color.rgb(10,35,84),Color.rgb(69,139,255));t(c,"C",164,43,13,gold2,true,true);t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
       box(c,250,17,309,57,19,Color.rgb(8,35,83),Color.rgb(55,151,239));t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);t(c,"—",291,42,10,Color.WHITE,true,true);box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
@@ -146,7 +182,7 @@ public class PremiumHeroViewV2 extends View {
       menu(c,8,218,126,266,Color.rgb(12,147,87),Color.rgb(29,223,137),"▣","MON WALLET","Dépôt / Retrait / Historique");
       menu(c,8,272,126,320,Color.rgb(102,30,202),Color.rgb(195,81,255),"●","PROFIL","Infos • Paramètres");
       menu(c,8,326,126,374,Color.rgb(12,131,183),Color.rgb(33,215,246),"▤","TUTORIELS","Apprends à jouer");
-      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));t(c,"BONUS DE BIENVENUE",324,125,9.5f,Color.WHITE,true,true);t(c,"Bonus à venir",324,145,11,gold2,true,true);t(c,"Offre future — aucun crédit fictif",324,158,6.6f,0xD8FFFFFF,false,true);box(c,286,147,363,169,11,Color.rgb(255,202,28),gold2);t(c,"BIENTÔT",324,162,8.5f,Color.rgb(75,35,2),true,true);
+      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));t(c,"BONUS DE BIENVENUE",324,125,9.5f,Color.WHITE,true,true);t(c,"À venir prochainement",324,145,9.2f,gold2,true,true);t(c,"Aucun crédit fictif",324,158,7f,0xD8FFFFFF,false,true);box(c,286,149,363,169,11,Color.rgb(255,202,28),gold2);t(c,"BIENTÔT",324,163,8.5f,Color.rgb(75,35,2),true,true);
       box(c,266,181,382,232,16,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MISE ACTUELLE",324,198,7.6f,Color.WHITE,true,true);t(c,fee+" Ar",324,219,11,gold2,true,true);t(c,"⌄",369,219,14,Color.WHITE,true,true);
       box(c,266,239,382,352,17,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MODE DE JEU",324,257,8,Color.WHITE,true,true);
       box(c,275,264,373,307,15,Color.rgb(24,105,223),Color.rgb(61,160,255));t(c,"◎",291,289,15,Color.WHITE,true,true);t(c,"En ligne",319,283,10,Color.WHITE,true,true);t(c,"Joueurs réels  ›",326,298,7.2f,0xD7FFFFFF,false,true);
@@ -164,8 +200,9 @@ public class PremiumHeroViewV2 extends View {
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
       float den=getResources().getDisplayMetrics().density;
-      float availableH=Math.max(1f,getHeight()-bottomInsetPx());
-      float sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=(availableH-710f*sc)/2f;
+      int topInset=topInsetPx(),bottomInset=bottomInsetPx();
+      float availableH=Math.max(1f,getHeight()-topInset-bottomInset);
+      float sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=topInset+(availableH-710f*sc)/2f;
       float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
       if(x<0||x>390||y<0||y>710)return true;
       if(y<68){

@@ -94,7 +94,7 @@ try {
   session = started.session;
   console.log(`Ramus session: ${session}`);
   runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
-  run("screenshot", "--session", session, "--out", "ramus-evidence/home.jpg");
+  run("screenshot", "--session", session, "--out", "ramus-evidence/login.jpg");
 
   let target = findRef("👥 Jouer hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen),
@@ -103,6 +103,18 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
+  // Offline → Accueil gives us the real premium Home without requiring credentials.
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/home-a.jpg");
+  runAllowError("wait", "--timeout", "6200", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/home-b.jpg");
+
+  // The premium Home is a custom Canvas view, so semantic refs expose the
+  // whole view rather than each painted card. Tap the offline card directly.
+  run("tap", "0.83,0.46", "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
