@@ -2,6 +2,7 @@ package com.ludomadagascar
 
 import android.app.*
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.view.*
@@ -15,6 +16,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import kotlin.concurrent.thread
+import androidx.credentials.CredentialManager
+import androidx.credentials.CredentialManagerCallback
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialException
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 
 class MainActivity : Activity() {
     private val apiBase = BuildConfig.API_BASE_URL
@@ -32,6 +42,7 @@ class MainActivity : Activity() {
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var movePending = false
+    private val credentialManager by lazy { CredentialManager.create(this) }
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
@@ -213,7 +224,7 @@ class MainActivity : Activity() {
         add(u,52,5,5);add(p,52,5,9)
         add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
         add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,5)
-        add(button("G  Créer un compte avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,5)
+        add(button("G  Continuer avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,5)
         add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
@@ -221,11 +232,66 @@ class MainActivity : Activity() {
     }
 
     private fun googleSignup() {
-        AlertDialog.Builder(this)
-            .setTitle("Google")
-            .setMessage("Ny connexion Google dia mbola tsy configurée amin'ny serveur LudoMada. Ampiasao aloha Nom/email/mobile + mot de passe.")
-            .setPositiveButton("AOKA", null)
-            .show()
+        status.text="Fanamarinana Google..."
+        post("/api/auth/google/challenge",JSONObject(),null,{j->
+            val nonce=j.optString("nonce")
+            val clientId=j.optString("serverClientId").trim()
+            if(nonce.isBlank() || clientId.isBlank()){
+                status.text="Google Sign-In tsy mbola configuré amin'ny serveur."
+                return@post
+            }
+            val option=GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(clientId)
+                .setAutoSelectEnabled(false)
+                .setNonce(nonce)
+                .build()
+            val request=GetCredentialRequest.Builder()
+                .addCredentialOption(option)
+                .build()
+            credentialManager.getCredentialAsync(
+                this,request,CancellationSignal(),mainExecutor,
+                object:CredentialManagerCallback<GetCredentialResponse,GetCredentialException>{
+                    override fun onResult(result:GetCredentialResponse){
+                        val credential=result.credential
+                        if(credential is CustomCredential && credential.type==GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL){
+                            try{
+                                val googleCredential=GoogleIdTokenCredential.createFrom(credential.data)
+                                finishGoogleSignIn(googleCredential.idToken,nonce)
+                            }catch(_:GoogleIdTokenParsingException){
+                                status.text="Google: credential invalide."
+                            }
+                        }else{
+                            status.text="Google: type de credential non supporté."
+                        }
+                    }
+                    override fun onError(e:GetCredentialException){
+                        status.text="Google: "+(e.message ?: "connexion annulée")
+                    }
+                }
+            )
+        },{msg->status.text=msg})
+    }
+
+    private fun finishGoogleSignIn(idToken:String,nonce:String) {
+        if(idToken.isBlank() || nonce.isBlank()){
+            status.text="Google: credential manquante."
+            return
+        }
+        status.text="Validation du compte Google..."
+        post("/api/auth/google",JSONObject().put("idToken",idToken).put("nonce",nonce),null,{j->
+            token=j.optString("accessToken")
+            refreshToken=j.optString("refreshToken")
+            val usr=j.optJSONObject("user")
+            userId=usr?.optString("id").orEmpty()
+            username=usr?.optString("username").orEmpty()
+            if(token.isBlank() || refreshToken.isBlank() || userId.isBlank()){
+                status.text="Google: session serveur invalide."
+            }else{
+                saveSession()
+                home()
+            }
+        },{msg->status.text=msg})
     }
 
     private fun registerDialog() {

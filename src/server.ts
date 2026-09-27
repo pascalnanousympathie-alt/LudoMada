@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
+import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -254,6 +255,69 @@ if (process.env.NODE_ENV !== "loadtest") {
     legacyHeaders: false
   }));
 }
+
+app.post("/api/auth/google/challenge",authRateLimit,async(_req,res)=>{
+  try{
+    const now=new Date();
+    await prisma.googleAuthChallenge.deleteMany({where:{expiresAt:{lt:now}}});
+    const nonce=newGoogleNonce();
+    await prisma.googleAuthChallenge.create({data:{nonceHash:hashGoogleNonce(nonce),expiresAt:new Date(Date.now()+5*60_000)}});
+    return res.json({nonce,expiresInSeconds:300,serverClientId:(process.env.GOOGLE_WEB_CLIENT_ID??"").trim()});
+  }catch(e:any){
+    console.error("GOOGLE CHALLENGE ERROR:",{name:e?.name,message:e?.message});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.post("/api/auth/google",authRateLimit,async(req,res)=>{
+  try{
+    const b=z.object({idToken:z.string().min(100).max(10000),nonce:z.string().min(20).max(256)}).parse(req.body);
+    const audience=(process.env.GOOGLE_WEB_CLIENT_ID??"").trim();
+    if(!audience) return res.status(503).json({error:"GOOGLE_AUTH_NOT_CONFIGURED"});
+
+    const challenge=await prisma.googleAuthChallenge.findUnique({where:{nonceHash:hashGoogleNonce(b.nonce)}});
+    if(!challenge || challenge.consumedAt || challenge.expiresAt<=new Date()) return res.status(401).json({error:"Invalid Google sign-in challenge"});
+
+    const identity=await verifyGoogleIdToken(b.idToken,audience,b.nonce);
+    const consumed=await prisma.googleAuthChallenge.updateMany({
+      where:{id:challenge.id,consumedAt:null,expiresAt:{gt:new Date()}},
+      data:{consumedAt:new Date()}
+    });
+    if(consumed.count!==1) return res.status(401).json({error:"Invalid Google sign-in challenge"});
+
+    let user=await prisma.user.findUnique({where:{googleSub:identity.sub}});
+    if(!user){
+      const emailMatch=await prisma.user.findFirst({where:{email:{equals:identity.email,mode:"insensitive"}}});
+      if(emailMatch) return res.status(409).json({error:"GOOGLE_EMAIL_ALREADY_REGISTERED"});
+    }
+
+    if(!user){
+      const passwordHash=await bcrypt.hash(randomUUID(),12);
+      user=await prisma.user.create({data:{
+        username:googleUsername(identity.email,identity.sub),
+        email:identity.email,
+        googleSub:identity.sub,
+        passwordHash,
+        wallet:{create:{}}
+      }});
+    }else if(!user.googleSub){
+      user=await prisma.user.update({where:{id:user.id},data:{googleSub:identity.sub}});
+    }
+
+    const refresh=refreshToken();
+    await prisma.refreshSession.create({data:{userId:user.id,tokenHash:hashToken(refresh),expiresAt:new Date(Date.now()+REFRESH_DAYS*86400000)}});
+    const access=issueAccessToken(user.id,"PLAYER",JWT_SECRET);
+    await audit(prisma,{auth:{sub:user.id},requestId:req.get("X-Request-ID")??randomUUID(),headers:req.headers,socket:req.socket},"AUTH_GOOGLE");
+    return res.json({accessToken:access,refreshToken:refresh,user:{id:user.id,username:user.username}});
+  }catch(e:any){
+    if(e instanceof z.ZodError) return res.status(400).json({error:"Invalid request"});
+    if(e?.message==="GOOGLE_EMAIL_NOT_VERIFIED") return res.status(401).json({error:"Google account email is not verified"});
+    if(e?.message==="GOOGLE_TOKEN_INVALID") return res.status(401).json({error:"Invalid Google credential"});
+    if(e?.code==="P2002") return res.status(409).json({error:"Google account already linked"});
+    console.error("GOOGLE AUTH ERROR:",{name:e?.name,code:e?.code,message:e?.message,requestId:req.get("X-Request-ID")});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
 
 app.post("/api/auth/register",async(req,res)=>{
   try {

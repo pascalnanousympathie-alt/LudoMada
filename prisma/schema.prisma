@@ -44,6 +44,7 @@ model User {
   id                 String              @id @default(cuid())
   username           String              @unique
   email              String?             @unique
+  googleSub          String?             @unique
   phoneNumber        String?             @unique
   passwordHash       String
   wallet             Wallet?
@@ -54,6 +55,16 @@ model User {
   createdAt          DateTime            @default(now())
   gameParticipants   GameParticipant[]
   createdGames       Game[]              @relation("GameCreator")
+}
+
+model GoogleAuthChallenge {
+  id         String   @id @default(cuid())
+  nonceHash  String   @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([expiresAt])
 }
 
 model Wallet {
