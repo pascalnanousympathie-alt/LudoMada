@@ -55,7 +55,7 @@ jobs:
           RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
         run: |
           set -o pipefail
-          node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
+          /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
 
       - name: Upload APK
         if: always()
