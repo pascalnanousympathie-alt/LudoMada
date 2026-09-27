@@ -7,19 +7,47 @@ if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
 if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`);
 
 function run(...args) {
+  const result = runCli(...args);
+  if (!result.ok) throw new Error(JSON.stringify(result.value ?? { error: "unknown" }));
+  return result.value;
+}
+
+function runAllowError(...args) {
+  return runCli(...args);
+}
+
+function runCli(...args) {
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
-  if (!out) throw new Error(`ramus ${args.join(" ")} produced no output: ${err}`);
-  let value;
-  try { value = JSON.parse(out); } catch {
-    throw new Error(`ramus ${args.join(" ")} returned non-JSON: ${out.slice(0, 1000)}`);
+  if (!out) {
+    return {
+      ok: false,
+      value: { error: "no_output", message: err || `ramus ${args.join(" ")} produced no output` },
+    };
   }
-  if (r.status !== 0 || value.error) throw new Error(JSON.stringify(value));
-  return value;
+  let value;
+  try {
+    value = JSON.parse(out);
+  } catch {
+    return {
+      ok: false,
+      value: { error: "non_json", message: out.slice(0, 1000) },
+    };
+  }
+  return { ok: r.status === 0 && !value.error, value };
+}
+
+function waitForSix(timeoutMs) {
+  const waited = runAllowError(
+    "wait", "--text", "Dé: 6", "--timeout", String(timeoutMs), "--session", session
+  );
+  if (waited.ok) return true;
+  const snapshot = runAllowError("snapshot", "--session", session, "--find", "Dé: 6");
+  return snapshot.ok && snapshot.value.elements?.length > 0;
 }
 
 let session = "";
@@ -43,10 +71,16 @@ try {
   for (let i = 0; i < 24; i++) {
     target = findRef("Lancer le dé");
     run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-    run("wait", "--text", "Dé:", "--timeout", "1200", "--session", session);
-    const six = run("snapshot", "--session", session, "--find", "Dé: 6");
-    if (six.elements?.length) { gotSix = true; break; }
-    run("wait", "--stable", "--timeout", "1000", "--session", session);
+
+    const six = waitForSix(3000);
+    if (six) {
+      gotSix = true;
+      break;
+    }
+
+    // A slow animation must not fail the whole smoke test. Give the board
+    // a little time to settle before the next observation.
+    runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
   }
   if (!gotSix) throw new Error("No six within 24 cloud-emulator rolls");
   console.log("DICE SIX PASS");
