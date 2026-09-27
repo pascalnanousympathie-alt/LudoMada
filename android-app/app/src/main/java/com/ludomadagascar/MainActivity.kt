@@ -76,8 +76,14 @@ class MainActivity : Activity() {
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
         val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(20),dp(18),dp(20),dp(20))
             background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+        }
+        content.setOnApplyWindowInsetsListener { v,insets ->
+            val bottom=insets.systemWindowInsetBottom.coerceAtLeast(0)
+            v.setPadding(dp(20),dp(18),dp(20),dp(20)+bottom)
+            insets
         }
         root=content
         if(name=="board" || name=="offline") setContentView(root)
@@ -85,6 +91,7 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
+        content.requestApplyInsets()
         addTopBar(title)
         return content
     }
@@ -879,7 +886,10 @@ class MainActivity : Activity() {
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
             val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
-            val ox=(w-s)/2f; val oy=(h-s)/2f; val cell=s/15f
+            val ox=(w-s)/2f
+            val topSpace=(h-s).coerceAtLeast(0f)
+            val oy=topSpace*.20f
+            val cell=s/15f
             val board=Paint(Paint.ANTI_ALIAS_FLAG)
             board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
             board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)

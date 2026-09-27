@@ -71,10 +71,16 @@ public class PremiumHeroViewV2 extends View {
       float phase=(System.currentTimeMillis()%2200L)/2200f; float angle=(float)Math.sin(phase*Math.PI*2.0)*7.0f; c.save();c.rotate(angle,d(200),d(297));
       box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);c.restore();postInvalidateDelayed(50);
     }
+    private int bottomInsetPx(){
+      WindowInsets insets=getRootWindowInsets();
+      return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
+    }
     @Override protected void onDraw(Canvas c){
       float den=getResources().getDisplayMetrics().density;
-      s=Math.min(getWidth()/(390f*den),getHeight()/(710f*den));
-      float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(getHeight()-710f*sc)/2f;
+      int bottomInset=bottomInsetPx();
+      float availableH=Math.max(1f,getHeight()-bottomInset);
+      s=Math.min(getWidth()/(390f*den),availableH/(710f*den));
+      float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(availableH-710f*sc)/2f;
       c.save();c.translate(ox,oy);
       p.setShader(new LinearGradient(0,0,0,d(710),Color.rgb(3,16,56),Color.rgb(74,20,78),Shader.TileMode.CLAMP));c.drawRect(0,0,d(390),d(710),p);
       p.setShader(new RadialGradient(d(195),d(255),d(280),Color.rgb(22,112,226),Color.TRANSPARENT,Shader.TileMode.CLAMP));c.drawCircle(d(195),d(255),d(280),p);p.setShader(null);
@@ -120,7 +126,9 @@ public class PremiumHeroViewV2 extends View {
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
-      float den=getResources().getDisplayMetrics().density,sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=(getHeight()-710f*sc)/2f;
+      float den=getResources().getDisplayMetrics().density;
+      float availableH=Math.max(1f,getHeight()-bottomInsetPx());
+      float sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=(availableH-710f*sc)/2f;
       float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
       if(x<0||x>390||y<0||y>710)return true;
       if(y<68){

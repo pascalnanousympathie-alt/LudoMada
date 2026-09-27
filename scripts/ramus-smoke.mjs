@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const cli = process.env.RAMUS_CLI;
@@ -88,15 +88,20 @@ function advanceToTurn(targetTurn) {
 let session = "";
 let success = false;
 try {
+  mkdirSync("ramus-evidence", { recursive: true });
   if (!process.env.RAMUS_API_KEY) run("trial");
   const started = run("session", "start", "--apk", apk, "--wait");
   session = started.session;
   console.log(`Ramus session: ${session}`);
+  runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/home.jpg");
 
   let target = findRef("👥 Jouer hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen),
       "--expect", "Ludo hors-ligne", "--session", session);
   console.log("LOGIN→OFFLINE PASS");
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
@@ -109,6 +114,8 @@ try {
   assertMenuButton("👥 4 joueurs");
   target = findRef("👥 4 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/board-4p.jpg");
   assertTurn("Joueur 1/4");
   for (const nextTurn of ["Joueur 2/4", "Joueur 3/4", "Joueur 4/4", "Joueur 1/4"]) {
     advanceToTurn(nextTurn);
@@ -146,7 +153,8 @@ try {
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
 
-  run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+  runAllowError("wait", "--stable", "--timeout", "1400", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/board-2p-after-move.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
