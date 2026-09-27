@@ -41,10 +41,11 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/ramus-cli"
           mkdir -p "$RUNNER_TEMP/ramus-cli"
-          cd "$RUNNER_TEMP/ramus-cli"
-          npm init -y >/dev/null 2>&1
-          npm install --no-fund --no-audit ramus-cli@0.1.13
-          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/node_modules/ramus-cli/dist/main.js" >> "$GITHUB_ENV"
+          curl -fsSL https://registry.npmjs.org/ramus-cli/-/ramus-cli-0.1.13.tgz \
+            -o "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
+          test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
+          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
 
       - name: Run cloud Android smoke test with Ramus
         env:
