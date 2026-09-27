@@ -24,7 +24,8 @@ class MainActivity : Activity() {
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
-    private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null
+    private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
+    private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
@@ -288,13 +289,14 @@ class MainActivity : Activity() {
         if(token.isBlank()){
             accountBalanceMGA=0L
             topBalanceView?.text="— Ar"
+            window.decorView.invalidate()
             return
         }
         topBalanceView?.text="… Ar"
         get("/api/wallet"){j->
             val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
             accountBalanceMGA=value
-            runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar"}
+            runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar";window.decorView.invalidate()}
         }
     }
 
@@ -347,7 +349,7 @@ class MainActivity : Activity() {
         add(premiumTile("◆","Avatars","Profils et badges",Color.rgb(126,82,188)){Toast.makeText(this,"Avatars bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,5)
         add(premiumTile("◈","Effets premium","Animations et styles",gold){Toast.makeText(this,"Effets bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
-        bottomNav("home")
+        bottomNav("shop")
     }
 
     private fun languageDialog() {
@@ -360,11 +362,18 @@ class MainActivity : Activity() {
     private fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
+        walletBalanceView=label("— Ar",27f,true,Color.rgb(35,150,84));walletBalanceView!!.gravity=Gravity.CENTER
+        val balanceCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(Color.WHITE,22f,Color.rgb(219,228,239));elevation=dp(5).toFloat()}
+        balanceCard.addView(label("SOLDE MGA",10f,true,Color.rgb(105,116,132)),LinearLayout.LayoutParams(-1,dp(20)))
+        balanceCard.addView(walletBalanceView,LinearLayout.LayoutParams(-1,dp(45)))
+        add(balanceCard,82,6,8)
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         actions.addView(button("➕ Dépôt",Color.rgb(35,150,84)){pay(true)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
         actions.addView(button("➖ Retrait",Color.rgb(210,55,65)){pay(false)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
         add(actions,52)
+        add(button("💠 Binance Pay / Crypto",Color.rgb(45,105,210)){Toast.makeText(this,"Crypto: MGA ↔ crypto use server/provider rate; aucun solde fictif n'est ajouté.",Toast.LENGTH_LONG).show()},52)
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
+        bottomNav("wallet")
         loadWallet()
     }
 
@@ -376,7 +385,7 @@ class MainActivity : Activity() {
                 topBalanceView?.text="${formatMGA(value)} Ar"
                 if(currentScreen=="wallet"){
                     status.text="Solde disponible"
-                    root.addView(card("💳 Solde","${formatMGA(value)} Ar",Color.rgb(35,150,84)),2)
+                    walletBalanceView?.text="${formatMGA(value)} Ar"
                 }
             }
         }
@@ -392,10 +401,13 @@ class MainActivity : Activity() {
 
     private fun pay(deposit:Boolean) {
         val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
-        val methods=arrayOf("MVola","Airtel Money","Orange Money")
-        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)};box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(label("Credentials tena izy mbola tsy ampiasaina.",12f,false,Color.rgb(120,128,140)))
+        val contact=EditText(this).apply { hint="Téléphone ou identifiant (si requis)";inputType=1;setPadding(dp(12),0,dp(12),0) }
+        val methods=arrayOf("MVola","Airtel Money","Orange Money","Binance Pay / Crypto")
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(contact,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(6)})
+        box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
         AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,0,null)
-            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition;val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY")[selected.coerceIn(0,2)];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method),UUID.randomUUID().toString()){wallet()} }
+            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
             .setNegativeButton("Aoka",null).show()
     }
 
@@ -473,7 +485,7 @@ class MainActivity : Activity() {
     }
 
     private fun startOffline(players:Int) {
-        offlineTurn=0;offlineDice=0
+        offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
         offlineState=JSONObject().put("players",arr)
         offlineGame(players)
@@ -482,9 +494,10 @@ class MainActivity : Activity() {
     private fun offlineGame(players:Int) {
         page("offline","Ludo hors-ligne")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("MANUEL",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
-        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn
+        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
+        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        host.animateState()
         add(button("Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
@@ -492,7 +505,17 @@ class MainActivity : Activity() {
     }
 
     private fun offlineRoll(host:LudoBoardView){offlineDice=(1..6).random();status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()}
-    private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return};val ps=offlineState?.optJSONArray("players")?:return;val p=ps.optJSONObject(offlineTurn)?:return;val ts=p.optJSONArray("tokens")?:return;val tok=ts.optJSONObject(tokenIndex)?:return;val old=tok.optInt("pos",-1);tok.put("pos",if(old<0&&offlineDice>=6)0 else if(old<0)-1 else old+offlineDice);offlineDice=0;offlineTurn=(offlineTurn+1)%players;host.state=offlineState;host.player=offlineTurn;offlineGame(players)}
+    private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){
+        if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return}
+        val ps=offlineState?.optJSONArray("players")?:return;val p=ps.optJSONObject(offlineTurn)?:return;val ts=p.optJSONArray("tokens")?:return;val tok=ts.optJSONObject(tokenIndex)?:return
+        val old=tok.optInt("pos",-1);val dice=offlineDice
+        if(old<0 && dice!=6){status.text="Mila 6 vao mivoaka ny pion.";return}
+        val next=if(old<0)0 else old+dice
+        if(next>51){status.text="Tsy afaka mihetsika: mihoatra ny farany.";return}
+        tok.put("pos",next);offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        status.text="Joueur ${offlineTurn+1} • Dé: 0 • Déplacement…"
+        root.postDelayed({offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn;status.text="Joueur ${offlineTurn+1}/$players • Dé: $offlineDice";host.invalidate()},700L)
+    }
 
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
@@ -896,7 +919,7 @@ class MainActivity : Activity() {
                 if(touched>=0){
                     performClick()
                     performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    requestMove(touched)
+                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else requestMove(touched)
                     return true
                 }
             }
@@ -904,14 +927,16 @@ class MainActivity : Activity() {
         }
         override fun performClick():Boolean{super.performClick();return true}
         private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
-            val ps=state?.optJSONArray("players")
-            val tokens=ps?.optJSONObject(player)?.optJSONArray("tokens")
+            val activeState=if(currentScreen=="offline") offlineState else state
+            val activePlayer=if(currentScreen=="offline") offlineTurn else player
+            val ps=activeState?.optJSONArray("players")
+            val tokens=ps?.optJSONObject(activePlayer)?.optJSONArray("tokens")
             val fallback=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
             var best=-1; var bestD2=Float.MAX_VALUE
             for(ti in 0..3){
                 var rr=fallback[ti].first; var cc=fallback[ti].second
                 val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(pos>=0){val q=visualPath()[(player*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
+                if(pos>=0){val q=visualPath()[(activePlayer*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
                 val dx=x-(ox+cc*cell); val dy=y-(oy+rr*cell); val d2=dx*dx+dy*dy
                 if(d2<bestD2){bestD2=d2;best=ti}
             }
