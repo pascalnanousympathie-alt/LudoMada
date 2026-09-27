@@ -17,6 +17,9 @@ jobs:
       NODE_ENV: staging
       PORT: 3101
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      NODE_OPTIONS: --max-old-space-size=256
+      npm_config_maxsockets: "1"
+      npm_config_jobs: "1"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
@@ -27,7 +30,7 @@ jobs:
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - run: npm run db:generate
       - run: npm run db:migrate
       - run: npm run test:all
