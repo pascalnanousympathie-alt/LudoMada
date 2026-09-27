@@ -12,10 +12,21 @@ jobs:
   emulator-test:
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 45
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+
+      - name: Configure Android SDK path
+        working-directory: android-app
+        run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
       - name: Build debug APK and Android test APK
         working-directory: android-app
