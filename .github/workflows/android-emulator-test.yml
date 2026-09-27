@@ -9,8 +9,8 @@ on:
 
 jobs:
   emulator-test:
-    if: ${{ false }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: android-app
@@ -46,7 +46,7 @@ jobs:
           emulator-boot-timeout: 1200
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: sh scripts/emulator-smoke.sh
+          script: sh ./gradlew connectedDebugAndroidTest --stacktrace
 
       - name: Upload APK
         if: always()

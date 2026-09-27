@@ -15,7 +15,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
     @Test
-    fun app_launches_login_and_has_launcher() {
+    fun app_launches_premium_home_and_offline_game_flow_is_reachable() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
@@ -27,11 +27,38 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
-        assertTrue(device.wait(Until.hasObject(By.text("Se connecter")), 5000))
-        assertTrue(device.wait(Until.hasObject(By.text("Créer un compte")), 1000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 8000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("Player profile")), 2000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("coins")), 2000))
 
-        val file = File("/sdcard/Download/ludomada-startup.png")
+        val w = device.displayWidth
+        val h = device.displayHeight
+        device.click((w * 195) / 390, (h * 335) / 710)
+        assertTrue(device.wait(Until.hasObject(By.text("Choisissez le mode")), 3000))
+        val offlineOption = device.findObject(By.text("👥 Hors-ligne — 2 à 4 joueurs"))
+        assertTrue(offlineOption.exists())
+        offlineOption.click()
+        assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
+        assertTrue(device.hasObject(By.textContains("Joueur 1/")))
+
+        var gotSix = false
+        repeat(12) {
+            device.findObject(By.text("Lancer le dé")).click()
+            if (device.wait(Until.hasObject(By.text("Joueur 1 • Dé: 6")), 700)) {
+                gotSix = true
+                return@repeat
+            }
+            if (device.wait(Until.hasObject(By.text("Joueur 1 • Dé: 6")), 150)) gotSix = true
+        }
+        assertTrue("Dice should produce a reachable six within retries", gotSix)
+
+        val pawn1 = device.findObject(By.text("Pion 1"))
+        assertTrue(pawn1.exists())
+        pawn1.click()
+        assertTrue(device.wait(Until.hasObject(By.textContains("Déplacement")), 1200))
+
+        val file = File("/sdcard/Download/ludomada-startup-offline.png")
         device.takeScreenshot(file)
-        assertTrue("Startup screenshot missing", file.exists() && file.length() > 1000)
+        assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
     }
 }

@@ -13,6 +13,7 @@ public class PremiumHeroViewV2 extends View {
   public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
   @Override protected void onAttachedToWindow(){super.onAttachedToWindow();invalidate();}
   @Override protected void onDraw(Canvas c){
+    setContentDescription("LudoMada Premium Home | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
@@ -67,7 +68,8 @@ public class PremiumHeroViewV2 extends View {
       for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+138),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+138),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
       p.setColor(red);c.drawRect(d(x0),d(y0),d(x0+69),d(y0+69),p);p.setColor(blue);c.drawRect(d(x0+69),d(y0),d(x0+138),d(y0+69),p);p.setColor(green);c.drawRect(d(x0+69),d(y0+69),d(x0+138),d(y0+138),p);p.setColor(yellow);c.drawRect(d(x0),d(y0+69),d(x0+69),d(y0+138),p);
       pawn(c,x0+34.5f,y0+34.5f,17,red);pawn(c,x0+103.5f,y0+34.5f,17,blue);pawn(c,x0+34.5f,y0+103.5f,17,yellow);pawn(c,x0+103.5f,y0+103.5f,17,green);
-      box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);
+      float phase=(System.currentTimeMillis()%2200L)/2200f; float angle=(float)Math.sin(phase*Math.PI*2.0)*7.0f; c.save();c.rotate(angle,d(200),d(297));
+      box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);c.restore();postInvalidateDelayed(50);
     }
     @Override protected void onDraw(Canvas c){
       float den=getResources().getDisplayMetrics().density;
