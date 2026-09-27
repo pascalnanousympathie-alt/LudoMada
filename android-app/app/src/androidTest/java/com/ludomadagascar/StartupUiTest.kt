@@ -30,6 +30,15 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 8000))
         assertTrue(device.wait(Until.hasObject(By.descContains("Player profile")), 2000))
         assertTrue(device.wait(Until.hasObject(By.descContains("coins")), 2000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("gems")), 1000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("Joue. Gagne. Grandis")), 1000))
+
+        val animA = File("/sdcard/Download/ludomada-home-animation-a.png")
+        val animB = File("/sdcard/Download/ludomada-home-animation-b.png")
+        device.takeScreenshot(animA)
+        Thread.sleep(240)
+        device.takeScreenshot(animB)
+        assertTrue("Home animation should change rendered frame", animA.exists() && animB.exists() && !animA.readBytes().contentEquals(animB.readBytes()))
 
         val w = device.displayWidth
         val h = device.displayHeight

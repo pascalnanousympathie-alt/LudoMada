@@ -524,6 +524,7 @@ class MainActivity : Activity() {
     }
     private fun offlineRoll(host:LudoBoardView){
         val ps=offlineState?.optJSONArray("players")?:return
+        host.startDiceAnimation()
         offlineDice=(1..6).random()
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
@@ -600,7 +601,7 @@ class MainActivity : Activity() {
         }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
-    private fun roll(){post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
+    private fun roll(){boardHost?.startDiceAnimation();post("/api/games/$gameId/roll",JSONObject().put("expectedVersion",version),UUID.randomUUID().toString()){refreshState()}}
     private fun move(i:Int){ requestMove(i) }
 
     private fun showGameEntryLoading() {
@@ -784,6 +785,8 @@ class MainActivity : Activity() {
         private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
         private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
         private var stateAnimator:android.animation.ValueAnimator?=null
+        private var diceRolling=false
+        private var dicePhase=0f
         init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
@@ -814,6 +817,7 @@ class MainActivity : Activity() {
             val starCells=arrayOf(1 to 6,6 to 1,8 to 13,13 to 8)
             for((r,c) in starCells){drawSafe(canvas,ox,oy,cell,r,c)}
             drawCenter(canvas,ox,oy,cell)
+            drawDie(canvas,ox+7.5f*cell,oy+7.5f*cell,cell)
             drawStartMarkers(canvas,ox,oy,cell)
             drawTokens(canvas,ox,oy,cell)
         }
@@ -945,6 +949,38 @@ class MainActivity : Activity() {
             for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
             val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
             c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
+        }
+        private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
+            val rolling=diceRolling
+            val phase=(System.currentTimeMillis()%900L)/900f
+            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
+            val size=cell*1.34f
+            c.save()
+            val angle=if(rolling)(Math.sin(phase*Math.PI*4.0)*13.0).toFloat() else 0f
+            c.rotate(angle,cx,cy)
+            val die=Paint(Paint.ANTI_ALIAS_FLAG)
+            die.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x88000000)
+            die.shader=LinearGradient(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,Color.WHITE,Color.rgb(216,222,232),Shader.TileMode.CLAMP)
+            c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die)
+            die.clearShadowLayer();die.shader=null
+            die.style=Paint.Style.STROKE;die.strokeWidth=dp(1f).toFloat();die.color=Color.rgb(144,151,164);c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die);die.style=Paint.Style.FILL;die.color=Color.rgb(35,39,49)
+            val d=size*.23f
+            val pts=when(face){
+                1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)
+            }
+            for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
+            c.restore()
+        }
+        fun startDiceAnimation(){
+            diceRolling=true;dicePhase=0f
+            val start=System.currentTimeMillis()
+            fun tick(){
+                if(!diceRolling)return
+                dicePhase=((System.currentTimeMillis()-start)/650f).coerceIn(0f,1f)
+                invalidate()
+                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},45L)
+            }
+            tick()
         }
         private fun drawStartMarkers(c:Canvas,ox:Float,oy:Float,cell:Float){
             val starts=arrayOf(6 to 1,1 to 8,8 to 13,13 to 6)
