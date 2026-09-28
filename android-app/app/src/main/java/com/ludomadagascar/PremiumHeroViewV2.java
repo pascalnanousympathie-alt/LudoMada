@@ -25,7 +25,11 @@ public class PremiumHeroViewV2 extends View {
     home=new HomeView(c);
   }
   @Override protected void onAttachedToWindow(){
-    super.onAttachedToWindow();postDelayed(homeBgFlip,6000L);invalidate();
+    super.onAttachedToWindow();
+    if(getContext() instanceof Activity){
+      ((Activity)getContext()).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+    postDelayed(homeBgFlip,6000L);invalidate();
   }
   @Override protected void onDetachedFromWindow(){
     removeCallbacks(homeBgFlip);super.onDetachedFromWindow();
