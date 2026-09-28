@@ -18,11 +18,14 @@ function runAllowError(...args) {
 
 function runCli(...args) {
   const isSnapshot=args[0]==="snapshot";
-  const timeoutMs=isSnapshot ? 12000 : (args[0]==="session" ? 60000 : 30000);
-  const r = spawnSync(process.execPath, [cli, ...args], {
+  const timeoutMs=isSnapshot ? 10000 : (args[0]==="session" ? 60000 : 30000);
+  // Ramus CLI can leave observation descendants holding stdio open; use an external
+  // hard timeout so a hung snapshot cannot block the entire smoke indefinitely.
+  const timeoutBin="/data/data/com.termux/files/usr/bin/timeout";
+  const timeoutSec=Math.max(1,Math.ceil(timeoutMs/1000));
+  const r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    timeout: timeoutMs,
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
