@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   test:
-    runs-on: [self-hosted, linux, ARM64]
+    runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql://u0_a214@localhost:5432/ludomada_ci
       NODE_ENV: test
