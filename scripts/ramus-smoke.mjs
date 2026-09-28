@@ -142,25 +142,44 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  let musicSemantic = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+  let musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+  let musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
   let musicToggled=false;
-  if (musicSemantic.ok && musicSemantic.value.elements?.length) {
-    const mb = musicSemantic.value.elements.find(e=>e.clickable!==false) || musicSemantic.value.elements[0];
-    run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "500", "--session", session);
-    const musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
+  // Persisted preference can leave the lobby music OFF from a previous run.
+  // Accept either initial state, toggle once, then verify the opposite state.
+  if (musicOn.ok && musicOn.value.elements?.length) {
+    const mb = musicOn.value.elements.find(e=>e.clickable!==false) || musicOn.value.elements[0];
+    run("tap", mb.ref, "--gen", String(musicOn.value.gen), "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
+    musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
     musicToggled = !!(musicOff.ok && musicOff.value.elements?.length);
+    if (musicToggled) {
+      const mbOff = musicOff.value.elements.find(e=>e.clickable!==false) || musicOff.value.elements[0];
+      run("tap", mbOff.ref, "--gen", String(musicOff.value.gen), "--session", session);
+      runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
+      musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+      musicToggled = !!(musicOn.ok && musicOn.value.elements?.length);
+    }
+  } else if (musicOff.ok && musicOff.value.elements?.length) {
+    const mbOff = musicOff.value.elements.find(e=>e.clickable!==false) || musicOff.value.elements[0];
+    run("tap", mbOff.ref, "--gen", String(musicOff.value.gen), "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
+    musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+    musicToggled = !!(musicOn.ok && musicOn.value.elements?.length);
   } else {
-    // Ramus may omit the native music button from its rotated accessibility tree.
-    // Probe the known visual control area and verify the state changed after each tap.
+    // Last-resort visual fallback for the rotated accessibility viewport.
     for (const pt of ["0.93,0.16","0.95,0.18","0.90,0.18"]) {
       run("tap", pt, "--session", session);
       runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
-      const musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-      if (musicOff.ok && musicOff.value.elements?.length) { musicToggled=true; break; }
+      musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+      musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
+      if ((musicOn.ok && musicOn.value.elements?.length) || (musicOff.ok && musicOff.value.elements?.length)) {
+        musicToggled=true;
+        break;
+      }
     }
   }
-  if (!musicToggled) throw new Error("Lobby music control could not be toggled OFF");
+  if (!musicToggled) throw new Error("Lobby music control could not be toggled in either initial state");
   console.log("LOBBY MUSIC TOGGLE PASS");
   const musicBack = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
   if (musicBack.ok && musicBack.value.elements?.length) {
