@@ -198,6 +198,9 @@ class MainActivity : Activity() {
         minWidth = 0
         minHeight = 0
         contentDescription = if (music.enabled()) "Musique activée" else "Musique désactivée"
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        isFocusable = true
+        isClickable = true
         background = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
             intArrayOf(Color.rgb(31,52,84), Color.rgb(12,29,55))
