@@ -155,12 +155,24 @@ try {
     console.log("LOBBY MUSIC CONTROL VISUAL PASS");
   }
 
-  // Return from the lobby using Android BACK; the app maps lobby → Home natively.
-  run("press", "BACK", "--session", session);
-  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
-  const homeAfterLobby = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+  // Return from the lobby using its native accessible Accueil button; Android BACK remains the fallback.
+  let lobbyHome = runAllowError("snapshot", "--session", session, "--find", "Accueil");
+  if (lobbyHome.ok && lobbyHome.value.elements?.length) {
+    const homeTarget=lobbyHome.value.elements.find(e=>e.clickable!==false) || lobbyHome.value.elements[0];
+    run("tap", homeTarget.ref, "--gen", String(lobbyHome.value.gen), "--session", session);
+  } else {
+    run("press", "BACK", "--session", session);
+  }
+  runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  let homeAfterLobby = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
   if (!homeAfterLobby.ok || !homeAfterLobby.value.elements?.length) {
-    throw new Error("Premium Home was not reached after Lobby → BACK");
+    // One deterministic retry using the native Back action.
+    run("press", "BACK", "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+    homeAfterLobby = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+  }
+  if (!homeAfterLobby.ok || !homeAfterLobby.value.elements?.length) {
+    throw new Error("Premium Home was not reached after Lobby → Home");
   }
 
   // Re-enter the offline flow for the gameplay board.
