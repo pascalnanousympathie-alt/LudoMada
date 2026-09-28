@@ -107,23 +107,24 @@ try {
   run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
   // Offline → Accueil gives us the real premium Home without requiring credentials.
-  // Tap the native button first, then verify the Premium Canvas marker; fall back to the verified hitbox if needed.
+  // Re-observe first; use a clickable semantic target when available, then verified normalized hitboxes.
   const homeSemantic = runAllowError("snapshot", "--session", session, "--find", "Accueil");
-  if (homeSemantic.ok && homeSemantic.value.elements?.length) {
+  console.log("HOME_BUTTON_SNAPSHOT=" + JSON.stringify(homeSemantic.ok ? homeSemantic.value.elements : {error: homeSemantic.error}));
+  let homeMarker = null;
+  if (homeSemantic.ok && homeSemantic.value.elements?.length && homeSemantic.value.elements[0].clickable !== false) {
     const homeTarget = homeSemantic.value.elements[0];
     run("tap", homeTarget.ref, "--gen", String(homeSemantic.value.gen), "--session", session);
-  } else {
-    run("tap", "0.75,0.59", "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "1000", "--session", session);
+    homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
   }
-  runAllowError("wait", "--stable", "--timeout", "1500", "--session", session);
-  let homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  if (!homeMarker.ok || !homeMarker.value.elements?.length) {
-    // The semantic node may be non-actionable in Ramus; repeat with the screenshot-proven button center.
-    run("tap", "0.75,0.59", "--session", session);
+  const homeProbes = ["0.72,0.59","0.75,0.59","0.68,0.59"];
+  for (const pt of homeProbes) {
+    if (homeMarker?.ok && homeMarker.value.elements?.length) break;
+    run("tap", pt, "--session", session);
     runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
     homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
   }
-  if (!homeMarker.ok || !homeMarker.value.elements?.length) {
+  if (!homeMarker?.ok || !homeMarker.value.elements?.length) {
     throw new Error("Premium Home was not reached after Offline → Accueil");
   }
   console.log("OFFLINE→HOME PASS");
