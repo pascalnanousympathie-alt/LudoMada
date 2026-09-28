@@ -1028,11 +1028,32 @@ class MainActivity : Activity() {
             val topSpace=(h-s).coerceAtLeast(0f)
             val oy=topSpace*.20f
             val cell=s/15f
+            // Physical table construction: deep walnut body + polished edge + ivory playing surface.
+            val wood=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(ox,oy,ox+s,oy+s,
+                    Color.rgb(164,92,42),Color.rgb(63,28,13),Shader.TileMode.CLAMP)
+                setShadowLayer(dp(14).toFloat(),0f,dp(7).toFloat(),0x99000000.toInt())
+            }
+            canvas.drawRoundRect(ox-dp(7).toFloat(),oy-dp(7).toFloat(),ox+s+dp(7).toFloat(),oy+s+dp(10).toFloat(),dp(28).toFloat(),dp(28).toFloat(),wood)
+            wood.clearShadowLayer();wood.shader=null
+            wood.style=Paint.Style.STROKE;wood.strokeWidth=dp(2f).toFloat();wood.color=0xA8FFD9A1.toInt()
+            canvas.drawRoundRect(ox-dp(5).toFloat(),oy-dp(5).toFloat(),ox+s+dp(5).toFloat(),oy+s+dp(7).toFloat(),dp(26).toFloat(),dp(26).toFloat(),wood)
+            wood.style=Paint.Style.FILL
+            // Walnut grain lines on the rim: low-contrast, efficient Canvas strokes.
+            wood.color=0x3A2E130A.toInt();wood.strokeWidth=dp(1f).toFloat();wood.style=Paint.Style.STROKE
+            for(i in 0..11){
+                val yy=oy+dp(5+i*2.4f)
+                canvas.drawLine(ox-dp(3f).toFloat(),yy,ox+s+dp(3f).toFloat(),yy+dp(1.4f).toFloat(),wood)
+            }
+            wood.style=Paint.Style.FILL
             val board=Paint(Paint.ANTI_ALIAS_FLAG)
-            board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
-            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(24).toFloat(),dp(24).toFloat(),board)
+            board.setShadowLayer(dp(3).toFloat(),0f,dp(2).toFloat(),0x55000000)
+            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,250,236),Color.rgb(213,191,153),Shader.TileMode.CLAMP)
+            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(20).toFloat(),dp(20).toFloat(),board)
             board.clearShadowLayer(); board.shader=null
+            board.style=Paint.Style.STROKE;board.strokeWidth=dp(1.3f).toFloat();board.color=0xB86E5638.toInt()
+            canvas.drawRoundRect(ox+dp(.7f),oy+dp(.7f),ox+s-dp(.7f),oy+s-dp(.7f),dp(20).toFloat(),dp(20).toFloat(),board)
+            board.style=Paint.Style.FILL
             drawZone(canvas,ox,oy,0,0,Color.rgb(220,60,66),cell)
             drawZone(canvas,ox,oy,9,0,Color.rgb(42,158,92),cell)
             drawZone(canvas,ox,oy,0,9,Color.rgb(238,184,43),cell)
@@ -1058,21 +1079,40 @@ class MainActivity : Activity() {
             drawTokens(canvas,ox,oy,cell)
         }
         private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,color:Int,cell:Float){
-            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color}
-            outer.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x33000000)
-            c.drawRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,outer)
-            outer.clearShadowLayer()
-            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE}
-            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(12).toFloat(),dp(12).toFloat(),inner)
-            val shade=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x12000000}
-            c.drawRoundRect(ox+(r+1.15f)*cell,oy+(col+1.2f)*cell,ox+(r+4.85f)*cell,oy+(col+4.85f)*cell,dp(10).toFloat(),dp(10).toFloat(),shade)
+            val cHi=Color.rgb(minOf(255,Color.red(color)+38),minOf(255,Color.green(color)+38),minOf(255,Color.blue(color)+38))
+            val cLo=Color.rgb((Color.red(color)*.46f).toInt(),(Color.green(color)*.46f).toInt(),(Color.blue(color)*.46f).toInt())
+            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,cHi,cLo,Shader.TileMode.CLAMP)
+                setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x66000000)
+            }
+            c.drawRoundRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,dp(7).toFloat(),dp(7).toFloat(),outer)
+            outer.clearShadowLayer();outer.shader=null
+            outer.style=Paint.Style.STROKE;outer.strokeWidth=dp(1.2f).toFloat();outer.color=0xAAFFFFFF.toInt()
+            c.drawRoundRect(ox+r*cell+dp(.7f),oy+col*cell+dp(.7f),ox+(r+6)*cell-dp(.7f),oy+(col+6)*cell-dp(.7f),dp(7).toFloat(),dp(7).toFloat(),outer)
+            outer.style=Paint.Style.FILL
+            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,
+                    Color.WHITE,Color.rgb(236,236,231),Shader.TileMode.CLAMP)
+                setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x44000000)
+            }
+            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(10).toFloat(),dp(10).toFloat(),inner)
+            inner.clearShadowLayer();inner.shader=null
+            val gloss=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy+(col+1)*cell,0f,oy+(col+2.1f)*cell,0x66FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)}
+            c.drawRoundRect(ox+(r+1.2f)*cell,oy+(col+1.2f)*cell,ox+(r+4.8f)*cell,oy+(col+2.0f)*cell,dp(8).toFloat(),dp(8).toFloat(),gloss)
             val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
             for((sx,sy) in sockets){
                 val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
-                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x17000000}
-                c.drawCircle(cx,cy,cell*.53f,ring)
-                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;alpha=120}
-                c.drawCircle(cx,cy,cell*.40f,hole)
+                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                    shader=RadialGradient(cx-cell*.10f,cy-cell*.12f,cell*.54f,0x88FFFFFF,0x22000000,Shader.TileMode.CLAMP)
+                    setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x55000000)
+                }
+                c.drawCircle(cx,cy,cell*.53f,ring);ring.clearShadowLayer();ring.shader=null
+                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                    shader=RadialGradient(cx-cell*.08f,cy-cell*.12f,cell*.42f,cHi,cLo,Shader.TileMode.CLAMP)
+                }
+                c.drawCircle(cx,cy,cell*.39f,hole)
+                val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(.8f).toFloat();color=0xAAFFFFFF.toInt()}
+                c.drawCircle(cx,cy,cell*.39f,rim)
             }
         }
 
@@ -1198,9 +1238,18 @@ class MainActivity : Activity() {
         }
 
         private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
-            val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),stroke)
+            val l=ox+col*cell+dp(0.55f);val t=oy+r*cell+dp(0.55f);val rr=l+cell-dp(1.1f);val bb=t+cell-dp(1.1f)
+            val a=((r+col)&1)==0
+            val top=if(a)Color.rgb(250,238,205) else Color.rgb(235,218,178)
+            val bot=if(a)Color.rgb(221,196,146) else Color.rgb(211,186,137)
+            val tile=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(l,t,l,bb,top,bot,Shader.TileMode.CLAMP)}
+            c.drawRoundRect(l,t,rr,bb,dp(2.7f).toFloat(),dp(2.7f).toFloat(),tile)
+            tile.style=Paint.Style.STROKE;tile.strokeWidth=dp(.65f).toFloat();tile.color=0x8A6B5A43.toInt()
+            c.drawRoundRect(l,t,rr,bb,dp(2.7f).toFloat(),dp(2.7f).toFloat(),tile)
+            tile.style=Paint.Style.FILL
+            // Tiny highlight edge creates the lacquered-board depth visible in the reference.
+            val shine=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(l,t,l, t+cell*.42f,0x44FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)}
+            c.drawRoundRect(l+dp(.8f),t+dp(.8f),rr-dp(.8f),t+cell*.35f,dp(2f).toFloat(),dp(2f).toFloat(),shine)
         }
         private fun drawSafe(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int){
             val cx=ox+(col+.5f)*cell;val cy=oy+(r+.5f)*cell
@@ -1231,23 +1280,72 @@ class MainActivity : Activity() {
         }
         private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
             val rolling=diceRolling
-            val phase=(System.currentTimeMillis()%900L)/900f
-            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val size=cell*1.34f
+            val phase=dicePhase.coerceIn(0f,1f)
+            val face=if(rolling)(((phase*6f).toInt())%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
+            val sz=cell*.74f
             c.save()
-            val angle=if(rolling)(Math.sin(phase*Math.PI*4.0)*13.0).toFloat() else 0f
-            c.rotate(angle,cx,cy)
-            val die=Paint(Paint.ANTI_ALIAS_FLAG)
-            die.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x88000000)
-            die.shader=LinearGradient(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,Color.WHITE,Color.rgb(216,222,232),Shader.TileMode.CLAMP)
-            c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die)
-            die.clearShadowLayer();die.shader=null
-            die.style=Paint.Style.STROKE;die.strokeWidth=dp(1f).toFloat();die.color=Color.rgb(144,151,164);c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die);die.style=Paint.Style.FILL;die.color=Color.rgb(35,39,49)
-            val d=size*.23f
-            val pts=when(face){
-                1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)
+            val wobble=if(rolling) (Math.sin(phase*Math.PI*8.0)*7.0).toFloat() else 0f
+            c.rotate(wobble,cx,cy)
+
+            fun path(vararg pts:Float):Path{
+                val pth=Path();pth.moveTo(pts[0],pts[1]);var i=2
+                while(i<pts.size){pth.lineTo(pts[i],pts[i+1]);i+=2};pth.close();return pth
             }
-            for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
+            val top=path(
+                cx,cy-sz, cx+sz*.95f,cy-sz*.45f, cx,cy+sz*.10f, cx-sz*.95f,cy-sz*.45f)
+            val left=path(
+                cx-sz*.95f,cy-sz*.45f, cx,cy+sz*.10f, cx,cy+sz*1.02f, cx-sz*.95f,cy+sz*.55f)
+            val right=path(
+                cx,cy+sz*.10f, cx+sz*.95f,cy-sz*.45f, cx+sz*.95f,cy+sz*.55f, cx,cy+sz*1.02f)
+
+            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x77000000;setShadowLayer(dp(7).toFloat(),0f,dp(5).toFloat(),0xAA000000.toInt())}
+            c.drawOval(cx-sz*.90f,cy+sz*.75f,cx+sz*.95f,cy+sz*1.10f,sh);sh.clearShadowLayer()
+
+            val topP=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx-sz,cy-sz,cx+sz,cy+sz,
+                    Color.WHITE,Color.rgb(168,178,188),Shader.TileMode.CLAMP)
+            };c.drawPath(top,topP)
+            val leftP=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx-sz,cy, cx,cy+sz,
+                    Color.rgb(236,241,245),Color.rgb(96,106,116),Shader.TileMode.CLAMP)
+            };c.drawPath(left,leftP)
+            val rightP=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx,cy, cx+sz,cy+sz,
+                    Color.rgb(218,225,231),Color.rgb(73,82,91),Shader.TileMode.CLAMP)
+            };c.drawPath(right,rightP)
+
+            val edge=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1f).toFloat();color=0xEEFFFFFF.toInt()}
+            c.drawPath(top,edge);c.drawPath(left,edge);c.drawPath(right,edge)
+
+            fun pipFace(facePath:String, n:Int){
+                val pip=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                    shader=RadialGradient(0f,0f,cell*.10f,Color.rgb(44,50,57),Color.rgb(8,12,16),Shader.TileMode.CLAMP)
+                    setShadowLayer(dp(1.2f).toFloat(),0f,dp(.7f).toFloat(),0x66000000)
+                }
+                fun pc(px:Float,py:Float){c.drawCircle(px,py,cell*.075f,pip)}
+                val a=sz*.40f; val b=sz*.20f
+                when(facePath){
+                    "top"->{
+                        val pts=when(n){1->arrayOf(0f to -b);2->arrayOf(-a to -b,a to b);3->arrayOf(-a to -b,0f to 0f,a to b);4->arrayOf(-a to -b,a to -b,-a to b,a to b);5->arrayOf(-a to -b,a to -b,0f to 0f,-a to b,a to b);else->arrayOf(-a to -b,-a to 0f,-a to b,a to -b,a to 0f,a to b)}
+                        for((u,v) in pts){
+                            val px=cx+u+(-v*.52f);val py=cy-sz+v+u*.52f;pc(px,py)
+                        }
+                    }
+                    "left"->{
+                        val pts=when(((n+1)%6)+1){1->arrayOf(0f to -b);2->arrayOf(-a to -b,a to b);3->arrayOf(-a to -b,0f to 0f,a to b);4->arrayOf(-a to -b,a to -b,-a to b,a to b);5->arrayOf(-a to -b,a to -b,0f to 0f,-a to b,a to b);else->arrayOf(-a to -b,-a to 0f,-a to b,a to -b,a to 0f,a to b)}
+                        for((u,v) in pts)pc(cx-sz*.70f+u*.72f,cy+v+u*.34f)
+                    }
+                    else->{
+                        val other=((n+3)%6)+1
+                        val pts=when(other){1->arrayOf(0f to -b);2->arrayOf(-a to -b,a to b);3->arrayOf(-a to -b,0f to 0f,a to b);4->arrayOf(-a to -b,a to -b,-a to b,a to b);5->arrayOf(-a to -b,a to -b,0f to 0f,-a to b,a to b);else->arrayOf(-a to -b,-a to 0f,-a to b,a to -b,a to 0f,a to b)}
+                        for((u,v) in pts)pc(cx+sz*.70f+u*.72f,cy+v-u*.34f)
+                    }
+                }
+                pip.clearShadowLayer();pip.shader=null
+            }
+            pipFace("top",face);pipFace("left",face);pipFace("right",face)
+            val spec=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(cx-sz*.5f,cy-sz*.7f,cx+sz*.2f,cy,0xEFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)}
+            c.drawPath(top,spec)
             c.restore()
         }
         fun isDiceRolling():Boolean = diceRolling
@@ -1288,26 +1386,65 @@ class MainActivity : Activity() {
             return if(pos<0) dice==6 else pos+dice<=57
         }
         private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean,scale:Float=1f){
-            val rad=cell*.31f*scale; val base=cy+rad*.62f
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000;setShadowLayer(dp(4f).toFloat(),0f,dp(3f).toFloat(),0x99000000.toInt())}
-            c.drawOval(cx-rad*.9f,base-rad*.10f,cx+rad*.9f,base+rad*.22f,shadow);shadow.clearShadowLayer()
-            val body=Path();body.moveTo(cx-rad*.88f,base)
-            body.cubicTo(cx-rad*.80f,cy+rad*.30f,cx-rad*.42f,cy+rad*.16f,cx-rad*.36f,cy-rad*.04f)
-            body.cubicTo(cx-rad*.66f,cy-rad*.28f,cx-rad*.56f,cy-rad*.82f,cx,cy-rad*1.04f)
-            body.cubicTo(cx+rad*.56f,cy-rad*.82f,cx+rad*.66f,cy-rad*.28f,cx+rad*.36f,cy-rad*.04f)
-            body.cubicTo(cx+rad*.42f,cy+rad*.16f,cx+rad*.80f,cy+rad*.30f,cx+rad*.88f,base)
-            body.quadTo(cx,base+rad*.20f,cx-rad*.88f,base);body.close()
-            val hi=Color.rgb(minOf(255,Color.red(color)+92),minOf(255,Color.green(color)+92),minOf(255,Color.blue(color)+92))
-            val mid=Color.rgb(minOf(255,Color.red(color)+22),minOf(255,Color.green(color)+22),minOf(255,Color.blue(color)+22))
-            val lo=Color.rgb((Color.red(color)*.30f).toInt(),(Color.green(color)*.30f).toInt(),(Color.blue(color)*.30f).toInt())
-            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(cx-rad,cy-rad,cx+rad,base,hi,lo,Shader.TileMode.CLAMP);setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0xAA000000.toInt())}
+            val rad=cell*.31f*scale
+            val base=cy+rad*.64f
+            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                color=0x72000000;setShadowLayer(dp(5f).toFloat(),0f,dp(3f).toFloat(),0xCC000000.toInt())
+            }
+            c.drawOval(cx-rad*1.00f,base-rad*.10f,cx+rad*1.00f,base+rad*.25f,shadow);shadow.clearShadowLayer()
+
+            // Double-ring molded base, as on a physical premium pawn.
+            val baseP=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx,base-rad*.18f,cx,base+rad*.22f,
+                    Color.rgb(250,252,255),Color.rgb(67,73,81),Shader.TileMode.CLAMP)
+                setShadowLayer(dp(2f).toFloat(),0f,dp(1f).toFloat(),0x77000000)
+            }
+            c.drawOval(cx-rad*.92f,base-rad*.12f,cx+rad*.92f,base+rad*.25f,baseP)
+            baseP.clearShadowLayer();baseP.shader=null
+            baseP.style=Paint.Style.STROKE;baseP.strokeWidth=dp(1f).toFloat();baseP.color=0xDFFFFFFF.toInt()
+            c.drawOval(cx-rad*.84f,base-rad*.08f,cx+rad*.84f,base+rad*.18f,baseP)
+
+            val body=Path();body.moveTo(cx-rad*.78f,base-rad*.02f)
+            body.cubicTo(cx-rad*.74f,cy+rad*.31f,cx-rad*.44f,cy+rad*.12f,cx-rad*.32f,cy-rad*.06f)
+            body.cubicTo(cx-rad*.54f,cy-rad*.30f,cx-rad*.50f,cy-rad*.72f,cx-rad*.05f,cy-rad*.94f)
+            body.cubicTo(cx+rad*.40f,cy-rad*.78f,cx+rad*.50f,cy-rad*.30f,cx+rad*.32f,cy-rad*.06f)
+            body.cubicTo(cx+rad*.44f,cy+rad*.12f,cx+rad*.74f,cy+rad*.31f,cx+rad*.78f,base-rad*.02f)
+            body.quadTo(cx,base+rad*.12f,cx-rad*.78f,base-rad*.02f);body.close()
+            val hi=Color.rgb(minOf(255,Color.red(color)+55),minOf(255,Color.green(color)+55),minOf(255,Color.blue(color)+55))
+            val mid=Color.rgb(minOf(255,Color.red(color)+18),minOf(255,Color.green(color)+18),minOf(255,Color.blue(color)+18))
+            val lo=Color.rgb(maxOf(8,(Color.red(color)*.25f).toInt()),maxOf(8,(Color.green(color)*.25f).toInt()),maxOf(8,(Color.blue(color)*.25f).toInt()))
+            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx-rad,cy-rad,cx+rad,base,hi,mid,Shader.TileMode.CLAMP)
+                setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0xAA000000.toInt())
+            }
             c.drawPath(body,paint);paint.clearShadowLayer();paint.shader=null
-            val bevel=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat();this.color=0xD9FFFFFF.toInt()};c.drawPath(body,bevel)
-            bevel.style=Paint.Style.STROKE;bevel.strokeWidth=dp(1f).toFloat();bevel.color=0x66000000;c.drawPath(body,bevel)
-            val cap=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=RadialGradient(cx-rad*.22f,cy-rad*.55f,rad*.52f,0xFFFFFFFF.toInt(),0x00FFFFFF,Shader.TileMode.CLAMP)};c.drawCircle(cx-rad*.05f,cy-rad*.48f,rad*.43f,cap);cap.shader=null
-            cap.color=0xEEFFFFFF.toInt();c.drawCircle(cx-rad*.27f,cy-rad*.62f,rad*.13f,cap)
-            cap.color=0x55333333; c.drawOval(cx-rad*.58f,base-rad*.02f,cx+rad*.58f,base+rad*.12f,cap)
-            if(active){cap.style=Paint.Style.STROKE;cap.strokeWidth=dp(2f).toFloat();cap.color=0xFFFFF0A6.toInt();c.drawCircle(cx,cy-rad*.08f,rad+dp(2f),cap);cap.style=Paint.Style.FILL}
+            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat();color=0xEAFFFFFF.toInt()}
+            c.drawPath(body,rim)
+
+            // Neck collar.
+            val collar=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx-rad*.42f,cy-rad*.08f,cx+rad*.42f,cy+rad*.12f,
+                    0xFFFFFFFF.toInt(),0x5AFFFFFF,Shader.TileMode.CLAMP)
+            }
+            c.drawOval(cx-rad*.34f,cy-rad*.12f,cx+rad*.34f,cy+rad*.04f,collar);collar.shader=null
+
+            // Separate spherical head with controlled specular, matching the reference silhouette.
+            val head=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=RadialGradient(cx-rad*.18f,cy-rad*.45f,rad*.46f,
+                    hi,mid,Shader.TileMode.CLAMP)
+                setShadowLayer(dp(1.8f).toFloat(),0f,dp(1f).toFloat(),0x88000000.toInt())
+            }
+            c.drawCircle(cx,cy-rad*.62f,rad*.38f,head);head.clearShadowLayer();head.shader=null
+            head.style=Paint.Style.STROKE;head.strokeWidth=dp(.8f).toFloat();head.color=0xCCFFFFFF.toInt();c.drawCircle(cx,cy-rad*.62f,rad*.38f,head)
+
+            val spec=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=RadialGradient(cx-rad*.28f,cy-rad*.80f,rad*.34f,Color.WHITE,0x00FFFFFF,Shader.TileMode.CLAMP)
+            }
+            c.drawCircle(cx-rad*.14f,cy-rad*.76f,rad*.22f,spec);spec.shader=null
+            if(active){
+                spec.style=Paint.Style.STROKE;spec.strokeWidth=dp(2f).toFloat();spec.color=0xFFFFF0A6.toInt()
+                c.drawCircle(cx,cy-rad*.08f,rad+dp(2f),spec);spec.style=Paint.Style.FILL
+            }
         }
         private fun visualPath():List<Pair<Int,Int>>{
             return listOf(
