@@ -64,27 +64,3 @@ jobs:
           set -o pipefail
           export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
           /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
-
-      - name: Upload APK
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: LudoMadagascar-debug-apk
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
-
-      - name: Upload Ramus screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ramus-android-evidence
-          path: ramus-evidence/*.jpg
-          if-no-files-found: warn
-
-      - name: Upload Ramus smoke log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ramus-smoke-log
-          path: ramus-smoke.log
-          if-no-files-found: warn
