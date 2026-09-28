@@ -1,4 +1,5 @@
 name: Android Emulator Automated Tests
+# Premium landscape visual/gameplay validation gate
 
 on:
   workflow_dispatch:
