@@ -417,6 +417,22 @@ class MainActivity : Activity() {
         }.setNegativeButton("Fermer",null).show()
     }
 
+    private fun paymentTile(title:String,subtitle:String,logo:String,accent:Int,action:(()->Unit)):LinearLayout{
+        val box=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(8));isClickable=true;isFocusable=true
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(232,239,249))).apply{cornerRadius=dp(19).toFloat();setStroke(dp(1),Color.rgb(207,220,237))}
+            elevation=dp(7).toFloat();setOnClickListener{action()}
+            setOnTouchListener{v,e->when(e.actionMasked){MotionEvent.ACTION_DOWN->v.animate().translationY(dp(1).toFloat()).scaleX(.985f).scaleY(.985f).setDuration(70L).start();MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->v.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(120L).start()};false}
+        }
+        val mark=TextView(this).apply{text=logo;textSize=17f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.WHITE);background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(14).toFloat();setStroke(dp(1),0x66FFFFFF)}}
+        box.addView(mark,LinearLayout.LayoutParams(dp(52),dp(52)))
+        val tx=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,dp(4),0)}
+        tx.addView(label(title,14.5f,true,Color.rgb(24,41,65)))
+        tx.addView(label(subtitle,10.5f,false,Color.rgb(98,112,132)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(2)})
+        box.addView(tx,LinearLayout.LayoutParams(0,-2,1f));box.addView(label("›",25f,true,Color.rgb(138,151,170)))
+        return box
+    }
+
     private fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
@@ -429,7 +445,15 @@ class MainActivity : Activity() {
         actions.addView(button("➕ Dépôt",Color.rgb(35,150,84)){pay(true)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
         actions.addView(button("➖ Retrait",Color.rgb(210,55,65)){pay(false)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
         add(actions,52)
-        add(button("💠 Binance Pay / Crypto — Conversion",Color.rgb(45,105,210)){cryptoDialog()},52)
+        sectionTitle("Paiements disponibles","Choisis un service pour ouvrir son parcours sécurisé.")
+        val payRow1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        payRow1.addView(paymentTile("MVola","Dépôt / retrait","M",Color.rgb(28,111,224)){pay(true,0)},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        payRow1.addView(paymentTile("Airtel Money","Dépôt / retrait","A",Color.rgb(205,40,55)){pay(true,1)},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(payRow1,72,0,0)
+        val payRow2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        payRow2.addView(paymentTile("Orange Money","Dépôt / retrait","O",Color.rgb(247,133,18)){pay(true,2)},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        payRow2.addView(paymentTile("Binance Pay","Crypto ↔ MGA","B",Color.rgb(25,44,74)){cryptoDialog()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(payRow2,72,0,6)
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
         bottomNav("wallet")
         loadWallet()
@@ -457,14 +481,14 @@ class MainActivity : Activity() {
 
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}\n")}}}} }
 
-    private fun pay(deposit:Boolean) {
+    private fun pay(deposit:Boolean, preselected:Int=0) {
         val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
         val contact=EditText(this).apply { hint="Téléphone ou identifiant (si requis)";inputType=1;setPadding(dp(12),0,dp(12),0) }
         val methods=arrayOf("MVola","Airtel Money","Orange Money","Binance Pay / Crypto")
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
         box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(contact,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(6)})
         box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
-        AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,0,null)
+        AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,preselected.coerceIn(0,3),null)
             .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
             .setNegativeButton("Aoka",null).show()
     }
@@ -891,7 +915,7 @@ class MainActivity : Activity() {
         private var dicePhase=0f
         private val jumpLift=Array(4){FloatArray(4)}
         private val spawnScale=Array(4){FloatArray(4){1f}}
-        init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
+        init{setLayerType(View.LAYER_TYPE_HARDWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
             val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
@@ -977,6 +1001,23 @@ class MainActivity : Activity() {
             }
             return floatArrayOf(rr,cc)
         }
+        private fun animationCoord(pi:Int,pos:Int):FloatArray{
+            if(pos in 0..51){
+                val q=visualPath()[(pi*13+pos)%52]
+                return floatArrayOf(q.first+0.5f,q.second+0.5f)
+            }
+            if(pos in 52..57){
+                val finish=arrayOf(
+                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f)
+                )[pi]
+                val k=(pos-52)*2
+                return floatArrayOf(finish[k],finish[k+1])
+            }
+            return floatArrayOf(7.5f,7.5f)
+        }
         fun animateState(){
             val targets=Array(4){Array(4){FloatArray(2)}}
             val oldPos=Array(4){IntArray(4){Int.MIN_VALUE}}
@@ -1014,11 +1055,10 @@ class MainActivity : Activity() {
                             val local=u-step
                             jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
                             spawnScale[pi][ti]=1f
-                            val base=((pi*13)+from+step)%52
-                            val q1=visualPath()[base]
-                            val q2=visualPath()[(base+1)%52]
-                            display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
-                            display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
+                            val q1=animationCoord(pi,from+step)
+                            val q2=animationCoord(pi,from+step+1)
+                            display[pi][ti][0]=q1[0]+(q2[0]-q1[0])*local
+                            display[pi][ti][1]=q1[1]+(q2[1]-q1[1])*local
                         }else if(from<0 && to>=0){
                             val targetR=targets[pi][ti][0];val targetC=targets[pi][ti][1]
                             val baseR=display[pi][ti][0];val baseC=display[pi][ti][1]
@@ -1104,7 +1144,7 @@ class MainActivity : Activity() {
                 if(!diceRolling)return
                 dicePhase=((System.currentTimeMillis()-start)/650f).coerceIn(0f,1f)
                 invalidate()
-                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},45L)
+                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},16L)
             }
             tick()
         }
@@ -1134,13 +1174,26 @@ class MainActivity : Activity() {
         }
         private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean,scale:Float=1f){
             val rad=cell*.31f*scale
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
-            shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
-            val body=Paint(Paint.ANTI_ALIAS_FLAG)
-            body.shader=RadialGradient(cx-rad*.32f,cy-rad*.38f,rad*.95f,color,Color.rgb((Color.red(color)*.45f).toInt(),(Color.green(color)*.45f).toInt(),(Color.blue(color)*.45f).toInt()),Shader.TileMode.CLAMP)
-            c.drawCircle(cx,cy,rad,body);body.shader=null
-            if(active){val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.7f).toFloat()};c.drawCircle(cx,cy,rad+dp(2f),glow)}
-            val hi=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x99FFFFFF.toInt()};c.drawCircle(cx-rad*.30f,cy-rad*.34f,rad*.18f,hi)
+            val base=cy+rad*.58f
+            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x55000000.toInt();setShadowLayer(dp(3f).toFloat(),0f,dp(2f).toFloat(),0x88000000.toInt())}
+            c.drawOval(cx-rad*.82f,base-rad*.13f,cx+rad*.82f,base+rad*.24f,shadow);shadow.clearShadowLayer()
+            val body=Path()
+            body.moveTo(cx-rad*.82f,base)
+            body.quadTo(cx-rad*.72f,cy+rad*.22f,cx-rad*.40f,cy-rad*.02f)
+            body.cubicTo(cx-rad*.26f,cy-rad*.20f,cx-rad*.22f,cy-rad*.38f,cx-rad*.20f,cy-rad*.48f)
+            body.cubicTo(cx-rad*.48f,cy-rad*.63f,cx-rad*.52f,cy-rad*.98f,cx,cy-rad*1.02f)
+            body.cubicTo(cx+rad*.52f,cy-rad*.98f,cx+rad*.48f,cy-rad*.63f,cx+rad*.20f,cy-rad*.48f)
+            body.cubicTo(cx+rad*.22f,cy-rad*.38f,cx+rad*.26f,cy-rad*.20f,cx+rad*.40f,cy-rad*.02f)
+            body.quadTo(cx+rad*.72f,cy+rad*.22f,cx+rad*.82f,base)
+            body.quadTo(cx,base+rad*.16f,cx-rad*.82f,base);body.close()
+            val hiColor=Color.rgb(Math.min(255,Color.red(color)+78),Math.min(255,Color.green(color)+78),Math.min(255,Color.blue(color)+78))
+            val loColor=Color.rgb((Color.red(color)*.38f).toInt(),(Color.green(color)*.38f).toInt(),(Color.blue(color)*.38f).toInt())
+            val paint=Paint(Paint.ANTI_ALIAS_FLAG)
+            paint.shader=LinearGradient(cx-rad,cy-rad,cx+rad,base,hiColor,loColor,Shader.TileMode.CLAMP)
+            paint.setShadowLayer(dp(3.5f).toFloat(),0f,dp(2f).toFloat(),0x88000000.toInt());c.drawPath(body,paint);paint.clearShadowLayer();paint.shader=null
+            paint.style=Paint.Style.STROKE;paint.strokeWidth=dp(1.1f).toFloat();paint.color=0x99FFFFFF.toInt();c.drawPath(body,paint);paint.style=Paint.Style.FILL
+            if(active){paint.style=Paint.Style.STROKE;paint.strokeWidth=dp(1.8f).toFloat();paint.color=0xF2FFFFFF.toInt();c.drawCircle(cx,cy-rad*.12f,rad+dp(2f),paint);paint.style=Paint.Style.FILL}
+            paint.color=0xBFFFFFFF.toInt();c.drawCircle(cx-rad*.24f,cy-rad*.62f,rad*.16f,paint)
         }
         private fun visualPath():List<Pair<Int,Int>>{
             return listOf(

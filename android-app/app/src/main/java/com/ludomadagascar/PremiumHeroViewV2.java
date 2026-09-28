@@ -16,7 +16,7 @@ public class PremiumHeroViewV2 extends View {
       home.flipBackground();invalidate();postDelayed(this,6000L);
     }
   };
-  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
+  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_HARDWARE,null);home=new HomeView(c);}
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();postDelayed(homeBgFlip,6000L);invalidate();
   }
@@ -58,7 +58,7 @@ public class PremiumHeroViewV2 extends View {
     boolean bgBActive=false;
     long bgSwitchMs=0L;
     HomeView(Context c){
-      super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_SOFTWARE,null);
+      super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
       bgA=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab);
       bgB=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt);
       p.setFilterBitmap(true);
@@ -95,7 +95,12 @@ public class PremiumHeroViewV2 extends View {
       p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.25f),d(y-r*.48f),d(r*.16f),p);
     }
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
-      box(c,l,y,r,b,16,fill,stroke);t(c,icon,l+17,(y+b)/2f+2,18,gold2,true,true);t(c,title,l+34,y+21,10.5f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.5f,0xD8FFFFFF,false,false);
+      p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(fill);p.setShadowLayer(d(7),0,d(4),0x88000000);
+      c.drawRoundRect(d(l),d(y),d(r),d(b),d(16),d(16),p);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.2f));p.setColor(stroke);c.drawRoundRect(d(l),d(y),d(r),d(b),d(16),d(16),p);p.setStyle(Paint.Style.FILL);
+      p.setShader(new LinearGradient(d(l),d(y),d(l),d(b),0x55FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(d(l+1),d(y+1),d(r-1),d((y+b)/2f),d(15),d(15),p);p.setShader(null);
+      p.setShadowLayer(d(4),0,d(2),0x66000000);p.setShader(new LinearGradient(d(l+3),d(y+3),d(l+30),d(b-3),Color.WHITE,fill,Shader.TileMode.CLAMP));c.drawCircle(d(l+17),d((y+b)/2f),d(12.5f),p);p.setShader(null);p.clearShadowLayer();
+      t(c,icon,l+17,(y+b)/2f+2,15,gold2,true,true);t(c,title,l+34,y+20,10.2f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.1f,0xE4FFFFFF,false,false);
     }
     void drawCover(Canvas c,Bitmap bm,float alpha,float W,float H){
       if(bm==null)return;
@@ -137,7 +142,7 @@ public class PremiumHeroViewV2 extends View {
       p.setShadowLayer(d(7),0,d(4),0xA0000000);p.setShader(new LinearGradient(d(179),d(276),d(219),d(322),Color.WHITE,Color.rgb(205,194,169),Shader.TileMode.CLAMP));c.drawRoundRect(d(177),d(274),d(221),d(320),d(9),d(9),p);p.setShader(null);p.clearShadowLayer();
       p.setColor(0xFF7C5B20);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(199+v[0]),d(297+v[1]),d(2.6f),p);c.restore();
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.3f));p.setColor(0x99FFF1A6);c.drawRoundRect(d(102),d(218),d(278),d(388),d(22),d(22),p);p.setStyle(Paint.Style.FILL);
-      c.restore();postInvalidateDelayed(50);
+      c.restore();postInvalidateDelayed(16);
     }
     private int topInsetPx(){
       WindowInsets insets=getRootWindowInsets();
