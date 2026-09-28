@@ -117,8 +117,14 @@ try {
   // then verify the real online lobby and its local music control before offline gameplay.
   run("tap", "0.83,0.58", "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
-  target = findRef("🌐 En ligne — Joueurs réels");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
+  if (onlineMode.ok && onlineMode.value.elements?.length) {
+    target = { ref: onlineMode.value.elements[0].ref, gen: onlineMode.value.gen };
+    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  } else {
+    // AlertDialog first item fallback when the accessibility tree omits the emoji label.
+    run("tap", "0.50,0.47", "--session", session);
+  }
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
