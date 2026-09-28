@@ -275,6 +275,23 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER
             setPadding(dp(4),dp(6),dp(4),0)
         })
+        val offlineCard=TextView(this).apply{
+            text="👥 Jouer hors-ligne"
+            textSize=12.5f
+            setTypeface(null,android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity=Gravity.CENTER
+            isClickable=true
+            isFocusable=true
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(83,99,122),Color.rgb(48,61,80))).apply{
+                cornerRadius=dp(16).toFloat()
+                setStroke(dp(1),0x55FFFFFF)
+            }
+            elevation=dp(5).toFloat()
+            setOnClickListener{offlineMenu()}
+        }
+        brand.addView(offlineCard,LinearLayout.LayoutParams(dp(235),dp(46)).apply{topMargin=dp(14)})
         root.addView(brand,LinearLayout.LayoutParams(0,-1,.40f))
 
         val panel=LinearLayout(this).apply{
@@ -315,8 +332,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
         panel.addView(actionButton("G  Continuer avec Google",Color.rgb(88,106,132)){googleSignup()},
             LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
-        panel.addView(actionButton("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},
-            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        // Offline action is exposed from the left brand column so its accessibility bounds remain inside the landscape viewport.
         panel.addView(label("Paiements sécurisés côté serveur",9.5f,false,Color.argb(205,255,255,255)).apply{gravity=Gravity.CENTER},
             LinearLayout.LayoutParams(-1,dp(20)).apply{topMargin=dp(3)})
         val loginMusicRow=LinearLayout(this).apply{
