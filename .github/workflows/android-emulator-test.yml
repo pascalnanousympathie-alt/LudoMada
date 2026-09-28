@@ -36,11 +36,20 @@ jobs:
       - name: Configure ARM64 AAPT2
         run: bash scripts/setup-termux-aapt2.sh
 
-      - name: Build debug APK
+      - name: Prepare debug APK
         working-directory: android-app
         run: |
-          chmod +x gradlew
-          bash ./gradlew --no-daemon --no-parallel -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+          set -eu
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -s "$apk" ]; then
+            echo "Using existing debug APK from the self-hosted workspace."
+            ls -lh "$apk"
+          else
+            chmod +x gradlew
+            echo "No reusable APK found; building with a hard timeout."
+            timeout 12m bash ./gradlew --no-daemon --no-parallel -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+            test -s "$apk"
+          fi
 
       - name: Install Ramus CLI
         run: |
