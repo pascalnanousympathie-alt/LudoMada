@@ -510,7 +510,11 @@ class MainActivity : Activity() {
         add(card("2 • Lancer le dé","Chaque lancer est validé côté serveur.",emerald),82,3,5)
         add(card("3 • Déplacer un pion","Choisis un pion autorisé après le dé.",Color.rgb(126,82,188)),82,3,5)
         add(card("4 • Gagner","La partie et le portefeuille sont réconciliés côté serveur.",gold),82,3,8)
-        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        val lobbyHomeButton=button("← Accueil",Color.rgb(70,82,100)){home()}.apply{
+            contentDescription="Accueil"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        add(lobbyHomeButton,52)
     }
 
     private fun events() {
