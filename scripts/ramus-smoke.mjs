@@ -143,20 +143,20 @@ try {
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
   const musicSemantic = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
-  if (musicSemantic.ok && musicSemantic.value.elements?.length) {
-    const mb = musicSemantic.value.elements[0];
-    run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
-    const musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-    if (!musicOff.ok || !musicOff.value.elements?.length) throw new Error("Music toggle OFF state not exposed");
-    console.log("LOBBY MUSIC TOGGLE PASS");
-    run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
-  } else {
-    // The button is drawn by a standard Button in the lobby; keep the visual gate deterministic.
-    run("tap", "0.93,0.16", "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
-    console.log("LOBBY MUSIC CONTROL VISUAL PASS");
+  if (!musicSemantic.ok || !musicSemantic.value.elements?.length) {
+    throw new Error("Lobby music control is not exposed to accessibility");
   }
+  const mb = musicSemantic.value.elements.find(e=>e.clickable!==false) || musicSemantic.value.elements[0];
+  run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "500", "--session", session);
+  const musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
+  if (!musicOff.ok || !musicOff.value.elements?.length) throw new Error("Music toggle OFF state not exposed");
+  console.log("LOBBY MUSIC TOGGLE PASS");
+  const musicBack = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
+  const mbOff = musicBack.ok && musicBack.value.elements?.length ? (musicBack.value.elements.find(e=>e.clickable!==false)||musicBack.value.elements[0]) : null;
+  if (!mbOff) throw new Error("Music toggle cannot be re-enabled");
+  run("tap", mbOff.ref, "--gen", String(musicBack.value.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
 
   // Return from the lobby using its native accessible Accueil button; Android BACK remains the fallback.
   let lobbyHome = runAllowError("snapshot", "--session", session, "--find", "Accueil");
