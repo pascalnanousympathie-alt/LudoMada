@@ -16,7 +16,14 @@ public class PremiumHeroViewV2 extends View {
       home.flipBackground();invalidate();postDelayed(this,6000L);
     }
   };
-  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_HARDWARE,null);home=new HomeView(c);}
+  public PremiumHeroViewV2(Context c){
+    super(c);
+    setLayerType(LAYER_TYPE_HARDWARE,null);
+    if(c instanceof Activity){
+      ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+    home=new HomeView(c);
+  }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();postDelayed(homeBgFlip,6000L);invalidate();
   }
