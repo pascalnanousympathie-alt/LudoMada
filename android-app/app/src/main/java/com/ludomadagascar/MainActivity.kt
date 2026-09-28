@@ -1132,19 +1132,19 @@ class MainActivity : Activity() {
             // Colored home lanes with a recessed, enamel-like finish.
             val laneCols=intArrayOf(Color.rgb(232,72,78),Color.rgb(54,177,103),Color.rgb(241,193,57),Color.rgb(68,119,220))
             for(i in 1..5){
-                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF,laneCols[0],Shader.TileMode.CLAMP)}
+                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF.toInt(),laneCols[0],Shader.TileMode.CLAMP)}
                 canvas.drawRoundRect(ox+(i+.06f)*cell,oy+7.06f*cell,ox+(i+.94f)*cell,oy+7.94f*cell,dp(5f).toFloat(),dp(5f).toFloat(),lp)
             }
             for(i in 9..13){
-                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF,laneCols[1],Shader.TileMode.CLAMP)}
+                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF.toInt(),laneCols[1],Shader.TileMode.CLAMP)}
                 canvas.drawRoundRect(ox+(i+.06f)*cell,oy+7.06f*cell,ox+(i+.94f)*cell,oy+7.94f*cell,dp(5f).toFloat(),dp(5f).toFloat(),lp)
             }
             for(i in 9..13){
-                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF,laneCols[2],Shader.TileMode.CLAMP)}
+                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF.toInt(),laneCols[2],Shader.TileMode.CLAMP)}
                 canvas.drawRoundRect(ox+7.06f*cell,oy+(i+.06f)*cell,ox+7.94f*cell,oy+(i+.94f)*cell,dp(5f).toFloat(),dp(5f).toFloat(),lp)
             }
             for(i in 1..5){
-                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF,laneCols[3],Shader.TileMode.CLAMP)}
+                val lp=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy,side,oy+side,0xCCFFFFFF.toInt(),laneCols[3],Shader.TileMode.CLAMP)}
                 canvas.drawRoundRect(ox+7.06f*cell,oy+(i+.06f)*cell,ox+7.94f*cell,oy+(i+.94f)*cell,dp(5f).toFloat(),dp(5f).toFloat(),lp)
             }
 
@@ -1455,7 +1455,7 @@ class MainActivity : Activity() {
             val baseY=cy+rad*.70f
 
             // Contact shadow and weighted foot.
-            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x70000000;setShadowLayer(dp(4f).toFloat(),0f,dp(3f).toFloat(),0x99000000.toInt())}
+            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{setColor(0x70000000);setShadowLayer(dp(4f).toFloat(),0f,dp(3f).toFloat(),0x99000000.toInt())}
             c.drawOval(cx-rad*1.02f,baseY-rad*.09f,cx+rad*1.02f,baseY+rad*.28f,sh)
             sh.clearShadowLayer()
 
@@ -1494,7 +1494,7 @@ class MainActivity : Activity() {
             }
             c.drawCircle(cx,cy-rad*.72f,rad*.40f,head);head.clearShadowLayer();head.shader=null
 
-            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.15f).toFloat();color=0xDFFFFFFF.toInt()}
+            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.15f).toFloat();setColor(0xDFFFFFFF.toInt())}
             c.drawPath(body,rim)
             rim.strokeWidth=dp(.75f).toFloat();rim.color=0x66333A43;c.drawPath(body,rim)
 
