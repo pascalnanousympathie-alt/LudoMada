@@ -206,11 +206,7 @@ public class PremiumHeroViewV2 extends View {
       float sc=s*den;
       float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
       float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
-      if(landscape && lobbyRef!=null){
-        // The supplied 4K lobby is the visual source of truth. Keep the touch map separate from the pixels.
-        background(c,W,H);
-        return;
-      }
+      
       c.save(); background(c,W,H); c.translate(ox,oy);
       // Cinematic landscape composition: menus frame a large central 3D board.
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
