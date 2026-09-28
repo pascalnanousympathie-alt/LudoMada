@@ -466,6 +466,17 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onBackPressed() {
+        when (currentScreen) {
+            "offlineMenu" -> home()
+            "offline" -> offlineMenu()
+            "room" -> home()
+            "lobby" -> home()
+            "profile", "wallet", "history", "social", "events", "tutorials", "settings" -> home()
+            else -> super.onBackPressed()
+        }
+    }
+
     private fun home() {
         currentScreen="home"
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
