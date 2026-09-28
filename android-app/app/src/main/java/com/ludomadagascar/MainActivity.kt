@@ -75,14 +75,18 @@ class MainActivity : Activity() {
     }
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
+        val gameSurface=(name=="board" || name=="offline")
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(dp(20),dp(18),dp(20),dp(20))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+            setPadding(dp(if(gameSurface)12 else 20),dp(if(gameSurface)10 else 18),dp(if(gameSurface)12 else 20),dp(if(gameSurface)14 else 20))
+            background=if(gameSurface)
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(8,32,63),Color.rgb(12,69,101),Color.rgb(7,29,56)))
+            else
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
         }
         content.setOnApplyWindowInsetsListener { v,insets ->
             val bottom=insets.systemWindowInsetBottom.coerceAtLeast(0)
-            v.setPadding(dp(20),dp(18),dp(20),dp(20)+bottom)
+            v.setPadding(dp(if(name=="board" || name=="offline")12 else 20),dp(if(name=="board" || name=="offline")10 else 18),dp(if(name=="board" || name=="offline")12 else 20),dp(if(name=="board" || name=="offline")14 else 20)+bottom)
             insets
         }
         root=content
@@ -98,15 +102,20 @@ class MainActivity : Activity() {
 
     private fun addTopBar(title:String) {
         val bar=LinearLayout(this).apply {
-            gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(7),dp(8),dp(7))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.argb(248,255,255,255),Color.argb(236,246,250,255))).apply{
-                cornerRadius=dp(22).toFloat(); setStroke(dp(1),Color.rgb(223,231,241))
-            }; elevation=dp(4).toFloat()
+            gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(6),dp(8),dp(6))
+            background=if(currentScreen=="board" || currentScreen=="offline")
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(0xD9174168.toInt(),0xB80A2D50.toInt())).apply{
+                    cornerRadius=dp(20).toFloat(); setStroke(dp(1),0x6697D6FF)
+                }
+            else
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.argb(248,255,255,255),Color.argb(236,246,250,255))).apply{
+                    cornerRadius=dp(22).toFloat(); setStroke(dp(1),Color.rgb(223,231,241))
+                }; elevation=dp(4).toFloat()
         }
         bar.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(46),dp(46)))
         val wrap=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,0,0)}
-        wrap.addView(label("LudoMada",18f,true,royal))
-        wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,Color.rgb(104,116,134)))
+        wrap.addView(label("LudoMada",18f,true,if(currentScreen=="board" || currentScreen=="offline") Color.WHITE else royal))
+        wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,if(currentScreen=="board" || currentScreen=="offline") 0xD8CFEAFF.toInt() else Color.rgb(104,116,134)))
         bar.addView(wrap,LinearLayout.LayoutParams(0,-2,1f))
         val balanceBox=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(8),dp(3),dp(8),dp(3))
