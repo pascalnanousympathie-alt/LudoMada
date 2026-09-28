@@ -469,6 +469,8 @@ class MainActivity : Activity() {
     private fun home() {
         currentScreen="home"
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // Re-assert landscape after returning from login/offline navigation; cloud Android surfaces can retain portrait bounds.
+        window.decorView.post { requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
         window.statusBarColor=Color.TRANSPARENT
         window.navigationBarColor=Color.TRANSPARENT
