@@ -195,7 +195,7 @@ class MainActivity : Activity() {
             cornerRadius = dp(18).toFloat()
             setStroke(dp(1), 0x66FFFFFF)
         }
-        elevation = dp(5f)
+        elevation = dp(5f).toFloat()
         setOnTouchListener { v,e ->
             when(e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> v.animate().scaleX(.92f).scaleY(.92f).setDuration(70L).start()
