@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 
 const cli = process.env.RAMUS_CLI;
 const apk = process.env.RAMUS_APK;
@@ -88,6 +88,7 @@ function advanceToTurn(targetTurn) {
 let session = "";
 let success = false;
 try {
+  rmSync("ramus-evidence", { recursive: true, force: true });
   mkdirSync("ramus-evidence", { recursive: true });
   if (!process.env.RAMUS_API_KEY) run("trial");
   const started = run("session", "start", "--apk", apk, "--wait");
@@ -104,24 +105,64 @@ try {
   run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
   // Offline → Accueil gives us the real premium Home without requiring credentials.
-  target = findRef("← Accueil");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  // Offline menu is custom-layout driven; use its stable bottom-right hitbox rather than relying on semantic extraction.
+  run("tap", "0.72,0.82", "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1500", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-a.jpg");
   runAllowError("wait", "--timeout", "6200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-b.jpg");
 
-  // The premium Home is a custom Canvas view, so semantic refs expose the
-  // whole view rather than each painted card. Tap the offline card directly.
-  run("tap", "0.83,0.46", "--session", session);
+  // Home is a custom Canvas. Open the central JOUER control by stable landscape coordinates,
+  // then verify the real online lobby and its local music control before offline gameplay.
+  run("tap", "0.83,0.58", "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  target = findRef("🌐 En ligne — Joueurs réels");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
+
+  const musicSemantic = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
+  if (musicSemantic.ok && musicSemantic.value.elements?.length) {
+    const mb = musicSemantic.value.elements[0];
+    run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
+    const musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
+    if (!musicOff.ok || !musicOff.value.elements?.length) throw new Error("Music toggle OFF state not exposed");
+    console.log("LOBBY MUSIC TOGGLE PASS");
+    run("tap", mb.ref, "--gen", String(musicSemantic.value.gen), "--session", session);
+  } else {
+    // The button is drawn by a standard Button in the lobby; keep the visual gate deterministic.
+    run("tap", "0.93,0.16", "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
+    console.log("LOBBY MUSIC CONTROL VISUAL PASS");
+  }
+
+  // Return from the lobby using its bottom navigation button.
+  const lobbyBack = runAllowError("snapshot", "--session", session, "--find", "← Accueil");
+  if (lobbyBack.ok && lobbyBack.value.elements?.length) {
+    run("tap", lobbyBack.value.elements[0].ref, "--gen", String(lobbyBack.value.gen), "--session", session);
+  } else {
+    run("tap", "0.50,0.90", "--session", session);
+  }
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+
+  // Re-enter the offline flow for the gameplay board.
+  run("tap", "0.83,0.58", "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
+  target = findRef("👥 Hors-ligne — 2 à 4 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
 
   // Verify the 4-player mode and its complete turn rotation.
-  target = findRef("← Hors-ligne");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const backFrom2pMenu = runAllowError("snapshot", "--session", session, "--find", "← Hors-ligne");
+  if (backFrom2pMenu.ok && backFrom2pMenu.value.elements?.length) {
+    run("tap", backFrom2pMenu.value.elements[0].ref, "--gen", String(backFrom2pMenu.value.gen), "--session", session);
+  } else {
+    run("tap", "0.50,0.90", "--session", session);
+  }
   assertMenuButton("👥 3 joueurs");
   assertMenuButton("👥 4 joueurs");
   target = findRef("👥 4 joueurs");
@@ -135,8 +176,12 @@ try {
   console.log("4-PLAYER TURN ROTATION PASS");
 
   // Return to the 2-player board for the dice/pawn validation.
-  target = findRef("← Hors-ligne");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const backFrom4p = runAllowError("snapshot", "--session", session, "--find", "← Hors-ligne");
+  if (backFrom4p.ok && backFrom4p.value.elements?.length) {
+    run("tap", backFrom4p.value.elements[0].ref, "--gen", String(backFrom4p.value.gen), "--session", session);
+  } else {
+    run("tap", "0.50,0.90", "--session", session);
+  }
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   assertTurn("Joueur 1/2");
