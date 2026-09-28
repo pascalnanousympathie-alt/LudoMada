@@ -176,6 +176,39 @@ class MainActivity : Activity() {
         root.addView(row,LinearLayout.LayoutParams(-1,dp(66)).apply{setMargins(0,dp(10),0,0)})
     }
 
+    private fun musicIconButton(): Button = Button(this).apply {
+        text = if (music.enabled()) "🎵" else "🔇"
+        textSize = 22f
+        isAllCaps = false
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        setPadding(0,0,0,0)
+        minimumWidth = 0
+        minimumHeight = 0
+        minWidth = 0
+        minHeight = 0
+        contentDescription = if (music.enabled()) "Musique activée" else "Musique désactivée"
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(31,52,84), Color.rgb(12,29,55))
+        ).apply {
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), 0x66FFFFFF)
+        }
+        elevation = dp(5f)
+        setOnTouchListener { v,e ->
+            when(e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> v.animate().scaleX(.92f).scaleY(.92f).setDuration(70L).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(110L).start()
+            }
+            false
+        }
+        setOnClickListener {
+            music.toggle()
+            updateMusicButton()
+        }
+    }
+
     private val sessionPrefs by lazy { getSharedPreferences("ludomada_session", Context.MODE_PRIVATE) }
 
     private fun saveSession() {
@@ -235,7 +268,13 @@ class MainActivity : Activity() {
         add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
-        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
+        val loginMusicRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.END or Gravity.CENTER_VERTICAL
+            addView(musicIconButton(),LinearLayout.LayoutParams(dp(52),dp(52)))
+        }
+        musicButton = loginMusicRow.getChildAt(0) as Button
+        add(loginMusicRow,52,4,0)
     }
 
     private fun googleSignup() {
@@ -526,6 +565,14 @@ class MainActivity : Activity() {
     private fun formatDecimal(v:Double):String = String.format(java.util.Locale.US,"%.8f",v).trimEnd('0').trimEnd('.')
     private fun lobby() {
         page("lobby","Lalao")
+        val lobbyMusicRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+        }
+        lobbyMusicRow.addView(label("Ambiance musicale",13f,true,Color.rgb(88,99,116)),LinearLayout.LayoutParams(0,dp(52),1f))
+        musicButton=musicIconButton()
+        lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
+        add(lobbyMusicRow,52,0,5)
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
@@ -1235,8 +1282,13 @@ class MainActivity : Activity() {
         }
         private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
     }
-    private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
-    private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
+    private fun musicLabel():String = if(music.enabled()) "Musique activée" else "Musique désactivée"
+    private fun updateMusicButton(){
+        if(::musicButton.isInitialized){
+            musicButton.text = if(music.enabled()) "🎵" else "🔇"
+            musicButton.contentDescription = musicLabel()
+        }
+    }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 
