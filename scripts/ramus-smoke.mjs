@@ -149,14 +149,13 @@ try {
     console.log("LOBBY MUSIC CONTROL VISUAL PASS");
   }
 
-  // Return from the lobby using its bottom navigation button.
-  const lobbyBack = runAllowError("snapshot", "--session", session, "--find", "← Accueil");
-  if (lobbyBack.ok && lobbyBack.value.elements?.length) {
-    run("tap", lobbyBack.value.elements[0].ref, "--gen", String(lobbyBack.value.gen), "--session", session);
-  } else {
-    run("tap", "0.50,0.90", "--session", session);
-  }
+  // Return from the lobby using Android BACK; the app maps lobby → Home natively.
+  run("press", "BACK", "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  const homeAfterLobby = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+  if (!homeAfterLobby.ok || !homeAfterLobby.value.elements?.length) {
+    throw new Error("Premium Home was not reached after Lobby → BACK");
+  }
 
   // Re-enter the offline flow for the gameplay board.
   run("tap", "0.83,0.58", "--session", session);
@@ -169,12 +168,8 @@ try {
   console.log("2-PLAYER MENU PASS");
 
   // Verify the 4-player mode and its complete turn rotation.
-  const backFrom2pMenu = runAllowError("snapshot", "--session", session, "--find", "← Hors-ligne");
-  if (backFrom2pMenu.ok && backFrom2pMenu.value.elements?.length) {
-    run("tap", backFrom2pMenu.value.elements[0].ref, "--gen", String(backFrom2pMenu.value.gen), "--session", session);
-  } else {
-    run("tap", "0.50,0.90", "--session", session);
-  }
+  run("press", "BACK", "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
   assertMenuButton("👥 3 joueurs");
   assertMenuButton("👥 4 joueurs");
   target = findRef("👥 4 joueurs");
