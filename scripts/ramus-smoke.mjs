@@ -90,6 +90,8 @@ let success = false;
 try {
   rmSync("ramus-evidence", { recursive: true, force: true });
   mkdirSync("ramus-evidence", { recursive: true });
+  // Recover the known stale session left by the previous failed smoke run.
+  runAllowError("session", "end", "--session", "11a9fbfd-7117-48af-8466-6cab1fa8132e");
   if (!process.env.RAMUS_API_KEY) run("trial");
   const started = run("session", "start", "--apk", apk, "--wait");
   session = started.session;
