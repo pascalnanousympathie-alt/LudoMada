@@ -105,13 +105,13 @@ try {
   run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
   // Offline → Accueil gives us the real premium Home without requiring credentials.
-  // Prefer the standard Button semantic node; fall back to the verified landscape hitbox when Ramus omits it.
-  const homeSemantic = runAllowError("snapshot", "--session", session, "--find", "← Accueil");
+  // Match the stable label first; use the verified landscape hitbox as the final fallback.
+  const homeSemantic = runAllowError("snapshot", "--session", session, "--find", "Accueil");
   if (homeSemantic.ok && homeSemantic.value.elements?.length) {
     const homeTarget = homeSemantic.value.elements[0];
     run("tap", homeTarget.ref, "--gen", String(homeSemantic.value.gen), "--session", session);
   } else {
-    run("tap", "0.72,0.47", "--session", session);
+    run("tap", "0.72,0.60", "--session", session);
   }
   runAllowError("wait", "--stable", "--timeout", "1500", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-a.jpg");
