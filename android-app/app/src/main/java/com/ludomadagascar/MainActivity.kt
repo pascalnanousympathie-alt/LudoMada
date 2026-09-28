@@ -720,11 +720,26 @@ class MainActivity : Activity() {
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
-        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)))
-        add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
-        add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
-        add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
-        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)),74,2,5)
+
+        // Compact 2×2 selector: all actions remain above the fold on landscape.
+        val row1=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
+        }
+        row1.addView(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(5),dp(4))})
+        row1.addView(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),0,0,dp(4))})
+        add(row1,48,0,0)
+
+        val row2=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
+        }
+        row2.addView(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(5),dp(5))})
+        row2.addView(button("← Accueil",Color.rgb(70,82,100)){home()},
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),dp(4),0,dp(5))})
+        add(row2,48,0,0)
     }
 
     private fun startOffline(players:Int) {
