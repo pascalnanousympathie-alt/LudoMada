@@ -59,8 +59,8 @@ public class PremiumHeroViewV2 extends View {
     long bgSwitchMs=0L;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
-      bgA=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab);
-      bgB=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt);
+      bgA=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab_landscape);
+      bgB=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt_landscape);
       p.setFilterBitmap(true);
     }
     void flipBackground(){
@@ -80,7 +80,10 @@ public class PremiumHeroViewV2 extends View {
       c.drawCircle(d(x),d(y),d(r),p);p.setShader(null);p.clearShadowLayer();p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.28f),d(y-r*.34f),d(r*.18f),p);
     }
     void boardPawn(Canvas c,float x,float y,float r,int col){
-      p.setShadowLayer(d(6),0,d(4),0xAA000000);
+      // Physically-inspired Ludo pawn: weighted base, tapered body, spherical head and soft speculars.
+      p.setStyle(Paint.Style.FILL);p.setShader(null);p.setShadowLayer(d(5.5f),0,d(4),0x99000000);
+      p.setShader(new RadialGradient(d(x-r*.05f),d(y+r*.64f),d(r*1.10f),0xFFF9FBFC,Color.rgb(54,58,65),Shader.TileMode.CLAMP));
+      c.drawOval(d(x-r*.98f),d(y+r*.52f),d(x+r*.98f),d(y+r*.93f),p);p.clearShadowLayer();p.setShader(null);
       Path q=new Path();
       q.moveTo(d(x-r*.9f),d(y+r*.65f));
       q.cubicTo(d(x-r*.72f),d(y+r*.95f),d(x+r*.72f),d(y+r*.95f),d(x+r*.9f),d(y+r*.65f));
@@ -93,11 +96,16 @@ public class PremiumHeroViewV2 extends View {
       int lo=Color.rgb((Color.red(col)*.26f>12? (int)(Color.red(col)*.26f):12),(Color.green(col)*.26f>12? (int)(Color.green(col)*.26f):12),(Color.blue(col)*.26f>12? (int)(Color.blue(col)*.26f):12));
       p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.75f),d(y+r),new int[]{hi,mid,lo},new float[]{0f,.48f,1f},Shader.TileMode.CLAMP));
       c.drawPath(q,p);p.setShader(null);p.clearShadowLayer();
+      // Collar ring and neck transition give the pawn a molded-plastic / lacquered finish.
+      p.setShader(new LinearGradient(d(x-r*.38f),d(y-r*.14f),d(x+r*.38f),d(y+r*.18f),0xFFFDFEFF,0x668A9098,Shader.TileMode.CLAMP));
+      c.drawOval(d(x-r*.43f),d(y-r*.22f),d(x+r*.43f),d(y+r*.03f),p);p.setShader(null);
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.25f));p.setColor(0xCFFFFFFF);c.drawPath(q,p);
       p.setStrokeWidth(d(.65f));p.setColor(0x55323A43);c.drawPath(q,p);p.setStyle(Paint.Style.FILL);
       p.setShader(new RadialGradient(d(x-r*.30f),d(y-r*.55f),d(r*.48f),0xFFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawCircle(d(x-r*.05f),d(y-r*.45f),d(r*.40f),p);p.setShader(null);
       p.setColor(0xDFFFFFFF);c.drawCircle(d(x-r*.27f),d(y-r*.63f),d(r*.12f),p);
       p.setColor(0x44343A41);c.drawOval(d(x-r*.56f),d(y+r*.54f),d(x+r*.56f),d(y+r*.82f),p);
+      // Bright keyline + tiny highlight on the crown of the pawn.
+      p.setShader(new RadialGradient(d(x-r*.20f),d(y-r*.72f),d(r*.30f),0xFFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawCircle(d(x-r*.18f),d(y-r*.72f),d(r*.28f),p);p.setShader(null);
     }
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(fill);p.setShadowLayer(d(7),0,d(4),0x88000000);
@@ -118,8 +126,9 @@ public class PremiumHeroViewV2 extends View {
       float q=Math.min(1f,Math.max(0f,(System.currentTimeMillis()-bgSwitchMs)/1200f));
       if(bgBActive){drawCover(c,bgA,1f-q,W,H);drawCover(c,bgB,q,W,H);}
       else {drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
-      p.setShader(new LinearGradient(0,0,0,H,0x18030D2E,0x6607102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
-      p.setShader(new RadialGradient(W*.5f,H*.38f,W*.55f,0x20FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.5f,H*.38f,W*.55f,p);p.setShader(null);
+      // The background assets are precomposed 16:9 canvases: the whole baobab scene stays visible.
+      p.setShader(new LinearGradient(0,0,0,H,0x08030D2E,0x2A071629,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
+      p.setShader(new RadialGradient(W*.50f,H*.40f,W*.62f,0x24FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.50f,H*.40f,W*.62f,p);p.setShader(null);
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
@@ -196,10 +205,13 @@ public class PremiumHeroViewV2 extends View {
       float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
       c.save(); background(c,W,H); c.translate(ox,oy);
       // Cinematic landscape composition: menus frame a large central 3D board.
-      box(c,24,24,1256,696,32,0xCC07152E,0x66FFFFFF);
-      p.setShader(new LinearGradient(0,24,0,696,0x33FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
+      box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
+      p.setShader(new LinearGradient(0,24,0,696,0x22FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
+      // Center branding follows the visual language of the reference splash while keeping the interactive landscape layout.
+      t(c,"Ludo",640,151,28,Color.WHITE,true,true);t(c,"Mada",717,151,28,Color.rgb(255,196,42),true,true);
+      t(c,"Jouer • Gagner • Grandir",679,174,9.5f,0xEEFFFFFF,false,true);
       // Header
-      box(c,52,45,1228,116,24,0xE60A1C3A,0x664B9EFF);
+      box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
       p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(gold2);c.drawCircle(92,80,26,p);p.setStyle(Paint.Style.FILL);pawn(c,92,81,13,blue);
       String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
@@ -211,11 +223,11 @@ public class PremiumHeroViewV2 extends View {
       menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
       menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
       menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
-      box(c,52,530,290,650,18,0xCC0A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
+      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
       // Large central board with 3D perspective frame
-      c.save(); c.translate(348,145); c.scale(2.38f,2.38f); board(c); c.restore();
+      c.save(); c.translate(340,-220); c.scale(2.15f,2.15f); board(c); c.restore();
       // Right information / CTA panel
-      box(c,982,145,1228,650,18,0xE60A1C3A,0x665E91C9);
+      box(c,982,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
       t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);
       t(c,"2–4",1105,255,29,Color.WHITE,true,true);t(c,"JOUEURS",1105,275,9,0xCFFFFFFF,true,true);
       t(c,"Mise actuelle",1105,314,9,0xBFFFFFFF,false,true);t(c,fee+" Ar",1105,344,24,gold2,true,true);
