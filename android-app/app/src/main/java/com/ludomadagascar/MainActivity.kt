@@ -1136,7 +1136,7 @@ class MainActivity : Activity() {
                     shader=RadialGradient(cx-cell*.08f,cy-cell*.12f,cell*.42f,cHi,cLo,Shader.TileMode.CLAMP)
                 }
                 c.drawCircle(cx,cy,cell*.39f,hole)
-                val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(.8f).toFloat();color=0xAAFFFFFF.toInt()}
+                val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(.8f).toFloat();this.color=0xAAFFFFFF.toInt()}
                 c.drawCircle(cx,cy,cell*.39f,rim)
             }
         }
@@ -1264,7 +1264,7 @@ class MainActivity : Activity() {
 
         private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
             val l=ox+col*cell+dp(0.55f);val t=oy+r*cell+dp(0.55f);val rr=l+cell-dp(1.1f);val bb=t+cell-dp(1.1f)
-            val a=((r+col)&1)==0
+            val a=((r+col) and 1)==0
             val top=if(a)Color.rgb(250,238,205) else Color.rgb(235,218,178)
             val bot=if(a)Color.rgb(221,196,146) else Color.rgb(211,186,137)
             val tile=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(l,t,l,bb,top,bot,Shader.TileMode.CLAMP)}
@@ -1414,7 +1414,7 @@ class MainActivity : Activity() {
             val rad=cell*.31f*scale
             val base=cy+rad*.64f
             val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                color=0x72000000;setShadowLayer(dp(5f).toFloat(),0f,dp(3f).toFloat(),0xCC000000.toInt())
+                this.color=0x72000000;setShadowLayer(dp(5f).toFloat(),0f,dp(3f).toFloat(),0xCC000000.toInt())
             }
             c.drawOval(cx-rad*1.00f,base-rad*.10f,cx+rad*1.00f,base+rad*.25f,shadow);shadow.clearShadowLayer()
 
@@ -1443,7 +1443,7 @@ class MainActivity : Activity() {
                 setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0xAA000000.toInt())
             }
             c.drawPath(body,paint);paint.clearShadowLayer();paint.shader=null
-            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat();color=0xEAFFFFFF.toInt()}
+            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat();this.color=0xEAFFFFFF.toInt()}
             c.drawPath(body,rim)
 
             // Neck collar.
