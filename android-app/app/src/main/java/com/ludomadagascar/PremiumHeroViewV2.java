@@ -18,7 +18,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
   };
   public PremiumHeroViewV2(Context c){
     super(c);
-    super(c);
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
