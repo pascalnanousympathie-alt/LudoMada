@@ -243,7 +243,7 @@ class MainActivity : Activity() {
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
         add(label("Joue • Gagne • Profite",15f,false,Color.rgb(88,99,116)),28,0,8)
         add(label("Jeu en ligne + hors-ligne",13f,true,Color.rgb(15,79,199)),30,0,12)
-        root.postDelayed({login()},700)
+        root.postDelayed({home()},700)
     }
 
     private fun login() {
@@ -611,11 +611,17 @@ class MainActivity : Activity() {
 
     private fun room() {
         page("room","Room")
-        add(card("Mise","$entryFee Ar",Color.rgb(37,93,196)))
-        add(card("Prize pool","$entryFee Ar × joueurs",Color.rgb(235,170,25)))
-        add(label("Game ID: $gameId",13f,false,Color.rgb(88,99,116)))
-        status=label("Miandry mpilalao...",15f,true,Color.rgb(37,93,196));add(status)
-        add(button("↻ Havaozina",Color.rgb(37,93,196)){refreshLobby()},52);add(button("← Lalao",Color.rgb(70,82,100)){gameId="";lobby()},52)
+        sectionTitle("Room de jeu","Prépare ta partie avant le lancement")
+        add(card("MISE","$entryFee Ar",Color.rgb(37,93,196)),78,3,5)
+        add(card("JOUEURS","En attente • 2 à 4 joueurs",Color.rgb(126,82,188)),78,3,5)
+        add(label("CODE DE ROOM",12f,true,Color.rgb(88,99,116)),28,3,2)
+        add(card("$gameId","Partage ce code avec tes joueurs",Color.rgb(12,147,87)),74,3,6)
+        status=label("Connexion au lobby…",14f,true,Color.rgb(37,93,196));add(status,42,3,4)
+        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        actions.addView(button("↻ Actualiser",Color.rgb(37,93,196)){refreshLobby()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
+        actions.addView(button("Quitter",Color.rgb(70,82,100)){gameId="";lobby()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
+        add(actions,52,3,8)
+        add(card("Lancement automatique","La partie démarre dès que 2 joueurs sont présents. État et portefeuille restent validés côté serveur.",Color.rgb(235,170,25)),82,3,8)
         refreshLobby()
     }
 
@@ -1153,13 +1159,23 @@ class MainActivity : Activity() {
             star.close();c.drawPath(star,p)
         }
         private fun drawCenter(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val pts=arrayOf(floatArrayOf(ox+6*cell,oy+6*cell,ox+9*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+6*cell,ox+9*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+9*cell,ox+6*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+6*cell,oy+9*cell,ox+6*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell))
-            for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
-            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
-            c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
+            val cx=ox+7.5f*cell; val cy=oy+7.5f*cell
+            val corners=arrayOf(
+                floatArrayOf(6f,6f,9f,6f), floatArrayOf(9f,6f,9f,9f),
+                floatArrayOf(9f,9f,6f,9f), floatArrayOf(6f,9f,6f,6f))
+            for(i in 0..3){
+                val a=corners[i]; val path=Path(); path.moveTo(ox+a[0]*cell,oy+a[1]*cell); path.lineTo(ox+a[2]*cell,oy+a[3]*cell); path.lineTo(cx,cy); path.close()
+                val base=cols[i]
+                val hi=Color.rgb(minOf(255,Color.red(base)+70),minOf(255,Color.green(base)+70),minOf(255,Color.blue(base)+70))
+                val lo=Color.rgb((Color.red(base)*.42f).toInt(),(Color.green(base)*.42f).toInt(),(Color.blue(base)*.42f).toInt())
+                val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(ox+a[0]*cell,oy+a[1]*cell,cx,cy,hi,lo,Shader.TileMode.CLAMP);setShadowLayer(dp(2f).toFloat(),0f,dp(1f).toFloat(),0x55000000)}
+                c.drawPath(path,paint); paint.clearShadowLayer(); paint.shader=null
+                paint.style=Paint.Style.STROKE;paint.strokeWidth=dp(.8f).toFloat();paint.color=0x99FFFFFF.toInt();c.drawPath(path,paint)
+            }
+            val med=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=RadialGradient(cx-cell*.12f,cy-cell*.18f,cell*.72f,Color.WHITE,Color.rgb(191,182,163),Shader.TileMode.CLAMP);setShadowLayer(dp(5f).toFloat(),0f,dp(2f).toFloat(),0x88000000.toInt())}
+            c.drawCircle(cx,cy,cell*.48f,med);med.clearShadowLayer();med.shader=null
+            med.style=Paint.Style.STROKE;med.strokeWidth=dp(1.5f).toFloat();med.color=0xB8FFFFFF.toInt();c.drawCircle(cx,cy,cell*.48f,med)
+            med.style=Paint.Style.FILL;med.shader=RadialGradient(cx-cell*.1f,cy-cell*.12f,cell*.28f,0xFFFFF8D0.toInt(),0x00FFF0A0,Shader.TileMode.CLAMP);c.drawCircle(cx,cy,cell*.26f,med);med.shader=null
         }
         private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
             val rolling=diceRolling
@@ -1220,27 +1236,26 @@ class MainActivity : Activity() {
             return if(pos<0) dice==6 else pos+dice<=57
         }
         private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean,scale:Float=1f){
-            val rad=cell*.31f*scale
-            val base=cy+rad*.58f
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x55000000.toInt();setShadowLayer(dp(3f).toFloat(),0f,dp(2f).toFloat(),0x88000000.toInt())}
-            c.drawOval(cx-rad*.82f,base-rad*.13f,cx+rad*.82f,base+rad*.24f,shadow);shadow.clearShadowLayer()
-            val body=Path()
-            body.moveTo(cx-rad*.82f,base)
-            body.quadTo(cx-rad*.72f,cy+rad*.22f,cx-rad*.40f,cy-rad*.02f)
-            body.cubicTo(cx-rad*.26f,cy-rad*.20f,cx-rad*.22f,cy-rad*.38f,cx-rad*.20f,cy-rad*.48f)
-            body.cubicTo(cx-rad*.48f,cy-rad*.63f,cx-rad*.52f,cy-rad*.98f,cx,cy-rad*1.02f)
-            body.cubicTo(cx+rad*.52f,cy-rad*.98f,cx+rad*.48f,cy-rad*.63f,cx+rad*.20f,cy-rad*.48f)
-            body.cubicTo(cx+rad*.22f,cy-rad*.38f,cx+rad*.26f,cy-rad*.20f,cx+rad*.40f,cy-rad*.02f)
-            body.quadTo(cx+rad*.72f,cy+rad*.22f,cx+rad*.82f,base)
-            body.quadTo(cx,base+rad*.16f,cx-rad*.82f,base);body.close()
-            val hiColor=Color.rgb(Math.min(255,Color.red(color)+78),Math.min(255,Color.green(color)+78),Math.min(255,Color.blue(color)+78))
-            val loColor=Color.rgb((Color.red(color)*.38f).toInt(),(Color.green(color)*.38f).toInt(),(Color.blue(color)*.38f).toInt())
-            val paint=Paint(Paint.ANTI_ALIAS_FLAG)
-            paint.shader=LinearGradient(cx-rad,cy-rad,cx+rad,base,hiColor,loColor,Shader.TileMode.CLAMP)
-            paint.setShadowLayer(dp(3.5f).toFloat(),0f,dp(2f).toFloat(),0x88000000.toInt());c.drawPath(body,paint);paint.clearShadowLayer();paint.shader=null
-            paint.style=Paint.Style.STROKE;paint.strokeWidth=dp(1.1f).toFloat();paint.color=0x99FFFFFF.toInt();c.drawPath(body,paint);paint.style=Paint.Style.FILL
-            if(active){paint.style=Paint.Style.STROKE;paint.strokeWidth=dp(1.8f).toFloat();paint.color=0xF2FFFFFF.toInt();c.drawCircle(cx,cy-rad*.12f,rad+dp(2f),paint);paint.style=Paint.Style.FILL}
-            paint.color=0xBFFFFFFF.toInt();c.drawCircle(cx-rad*.24f,cy-rad*.62f,rad*.16f,paint)
+            val rad=cell*.31f*scale; val base=cy+rad*.62f
+            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000;setShadowLayer(dp(4f).toFloat(),0f,dp(3f).toFloat(),0x99000000.toInt())}
+            c.drawOval(cx-rad*.9f,base-rad*.10f,cx+rad*.9f,base+rad*.22f,shadow);shadow.clearShadowLayer()
+            val body=Path();body.moveTo(cx-rad*.88f,base)
+            body.cubicTo(cx-rad*.80f,cy+rad*.30f,cx-rad*.42f,cy+rad*.16f,cx-rad*.36f,cy-rad*.04f)
+            body.cubicTo(cx-rad*.66f,cy-rad*.28f,cx-rad*.56f,cy-rad*.82f,cx,cy-rad*1.04f)
+            body.cubicTo(cx+rad*.56f,cy-rad*.82f,cx+rad*.66f,cy-rad*.28f,cx+rad*.36f,cy-rad*.04f)
+            body.cubicTo(cx+rad*.42f,cy+rad*.16f,cx+rad*.80f,cy+rad*.30f,cx+rad*.88f,base)
+            body.quadTo(cx,base+rad*.20f,cx-rad*.88f,base);body.close()
+            val hi=Color.rgb(minOf(255,Color.red(color)+92),minOf(255,Color.green(color)+92),minOf(255,Color.blue(color)+92))
+            val mid=Color.rgb(minOf(255,Color.red(color)+22),minOf(255,Color.green(color)+22),minOf(255,Color.blue(color)+22))
+            val lo=Color.rgb((Color.red(color)*.30f).toInt(),(Color.green(color)*.30f).toInt(),(Color.blue(color)*.30f).toInt())
+            val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(cx-rad,cy-rad,cx+rad,base,hi,lo,Shader.TileMode.CLAMP);setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0xAA000000.toInt())}
+            c.drawPath(body,paint);paint.clearShadowLayer();paint.shader=null
+            val bevel=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat();this.color=0xD9FFFFFF.toInt()};c.drawPath(body,bevel)
+            bevel.style=Paint.Style.STROKE;bevel.strokeWidth=dp(1f).toFloat();bevel.color=0x66000000;c.drawPath(body,bevel)
+            val cap=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=RadialGradient(cx-rad*.22f,cy-rad*.55f,rad*.52f,0xFFFFFFFF.toInt(),0x00FFFFFF,Shader.TileMode.CLAMP)};c.drawCircle(cx-rad*.05f,cy-rad*.48f,rad*.43f,cap);cap.shader=null
+            cap.color=0xEEFFFFFF.toInt();c.drawCircle(cx-rad*.27f,cy-rad*.62f,rad*.13f,cap)
+            cap.color=0x55333333; c.drawOval(cx-rad*.58f,base-rad*.02f,cx+rad*.58f,base+rad*.12f,cap)
+            if(active){cap.style=Paint.Style.STROKE;cap.strokeWidth=dp(2f).toFloat();cap.color=0xFFFFF0A6.toInt();c.drawCircle(cx,cy-rad*.08f,rad+dp(2f),cap);cap.style=Paint.Style.FILL}
         }
         private fun visualPath():List<Pair<Int,Int>>{
             return listOf(
