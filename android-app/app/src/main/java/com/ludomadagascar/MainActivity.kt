@@ -741,7 +741,11 @@ class MainActivity : Activity() {
         }
         row2.addView(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},
             LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(5),dp(5))})
-        row2.addView(button("← Accueil",Color.rgb(70,82,100)){home()},
+        val homeButton=button("← Accueil",Color.rgb(70,82,100)){home()}.apply{
+            contentDescription="Accueil"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        row2.addView(homeButton,
             LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),dp(4),0,dp(5))})
         add(row2,48,0,0)
     }
