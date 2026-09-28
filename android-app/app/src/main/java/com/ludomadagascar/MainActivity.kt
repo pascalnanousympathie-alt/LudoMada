@@ -1130,15 +1130,21 @@ class MainActivity : Activity() {
             outer.style=Paint.Style.STROKE;outer.strokeWidth=dp(1.2f).toFloat();outer.color=0xAAFFFFFF.toInt()
             c.drawRoundRect(ox+r*cell+dp(.7f),oy+col*cell+dp(.7f),ox+(r+6)*cell-dp(.7f),oy+(col+6)*cell-dp(.7f),dp(7).toFloat(),dp(7).toFloat(),outer)
             outer.style=Paint.Style.FILL
+            // Colored molded tray: a deep lacquered plate rather than a flat white sticker.
+            val trayHi=Color.rgb(minOf(255,Color.red(color)+38),minOf(255,Color.green(color)+38),minOf(255,Color.blue(color)+38))
+            val trayLo=Color.rgb(maxOf(12,(Color.red(color)*.38f).toInt()),maxOf(12,(Color.green(color)*.38f).toInt()),maxOf(12,(Color.blue(color)*.38f).toInt()))
             val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{
                 shader=LinearGradient(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,
-                    Color.WHITE,Color.rgb(236,236,231),Shader.TileMode.CLAMP)
-                setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x44000000)
+                    trayHi,trayLo,Shader.TileMode.CLAMP)
+                setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0x77000000)
             }
-            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(10).toFloat(),dp(10).toFloat(),inner)
+            c.drawRoundRect(ox+(r+.72f)*cell,oy+(col+.72f)*cell,ox+(r+5.28f)*cell,oy+(col+5.28f)*cell,dp(8).toFloat(),dp(8).toFloat(),inner)
             inner.clearShadowLayer();inner.shader=null
-            val gloss=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy+(col+1)*cell,0f,oy+(col+2.1f)*cell,0x66FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)}
-            c.drawRoundRect(ox+(r+1.2f)*cell,oy+(col+1.2f)*cell,ox+(r+4.8f)*cell,oy+(col+2.0f)*cell,dp(8).toFloat(),dp(8).toFloat(),gloss)
+            inner.style=Paint.Style.STROKE;inner.strokeWidth=dp(1.1f).toFloat();inner.color=0xA8FFFFFF.toInt()
+            c.drawRoundRect(ox+(r+.72f)*cell,oy+(col+.72f)*cell,ox+(r+5.28f)*cell,oy+(col+5.28f)*cell,dp(8).toFloat(),dp(8).toFloat(),inner)
+            inner.style=Paint.Style.FILL
+            val gloss=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,oy+(col+.85f)*cell,0f,oy+(col+2.1f)*cell,0x66FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)}
+            c.drawRoundRect(ox+(r+.9f)*cell,oy+(col+.85f)*cell,ox+(r+5.1f)*cell,oy+(col+2.05f)*cell,dp(7).toFloat(),dp(7).toFloat(),gloss)
             val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
             for((sx,sy) in sockets){
                 val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
@@ -1322,7 +1328,7 @@ class MainActivity : Activity() {
             val rolling=diceRolling
             val phase=dicePhase.coerceIn(0f,1f)
             val face=if(rolling)(((phase*6f).toInt())%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val sz=cell*.74f
+            val sz=cell*.84f
             c.save()
             val wobble=if(rolling) (Math.sin(phase*Math.PI*8.0)*7.0).toFloat() else 0f
             c.rotate(wobble,cx,cy)
