@@ -65,7 +65,7 @@ public class PremiumHeroViewV2 extends View {
       int top=Math.round(378f*sy);
       int w=Math.round(190f*sx);
       int h=Math.round(74f*sy);
-      if(f.getWidth()<w){w=Math.max(1,f.getWidth()/4);left=Math.max(0,f.getWidth()-w-dp(8));}
+      if(f.getWidth()<w){w=Math.max(1,f.getWidth()/4);left=Math.max(0,f.getWidth()-w-8);}
       if(f.getHeight()<h){h=Math.max(1,f.getHeight()/6);top=Math.max(0,f.getHeight()/3);}
       FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(w,h);
       lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,f.getWidth()-w)));
