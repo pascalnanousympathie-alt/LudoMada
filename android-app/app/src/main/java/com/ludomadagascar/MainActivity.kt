@@ -667,10 +667,18 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
+            contentDescription=musicLabel()
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
+            isClickable=true
         }
         lobbyMusicRow.addView(label("Ambiance musicale",13f,true,Color.rgb(88,99,116)),LinearLayout.LayoutParams(0,dp(52),1f))
         musicButton=musicIconButton()
         lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
+        lobbyMusicRow.setOnClickListener{
+            musicButton.performClick()
+            lobbyMusicRow.contentDescription=musicLabel()
+        }
         add(lobbyMusicRow,52,0,5)
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
