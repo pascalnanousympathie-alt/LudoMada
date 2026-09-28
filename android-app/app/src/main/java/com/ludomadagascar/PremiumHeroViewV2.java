@@ -88,11 +88,16 @@ public class PremiumHeroViewV2 extends View {
       q.cubicTo(d(x+r*.68f),d(y-r*.28f),d(x+r*.55f),d(y-r*.8f),d(x),d(y-r*.92f));
       q.cubicTo(d(x-r*.55f),d(y-r*.8f),d(x-r*.68f),d(y-r*.28f),d(x-r*.38f),d(y-r*.05f));
       q.cubicTo(d(x-r*.46f),d(y+r*.15f),d(x-r*.55f),d(y+r*.35f),d(x-r*.9f),d(y+r*.65f));q.close();
-      int hi=Color.rgb(Math.min(255,Color.red(col)+90),Math.min(255,Color.green(col)+90),Math.min(255,Color.blue(col)+90));
-      p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.7f),d(y+r),hi,col,Shader.TileMode.CLAMP));
+      int hi=Color.rgb(Math.min(255,Color.red(col)+105),Math.min(255,Color.green(col)+105),Math.min(255,Color.blue(col)+105));
+      int mid=Color.rgb(Math.min(255,Color.red(col)+28),Math.min(255,Color.green(col)+28),Math.min(255,Color.blue(col)+28));
+      int lo=Color.rgb((Color.red(col)*.26f>12? (int)(Color.red(col)*.26f):12),(Color.green(col)*.26f>12? (int)(Color.green(col)*.26f):12),(Color.blue(col)*.26f>12? (int)(Color.blue(col)*.26f):12));
+      p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.75f),d(y+r),new int[]{hi,mid,lo},new float[]{0f,.48f,1f},Shader.TileMode.CLAMP));
       c.drawPath(q,p);p.setShader(null);p.clearShadowLayer();
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x80FFFFFF);c.drawPath(q,p);p.setStyle(Paint.Style.FILL);
-      p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.25f),d(y-r*.48f),d(r*.16f),p);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.25f));p.setColor(0xCFFFFFFF);c.drawPath(q,p);
+      p.setStrokeWidth(d(.65f));p.setColor(0x55323A43);c.drawPath(q,p);p.setStyle(Paint.Style.FILL);
+      p.setShader(new RadialGradient(d(x-r*.30f),d(y-r*.55f),d(r*.48f),0xFFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawCircle(d(x-r*.05f),d(y-r*.45f),d(r*.40f),p);p.setShader(null);
+      p.setColor(0xDFFFFFFF);c.drawCircle(d(x-r*.27f),d(y-r*.63f),d(r*.12f),p);
+      p.setColor(0x44343A41);c.drawOval(d(x-r*.56f),d(y+r*.54f),d(x+r*.56f),d(y+r*.82f),p);
     }
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(fill);p.setShadowLayer(d(7),0,d(4),0x88000000);
@@ -113,36 +118,65 @@ public class PremiumHeroViewV2 extends View {
       float q=Math.min(1f,Math.max(0f,(System.currentTimeMillis()-bgSwitchMs)/1200f));
       if(bgBActive){drawCover(c,bgA,1f-q,W,H);drawCover(c,bgB,q,W,H);}
       else {drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
-      p.setShader(new LinearGradient(0,0,0,H,0x55030D2E,0xB807102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
+      p.setShader(new LinearGradient(0,0,0,H,0x18030D2E,0x6607102A,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
       p.setShader(new RadialGradient(W*.5f,H*.38f,W*.55f,0x20FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.5f,H*.38f,W*.55f,p);p.setShader(null);
     }
     void board(Canvas c){
-      float pulse=1f+(float)Math.sin(System.currentTimeMillis()/900.0)*.018f;
-      c.save();c.scale(pulse,pulse,d(195),d(296));
-      p.setShadowLayer(d(16),0,d(10),0x99000000);
-      Path wood=new Path();wood.moveTo(d(101),d(218));wood.quadTo(d(101),d(208),d(112),d(204));wood.lineTo(d(278),d(204));wood.quadTo(d(289),d(208),d(289),d(218));wood.lineTo(d(283),d(385));wood.quadTo(d(282),d(395),d(270),d(399));wood.lineTo(d(120),d(399));wood.quadTo(d(108),d(395),d(107),d(385));wood.close();
-      p.setShader(new LinearGradient(d(105),d(205),d(285),d(400),Color.rgb(118,61,23),Color.rgb(31,14,9),Shader.TileMode.CLAMP));p.setStyle(Paint.Style.FILL);c.drawPath(wood,p);p.setShader(null);p.clearShadowLayer();
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x443D1A09);
-      for(int i=0;i<9;i++){float yy=224+i*18;c.drawLine(d(110+i*0.4f),d(yy),d(280-i*0.6f),d(yy+((i&1)==0?1:-1)),p);}
-      p.setStyle(Paint.Style.FILL);
-      box(c,110,214,280,388,22,Color.rgb(246,237,214),Color.rgb(244,191,67));
-      p.setShader(new LinearGradient(d(112),d(216),d(278),d(388),Color.WHITE,Color.rgb(216,202,174),Shader.TileMode.CLAMP));c.drawRoundRect(d(112),d(216),d(278),d(388),d(22),d(22),p);p.setShader(null);
-      float x0=116,y0=220,cs=40.5f;
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x907C6D58);
-      for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+162),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+162),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
-      p.setColor(red);c.drawRoundRect(d(x0),d(y0),d(x0+81),d(y0+81),d(10),d(10),p);
-      p.setColor(blue);c.drawRoundRect(d(x0+81),d(y0),d(x0+162),d(y0+81),d(10),d(10),p);
-      p.setColor(yellow);c.drawRoundRect(d(x0),d(y0+81),d(x0+81),d(y0+162),d(10),d(10),p);
-      p.setColor(green);c.drawRoundRect(d(x0+81),d(y0+81),d(x0+162),d(y0+162),d(10),d(10),p);
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(0xAAFFFFFF);
-      c.drawRoundRect(d(x0+8),d(y0+8),d(x0+73),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+8),d(x0+154),d(y0+73),d(12),d(12),p);c.drawRoundRect(d(x0+8),d(y0+89),d(x0+73),d(y0+154),d(12),d(12),p);c.drawRoundRect(d(x0+89),d(y0+89),d(x0+154),d(y0+154),d(12),d(12),p);p.setStyle(Paint.Style.FILL);
-      boardPawn(c,x0+40.5f,y0+46f,16.5f,red);boardPawn(c,x0+121.5f,y0+46f,16.5f,blue);boardPawn(c,x0+40.5f,y0+127f,16.5f,yellow);boardPawn(c,x0+121.5f,y0+127f,16.5f,green);
-      Path cross=new Path();cross.moveTo(d(178),d(220));cross.lineTo(d(199),d(241));cross.lineTo(d(220),d(220));cross.lineTo(d(220),d(301));cross.lineTo(d(199),d(322));cross.lineTo(d(178),d(301));cross.close();p.setColor(Color.rgb(255,195,53));c.drawPath(cross,p);
-      float spin=(System.currentTimeMillis()%2400L)/2400f*360f;c.save();c.rotate(spin,d(199),d(299));
-      p.setShadowLayer(d(7),0,d(4),0xA0000000);p.setShader(new LinearGradient(d(179),d(276),d(219),d(322),Color.WHITE,Color.rgb(205,194,169),Shader.TileMode.CLAMP));c.drawRoundRect(d(177),d(274),d(221),d(320),d(9),d(9),p);p.setShader(null);p.clearShadowLayer();
-      p.setColor(0xFF7C5B20);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(199+v[0]),d(297+v[1]),d(2.6f),p);c.restore();
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.3f));p.setColor(0x99FFF1A6);c.drawRoundRect(d(102),d(218),d(278),d(388),d(22),d(22),p);p.setStyle(Paint.Style.FILL);
+      float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
+      c.save();c.scale(pulse,pulse,d(195),d(298));
+      // Polished walnut table + stainless/chrome bezel.
+      p.setShadowLayer(d(18),0,d(11),0x99000000);
+      p.setShader(new LinearGradient(d(101),d(204),d(289),d(404),Color.rgb(168,88,31),Color.rgb(61,27,10),Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(101),d(205),d(289),d(405),d(24),d(24),p);p.setShader(null);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(5));
+      p.setShader(new LinearGradient(d(105),d(207),d(285),d(402),Color.rgb(250,252,255),Color.rgb(112,123,136),Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(105),d(209),d(285),d(401),d(22),d(22),p);p.setShader(null);p.setStyle(Paint.Style.FILL);
+      p.setShader(new LinearGradient(d(110),d(214),d(280),d(394),Color.rgb(255,250,237),Color.rgb(208,196,170),Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(110),d(214),d(280),d(394),d(20),d(20),p);p.setShader(null);
+      final float x0=117f,y0=220f,cell=10.4f,size=156f;
+      // 15×15 Ludo surface.
+      p.setColor(Color.rgb(247,242,228));c.drawRoundRect(d(x0),d(y0),d(x0+size),d(y0+size),d(9),d(9),p);
+      // Four colored home sectors with soft depth.
+      homeSector(c,x0,y0,red);homeSector(c,x0+9*cell,y0,green);homeSector(c,x0,y0+9*cell,yellow);homeSector(c,x0+9*cell,y0+9*cell,blue);
+      // Colored finishing lanes.
+      p.setColor(red);c.drawRect(d(x0+6*cell),d(y0+6*cell),d(x0+7*cell),d(y0+9*cell),p);
+      p.setColor(green);c.drawRect(d(x0+7*cell),d(y0+6*cell),d(x0+9*cell),d(y0+7*cell),p);
+      p.setColor(yellow);c.drawRect(d(x0+7*cell),d(y0+7*cell),d(x0+9*cell),d(y0+9*cell),p);
+      p.setColor(blue);c.drawRect(d(x0+6*cell),d(y0+7*cell),d(x0+7*cell),d(y0+9*cell),p);
+      // Crisp engraved grid and path cells.
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(.65f));p.setColor(0x807B6F5C);
+      for(int i=0;i<=15;i++){float q=x0+i*cell;c.drawLine(d(q),d(y0),d(q),d(y0+size),p);float r0=y0+i*cell;c.drawLine(d(x0),d(r0),d(x0+size),d(r0),p);}p.setStyle(Paint.Style.FILL);
+      // Home inner pearl pads.
+      homePad(c,x0+10,y0+10);homePad(c,x0+9*cell+10,y0+10);homePad(c,x0+10,y0+9*cell+10);homePad(c,x0+9*cell+10,y0+9*cell+10);
+      boardPawn(c,x0+26,y0+26,8.3f,red);boardPawn(c,x0+51,y0+26,8.3f,red);boardPawn(c,x0+26,y0+51,8.3f,red);boardPawn(c,x0+51,y0+51,8.3f,red);
+      boardPawn(c,x0+105,y0+26,8.3f,green);boardPawn(c,x0+130,y0+26,8.3f,green);boardPawn(c,x0+105,y0+51,8.3f,green);boardPawn(c,x0+130,y0+51,8.3f,green);
+      boardPawn(c,x0+26,y0+105,8.3f,yellow);boardPawn(c,x0+51,y0+105,8.3f,yellow);boardPawn(c,x0+26,y0+130,8.3f,yellow);boardPawn(c,x0+51,y0+130,8.3f,yellow);
+      boardPawn(c,x0+105,y0+105,8.3f,blue);boardPawn(c,x0+130,y0+105,8.3f,blue);boardPawn(c,x0+105,y0+130,8.3f,blue);boardPawn(c,x0+130,y0+130,8.3f,blue);
+      // Four-dimensional center: metallic gold diamond with colored facets.
+      float cx=x0+7.5f*cell,cy=y0+7.5f*cell;
+      Path tri=new Path();int[] cc={red,green,blue,yellow};float[][] pts={{6,6,9,6},{9,6,9,9},{9,9,6,9},{6,9,6,6}};
+      for(int i=0;i<4;i++){tri.reset();tri.moveTo(d(x0+pts[i][0]*cell),d(y0+pts[i][1]*cell));tri.lineTo(d(x0+pts[i][2]*cell),d(y0+pts[i][3]*cell));tri.lineTo(d(cx),d(cy));tri.close();int col=cc[i];int hi=Color.rgb(Math.min(255,Color.red(col)+72),Math.min(255,Color.green(col)+72),Math.min(255,Color.blue(col)+72));int lo=Color.rgb((int)(Color.red(col)*.45f),(int)(Color.green(col)*.45f),(int)(Color.blue(col)*.45f));p.setShader(new LinearGradient(d(cx),d(cy),d(x0+pts[i][2]*cell),d(y0+pts[i][3]*cell),hi,lo,Shader.TileMode.CLAMP));p.setShadowLayer(d(2.5f),0,d(1.5f),0x55000000);c.drawPath(tri,p);p.clearShadowLayer();p.setShader(null);}
+      p.setShader(new RadialGradient(d(cx-2),d(cy-3),d(10),Color.WHITE,Color.rgb(156,166,177),Shader.TileMode.CLAMP));c.drawCircle(d(cx),d(cy),d(8.5f),p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.1f));p.setColor(0xDFFFFFFF);c.drawCircle(d(cx),d(cy),d(8.5f),p);p.setStyle(Paint.Style.FILL);
+      // Premium safe markers.
+      for(float[]v:new float[][]{{6.5f,4.5f},{10.5f,6.5f},{8.5f,10.5f},{4.5f,8.5f}}){t(c,"★",x0+v[0]*cell,y0+v[1]*cell,6.5f,0xA86F6B5A,true,true);}
+      // Reflective glass coat.
+      p.setShader(new LinearGradient(d(x0),d(y0),d(x0+size),d(y0+size),0x38FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawRoundRect(d(x0+1),d(y0+1),d(x0+size-1),d(y0+size-1),d(9),d(9),p);p.setShader(null);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.4f));p.setColor(0xC8FFFFFF);c.drawRoundRect(d(109),d(213),d(281),d(395),d(21),d(21),p);p.setStyle(Paint.Style.FILL);
+      // Floating chrome-mercury die.
+      float spin=(System.currentTimeMillis()%3600L)/3600f*8f-4f;c.save();c.rotate(spin,d(278),d(367));
+      p.setShadowLayer(d(9),0,d(5),0xB0000000);
+      p.setShader(new RadialGradient(d(267),d(353),d(36),new int[]{Color.WHITE,Color.rgb(242,246,249),Color.rgb(184,194,203),Color.rgb(89,100,111),Color.rgb(227,233,239)},new float[]{0f,.17f,.45f,.76f,1f},Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(250),d(338),d(294),d(382),d(10),d(10),p);p.setShader(null);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.2f));p.setColor(0xEFFFFFFF);c.drawRoundRect(d(250),d(338),d(294),d(382),d(10),d(10),p);p.setStyle(Paint.Style.FILL);
+      p.setShader(new LinearGradient(d(251),d(346),d(293),d(365),0xDFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawRoundRect(d(251),d(339),d(293),d(366),d(9),d(9),p);p.setShader(null);
+      p.setColor(0x8A666F79);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(272+v[0]),d(360+v[1]),d(2.4f),p);p.setColor(Color.WHITE);c.drawCircle(d(258),d(346),d(3.2f),p);c.drawCircle(d(262),d(349),d(1.1f),p);c.restore();
       c.restore();postInvalidateDelayed(16);
+    }
+    void homeSector(Canvas c,float x,float y,int col){
+      p.setShader(new LinearGradient(d(x),d(y),d(x+62),d(y+62),Color.rgb(Math.min(255,Color.red(col)+32),Math.min(255,Color.green(col)+32),Math.min(255,Color.blue(col)+32)),col,Shader.TileMode.CLAMP));c.drawRoundRect(d(x),d(y),d(x+62),d(y+62),d(9),d(9),p);p.setShader(null);
+    }
+    void homePad(Canvas c,float x,float y){
+      p.setShadowLayer(d(4),0,d(2),0x55000000);p.setShader(new RadialGradient(d(x+21),d(y+21),d(29),Color.WHITE,Color.rgb(214,218,220),Shader.TileMode.CLAMP));c.drawRoundRect(d(x),d(y),d(x+42),d(y+42),d(11),d(11),p);p.setShader(null);p.clearShadowLayer();p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x8FFFFFFF);c.drawRoundRect(d(x+.5f),d(y+.5f),d(x+41.5f),d(y+41.5f),d(10),d(10),p);p.setStyle(Paint.Style.FILL);
     }
     private int topInsetPx(){
       WindowInsets insets=getRootWindowInsets();
@@ -153,44 +187,61 @@ public class PremiumHeroViewV2 extends View {
       return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
     }
     @Override protected void onDraw(Canvas c){
-      float den=getResources().getDisplayMetrics().density; int topInset=topInsetPx(),bottomInset=bottomInsetPx();
-      float availableH=Math.max(1f,getHeight()-topInset-bottomInset); s=Math.min(getWidth()/(390f*den),availableH/(710f*den));
-      float sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=topInset+(availableH-710f*sc)/2f;
-      c.save(); background(c,getWidth(),getHeight()); c.translate(ox,oy);
-      // Clean premium hierarchy: header -> title -> hero board -> primary action -> quick actions -> stake -> nav.
-      box(c,7,6,383,68,24,Color.rgb(8,22,62),Color.rgb(46,130,244));
-      p.setShader(new RadialGradient(d(37),d(35),d(29),0x5548B7FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(d(37),d(35),d(29),p);p.setShader(null);
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(23),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,10.5f,blue);
-      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>13?u.substring(0,13)+"…":u);
-      t(c,dn,67,31,12.5f,Color.WHITE,true,false); t(c,"LudoMada • Prêt à jouer",67,49,8.2f,0xD8FFFFFF,false,false);
-      box(c,228,17,304,57,19,Color.rgb(10,38,91),Color.rgb(72,145,255));t(c,"C",241,42,12,gold2,true,true);t(c,bal>0?formatBal(bal):"0",277,42,9.5f,Color.WHITE,true,true);box(c,307,20,329,54,16,gold,0);t(c,"+",318,43,14,Color.rgb(70,38,3),true,true);
-      t(c,"♪",345,43,16,Color.WHITE,true,true);t(c,"⚙",373,43,15,Color.WHITE,true,true);
-      if(tok.isEmpty()){box(c,270,69,371,94,12,Color.rgb(28,95,202),gold);t(c,"CONNEXION",320,86,7.5f,Color.WHITE,true,true);}
-      t(c,"LE JEU QUI RASSEMBLE !",195,88,8.5f,gold2,true,true);
-      t(c,"LudoMada",195,121,31,Color.WHITE,true,true); t(c,"Joue • Gagne • Grandis",195,144,11.5f,gold2,true,true); t(c,"2 à 4 joueurs • Classique",195,160,7.8f,0xE2FFFFFF,false,true);
-      // Hero board remains the visual focus and is never covered by side menus.
-      board(c);
-      box(c,58,405,332,457,25,Color.rgb(245,181,28),0);p.setShader(new LinearGradient(d(58),d(405),d(332),d(457),Color.rgb(255,225,113),Color.rgb(225,142,14),Shader.TileMode.CLAMP));c.drawRoundRect(d(58),d(405),d(332),d(457),d(25),d(25),p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.4f));p.setColor(0xD9FFF2B0);c.drawRoundRect(d(58),d(405),d(332),d(457),d(25),d(25),p);p.setStyle(Paint.Style.FILL);t(c,"▶",105,438,18,Color.rgb(75,39,2),true,true);t(c,"JOUER",195,433,15,Color.rgb(70,36,2),true,true);t(c,"EN LIGNE OU HORS-LIGNE",195,448,7.2f,Color.rgb(88,50,8),true,true);
-      // Four balanced quick actions.
-      String[] ic={"＋","↗","◆","●"},title={"CRÉER","REJOINDRE","WALLET","PROFIL"};int[] colors={Color.rgb(22,91,194),Color.rgb(111,35,192),Color.rgb(8,139,91),Color.rgb(45,66,103)};
-      for(int i=0;i<4;i++){float l=8+i*94.5f;box(c,l,470,l+88,526,15,colors[i],0);t(c,ic[i],l+18,497,16,gold2,true,true);t(c,title[i],l+53,497,7.8f,Color.WHITE,true,true);}
-      box(c,8,539,382,603,17,Color.rgb(7,25,63),Color.rgb(40,119,231));t(c,"CHOISISSEZ VOTRE MISE",195,556,8.8f,gold2,true,true);
-      int[]fs={500,1000,2000,5000,10000,20000};for(int i=0;i<6;i++){int f=fs[i];float l=11+i*61.3f;boolean a=f==fee;box(c,l,566,l+54,592,10,a?Color.rgb(255,193,29):Color.rgb(13,45,94),a?Color.WHITE:Color.rgb(52,129,237));t(c,f<1000?f+" Ar":(f/1000)+"K",l+27,583,7,a?Color.rgb(67,34,0):Color.WHITE,true,true);}
-      t(c,"Madagasikara • Miray amin'ny LudoMada",195,620,7.8f,gold2,false,true);
-      float by=638;box(c,6,by,384,by+66,23,Color.rgb(5,15,49),Color.rgb(39,112,230));String[]labs={"Accueil","Jeux","Événements","Profil"},icons={"⌂","🎲","♛","●"};for(int i=0;i<4;i++){float xx=53+i*95;boolean a=i==0;if(a)box(c,xx-31,by+5,xx+31,by+60,19,Color.rgb(26,23,67),gold);t(c,icons[i],xx,by+29,16,a?gold2:Color.WHITE,true,true);t(c,labs[i],xx,by+49,7.4f,a?gold2:0xE3FFFFFF,true,true);}
-      c.restore();
+      final float den=getResources().getDisplayMetrics().density;
+      final float W=getWidth(), H=getHeight();
+      final boolean landscape=W>=H;
+      s=landscape ? Math.min(W/(1280f*den),H/(720f*den)) : Math.min(W/(720f*den),H/(1280f*den));
+      float sc=s*den;
+      float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
+      float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
+      c.save(); background(c,W,H); c.translate(ox,oy);
+      // Cinematic landscape composition: menus frame a large central 3D board.
+      box(c,24,24,1256,696,32,0xCC07152E,0x66FFFFFF);
+      p.setShader(new LinearGradient(0,24,0,696,0x33FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
+      // Header
+      box(c,52,45,1228,116,24,0xE60A1C3A,0x664B9EFF);
+      p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(gold2);c.drawCircle(92,80,26,p);p.setStyle(Paint.Style.FILL);pawn(c,92,81,13,blue);
+      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
+      box(c,1096,56,1164,104,18,0xFFEDB83A,0);t(c,"+",1130,87,22,0xFF432600,true,true);t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+      // Left action rail
+      menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
+      menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
+      menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
+      menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
+      box(c,52,530,290,650,18,0xCC0A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
+      // Large central board with 3D perspective frame
+      c.save(); c.translate(348,145); c.scale(2.38f,2.38f); board(c); c.restore();
+      // Right information / CTA panel
+      box(c,982,145,1228,650,18,0xE60A1C3A,0x665E91C9);
+      t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);
+      t(c,"2–4",1105,255,29,Color.WHITE,true,true);t(c,"JOUEURS",1105,275,9,0xCFFFFFFF,true,true);
+      t(c,"Mise actuelle",1105,314,9,0xBFFFFFFF,false,true);t(c,fee+" Ar",1105,344,24,gold2,true,true);
+      box(c,1010,378,1200,452,22,0xFFFFC32D,0xEEFFF0B0);t(c,"▶",1042,422,24,0xFF4A2900,true,true);t(c,"JOUER",1110,418,19,0xFF452500,true,true);t(c,"EN LIGNE / HORS-LIGNE",1105,438,8,0xFF694A15,true,true);
+      t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
+      box(c,1010,516,1200,570,18,0xB316315A,0x557EB8FF);t(c,"♟",1042,550,18,Color.WHITE,true,true);t(c,"ROOM",1110,546,10,Color.WHITE,true,true);t(c,"Créer ou rejoindre",1110,562,8,0xD0FFFFFF,false,true);
+      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"Madagasikara • Miray",1105,612,8,gold2,true,true);
+      c.restore();postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
-      float den=getResources().getDisplayMetrics().density;int topInset=topInsetPx(),bottomInset=bottomInsetPx();float availableH=Math.max(1f,getHeight()-topInset-bottomInset);float sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=topInset+(availableH-710f*sc)/2f;float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;if(x<0||x>390||y<0||y>710)return true;String tok=str("token");
-      if(y<68){if(x<210)call(tok.isEmpty()?"login":"profile");else if(x<335)call(tok.isEmpty()?"login":"wallet");else call("profile");return true;}
-      if(y>=69&&y<98&&x>260){call("login");return true;}
-      if(y>=395&&y<465){call("gameModeDialog");return true;}
-      if(y>=468&&y<532){int i=(int)(x/94.5f);if(i==0)call("createGame");else if(i==1)call("joinDialog");else if(i==2)call("wallet");else call("profile");return true;}
-      if(y>=538&&y<610){int[]fs={500,1000,2000,5000,10000,20000};int i=(int)((x-11)/61.3f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;}
-      if(y>=636&&y<=708){int i=(int)(x/95f);if(i==0)call("home");else if(i==1)call("gameModeDialog");else if(i==2)call("events");else call("profile");return true;}
+      float den=getResources().getDisplayMetrics().density; float W=getWidth(),H=getHeight();
+      boolean landscape=W>=H; float baseW=landscape?1280f:720f,baseH=landscape?720f:1280f;
+      float sc=s*den,ox=(W-baseW*sc)/2f,oy=(H-baseH*sc)/2f;
+      float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;
+      if(landscape){
+        if(y>=140&&y<230&&x<310){call("createGame");return true;}
+        if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
+        if(y>=325&&y<420&&x<310){call("wallet");return true;}
+        if(y>=420&&y<515&&x<310){call("profile");return true;}
+        if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
+        if(y>=520&&y<650&&x<310){int[]fs={500,1000,2000,5000,10000,20000};int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;}
+      }
       return true;
     }
+
   }
 }

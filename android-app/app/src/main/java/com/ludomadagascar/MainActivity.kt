@@ -232,6 +232,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
         val hasSession = restoreSession()
         if (hasSession && token.isNotBlank()) home() else splash()
