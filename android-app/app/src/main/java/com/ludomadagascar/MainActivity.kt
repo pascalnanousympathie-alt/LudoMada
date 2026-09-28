@@ -1041,17 +1041,32 @@ class MainActivity : Activity() {
         private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
         private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
         private var stateAnimator:android.animation.ValueAnimator?=null
+        private val gameplayReference:Bitmap? = BitmapFactory.decodeResource(resources,R.drawable.ludomada_gameplay_reference)
         private var diceRolling=false
         private var dicePhase=0f
         private val jumpLift=Array(4){FloatArray(4)}
         private val spawnScale=Array(4){FloatArray(4){1f}}
         init{setLayerType(View.LAYER_TYPE_HARDWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
+        private fun drawReferenceEnvironment(canvas:Canvas,w:Float,h:Float){
+            val bm=gameplayReference ?: return
+            val bw=bm.width.toFloat();val bh=bm.height.toFloat()
+            val scale=maxOf(w/bw,h/bh)
+            val dw=bw*scale;val dh=bh*scale
+            val left=(w-dw)/2f;val top=(h-dh)/2f
+            val refPaint=Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            refPaint.alpha=255
+            canvas.drawBitmap(bm,null,RectF(left,top,left+dw,top+dh),refPaint)
+            // Very light glass treatment: preserves the bright studio scene without muddying it.
+            refPaint.shader=LinearGradient(0f,0f,0f,h,0x12020B16,0x08020A14,Shader.TileMode.CLAMP)
+            canvas.drawRect(0f,0f,w,h,refPaint);refPaint.shader=null
+        }
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
-            val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
+            val w=width.toFloat(); val h=height.toFloat()
+            drawReferenceEnvironment(canvas,w,h)
+            val s=minOf(w,h)*.90f
             val ox=(w-s)/2f
-            val topSpace=(h-s).coerceAtLeast(0f)
-            val oy=topSpace*.20f
+            val oy=(h-s)/2f
             val cell=s/15f
             // Physical table construction: deep walnut body + polished edge + ivory playing surface.
             val wood=Paint(Paint.ANTI_ALIAS_FLAG).apply{

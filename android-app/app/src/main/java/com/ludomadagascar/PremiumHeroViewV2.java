@@ -54,18 +54,13 @@ public class PremiumHeroViewV2 extends View {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
-    Bitmap bgA,bgB;
-    boolean bgBActive=false;
-    long bgSwitchMs=0L;
+    Bitmap lobbyRef;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
-      bgA=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab_landscape);
-      bgB=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt_landscape);
+      lobbyRef=BitmapFactory.decodeResource(getResources(),R.drawable.ludomada_lobby_reference_4k);
       p.setFilterBitmap(true);
     }
-    void flipBackground(){
-      bgBActive=!bgBActive;bgSwitchMs=System.currentTimeMillis();invalidate();
-    }
+    void flipBackground(){ invalidate(); }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
@@ -124,12 +119,8 @@ public class PremiumHeroViewV2 extends View {
       c.drawBitmap(bm,null,new RectF(left,top,left+dw,top+dh),p);p.setAlpha(255);
     }
     void background(Canvas c,float W,float H){
-      float q=Math.min(1f,Math.max(0f,(System.currentTimeMillis()-bgSwitchMs)/1200f));
-      if(bgBActive){drawCover(c,bgA,1f-q,W,H);drawCover(c,bgB,q,W,H);}
-      else {drawCover(c,bgB,1f-q,W,H);drawCover(c,bgA,q,W,H);}
-      // The background assets are precomposed 16:9 canvases: the whole baobab scene stays visible.
-      p.setShader(new LinearGradient(0,0,0,H,0x08030D2E,0x2A071629,Shader.TileMode.CLAMP));c.drawRect(0,0,W,H,p);p.setShader(null);
-      p.setShader(new RadialGradient(W*.50f,H*.40f,W*.62f,0x24FFF2B0,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(W*.50f,H*.40f,W*.62f,p);p.setShader(null);
+      // Direct 4K reference render: preserve the composition the user supplied.
+      drawCover(c,lobbyRef,1f,W,H);
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
@@ -204,6 +195,11 @@ public class PremiumHeroViewV2 extends View {
       float sc=s*den;
       float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
       float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
+      if(landscape && lobbyRef!=null){
+        // The supplied 4K lobby is the visual source of truth. Keep the touch map separate from the pixels.
+        background(c,W,H);
+        return;
+      }
       c.save(); background(c,W,H); c.translate(ox,oy);
       // Cinematic landscape composition: menus frame a large central 3D board.
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
