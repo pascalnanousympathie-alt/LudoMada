@@ -91,8 +91,9 @@ public class PremiumHeroViewV2 extends View {
       q.cubicTo(d(x+r*.68f),d(y-r*.28f),d(x+r*.55f),d(y-r*.8f),d(x),d(y-r*.92f));
       q.cubicTo(d(x-r*.55f),d(y-r*.8f),d(x-r*.68f),d(y-r*.28f),d(x-r*.38f),d(y-r*.05f));
       q.cubicTo(d(x-r*.46f),d(y+r*.15f),d(x-r*.55f),d(y+r*.35f),d(x-r*.9f),d(y+r*.65f));q.close();
-      int hi=Color.rgb(Math.min(255,Color.red(col)+105),Math.min(255,Color.green(col)+105),Math.min(255,Color.blue(col)+105));
-      int mid=Color.rgb(Math.min(255,Color.red(col)+28),Math.min(255,Color.green(col)+28),Math.min(255,Color.blue(col)+28));
+      // Keep the lacquer color saturated; the prior +105 highlight washed the pawns almost white.
+      int hi=Color.rgb(Math.min(255,Color.red(col)+55),Math.min(255,Color.green(col)+55),Math.min(255,Color.blue(col)+55));
+      int mid=Color.rgb(Math.min(255,Color.red(col)+18),Math.min(255,Color.green(col)+18),Math.min(255,Color.blue(col)+18));
       int lo=Color.rgb((Color.red(col)*.26f>12? (int)(Color.red(col)*.26f):12),(Color.green(col)*.26f>12? (int)(Color.green(col)*.26f):12),(Color.blue(col)*.26f>12? (int)(Color.blue(col)*.26f):12));
       p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.75f),d(y+r),new int[]{hi,mid,lo},new float[]{0f,.48f,1f},Shader.TileMode.CLAMP));
       c.drawPath(q,p);p.setShader(null);p.clearShadowLayer();
@@ -208,8 +209,8 @@ public class PremiumHeroViewV2 extends View {
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
       p.setShader(new LinearGradient(0,24,0,696,0x22FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
       // Center branding follows the visual language of the reference splash while keeping the interactive landscape layout.
-      t(c,"Ludo",640,151,28,Color.WHITE,true,true);t(c,"Mada",717,151,28,Color.rgb(255,196,42),true,true);
-      t(c,"Jouer • Gagner • Grandir",679,174,9.5f,0xEEFFFFFF,false,true);
+      t(c,"Ludo",650,82,22,Color.WHITE,true,true);t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
+      t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
       // Header
       box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
       p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
@@ -225,7 +226,7 @@ public class PremiumHeroViewV2 extends View {
       menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
       box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
       // Large central board with 3D perspective frame
-      c.save(); c.translate(340,-220); c.scale(2.15f,2.15f); board(c); c.restore();
+      c.save(); c.translate(150,-420); c.scale(2.75f,2.75f); board(c); c.restore();
       // Right information / CTA panel
       box(c,982,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
       t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);

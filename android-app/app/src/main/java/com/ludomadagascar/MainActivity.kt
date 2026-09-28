@@ -235,7 +235,7 @@ class MainActivity : Activity() {
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
         val hasSession = restoreSession()
-        if (hasSession && token.isNotBlank()) home() else splash()
+        if (hasSession && token.isNotBlank()) home() else login()
     }
 
     private fun splash() {
