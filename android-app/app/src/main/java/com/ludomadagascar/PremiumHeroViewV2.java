@@ -47,6 +47,31 @@ public class PremiumHeroViewV2 extends View {
     FrameLayout f=new FrameLayout(a); f.setBackgroundColor(Color.rgb(7,8,37));
     host.addView(f,new ViewGroup.LayoutParams(-1,-1));
     f.addView(home,new FrameLayout.LayoutParams(-1,-1));
+
+    // Native transparent hit-target keeps the premium Canvas interactive when the
+    // emulator reports portrait accessibility bounds while rendering the surface landscape.
+    View playHit=new View(a);
+    playHit.setContentDescription("JOUER");
+    playHit.setClickable(true);
+    playHit.setFocusable(true);
+    playHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHit.setBackgroundColor(Color.TRANSPARENT);
+    playHit.setOnClickListener(v->call("gameModeDialog"));
+    f.addView(playHit);
+    f.post(()->{
+      float sx=Math.max(0.01f,f.getWidth()/1280f);
+      float sy=Math.max(0.01f,f.getHeight()/720f);
+      int left=Math.round(1010f*sx);
+      int top=Math.round(378f*sy);
+      int w=Math.round(190f*sx);
+      int h=Math.round(74f*sy);
+      if(f.getWidth()<w){w=Math.max(1,f.getWidth()/4);left=Math.max(0,f.getWidth()-w-dp(8));}
+      if(f.getHeight()<h){h=Math.max(1,f.getHeight()/6);top=Math.max(0,f.getHeight()/3);}
+      FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(w,h);
+      lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,f.getWidth()-w)));
+      lp.topMargin=Math.max(0,Math.min(top,Math.max(0,f.getHeight()-h)));
+      playHit.setLayoutParams(lp);
+    });
   }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
