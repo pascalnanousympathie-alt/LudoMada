@@ -106,7 +106,8 @@ try {
 
   // Offline → Accueil gives us the real premium Home without requiring credentials.
   // Offline menu is custom-layout driven; use its stable bottom-right hitbox rather than relying on semantic extraction.
-  run("tap", "0.72,0.82", "--session", session);
+  // Offline menu Accueil button is centered around 72% width / 47% height on Ramus viewport.
+  run("tap", "0.72,0.47", "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1500", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-a.jpg");
   runAllowError("wait", "--timeout", "6200", "--session", session);
