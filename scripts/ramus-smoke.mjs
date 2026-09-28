@@ -106,26 +106,12 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/offline-menu.jpg");
 
-  // Offline → Accueil gives us the real premium Home without requiring credentials.
-  // Re-observe first; use a clickable semantic target when available, then verified normalized hitboxes.
-  const homeSemantic = runAllowError("snapshot", "--session", session, "--find", "Accueil");
-  console.log("HOME_BUTTON_SNAPSHOT=" + JSON.stringify(homeSemantic.ok ? homeSemantic.value.elements : {error: homeSemantic.error}));
-  let homeMarker = null;
-  if (homeSemantic.ok && homeSemantic.value.elements?.length && homeSemantic.value.elements[0].clickable !== false) {
-    const homeTarget = homeSemantic.value.elements[0];
-    run("tap", homeTarget.ref, "--gen", String(homeSemantic.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "1000", "--session", session);
-    homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  }
-  const homeProbes = ["0.72,0.59","0.75,0.59","0.68,0.59"];
-  for (const pt of homeProbes) {
-    if (homeMarker?.ok && homeMarker.value.elements?.length) break;
-    run("tap", pt, "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
-    homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  }
-  if (!homeMarker?.ok || !homeMarker.value.elements?.length) {
-    throw new Error("Premium Home was not reached after Offline → Accueil");
+  // Offline → Home: use Android BACK so Ramus is not affected by the portrait accessibility viewport.
+  run("press", "BACK", "--session", session);
+  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+  const homeMarker = runAllowError("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+  if (!homeMarker.ok || !homeMarker.value.elements?.length) {
+    throw new Error("Premium Home was not reached after Offline → BACK");
   }
   console.log("OFFLINE→HOME PASS");
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-a.jpg");
