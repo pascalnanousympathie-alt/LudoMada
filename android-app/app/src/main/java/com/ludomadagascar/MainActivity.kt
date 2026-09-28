@@ -249,33 +249,84 @@ class MainActivity : Activity() {
 
     private fun login() {
         currentScreen="login"
-        root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
-        root.background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(5,23,55),Color.rgb(11,70,145),Color.rgb(3,27,67)))
+        // Landscape-first login: everything important stays above the fold so Ramus and the user can reach offline play.
+        root=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(18),dp(14),dp(18),dp(14))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(4,18,44),Color.rgb(19,75,143),Color.rgb(7,34,74)))
+        }
         setContentView(root)
-        val brand=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL}
-        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(104),dp(104)))
-        brand.addView(label("LudoMada",27f,true,Color.WHITE))
-        brand.addView(label("Le Ludo malagasy, en ligne ou hors-ligne",12f,false,Color.argb(217,233,243,255)))
-        add(brand,152,0,7)
-        add(label("2–4 joueurs  •  mises dès 500 Ar",12f,true,Color.WHITE),25,1,4)
-        status=label("",12f,false,Color.rgb(255,181,188));add(status,28,0,4)
-        val fieldBg=Color.argb(235,255,255,255)
-        val u=EditText(this).apply{hint="Nom, email ou mobile";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
-        val p=EditText(this).apply{hint="Mot de passe";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));inputType=129;background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
-        add(u,52,5,5);add(p,52,5,9)
-        add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
-        add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,5)
-        add(button("G  Continuer avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,5)
-        add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
-        val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
-        add(secure,28,2,3)
+
+        val brand=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(12),dp(4),dp(18),dp(4))
+        }
+        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(122),dp(122)).apply{bottomMargin=dp(6)})
+        brand.addView(label("LudoMada",29f,true,Color.WHITE).apply{gravity=Gravity.CENTER})
+        brand.addView(label("Joue • Gagne • Grandis",13f,false,Color.argb(235,246,249,255)).apply{gravity=Gravity.CENTER})
+        brand.addView(label("2–4 joueurs  •  mises dès 500 Ar",11f,true,Color.rgb(255,198,55)).apply{
+            gravity=Gravity.CENTER
+            setPadding(dp(4),dp(10),dp(4),0)
+        })
+        brand.addView(label("Jeu en ligne + hors-ligne",11f,false,Color.argb(220,235,243,255)).apply{
+            gravity=Gravity.CENTER
+            setPadding(dp(4),dp(6),dp(4),0)
+        })
+        root.addView(brand,LinearLayout.LayoutParams(0,-1,.40f))
+
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16),dp(8),dp(8),dp(4))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xB80B2144.toInt(),0x98264D7B.toInt())).apply{
+                cornerRadius=dp(24).toFloat()
+                setStroke(dp(1),0x557EB8FF)
+            }
+            elevation=dp(7).toFloat()
+        }
+        panel.addView(label("CONNEXION",18f,true,Color.WHITE).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        status=label("",10.5f,false,Color.rgb(255,181,188)).apply{gravity=Gravity.CENTER}
+        panel.addView(status,LinearLayout.LayoutParams(-1,dp(22)).apply{topMargin=dp(1)})
+        val fieldBg=Color.argb(238,255,255,255)
+        val u=EditText(this).apply{
+            hint="Nom, email ou mobile";textSize=14f
+            setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142))
+            background=shape(fieldBg,16f,0x55FFFFFF);setPadding(dp(15),0,dp(15),0);setSingleLine(true)
+        }
+        val p=EditText(this).apply{
+            hint="Mot de passe";textSize=14f
+            setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142))
+            inputType=129;background=shape(fieldBg,16f,0x55FFFFFF);setPadding(dp(15),0,dp(15),0);setSingleLine(true)
+        }
+        panel.addView(u,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(4)})
+        panel.addView(p,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(6)})
+
+        fun actionButton(text:String,accent:Int,action:(()->Unit))=button(text,accent,action).apply{
+            minHeight=dp(46);textSize=12.5f
+        }
+        panel.addView(actionButton("Se connecter",Color.rgb(28,118,246)){
+            if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())
+        },LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(8)})
+        panel.addView(actionButton("Créer un compte",Color.rgb(16,170,119)){registerDialog()},
+            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        panel.addView(actionButton("G  Continuer avec Google",Color.rgb(88,106,132)){googleSignup()},
+            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        panel.addView(actionButton("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},
+            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        panel.addView(label("Paiements sécurisés côté serveur",9.5f,false,Color.argb(205,255,255,255)).apply{gravity=Gravity.CENTER},
+            LinearLayout.LayoutParams(-1,dp(20)).apply{topMargin=dp(3)})
         val loginMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.END or Gravity.CENTER_VERTICAL
-            addView(musicIconButton(),LinearLayout.LayoutParams(dp(52),dp(52)))
+            addView(musicIconButton(),LinearLayout.LayoutParams(dp(46),dp(46)))
         }
-        musicButton = loginMusicRow.getChildAt(0) as Button
-        add(loginMusicRow,52,4,0)
+        musicButton=loginMusicRow.getChildAt(0) as Button
+        panel.addView(loginMusicRow,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(1)})
+        root.addView(panel,LinearLayout.LayoutParams(0,-1,.60f))
     }
 
     private fun googleSignup() {
