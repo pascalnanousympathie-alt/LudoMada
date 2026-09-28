@@ -118,9 +118,15 @@ try {
   runAllowError("wait", "--timeout", "6200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-b.jpg");
 
-  // Home is a custom Canvas. Open the central JOUER control by stable landscape coordinates,
-  // then verify the real online lobby and its local music control before offline gameplay.
-  run("tap", "0.83,0.58", "--session", session);
+  // Home is a custom Canvas with a native transparent JOUER hit-target for deterministic automation.
+  // Prefer its semantic ref; keep the legacy coordinate fallback for compatibility.
+  const playSemantic = runAllowError("snapshot", "--session", session, "--find", "JOUER");
+  if (playSemantic.ok && playSemantic.value.elements?.length) {
+    target = { ref: playSemantic.value.elements[0].ref, gen: playSemantic.value.gen };
+    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  } else {
+    run("tap", "0.83,0.58", "--session", session);
+  }
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   const onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
   if (onlineMode.ok && onlineMode.value.elements?.length) {
