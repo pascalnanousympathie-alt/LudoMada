@@ -96,8 +96,24 @@ try {
   // Recover the known stale session left by the previous failed smoke run.
   runAllowError("session", "end", "--session", "11a9fbfd-7117-48af-8466-6cab1fa8132e");
   if (!process.env.RAMUS_API_KEY) run("trial");
-  const started = run("session", "start", "--apk", apk, "--wait");
-  session = started.session;
+  let startedResult = runAllowError("session", "start", "--apk", apk, "--wait");
+  if (!startedResult.ok || !startedResult.value?.session) {
+    // A transient no-output response can happen even when Ramus has not created a session.
+    // Check server-side live sessions before retrying to avoid duplicate-session races.
+    const live = runAllowError("session", "list");
+    const existing = live.ok && Array.isArray(live.value?.sessions)
+      ? live.value.sessions.find(s => s?.status === "active" || s?.state === "active")
+      : null;
+    if (existing?.session || existing?.id) {
+      startedResult = { ok: true, value: { session: existing.session || existing.id } };
+    } else {
+      startedResult = runAllowError("session", "start", "--apk", apk, "--wait");
+    }
+  }
+  if (!startedResult.ok || !startedResult.value?.session) {
+    throw new Error(JSON.stringify(startedResult.value ?? { error: "session_start_failed" }));
+  }
+  session = startedResult.value.session;
   console.log(`Ramus session: ${session}`);
   runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/login.jpg");
