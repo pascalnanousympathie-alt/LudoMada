@@ -21,7 +21,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
-    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    setContentDescription("LudoMada Premium Home");
+    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     if(c instanceof Activity){
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
@@ -44,8 +45,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     homeA11y.setFocusable(false);
     homeA11y.setClickable(false);
     homeA11y.setBackgroundColor(Color.TRANSPARENT);
-    FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(1,1);
-    homeA11yLp.leftMargin=1; homeA11yLp.topMargin=1;
+    homeA11y.setFocusable(true);
+    homeA11y.setAlpha(0.01f);
+    FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
+    homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
     FrameLayout.LayoutParams playLp=new FrameLayout.LayoutParams(64,48);
     playLp.leftMargin=Math.max(0,getResources().getDisplayMetrics().widthPixels-80);
     playLp.topMargin=220;
