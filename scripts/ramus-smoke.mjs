@@ -185,26 +185,32 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  // Music control: use the stable native MUSIC_TOGGLE accessibility id and verify ON↔OFF.
-  let music = runAllowError("snapshot", "--session", session, "--find", "MUSIC_TOGGLE");
-  let musicToggled = false;
-  if (music.ok && music.value.elements?.length) {
-    const mb = music.value.elements.find(e=>e.clickable!==false) || music.value.elements[0];
-    const before = String(mb.contentDesc || mb.text || "");
-    run("tap", mb.ref, "--gen", String(music.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "1000", "--session", session);
-    const afterShot = runAllowError("snapshot", "--session", session, "--find", "MUSIC_TOGGLE");
-    if (afterShot.ok && afterShot.value.elements?.length) {
-      const after = afterShot.value.elements.find(e=>e.clickable!==false) || afterShot.value.elements[0];
-      const afterDesc = String(after.contentDesc || after.text || "");
-      musicToggled = before !== afterDesc;
-      if (musicToggled) {
-        run("tap", after.ref, "--gen", String(afterShot.value.gen), "--session", session);
-        runAllowError("wait", "--stable", "--timeout", "500", "--session", session);
-      }
+  // Music control: target the exact ON/OFF accessibility labels and verify a real state change.
+  const onLabel="MUSIC_TOGGLE: activée";
+  const offLabel="MUSIC_TOGGLE: désactivée";
+  let music=runAllowError("snapshot","--session",session,"--find",onLabel);
+  let beforeLabel=onLabel;
+  let afterLabel=offLabel;
+  if(!music.ok || !music.value.elements?.length){
+    music=runAllowError("snapshot","--session",session,"--find",offLabel);
+    beforeLabel=offLabel;
+    afterLabel=onLabel;
+  }
+  let musicToggled=false;
+  if(music.ok && music.value.elements?.length){
+    const mb=music.value.elements.find(e=>e.clickable!==false) || music.value.elements[0];
+    run("tap",mb.ref,"--gen",String(music.value.gen),"--session",session);
+    runAllowError("wait","--stable","--timeout","1000","--session",session);
+    const afterShot=runAllowError("snapshot","--session",session,"--find",afterLabel);
+    musicToggled=afterShot.ok && afterShot.value.elements?.length>0;
+    if(musicToggled){
+      const after=afterShot.value.elements.find(e=>e.clickable!==false) || afterShot.value.elements[0];
+      run("tap",after.ref,"--gen",String(afterShot.value.gen),"--session",session);
+      runAllowError("wait","--stable","--timeout","500","--session",session);
+      console.log(`LOBBY MUSIC STATE PASS: ${beforeLabel} → ${afterLabel}`);
     }
   }
-  if (!musicToggled) throw new Error("Lobby music control could not be toggled");
+  if(!musicToggled) throw new Error("Lobby music control could not be toggled");
   console.log("LOBBY MUSIC TOGGLE PASS");
   runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
 
