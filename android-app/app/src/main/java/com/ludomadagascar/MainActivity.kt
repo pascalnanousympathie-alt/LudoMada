@@ -800,17 +800,23 @@ class MainActivity : Activity() {
         val row1=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
         }
-        row1.addView(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},
-            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(5),dp(4))})
-        row1.addView(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},
-            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),0,0,dp(4))})
+        row1.addView(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)}.apply{
+            contentDescription="OFFLINE_2_PLAYERS"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(5),dp(4))})
+        row1.addView(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)}.apply{
+            contentDescription="OFFLINE_3_PLAYERS"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),0,0,dp(4))})
         add(row1,48,0,0)
 
         val row2=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
         }
-        row2.addView(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},
-            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(5),dp(5))})
+        row2.addView(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)}.apply{
+            contentDescription="OFFLINE_4_PLAYERS"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(5),dp(5))})
         val homeButton=button("← Accueil",Color.rgb(70,82,100)){home()}.apply{
             contentDescription="Accueil"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
