@@ -669,7 +669,7 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            contentDescription=musicLabel()
+            contentDescription="MUSIC_TOGGLE: "+musicLabel()
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
             isClickable=true
