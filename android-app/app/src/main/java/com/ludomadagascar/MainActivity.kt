@@ -197,7 +197,7 @@ class MainActivity : Activity() {
         minimumHeight = 0
         minWidth = 0
         minHeight = 0
-        contentDescription = if (music.enabled()) "Musique activée" else "Musique désactivée"
+        contentDescription = if (music.enabled()) "Musique | activée" else "Musique | désactivée"
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         isFocusable = true
         isClickable = true
@@ -667,7 +667,7 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            contentDescription=musicLabel()
+            contentDescription="Musique"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
             isClickable=true
@@ -677,7 +677,7 @@ class MainActivity : Activity() {
         lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
         lobbyMusicRow.setOnClickListener{
             musicButton.performClick()
-            lobbyMusicRow.contentDescription=musicLabel()
+            lobbyMusicRow.contentDescription="Musique"
         }
         add(lobbyMusicRow,52,0,5)
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
@@ -1585,7 +1585,7 @@ class MainActivity : Activity() {
     private fun updateMusicButton(){
         if(::musicButton.isInitialized){
             musicButton.text = if(music.enabled()) "🎵" else "🔇"
-            musicButton.contentDescription = musicLabel()
+            musicButton.contentDescription = "Musique | " + if(music.enabled()) "activée" else "désactivée"
         }
     }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
