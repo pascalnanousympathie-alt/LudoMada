@@ -311,19 +311,40 @@ public class PremiumHeroViewV2 extends FrameLayout {
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
-      float den=getResources().getDisplayMetrics().density; float W=getWidth(),H=getHeight();
-      boolean landscape=W>=H; float baseW=landscape?1280f:720f,baseH=landscape?720f:1280f;
-      float sc=s*den,ox=(W-baseW*sc)/2f,oy=(H-baseH*sc)/2f;
-      float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;
-      if(landscape){
-        if(y>=140&&y<230&&x<310){call("createGame");return true;}
-        if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
-        if(y>=325&&y<420&&x<310){call("wallet");return true;}
-        if(y>=420&&y<515&&x<310){call("profile");return true;}
-        if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
-        if(y>=520&&y<650&&x<310){int[]fs={500,1000,2000,5000,10000,20000};int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;}
+      float W=getWidth(),H=getHeight();
+      final float den=getResources().getDisplayMetrics().density;
+
+      // Normal landscape coordinates used by the premium composition.
+      float scLandscape=Math.min(W/(1280f*den),H/(720f*den))*den;
+      float oxLandscape=(W-1280f*scLandscape)/2f, oyLandscape=(H-720f*scLandscape)/2f;
+      float lx=(e.getX()-oxLandscape)/scLandscape, ly=(e.getY()-oyLandscape)/scLandscape;
+
+      // Ramus/Android can report the same rendered landscape surface as a portrait 720×1616 input space.
+      // Accept both possible quarter-turn mappings so the real JOUER/rail hitboxes remain touchable.
+      if(W<H){
+        float nx=e.getX()/Math.max(1f,W), ny=e.getY()/Math.max(1f,H);
+        float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+        float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+
+        if(hitHomeActions(lxCW,lyCW)) return true;
+        if(hitHomeActions(lxCCW,lyCCW)) return true;
+        return true;
       }
-      return true;
+
+      return hitHomeActions(lx,ly);
+    }
+
+    private boolean hitHomeActions(float x,float y){
+      if(y>=140&&y<230&&x<310){call("createGame");return true;}
+      if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
+      if(y>=325&&y<420&&x<310){call("wallet");return true;}
+      if(y>=420&&y<515&&x<310){call("profile");return true;}
+      if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
+      if(y>=520&&y<650&&x<310){
+        int[]fs={500,1000,2000,5000,10000,20000};
+        int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
+      }
+      return false;
     }
 
   }
