@@ -17,34 +17,40 @@ function runAllowError(...args) {
 }
 
 function runCli(...args) {
-  const isSnapshot=args[0]==="snapshot";
-  const timeoutMs=isSnapshot ? 10000 : (args[0]==="session" ? 60000 : 30000);
-  // Ramus CLI can leave observation descendants holding stdio open; use an external
-  // hard timeout so a hung snapshot cannot block the entire smoke indefinitely.
-  const timeoutBin="/data/data/com.termux/files/usr/bin/timeout";
-  const timeoutSec=Math.max(1,Math.ceil(timeoutMs/1000));
-  const r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const out = (r.stdout || "").trim();
-  const err = (r.stderr || "").trim();
-  if (!out) {
-    return {
-      ok: false,
-      value: { error: "no_output", message: err || `ramus ${args.join(" ")} produced no output` },
-    };
-  }
-  let value;
-  try {
-    value = JSON.parse(out);
-  } catch {
-    return {
-      ok: false,
-      value: { error: "non_json", message: out.slice(0, 1000) },
-    };
-  }
-  return { ok: r.status === 0 && !value.error, value };
+  const execute = (argv, renewed = false) => {
+    const isSnapshot=argv[0]==="snapshot";
+    const timeoutMs=isSnapshot ? 10000 : (argv[0]==="session" ? 60000 : 30000);
+    const timeoutBin="/data/data/com.termux/files/usr/bin/timeout";
+    const timeoutSec=Math.max(1,Math.ceil(timeoutMs/1000));
+    const r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...argv], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const out = (r.stdout || "").trim();
+    const err = (r.stderr || "").trim();
+    const authFailed = /no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out+"\n"+err);
+    if (authFailed && !renewed && !process.env.RAMUS_API_KEY && argv[0] !== "trial") {
+      const renewedResult = execute(["trial", "--force"], true);
+      if (renewedResult.ok) return execute(argv, true);
+    }
+    if (!out) {
+      return {
+        ok: false,
+        value: { error: "no_output", message: err || `ramus ${argv.join(" ")} produced no output` },
+      };
+    }
+    let value;
+    try {
+      value = JSON.parse(out);
+    } catch {
+      return {
+        ok: false,
+        value: { error: "non_json", message: out.slice(0, 1000) },
+      };
+    }
+    return { ok: r.status === 0 && !value.error, value };
+  };
+  return execute(args);
 }
 
 function waitForSix(timeoutMs) {
@@ -106,7 +112,7 @@ try {
       }
     }
   }
-  if (!process.env.RAMUS_API_KEY) run("trial");
+  if (!process.env.RAMUS_API_KEY) run("trial", "--force");
   let startedResult = runAllowError("session", "start", "--apk", apk, "--wait");
   if (!startedResult.ok || !startedResult.value?.session) {
     // A transient no-output response can happen even when Ramus has not created a session.
