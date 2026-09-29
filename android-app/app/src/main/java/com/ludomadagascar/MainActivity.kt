@@ -1151,7 +1151,7 @@ class MainActivity : Activity() {
         private var dicePhase=0f
         private val jumpLift=Array(4){FloatArray(4)}
         private val spawnScale=Array(4){FloatArray(4){1f}}
-        init{setLayerType(View.LAYER_TYPE_HARDWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
+        init{for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         private fun drawReferenceEnvironment(canvas:Canvas,w:Float,h:Float){
             val bm=gameplayReference ?: return
             val bw=bm.width.toFloat();val bh=bm.height.toFloat()
