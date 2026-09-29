@@ -169,7 +169,7 @@ try {
   console.log("HOME/LOGIN→OFFLINE PASS");
   shot("offline-menu");
 
-  const four = findRef("👥 4 joueurs");
+  const four = findRef("OFFLINE_4_PLAYERS");
   tapRef(four);
   waitStable(1200);
   if (!hasText("Joueur 1/4")) throw new Error("4-player gameplay screen did not open");
