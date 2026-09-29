@@ -28,7 +28,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
     home=new HomeView(c);
     final Button playHit=new Button(c);
-    playHit.setText("");
+    playHit.setText("JOUER");
+    playHit.setTextColor(Color.TRANSPARENT);
     playHit.setContentDescription("JOUER");
     playHit.setAllCaps(false);
     playHit.setClickable(true);
@@ -40,7 +41,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setOnClickListener(v->call("gameModeDialog"));
 
     final Button playHitAlt=new Button(c);
-    playHitAlt.setText("");
+    playHitAlt.setText("JOUER");
+    playHitAlt.setTextColor(Color.TRANSPARENT);
     playHitAlt.setContentDescription("JOUER");
     playHitAlt.setAllCaps(false);
     playHitAlt.setClickable(true);
