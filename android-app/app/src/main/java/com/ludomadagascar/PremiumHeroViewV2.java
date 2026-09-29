@@ -138,8 +138,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setFocusable(true);
     playHit.setClickable(true);
     playHit.setOnClickListener(v->call("gameModeDialog"));
+
+    // Second transparent target covers the inverse portrait mapping used by Ramus.
+    Button playHitAlt=new Button(a);
+    playHitAlt.setText("JOUER");
+    playHitAlt.setTextColor(Color.TRANSPARENT);
+    playHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    playHitAlt.setContentDescription("JOUER");
+    playHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHitAlt.setFocusable(true);
+    playHitAlt.setClickable(true);
+    playHitAlt.setOnClickListener(v->call("gameModeDialog"));
+
     f.addView(playHit);
-    f.post(()->positionPlayHit(playHit));
+    f.addView(playHitAlt);
+    f.post(()->positionPlayHit(playHit,playHitAlt));
   }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
