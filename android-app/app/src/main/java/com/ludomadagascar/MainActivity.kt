@@ -1146,13 +1146,12 @@ class MainActivity : Activity() {
         private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
         private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
         private var stateAnimator:android.animation.ValueAnimator?=null
-        private val gameplayReference:Bitmap? = BitmapFactory.decodeResource(resources,R.drawable.ludomada_gameplay_reference)
         private var diceRolling=false
         private var dicePhase=0f
         private val jumpLift=Array(4){FloatArray(4)}
         private val spawnScale=Array(4){FloatArray(4){1f}}
         init{for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
-        private fun drawReferenceEnvironment(canvas:Canvas,w:Float,h:Float){
+        private fun drawTableEnvironment(canvas:Canvas,w:Float,h:Float){
             // Screenshot B is a visual reference only; the gameplay scene is rendered from primitives.
             val bg=Paint(Paint.ANTI_ALIAS_FLAG).apply{
                 shader=LinearGradient(0f,0f,0f,h,Color.rgb(5,14,31),Color.rgb(42,22,21),Shader.TileMode.CLAMP)
@@ -1176,106 +1175,12 @@ class MainActivity : Activity() {
             val pool=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=RadialGradient(w*.50f,h*.50f,maxOf(w,h)*.42f,0x2CFFF6DB,0x00000000,Shader.TileMode.CLAMP)}
             canvas.drawOval(w*.16f,h*.10f,w*.84f,h*.91f,pool);pool.shader=null
         }
-        private fun refMap(v:Float,srcStart:Float,srcEnd:Float,dstStart:Float,dstEnd:Float):Float =
-            dstStart + (v-srcStart)/(srcEnd-srcStart)*(dstEnd-dstStart)
-
-        private fun refPoint(u:Float,v:Float,w:Float,h:Float):FloatArray{
-            // Four corners of the playable diamond in Screenshot 2 (1376×768 source space).
-            // Bilinear mapping keeps the logical 15×15 grid aligned with the photographed table.
-            val tl=floatArrayOf(415f,118f); val tr=floatArrayOf(1025f,215f)
-            val br=floatArrayOf(965f,644f); val bl=floatArrayOf(365f,515f)
-            val topX=tl[0]+(tr[0]-tl[0])*u; val topY=tl[1]+(tr[1]-tl[1])*u
-            val botX=bl[0]+(br[0]-bl[0])*u; val botY=bl[1]+(br[1]-bl[1])*u
-            val sx=topX+(botX-topX)*v; val sy=topY+(botY-topY)*v
-            val scale=maxOf(w/1376f,h/768f); val ox=(w-1376f*scale)/2f; val oy=(h-768f*scale)/2f
-            return floatArrayOf(ox+sx*scale,oy+sy*scale)
-        }
-
-        private fun referenceHomePoint(pi:Int,ti:Int,w:Float,h:Float):FloatArray{
-            val pts=arrayOf(
-                arrayOf(floatArrayOf(628f,122f),floatArrayOf(714f,156f),floatArrayOf(604f,190f),floatArrayOf(705f,220f)),
-                arrayOf(floatArrayOf(1040f,268f),floatArrayOf(1114f,315f),floatArrayOf(1017f,350f),floatArrayOf(1094f,392f)),
-                arrayOf(floatArrayOf(738f,556f),floatArrayOf(824f,585f),floatArrayOf(706f,647f),floatArrayOf(796f,678f)),
-                arrayOf(floatArrayOf(291f,344f),floatArrayOf(374f,384f),floatArrayOf(266f,456f),floatArrayOf(350f,505f))
-            )
-            val q=pts[pi][ti]; val scale=maxOf(w/1376f,h/768f); val ox=(w-1376f*scale)/2f; val oy=(h-768f*scale)/2f
-            return floatArrayOf(ox+q[0]*scale,oy+q[1]*scale)
-        }
-
-        private fun referenceTokenPoint(pi:Int,ti:Int,pos:Int,w:Float,h:Float):FloatArray{
-            if(pos<0)return referenceHomePoint(pi,ti,w,h)
-            val logical=if(pos in 0..51){
-                val q=visualPath()[(pi*13+pos)%52]; floatArrayOf(q.first+.5f,q.second+.5f)
-            }else{
-                val finish=arrayOf(
-                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f)
-                )[pi]; val k=((pos-52).coerceIn(0,5))*2; floatArrayOf(finish[k],finish[k+1])
-            }
-            return refPoint((logical[1])/15f,(logical[0])/15f,w,h)
-        }
-
-        private fun drawReferenceHomeCover(canvas:Canvas,pi:Int,ti:Int,w:Float,h:Float){
-            // Hide the static reference pawn only after that logical token leaves its home slot.
-            val q=referenceHomePoint(pi,ti,w,h); val scale=maxOf(w/1376f,h/768f); val r=28f*scale
-            val color=cols[pi]
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=RadialGradient(q[0]-r*.25f,q[1]-r*.35f,r*1.25f,
-                    Color.rgb(minOf(255,Color.red(color)+38),minOf(255,Color.green(color)+38),minOf(255,Color.blue(color)+38)),color,Shader.TileMode.CLAMP)
-            }
-            canvas.drawCircle(q[0],q[1],r*.80f,p);p.shader=null
-            p.style=Paint.Style.STROKE;p.strokeWidth=1.1f*scale;p.color=0x55FFFFFF
-            canvas.drawCircle(q[0],q[1],r*.80f,p);p.style=Paint.Style.FILL
-        }
-
-        private fun drawReferenceDie(canvas:Canvas,w:Float,h:Float){
-            val scale=maxOf(w/1376f,h/768f)
-            val qx=(765f*scale)+(w-1376f*scale)/2f; val qy=(348f*scale)+(h-768f*scale)/2f
-            val size=42f*scale
-            val rolling=diceRolling; val phase=(System.currentTimeMillis()%900L)/900f
-            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{setShadowLayer(9f*scale,0f,5f*scale,0xAA000000.toInt())
-                shader=RadialGradient(qx-size*.25f,qy-size*.32f,size*.95f,
-                    intArrayOf(Color.WHITE,Color.rgb(243,247,250),Color.rgb(190,198,205),Color.rgb(86,98,109)),
-                    floatArrayOf(0f,.20f,.50f,1f),Shader.TileMode.CLAMP)}
-            canvas.drawRoundRect(qx-size/2f,qy-size/2f,qx+size/2f,qy+size/2f,8f*scale,8f*scale,p);p.clearShadowLayer();p.shader=null
-            p.style=Paint.Style.STROKE;p.strokeWidth=1.2f*scale;p.color=0xEEFFFFFF.toInt();canvas.drawRoundRect(qx-size/2f,qy-size/2f,qx+size/2f,qy+size/2f,8f*scale,8f*scale,p);p.style=Paint.Style.FILL
-            p.color=Color.rgb(48,55,63)
-            val d=size*.23f
-            val pts=when(face){1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)}
-            for((a,b) in pts)canvas.drawCircle(qx+a*d,qy+b*d,2.2f*scale,p)
-            p.color=Color.WHITE;canvas.drawCircle(qx-size*.27f,qy-size*.31f,3.4f*scale,p)
-        }
-
-        private fun drawReferenceGameplay(canvas:Canvas,w:Float,h:Float){
-            drawReferenceEnvironment(canvas,w,h)
-            val scale=maxOf(w/1376f,h/768f)
-            val activeState=if(currentScreen=="offline") offlineState else state
-            // Reference 2 already contains the exact table, trays and starting pawns. Preserve
-            // untouched home pawns; cover only the slots whose logical token has moved out.
-            for(pi in 0..3)for(ti in 0..3){
-                val pos=activeState?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1) ?: -1
-                if(pos>=0) drawReferenceHomeCover(canvas,pi,ti,w,h)
-                val q=referenceTokenPoint(pi,ti,pos,w,h)
-                if(pos>=0){
-                    val logicalQ=if(display[pi][ti][0].isNaN())q else refPoint(display[pi][ti][1]/15f,display[pi][ti][0]/15f,w,h)
-                    drawToken(canvas,logicalQ[0],logicalQ[1]-jumpLift[pi][ti]*scale,Math.min(w,h)/15f,cols[pi],pi==player,spawnScale[pi][ti])
-                    if(pi==player && tokenCanMoveForUi(pi,ti)){
-                        val hp=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=2.2f*scale;color=0xFFEBC348.toInt()}
-                        canvas.drawCircle(logicalQ[0],logicalQ[1],Math.min(w,h)/15f*.44f,hp)
-                    }
-                }
-            }
-            drawReferenceDie(canvas,w,h)
-        }
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
             val w=width.toFloat(); val h=height.toFloat()
             val side=minOf(w,h)*.78f
             // Native procedural table: Screenshot B informs the material/lighting, never the pixels.
-            drawReferenceEnvironment(canvas,w,h)
+            drawTableEnvironment(canvas,w,h)
             val ox=(w-side)/2f; val oy=((h-side)/2f).coerceAtLeast(0f)
             val cell=side/15f
 
@@ -1644,63 +1549,83 @@ class MainActivity : Activity() {
             return if(pos<0) dice==6 else pos+dice<=57
         }
         private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean,scale:Float=1f){
-            val rad=cell*.35f*scale
-            val baseY=cy+rad*.70f
+            // Pawn styling follows the "unnamed (1).webp" model: one-piece colored classic Ludo pawn,
+            // rounded head + broad rounded body + colored foot, with glossy 3D shading.
+            val rad=cell*.34f*scale
+            val baseY=cy+rad*.78f
 
-            // Contact shadow and weighted foot.
-            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{setColor(0x70000000);setShadowLayer(dp(4f).toFloat(),0f,dp(3f).toFloat(),0x99000000.toInt())}
-            c.drawOval(cx-rad*1.02f,baseY-rad*.09f,cx+rad*1.02f,baseY+rad*.28f,sh)
+            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                color=0x76000000
+                setShadowLayer(dp(3.5f).toFloat(),0f,dp(2.5f).toFloat(),0xB0000000.toInt())
+            }
+            c.drawOval(cx-rad*1.00f,baseY-rad*.08f,cx+rad*1.00f,baseY+rad*.27f,sh)
             sh.clearShadowLayer()
 
             val body=Path().apply{
-                moveTo(cx-rad*.90f,baseY)
-                cubicTo(cx-rad*.84f,cy+rad*.32f,cx-rad*.50f,cy+rad*.18f,cx-rad*.34f,cy-rad*.03f)
-                cubicTo(cx-rad*.48f,cy-rad*.20f,cx-rad*.44f,cy-rad*.35f,cx-rad*.22f,cy-rad*.43f)
-                lineTo(cx-rad*.18f,cy-rad*.49f)
-                lineTo(cx+rad*.18f,cy-rad*.49f)
-                lineTo(cx+rad*.22f,cy-rad*.43f)
-                cubicTo(cx+rad*.44f,cy-rad*.35f,cx+rad*.48f,cy-rad*.20f,cx+rad*.34f,cy-rad*.03f)
-                cubicTo(cx+rad*.50f,cy+rad*.18f,cx+rad*.84f,cy+rad*.32f,cx+rad*.90f,baseY)
-                quadTo(cx,baseY+rad*.22f,cx-rad*.90f,baseY)
+                moveTo(cx-rad*.92f,baseY)
+                cubicTo(cx-rad*.90f,cy+rad*.32f,cx-rad*.62f,cy+rad*.18f,cx-rad*.38f,cy-rad*.01f)
+                cubicTo(cx-rad*.49f,cy-rad*.17f,cx-rad*.43f,cy-rad*.34f,cx-rad*.21f,cy-rad*.44f)
+                lineTo(cx-rad*.17f,cy-rad*.50f)
+                lineTo(cx+rad*.17f,cy-rad*.50f)
+                lineTo(cx+rad*.21f,cy-rad*.44f)
+                cubicTo(cx+rad*.43f,cy-rad*.34f,cx+rad*.49f,cy-rad*.17f,cx+rad*.38f,cy-rad*.01f)
+                cubicTo(cx+rad*.62f,cy+rad*.18f,cx+rad*.90f,cy+rad*.32f,cx+rad*.92f,baseY)
+                quadTo(cx,baseY+rad*.23f,cx-rad*.92f,baseY)
                 close()
             }
 
-            val hi=Color.rgb(minOf(255,Color.red(color)+48),minOf(255,Color.green(color)+48),minOf(255,Color.blue(color)+48))
-            val mid=Color.rgb(minOf(255,Color.red(color)+15),minOf(255,Color.green(color)+15),minOf(255,Color.blue(color)+15))
-            val lo=Color.rgb(maxOf(8,(Color.red(color)*.24f).toInt()),maxOf(8,(Color.green(color)*.24f).toInt()),maxOf(8,(Color.blue(color)*.24f).toInt()))
+            val hi=Color.rgb(minOf(255,Color.red(color)+58),minOf(255,Color.green(color)+58),minOf(255,Color.blue(color)+58))
+            val mid=Color.rgb(minOf(255,Color.red(color)+24),minOf(255,Color.green(color)+24),minOf(255,Color.blue(color)+24))
+            val lo=Color.rgb(maxOf(8,(Color.red(color)*.30f).toInt()),maxOf(8,(Color.green(color)*.30f).toInt()),maxOf(8,(Color.blue(color)*.30f).toInt()))
+
             val bodyPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=LinearGradient(cx-rad*.9f,cy-rad,cx+rad*.8f,baseY,
-                    intArrayOf(hi,mid,lo),floatArrayOf(0f,.45f,1f),Shader.TileMode.CLAMP)
-                setShadowLayer(dp(4f).toFloat(),0f,dp(2f).toFloat(),0xAA000000.toInt())
+                shader=LinearGradient(cx-rad*.85f,cy-rad,cx+rad*.88f,baseY,
+                    intArrayOf(hi,mid,lo),floatArrayOf(0f,.42f,1f),Shader.TileMode.CLAMP)
+                setShadowLayer(dp(3f).toFloat(),0f,dp(1.5f).toFloat(),0x99000000.toInt())
             }
-            c.drawPath(body,bodyPaint);bodyPaint.clearShadowLayer();bodyPaint.shader=null
+            c.drawPath(body,bodyPaint)
+            bodyPaint.clearShadowLayer();bodyPaint.shader=null
 
-            // Molded collar + spherical head.
-            val collar=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=RadialGradient(cx-rad*.10f,cy-rad*.42f,rad*.38f,Color.WHITE,Color.rgb(120,129,138),Shader.TileMode.CLAMP)
+            // Same-color neck ring: no metallic gray/silver component.
+            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(cx-rad*.26f,cy-rad*.46f,cx+rad*.26f,cy-rad*.28f,hi,lo,Shader.TileMode.CLAMP)
             }
-            c.drawOval(cx-rad*.24f,cy-rad*.53f,cx+rad*.24f,cy-rad*.34f,collar)
-            collar.shader=null
+            c.drawOval(cx-rad*.25f,cy-rad*.53f,cx+rad*.25f,cy-rad*.32f,ring)
+            ring.shader=null
+
             val head=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=RadialGradient(cx-rad*.24f,cy-rad*.76f,rad*.48f,hi,color,Shader.TileMode.CLAMP)
-                setShadowLayer(dp(2.5f).toFloat(),0f,dp(1f).toFloat(),0x77000000.toInt())
+                shader=RadialGradient(cx-rad*.25f,cy-rad*.78f,rad*.50f,
+                    intArrayOf(hi,mid,color,lo),floatArrayOf(0f,.26f,.64f,1f),Shader.TileMode.CLAMP)
+                setShadowLayer(dp(2.2f).toFloat(),0f,dp(1f).toFloat(),0x88000000.toInt())
             }
-            c.drawCircle(cx,cy-rad*.72f,rad*.40f,head);head.clearShadowLayer();head.shader=null
+            c.drawCircle(cx,cy-rad*.74f,rad*.40f,head)
+            head.clearShadowLayer();head.shader=null
 
-            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.15f).toFloat();setColor(0xDFFFFFFF.toInt())}
-            c.drawPath(body,rim)
-            rim.strokeWidth=dp(.75f).toFloat();rim.color=0x66333A43;c.drawPath(body,rim)
+            val edge=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                style=Paint.Style.STROKE;strokeWidth=dp(1.0f).toFloat();color=0xD8FFFFFF.toInt()
+            }
+            c.drawPath(body,edge)
+            edge.strokeWidth=dp(.65f).toFloat();edge.color=0x66300000;c.drawPath(body,edge)
 
             val gloss=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=RadialGradient(cx-rad*.30f,cy-rad*.72f,rad*.34f,0xFFFFFFFF.toInt(),0x00FFFFFF,Shader.TileMode.CLAMP)
+                shader=RadialGradient(cx-rad*.29f,cy-rad*.79f,rad*.33f,0xFFFFFFFF.toInt(),0x00FFFFFF,Shader.TileMode.CLAMP)
             }
-            c.drawCircle(cx-rad*.12f,cy-rad*.72f,rad*.25f,gloss);gloss.shader=null
-            gloss.color=0xEFFFFFFF.toInt();c.drawCircle(cx-rad*.28f,cy-rad*.84f,rad*.08f,gloss)
+            c.drawCircle(cx-rad*.12f,cy-rad*.77f,rad*.23f,gloss)
+            gloss.shader=null
+            gloss.color=0xEFFFFFFF.toInt()
+            c.drawCircle(cx-rad*.28f,cy-rad*.88f,rad*.075f,gloss)
 
             val foot=Paint(Paint.ANTI_ALIAS_FLAG).apply{
-                shader=LinearGradient(cx-rad,baseY,cx+rad,baseY,Color.rgb(235,239,242),Color.rgb(75,82,89),Shader.TileMode.CLAMP)
+                shader=LinearGradient(cx-rad,baseY-rad*.01f,cx+rad,baseY+rad*.12f,
+                    intArrayOf(mid,color,lo),floatArrayOf(0f,.50f,1f),Shader.TileMode.CLAMP)
             }
-            c.drawOval(cx-rad*.92f,baseY-rad*.02f,cx+rad*.92f,baseY+rad*.22f,foot);foot.shader=null
+            c.drawOval(cx-rad*.94f,baseY-rad*.03f,cx+rad*.94f,baseY+rad*.24f,foot)
+            foot.shader=null
+
+            val footRim=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                style=Paint.Style.STROKE;strokeWidth=dp(.7f).toFloat();color=0x88FFFFFF.toInt()
+            }
+            c.drawOval(cx-rad*.94f,baseY-rad*.03f,cx+rad*.94f,baseY+rad*.24f,footRim)
 
             if(active) drawLegalHint(c,cx,cy,cell)
         }
@@ -1735,23 +1660,6 @@ class MainActivity : Activity() {
             return true
         }
         override fun performClick():Boolean{super.performClick();return true}
-        private fun nearestReferenceOwnToken(x:Float,y:Float,w:Float,h:Float):Int{
-            val activeState=if(currentScreen=="offline") offlineState else state
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            if(activePlayer !in 0..3)return -1
-            val tokens=activeState?.optJSONArray("players")?.optJSONObject(activePlayer)?.optJSONArray("tokens")
-            var best=-1;var bestD2=Float.MAX_VALUE
-            for(ti in 0..3){
-                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                val q=if(pos>=0 && !display[activePlayer][ti][0].isNaN())
-                    refPoint(display[activePlayer][ti][1]/15f,display[activePlayer][ti][0]/15f,w,h)
-                else referenceHomePoint(activePlayer,ti,w,h)
-                val dx=x-q[0];val dy=y-q[1];val d2=dx*dx+dy*dy
-                if(d2<bestD2){bestD2=d2;best=ti}
-            }
-            val hit=(Math.min(w,h)/15f*.95f)*(Math.min(w,h)/15f*.95f)
-            return if(best>=0 && bestD2<=hit)best else -1
-        }
         private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
             val activeState=if(currentScreen=="offline") offlineState else state
             val activePlayer=if(currentScreen=="offline") offlineTurn else player
