@@ -185,9 +185,11 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  // Music control: use stable accessibility IDs that survive orientation/system-bar transforms.
-  const onLabel="MUSIC_TOGGLE: activée";
-  const offLabel="MUSIC_TOGGLE: désactivée";
+  // Music control: the accessible overlay uses MUSIC_TOGGLE_ON/OFF; the visual Button keeps the colon labels as fallback.
+  const onLabel="MUSIC_TOGGLE_ON";
+  const offLabel="MUSIC_TOGGLE_OFF";
+  const visualOn="MUSIC_TOGGLE: activée";
+  const visualOff="MUSIC_TOGGLE: désactivée";
   let music=runAllowError("snapshot","--session",session,"--find",onLabel);
   let beforeLabel=onLabel;
   let afterLabel=offLabel;
@@ -195,6 +197,16 @@ try {
     music=runAllowError("snapshot","--session",session,"--find",offLabel);
     beforeLabel=offLabel;
     afterLabel=onLabel;
+  }
+  if(!music.ok || !music.value.elements?.length){
+    music=runAllowError("snapshot","--session",session,"--find",visualOn);
+    beforeLabel=visualOn;
+    afterLabel=visualOff;
+    if(!music.ok || !music.value.elements?.length){
+      music=runAllowError("snapshot","--session",session,"--find",visualOff);
+      beforeLabel=visualOff;
+      afterLabel=visualOn;
+    }
   }
   let musicToggled=false;
   if(music.ok && music.value.elements?.length){
