@@ -21,6 +21,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
+    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     if(c instanceof Activity){
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
@@ -36,9 +37,19 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setPadding(0,0,0,0);
     playHit.setMinWidth(0); playHit.setMinHeight(0);
     playHit.setOnClickListener(v->call("gameModeDialog"));
+    final TextView homeA11y=new TextView(c);
+    homeA11y.setText("");
+    homeA11y.setContentDescription("LudoMada Premium Home");
+    homeA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    homeA11y.setFocusable(false);
+    homeA11y.setClickable(false);
+    homeA11y.setBackgroundColor(Color.TRANSPARENT);
+    FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(1,1);
+    homeA11yLp.leftMargin=1; homeA11yLp.topMargin=1;
     FrameLayout.LayoutParams playLp=new FrameLayout.LayoutParams(64,48);
     playLp.leftMargin=Math.max(0,getResources().getDisplayMetrics().widthPixels-80);
     playLp.topMargin=220;
+    addView(homeA11y,homeA11yLp);
     addView(playHit,playLp);
     post(()->positionPlayHit(playHit));
   }
@@ -53,7 +64,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
     removeCallbacks(homeBgFlip);super.onDetachedFromWindow();
   }
   @Override protected void onDraw(Canvas c){
-    setContentDescription("LudoMada Premium Home | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
@@ -77,7 +87,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   @Override protected void onSizeChanged(int w,int h,int ow,int oh){
     super.onSizeChanged(w,h,ow,oh);
-    if(getChildCount()>0) positionPlayHit(getChildAt(0));
+    if(getChildCount()>0) positionPlayHit(getChildAt(getChildCount()-1));
   }
 
   private void install() {
