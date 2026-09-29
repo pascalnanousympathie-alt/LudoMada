@@ -164,24 +164,29 @@ try {
   runAllowError("wait", "--timeout", "6200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-b.jpg");
 
-  // Home is a custom Canvas with a native transparent JOUER hit-target for deterministic automation.
-  // Prefer its semantic ref; keep the legacy coordinate fallback for compatibility.
+  // Home touch automation: native JOUER target first, then the two inverse-quarter-turn coordinates
+  // required when Ramus reports the landscape surface as a portrait 720×1616 input space.
+  let onlineMode = null;
   const playSemantic = runAllowError("snapshot", "--session", session, "--find", "JOUER");
   if (playSemantic.ok && playSemantic.value.elements?.length) {
-    target = { ref: playSemantic.value.elements[0].ref, gen: playSemantic.value.gen };
-    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  } else {
-    run("tap", "0.83,0.58", "--session", session);
+    const play = playSemantic.value.elements.find(e=>e.clickable!==false) || playSemantic.value.elements[0];
+    run("tap", play.ref, "--gen", String(playSemantic.value.gen), "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+    onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
   }
-  runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
-  const onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
-  if (onlineMode.ok && onlineMode.value.elements?.length) {
-    target = { ref: onlineMode.value.elements[0].ref, gen: onlineMode.value.gen };
-    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  } else {
-    // AlertDialog first item fallback when the accessibility tree omits the emoji label.
-    run("tap", "0.50,0.47", "--session", session);
+  if (!onlineMode?.ok || !onlineMode.value.elements?.length) {
+    for (const pt of ["0.58,0.14","0.42,0.86"]) {
+      run("tap", pt, "--session", session);
+      runAllowError("wait", "--stable", "--timeout", "900", "--session", session);
+      onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
+      if (onlineMode.ok && onlineMode.value.elements?.length) break;
+    }
   }
+  if (!onlineMode?.ok || !onlineMode.value.elements?.length) {
+    throw new Error("Premium Home JOUER control did not open the game mode dialog");
+  }
+  target = { ref: onlineMode.value.elements[0].ref, gen: onlineMode.value.gen };
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
