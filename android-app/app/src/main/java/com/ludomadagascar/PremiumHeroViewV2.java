@@ -38,6 +38,18 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setPadding(0,0,0,0);
     playHit.setMinWidth(0); playHit.setMinHeight(0);
     playHit.setOnClickListener(v->call("gameModeDialog"));
+
+    final Button playHitAlt=new Button(c);
+    playHitAlt.setText("");
+    playHitAlt.setContentDescription("JOUER");
+    playHitAlt.setAllCaps(false);
+    playHitAlt.setClickable(true);
+    playHitAlt.setFocusable(true);
+    playHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    playHitAlt.setPadding(0,0,0,0);
+    playHitAlt.setMinWidth(0); playHitAlt.setMinHeight(0);
+    playHitAlt.setOnClickListener(v->call("gameModeDialog"));
     final TextView homeA11y=new TextView(c);
     homeA11y.setText("");
     homeA11y.setContentDescription("LudoMada Premium Home");
@@ -54,7 +66,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playLp.topMargin=220;
     addView(homeA11y,homeA11yLp);
     addView(playHit,playLp);
-    post(()->positionPlayHit(playHit));
+    addView(playHitAlt,new FrameLayout.LayoutParams(1,1));
+    post(()->positionPlayHit(playHit,playHitAlt));
   }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();
@@ -71,26 +84,39 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home.draw(c);
   }
   @Override public boolean onTouchEvent(MotionEvent e){return home.onTouchEvent(e);}
-  private void positionPlayHit(View playHit){
+  private void positionPlayHit(View playHit, View playHitAlt){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0) return;
+    if(W<H){
+      // Ramus reports the rendered landscape canvas as a portrait input surface.
+      // Provide both inverse quarter-turn hitboxes; both invoke the same game-mode dialog.
+      setHit(playHit,Math.round((378f/720f)*W),Math.round((80f/1280f)*H),
+          Math.max(1,Math.round((452f-378f)/720f*W)),
+          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
+      setHit(playHitAlt,Math.round((1f-452f/720f)*W),Math.round((1010f/1280f)*H),
+          Math.max(1,Math.round((452f-378f)/720f*W)),
+          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
+      return;
+    }
     float den=getResources().getDisplayMetrics().density;
-    boolean landscape=W>=H;
-    float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
-    float sc=Math.min(W/(baseW*den),H/(baseH*den))*den;
-    float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
     int left=Math.round(ox+1010f*sc);
     int top=Math.round(oy+378f*sc);
     int width=Math.max(1,Math.round(190f*sc));
     int height=Math.max(1,Math.round(74f*sc));
-    FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);
-    lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-width)));
-    lp.topMargin=Math.max(0,Math.min(top,Math.max(0,getHeight()-height)));
-    playHit.setLayoutParams(lp);
+    setHit(playHit,left,top,width,height);
+    setHit(playHitAlt,0,0,1,1);
+  }
+  private void setHit(View v,int left,int top,int width,int height){
+    FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
+    lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
+    lp.topMargin=Math.max(0,Math.min(top,Math.max(0,getHeight()-lp.height)));
+    v.setLayoutParams(lp);
   }
   @Override protected void onSizeChanged(int w,int h,int ow,int oh){
     super.onSizeChanged(w,h,ow,oh);
-    if(getChildCount()>0) positionPlayHit(getChildAt(getChildCount()-1));
+    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
   private void install() {
