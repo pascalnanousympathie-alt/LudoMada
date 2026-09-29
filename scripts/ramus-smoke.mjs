@@ -189,7 +189,7 @@ try {
     rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session, "--force");
   }
   if (!rollTap.ok) {
-    const coordTap = allow("tap", "0.50,0.64", "--session", session, "--force");
+    const coordTap = allow("tap", "0.351,0.500", "--session", session, "--force");
     if (!coordTap.ok) throw new Error(JSON.stringify(coordTap.value));
   }
   allow("wait", "--timeout", "1400", "--session", session);
