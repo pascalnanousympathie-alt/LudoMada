@@ -23,12 +23,21 @@ function runCli(...args) {
     const timeoutMs=isSnapshot ? 10000 : (isSessionStart ? 180000 : (argv[0]==="session" ? 60000 : 30000));
     const timeoutBin="/data/data/com.termux/files/usr/bin/timeout";
     const timeoutSec=Math.max(1,Math.ceil(timeoutMs/1000));
-    const r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...argv], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const out = (r.stdout || "").trim();
-    const err = (r.stderr || "").trim();
+    let r;
+    let out = "";
+    let err = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...argv], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      out = (r.stdout || "").trim();
+      err = (r.stderr || "").trim();
+      const transientNetwork = /fetch failed|unreachable|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(out+"\n"+err);
+      if (!transientNetwork || attempt === 3) break;
+      console.log(`Ramus transient network error; retry ${attempt + 1}/3`);
+      spawnSync("/data/data/com.termux/files/usr/bin/sleep", ["2"], {stdio: "ignore"});
+    }
     const authFailed = /no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out+"\n"+err);
     if (authFailed && !renewed && !process.env.RAMUS_API_KEY && argv[0] !== "trial") {
       const renewedResult = execute(["trial", "--force"], true);
