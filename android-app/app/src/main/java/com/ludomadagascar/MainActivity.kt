@@ -38,7 +38,7 @@ class MainActivity : Activity() {
     private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
-    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
+    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var movePending = false
@@ -694,6 +694,8 @@ class MainActivity : Activity() {
                 lobbyMusicRow.contentDescription=text
             }
         }
+        musicA11yButton = musicA11y
+        lobbyMusicRowRef = lobbyMusicRow
         val musicSlot=FrameLayout(this).apply{
             addView(musicButton,FrameLayout.LayoutParams(dp(52),dp(52)))
             addView(musicA11y,FrameLayout.LayoutParams(dp(52),dp(52)))
@@ -1604,9 +1606,21 @@ class MainActivity : Activity() {
     }
     private fun musicLabel():String = if(music.enabled()) "Musique activée" else "Musique désactivée"
     private fun updateMusicButton(){
+        val enabled = music.enabled()
+        val stableState = if(enabled) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+        val humanState = if(enabled) "Musique activée" else "Musique désactivée"
         if(::musicButton.isInitialized){
-            musicButton.text = if(music.enabled()) "🎵" else "🔇"
-            musicButton.contentDescription = "MUSIC_TOGGLE: " + if(music.enabled()) "activée" else "désactivée"
+            musicButton.text = if(enabled) "🎵" else "🔇"
+            musicButton.contentDescription = humanState
+        }
+        musicA11yButton?.apply{
+            text = stableState
+            contentDescription = stableState
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+        lobbyMusicRowRef?.apply{
+            contentDescription = stableState
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
     }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
