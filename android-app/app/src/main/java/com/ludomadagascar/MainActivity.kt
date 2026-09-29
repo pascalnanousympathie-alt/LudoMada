@@ -1153,17 +1153,28 @@ class MainActivity : Activity() {
         private val spawnScale=Array(4){FloatArray(4){1f}}
         init{for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
         private fun drawReferenceEnvironment(canvas:Canvas,w:Float,h:Float){
-            val bm=gameplayReference ?: return
-            val bw=bm.width.toFloat();val bh=bm.height.toFloat()
-            val scale=maxOf(w/bw,h/bh)
-            val dw=bw*scale;val dh=bh*scale
-            val left=(w-dw)/2f;val top=(h-dh)/2f
-            val refPaint=Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-            refPaint.alpha=255
-            canvas.drawBitmap(bm,null,RectF(left,top,left+dw,top+dh),refPaint)
-            // Very light glass treatment: preserves the bright studio scene without muddying it.
-            refPaint.shader=LinearGradient(0f,0f,0f,h,0x10020B16,0x04020A14,Shader.TileMode.CLAMP)
-            canvas.drawRect(0f,0f,w,h,refPaint);refPaint.shader=null
+            // Screenshot B is a visual reference only; the gameplay scene is rendered from primitives.
+            val bg=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=LinearGradient(0f,0f,0f,h,Color.rgb(5,14,31),Color.rgb(42,22,21),Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(0f,0f,w,h,bg);bg.shader=null
+            val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=RadialGradient(w*.50f,h*.34f,maxOf(w,h)*.72f,intArrayOf(0x554E7D9E,0x1B3A5264,0x00000000),floatArrayOf(0f,.38f,1f),Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(0f,0f,w,h,glow);glow.shader=null
+            val tx=w*.035f;val ty=h*.06f;val tr=w*.965f;val tb=h*.965f
+            val sh=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xCC000000.toInt();setShadowLayer(dp(28f).toFloat(),0f,dp(14f).toFloat(),0xDD000000.toInt())}
+            canvas.drawRoundRect(tx,ty,tr,tb,dp(34f).toFloat(),dp(34f).toFloat(),sh);sh.clearShadowLayer()
+            val wood=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(tx,ty,tr,tb,intArrayOf(Color.rgb(123,61,25),Color.rgb(70,31,14),Color.rgb(39,18,11)),null,Shader.TileMode.CLAMP)}
+            canvas.drawRoundRect(tx,ty,tr,tb,dp(34f).toFloat(),dp(34f).toFloat(),wood);wood.shader=null
+            val sheen=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=LinearGradient(0f,ty,0f,tb,0x44FFF4DD,0x00000000,Shader.TileMode.CLAMP)}
+            canvas.drawRoundRect(tx+dp(3f),ty+dp(3f),tr-dp(3f),tb-dp(3f),dp(31f).toFloat(),dp(31f).toFloat(),sheen);sheen.shader=null
+            val rim=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(2.4f).toFloat();color=0xA8E8B26E.toInt()}
+            canvas.drawRoundRect(tx+dp(3f),ty+dp(3f),tr-dp(3f),tb-dp(3f),dp(31f).toFloat(),dp(31f).toFloat(),rim)
+            val grain=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=dp(1.1f).toFloat();color=0x2EFFF0C9.toInt()}
+            for(i in 0..17){val gy=ty+h*.025f+i*(tb-ty)*.052f;canvas.drawArc(tx+w*.02f,gy,tr-w*.42f,gy+h*.075f,185f,105f,false,grain);canvas.drawArc(tx+w*.48f,gy+h*.012f,tr-w*.02f,gy+h*.070f,4f,108f,false,grain)}
+            val pool=Paint(Paint.ANTI_ALIAS_FLAG).apply{shader=RadialGradient(w*.50f,h*.50f,maxOf(w,h)*.42f,0x2CFFF6DB,0x00000000,Shader.TileMode.CLAMP)}
+            canvas.drawOval(w*.16f,h*.10f,w*.84f,h*.91f,pool);pool.shader=null
         }
         private fun refMap(v:Float,srcStart:Float,srcEnd:Float,dstStart:Float,dstEnd:Float):Float =
             dstStart + (v-srcStart)/(srcEnd-srcStart)*(dstEnd-dstStart)
@@ -1262,15 +1273,9 @@ class MainActivity : Activity() {
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
             val w=width.toFloat(); val h=height.toFloat()
-            val side=minOf(w-20f,h-8f).coerceAtLeast(1f)
-
-            // Screenshot 2 is the authoritative gameplay visual reference. Keep the complete
-            // supplied table/environment and overlay only authoritative, animated game state.
-            if(gameplayReference!=null && w>=h){
-                drawReferenceGameplay(canvas,w,h)
-                postInvalidateDelayed(16L)
-                return
-            }
+            val side=minOf(w,h)*.78f
+            // Native procedural table: Screenshot B informs the material/lighting, never the pixels.
+            drawReferenceEnvironment(canvas,w,h)
             val ox=(w-side)/2f; val oy=((h-side)/2f).coerceAtLeast(0f)
             val cell=side/15f
 
@@ -1709,17 +1714,16 @@ class MainActivity : Activity() {
         }
         override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
             if(e.action==MotionEvent.ACTION_UP && player in 0..3){
-                if(gameplayReference!=null && width>=height){
-                    val touched=nearestReferenceOwnToken(e.x,e.y,width.toFloat(),height.toFloat())
-                    if(touched>=0){
-                        performClick()
-                        performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                        if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else move(touched)
-                        return true
-                    }
+                val s=minOf(width,height).toFloat()*.78f
+                val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
+                val diceCx=ox+7.5f*cell; val diceCy=oy+7.5f*cell
+                val ddx=e.x-diceCx; val ddy=e.y-diceCy
+                if(ddx*ddx+ddy*ddy <= (cell*1.05f)*(cell*1.05f)){
+                    performClick()
+                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    if(currentScreen=="offline") offlineRoll(this) else roll()
                     return true
                 }
-                val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
                 val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
                 if(touched>=0){
                     performClick()
