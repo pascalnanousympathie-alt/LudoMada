@@ -38,7 +38,7 @@ class MainActivity : Activity() {
     private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
-    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var lobbyMusicRowRef: LinearLayout? = null
+    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var movePending = false
@@ -669,40 +669,53 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            contentDescription="Ambiance musicale"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            isFocusable=true
-            isClickable=true
         }
+        lobbyMusicRowRef=lobbyMusicRow
         lobbyMusicRow.addView(label("Ambiance musicale",13f,true,Color.rgb(88,99,116)),LinearLayout.LayoutParams(0,dp(52),1f))
+
         musicButton=musicIconButton()
-        val musicA11y=Button(this).apply{
-            text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+
+        // Stable automation target: identity never changes with state/locale.
+        musicA11yButton=Button(this).apply{
+            text=""
             setTextColor(Color.TRANSPARENT)
             setBackgroundColor(Color.TRANSPARENT)
-            contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            contentDescription="LOBBY_MUSIC_TOGGLE"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
             isClickable=true
             minWidth=0
             minHeight=0
             setOnClickListener{
-                musicButton.performClick()
-                text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
-                contentDescription=text
-                sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
-                lobbyMusicRow.contentDescription=text
+                music.toggle()
+                updateMusicButton()
             }
         }
-        musicA11yButton = musicA11y
-        lobbyMusicRowRef = lobbyMusicRow
+
+        // Non-clickable state probe for deterministic Ramus assertions.
+        musicStateA11y=TextView(this).apply{
+            text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            textSize=1f
+            setTextColor(Color.WHITE)
+            alpha=0.01f
+            contentDescription=text
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+
         val musicSlot=FrameLayout(this).apply{
             addView(musicButton,FrameLayout.LayoutParams(dp(52),dp(52)))
-            addView(musicA11y,FrameLayout.LayoutParams(dp(52),dp(52)))
+            addView(musicA11yButton,FrameLayout.LayoutParams(dp(52),dp(52)))
+            val stateLp=FrameLayout.LayoutParams(dp(3),dp(3))
+            stateLp.leftMargin=dp(1); stateLp.topMargin=dp(1)
+            addView(musicStateA11y,stateLp)
         }
         lobbyMusicRow.addView(musicSlot,LinearLayout.LayoutParams(dp(52),dp(52)))
-        lobbyMusicRow.setOnClickListener{ musicA11y.performClick() }
         add(lobbyMusicRow,52,0,5)
+
+        updateMusicButton()
+
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
@@ -1606,23 +1619,28 @@ class MainActivity : Activity() {
     }
     private fun musicLabel():String = if(music.enabled()) "Musique activée" else "Musique désactivée"
     private fun updateMusicButton(){
-        val enabled = music.enabled()
-        val stableState = if(enabled) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
-        val humanState = if(enabled) "Musique activée" else "Musique désactivée"
+        val enabled=music.enabled()
+        val humanState=if(enabled) "Musique activée" else "Musique désactivée"
+        val stableState=if(enabled) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
         if(::musicButton.isInitialized){
-            musicButton.text = if(enabled) "🎵" else "🔇"
-            musicButton.contentDescription = humanState
+            musicButton.text=if(enabled) "🎵" else "🔇"
+            musicButton.contentDescription=humanState
         }
         musicA11yButton?.apply{
-            text = stableState
-            contentDescription = stableState
+            contentDescription="LOBBY_MUSIC_TOGGLE"
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        }
+        musicStateA11y?.apply{
+            text=stableState
+            contentDescription=stableState
             sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
         lobbyMusicRowRef?.apply{
-            contentDescription = stableState
+            contentDescription="Ambiance musicale"
             sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
     }
+
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 
