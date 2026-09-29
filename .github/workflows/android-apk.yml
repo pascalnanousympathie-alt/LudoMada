@@ -32,7 +32,9 @@ jobs:
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
       - name: Configure ARM64 AAPT2
         working-directory: .
-        run: bash scripts/setup-termux-aapt2.sh
+        run: |
+          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
+          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
 
       - run: sh ./gradlew --version
       - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
@@ -42,4 +44,3 @@ jobs:
           name: LudoMadagascar-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
