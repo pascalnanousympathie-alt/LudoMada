@@ -20,8 +20,22 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ludomada_ci
+          POSTGRES_PASSWORD: ludomada_ci
+          POSTGRES_DB: ludomada_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ludomada_ci -d ludomada_ci"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
     env:
-      DATABASE_URL: postgresql://u0_a214@localhost:5432/ludomada_ci
+      DATABASE_URL: postgresql://ludomada_ci:ludomada_ci@localhost:5432/ludomada_ci?schema=public
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
@@ -29,8 +43,6 @@ jobs:
         with:
           clean: false
           fetch-depth: 1
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
       - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - run: npx prisma generate
