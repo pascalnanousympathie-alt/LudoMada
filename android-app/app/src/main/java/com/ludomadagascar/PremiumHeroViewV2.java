@@ -101,7 +101,19 @@ public class PremiumHeroViewV2 extends FrameLayout {
     host.addView(f,new ViewGroup.LayoutParams(-1,-1));
     f.addView(home,new FrameLayout.LayoutParams(-1,-1));
 
-
+    // Native accessibility target for the visual JOUER control.
+    // It is transparent so it does not alter the premium artwork; Ramus/Android can still tap it.
+    Button playHit=new Button(a);
+    playHit.setText("JOUER");
+    playHit.setTextColor(Color.TRANSPARENT);
+    playHit.setBackgroundColor(Color.TRANSPARENT);
+    playHit.setContentDescription("JOUER");
+    playHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHit.setFocusable(true);
+    playHit.setClickable(true);
+    playHit.setOnClickListener(v->call("gameModeDialog"));
+    f.addView(playHit);
+    f.post(()->positionPlayHit(playHit));
   }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
