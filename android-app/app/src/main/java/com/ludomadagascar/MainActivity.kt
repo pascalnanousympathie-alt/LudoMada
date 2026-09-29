@@ -845,8 +845,8 @@ class MainActivity : Activity() {
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         },54,3,3)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion \${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)}.apply{
-            contentDescription="GAME_PAWN_\${i+1}"
+        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)}.apply{
+            contentDescription="GAME_PAWN_${i+1}"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         },LinearLayout.LayoutParams(0,gamePx(46),1f).apply{setMargins(gamePx(2),0,gamePx(2),0)})
         addGame(row,46,2,3);addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
