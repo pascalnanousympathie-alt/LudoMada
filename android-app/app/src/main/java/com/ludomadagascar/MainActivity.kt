@@ -1588,7 +1588,7 @@ class MainActivity : Activity() {
     private fun updateMusicButton(){
         if(::musicButton.isInitialized){
             musicButton.text = if(music.enabled()) "🎵" else "🔇"
-            musicButton.contentDescription = "Musique | " + if(music.enabled()) "activée" else "désactivée"
+            musicButton.contentDescription = "MUSIC_TOGGLE: " + if(music.enabled()) "activée" else "désactivée"
         }
     }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
