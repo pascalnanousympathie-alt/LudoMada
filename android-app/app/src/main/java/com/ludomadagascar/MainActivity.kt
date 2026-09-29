@@ -676,12 +676,30 @@ class MainActivity : Activity() {
         }
         lobbyMusicRow.addView(label("Ambiance musicale",13f,true,Color.rgb(88,99,116)),LinearLayout.LayoutParams(0,dp(52),1f))
         musicButton=musicIconButton()
-        lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
-        lobbyMusicRow.setOnClickListener{
-            musicButton.performClick()
-            lobbyMusicRow.contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
-            lobbyMusicRow.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        val musicA11y=Button(this).apply{
+            text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            setTextColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
+            isClickable=true
+            minWidth=0
+            minHeight=0
+            setOnClickListener{
+                musicButton.performClick()
+                text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+                contentDescription=text
+                sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+                lobbyMusicRow.contentDescription=text
+            }
         }
+        val musicSlot=FrameLayout(this).apply{
+            addView(musicButton,FrameLayout.LayoutParams(dp(52),dp(52)))
+            addView(musicA11y,FrameLayout.LayoutParams(dp(52),dp(52)))
+        }
+        lobbyMusicRow.addView(musicSlot,LinearLayout.LayoutParams(dp(52),dp(52)))
+        lobbyMusicRow.setOnClickListener{ musicA11y.performClick() }
         add(lobbyMusicRow,52,0,5)
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
