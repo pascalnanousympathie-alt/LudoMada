@@ -164,15 +164,19 @@ try {
   runAllowError("wait", "--timeout", "6200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/home-b.jpg");
 
-  // Home touch automation: native JOUER target first, then the two inverse-quarter-turn coordinates
-  // required when Ramus reports the landscape surface as a portrait 720×1616 input space.
+  // Home touch automation: the native JOUER hit-target exposes both possible inverse-rotation nodes.
+  // Try each clickable JOUER ref and verify the actual game-mode dialog after every tap.
   let onlineMode = null;
   const playSemantic = runAllowError("snapshot", "--session", session, "--find", "JOUER");
   if (playSemantic.ok && playSemantic.value.elements?.length) {
-    const play = playSemantic.value.elements.find(e=>e.clickable!==false) || playSemantic.value.elements[0];
-    run("tap", play.ref, "--gen", String(playSemantic.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
-    onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
+    const playTargets = playSemantic.value.elements.filter(e=>e.clickable!==false);
+    for (const play of playTargets) {
+      run("tap", play.ref, "--gen", String(playSemantic.value.gen), "--session", session);
+      runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
+      onlineMode = runAllowError("snapshot", "--session", session, "--find", "🌐 En ligne — Joueurs réels");
+      if (onlineMode.ok && onlineMode.value.elements?.length) break;
+      runAllowError("snapshot", "--session", session);
+    }
   }
   if (!onlineMode?.ok || !onlineMode.value.elements?.length) {
     for (const pt of ["0.58,0.14","0.42,0.86"]) {
@@ -185,6 +189,7 @@ try {
   if (!onlineMode?.ok || !onlineMode.value.elements?.length) {
     throw new Error("Premium Home JOUER control did not open the game mode dialog");
   }
+  run("screenshot", "--session", session, "--out", "ramus-evidence/game-mode.jpg");
   target = { ref: onlineMode.value.elements[0].ref, gen: onlineMode.value.gen };
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
