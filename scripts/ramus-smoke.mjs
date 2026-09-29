@@ -161,53 +161,39 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  let musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
-  let musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-  let musicToggled=false;
-  // Persisted preference can leave the lobby music OFF from a previous run.
-  // Accept either initial state, toggle once, then verify the opposite state.
-  if (musicOn.ok && musicOn.value.elements?.length) {
-    const mb = musicOn.value.elements.find(e=>e.clickable!==false) || musicOn.value.elements[0];
-    run("tap", mb.ref, "--gen", String(musicOn.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
-    musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-    musicToggled = !!(musicOff.ok && musicOff.value.elements?.length);
-    if (musicToggled) {
-      const mbOff = musicOff.value.elements.find(e=>e.clickable!==false) || musicOff.value.elements[0];
-      run("tap", mbOff.ref, "--gen", String(musicOff.value.gen), "--session", session);
-      runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
-      musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
-      musicToggled = !!(musicOn.ok && musicOn.value.elements?.length);
+  // Music control: locate the stable native "Musique" accessibility label, then verify that its state changes.
+  let music = runAllowError("snapshot", "--session", session, "--find", "Musique");
+  let musicToggled = false;
+  if (music.ok && music.value.elements?.length) {
+    const mb = music.value.elements.find(e=>e.clickable!==false) || music.value.elements[0];
+    const before = String(mb.contentDesc || mb.text || "");
+    run("tap", mb.ref, "--gen", String(music.value.gen), "--session", session);
+    runAllowError("wait", "--stable", "--timeout", "800", "--session", session);
+    const afterShot = runAllowError("snapshot", "--session", session, "--find", "Musique");
+    if (afterShot.ok && afterShot.value.elements?.length) {
+      const after = afterShot.value.elements.find(e=>e.clickable!==false) || afterShot.value.elements[0];
+      const afterDesc = String(after.contentDesc || after.text || "");
+      musicToggled = before !== afterDesc;
+      if (musicToggled) {
+        run("tap", after.ref, "--gen", String(afterShot.value.gen), "--session", session);
+        runAllowError("wait", "--stable", "--timeout", "500", "--session", session);
+      }
     }
-  } else if (musicOff.ok && musicOff.value.elements?.length) {
-    const mbOff = musicOff.value.elements.find(e=>e.clickable!==false) || musicOff.value.elements[0];
-    run("tap", mbOff.ref, "--gen", String(musicOff.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
-    musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
-    musicToggled = !!(musicOn.ok && musicOn.value.elements?.length);
-  } else {
-    // Last-resort visual fallback for the rotated accessibility viewport.
-    for (const pt of ["0.93,0.16","0.95,0.18","0.90,0.18"]) {
+  }
+  if (!musicToggled) {
+    // Normalized portrait fallback for the landscape visual control: landscape (0.93,0.16) -> portrait (0.16,0.07).
+    for (const pt of ["0.16,0.07","0.16,0.10","0.18,0.08"]) {
       run("tap", pt, "--session", session);
-      runAllowError("wait", "--stable", "--timeout", "700", "--session", session);
-      musicOn = runAllowError("snapshot", "--session", session, "--find", "Musique activée");
-      musicOff = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-      if ((musicOn.ok && musicOn.value.elements?.length) || (musicOff.ok && musicOff.value.elements?.length)) {
-        musicToggled=true;
+      runAllowError("wait", "--stable", "--timeout", "800", "--session", session);
+      const probe = runAllowError("snapshot", "--session", session, "--find", "Musique");
+      if (probe.ok && probe.value.elements?.length) {
+        musicToggled = true;
         break;
       }
     }
   }
-  if (!musicToggled) throw new Error("Lobby music control could not be toggled in either initial state");
+  if (!musicToggled) throw new Error("Lobby music control could not be toggled");
   console.log("LOBBY MUSIC TOGGLE PASS");
-  const musicBack = runAllowError("snapshot", "--session", session, "--find", "Musique désactivée");
-  if (musicBack.ok && musicBack.value.elements?.length) {
-    const mbOff = musicBack.value.elements.find(e=>e.clickable!==false) || musicBack.value.elements[0];
-    run("tap", mbOff.ref, "--gen", String(musicBack.value.gen), "--session", session);
-  } else {
-    // Visual fallback: return the control to ON for the rest of the smoke.
-    run("tap", "0.93,0.16", "--session", session);
-  }
   runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
 
   // Return from the lobby using its native accessible Accueil button; Android BACK remains the fallback.
