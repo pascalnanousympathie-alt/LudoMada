@@ -85,7 +85,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
-  @Override public boolean onTouchEvent(MotionEvent e){return home.onTouchEvent(e);}
+  private boolean isPlayGesture(float x,float y){ final float W=getWidth(),H=getHeight(); if(W<=0 || H<=0)return false; float nx=x/W,ny=y/H; boolean portraitHit=nx>=0.50f && nx<=0.66f && ny>=0.045f && ny<=0.235f; boolean landscapeHit=nx>=0.76f && nx<=0.96f && ny>=0.50f && ny<=0.78f; return portraitHit || landscapeHit; }
+  @Override public boolean onInterceptTouchEvent(MotionEvent e){ if(e.getActionMasked()==MotionEvent.ACTION_DOWN && isPlayGesture(e.getX(),e.getY())) return true; return false; }
+  @Override public boolean onTouchEvent(MotionEvent e){ if(isPlayGesture(e.getX(),e.getY())){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; } return home.onTouchEvent(e); }
+  @Override public boolean performClick(){super.performClick();return true;}
   private void positionPlayHit(View playHit, View playHitAlt){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0) return;
