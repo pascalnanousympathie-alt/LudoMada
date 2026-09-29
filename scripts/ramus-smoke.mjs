@@ -185,9 +185,9 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  // Music control: target the exact ON/OFF accessibility labels and verify a real state change.
-  const onLabel="Musique activée";
-  const offLabel="Musique désactivée";
+  // Music control: use stable accessibility IDs that survive orientation/system-bar transforms.
+  const onLabel="MUSIC_TOGGLE_ON";
+  const offLabel="MUSIC_TOGGLE_OFF";
   let music=runAllowError("snapshot","--session",session,"--find",onLabel);
   let beforeLabel=onLabel;
   let afterLabel=offLabel;
