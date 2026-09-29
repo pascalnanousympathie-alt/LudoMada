@@ -186,8 +186,8 @@ try {
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
   // Music control: target the exact ON/OFF accessibility labels and verify a real state change.
-  const onLabel="MUSIC_TOGGLE: activée";
-  const offLabel="MUSIC_TOGGLE: désactivée";
+  const onLabel="Musique activée";
+  const offLabel="Musique désactivée";
   let music=runAllowError("snapshot","--session",session,"--find",onLabel);
   let beforeLabel=onLabel;
   let afterLabel=offLabel;
