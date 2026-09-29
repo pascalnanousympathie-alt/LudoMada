@@ -19,7 +19,8 @@ function runAllowError(...args) {
 function runCli(...args) {
   const execute = (argv, renewed = false) => {
     const isSnapshot=argv[0]==="snapshot";
-    const timeoutMs=isSnapshot ? 10000 : (argv[0]==="session" ? 60000 : 30000);
+    const isSessionStart=argv[0]==="session" && argv[1]==="start";
+    const timeoutMs=isSnapshot ? 10000 : (isSessionStart ? 180000 : (argv[0]==="session" ? 60000 : 30000));
     const timeoutBin="/data/data/com.termux/files/usr/bin/timeout";
     const timeoutSec=Math.max(1,Math.ceil(timeoutMs/1000));
     const r = spawnSync(timeoutBin, ["-k", "2s", String(timeoutSec)+"s", process.execPath, cli, ...argv], {
