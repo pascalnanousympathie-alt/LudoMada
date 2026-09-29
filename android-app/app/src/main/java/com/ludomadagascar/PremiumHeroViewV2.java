@@ -25,12 +25,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
-    final View playHit=new View(c);
+    final Button playHit=new Button(c);
+    playHit.setText("");
     playHit.setContentDescription("JOUER");
+    playHit.setAllCaps(false);
     playHit.setClickable(true);
     playHit.setFocusable(true);
     playHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     playHit.setBackgroundColor(Color.TRANSPARENT);
+    playHit.setPadding(0,0,0,0);
+    playHit.setMinWidth(0); playHit.setMinHeight(0);
     playHit.setOnClickListener(v->call("gameModeDialog"));
     addView(playHit,new FrameLayout.LayoutParams(1,1));
     post(()->positionPlayHit(playHit));
