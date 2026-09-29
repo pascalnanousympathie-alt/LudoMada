@@ -161,15 +161,15 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  // Music control: locate the stable native "Musique" accessibility label, then verify that its state changes.
-  let music = runAllowError("snapshot", "--session", session, "--find", "Musique");
+  // Music control: use the stable native MUSIC_TOGGLE accessibility id and verify ON↔OFF.
+  let music = runAllowError("snapshot", "--session", session, "--find", "MUSIC_TOGGLE");
   let musicToggled = false;
   if (music.ok && music.value.elements?.length) {
     const mb = music.value.elements.find(e=>e.clickable!==false) || music.value.elements[0];
     const before = String(mb.contentDesc || mb.text || "");
     run("tap", mb.ref, "--gen", String(music.value.gen), "--session", session);
-    runAllowError("wait", "--stable", "--timeout", "800", "--session", session);
-    const afterShot = runAllowError("snapshot", "--session", session, "--find", "Musique");
+    runAllowError("wait", "--stable", "--timeout", "1000", "--session", session);
+    const afterShot = runAllowError("snapshot", "--session", session, "--find", "MUSIC_TOGGLE");
     if (afterShot.ok && afterShot.value.elements?.length) {
       const after = afterShot.value.elements.find(e=>e.clickable!==false) || afterShot.value.elements[0];
       const afterDesc = String(after.contentDesc || after.text || "");
@@ -177,18 +177,6 @@ try {
       if (musicToggled) {
         run("tap", after.ref, "--gen", String(afterShot.value.gen), "--session", session);
         runAllowError("wait", "--stable", "--timeout", "500", "--session", session);
-      }
-    }
-  }
-  if (!musicToggled) {
-    // Normalized portrait fallback for the landscape visual control: landscape (0.93,0.16) -> portrait (0.16,0.07).
-    for (const pt of ["0.16,0.07","0.16,0.10","0.18,0.08"]) {
-      run("tap", pt, "--session", session);
-      runAllowError("wait", "--stable", "--timeout", "800", "--session", session);
-      const probe = runAllowError("snapshot", "--session", session, "--find", "Musique");
-      if (probe.ok && probe.value.elements?.length) {
-        musicToggled = true;
-        break;
       }
     }
   }
