@@ -247,8 +247,10 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
-        val hasSession = restoreSession()
-        if (hasSession && token.isNotBlank()) home() else login()
+        // Premium Home is the first screen; authenticated state is restored in the background
+        // and reused by Home/Wallet/online actions when present.
+        restoreSession()
+        home()
     }
 
     private fun splash() {
@@ -1142,13 +1144,115 @@ class MainActivity : Activity() {
             refPaint.alpha=255
             canvas.drawBitmap(bm,null,RectF(left,top,left+dw,top+dh),refPaint)
             // Very light glass treatment: preserves the bright studio scene without muddying it.
-            refPaint.shader=LinearGradient(0f,0f,0f,h,0x12020B16,0x08020A14,Shader.TileMode.CLAMP)
+            refPaint.shader=LinearGradient(0f,0f,0f,h,0x10020B16,0x04020A14,Shader.TileMode.CLAMP)
             canvas.drawRect(0f,0f,w,h,refPaint);refPaint.shader=null
+        }
+        private fun refMap(v:Float,srcStart:Float,srcEnd:Float,dstStart:Float,dstEnd:Float):Float =
+            dstStart + (v-srcStart)/(srcEnd-srcStart)*(dstEnd-dstStart)
+
+        private fun refPoint(u:Float,v:Float,w:Float,h:Float):FloatArray{
+            // Four corners of the playable diamond in Screenshot 2 (1376×768 source space).
+            // Bilinear mapping keeps the logical 15×15 grid aligned with the photographed table.
+            val tl=floatArrayOf(415f,118f); val tr=floatArrayOf(1025f,215f)
+            val br=floatArrayOf(965f,644f); val bl=floatArrayOf(365f,515f)
+            val topX=tl[0]+(tr[0]-tl[0])*u; val topY=tl[1]+(tr[1]-tl[1])*u
+            val botX=bl[0]+(br[0]-bl[0])*u; val botY=bl[1]+(br[1]-bl[1])*u
+            val sx=topX+(botX-topX)*v; val sy=topY+(botY-topY)*v
+            val scale=maxOf(w/1376f,h/768f); val ox=(w-1376f*scale)/2f; val oy=(h-768f*scale)/2f
+            return floatArrayOf(ox+sx*scale,oy+sy*scale)
+        }
+
+        private fun referenceHomePoint(pi:Int,ti:Int,w:Float,h:Float):FloatArray{
+            val pts=arrayOf(
+                arrayOf(floatArrayOf(628f,122f),floatArrayOf(714f,156f),floatArrayOf(604f,190f),floatArrayOf(705f,220f)),
+                arrayOf(floatArrayOf(1040f,268f),floatArrayOf(1114f,315f),floatArrayOf(1017f,350f),floatArrayOf(1094f,392f)),
+                arrayOf(floatArrayOf(738f,556f),floatArrayOf(824f,585f),floatArrayOf(706f,647f),floatArrayOf(796f,678f)),
+                arrayOf(floatArrayOf(291f,344f),floatArrayOf(374f,384f),floatArrayOf(266f,456f),floatArrayOf(350f,505f))
+            )
+            val q=pts[pi][ti]; val scale=maxOf(w/1376f,h/768f); val ox=(w-1376f*scale)/2f; val oy=(h-768f*scale)/2f
+            return floatArrayOf(ox+q[0]*scale,oy+q[1]*scale)
+        }
+
+        private fun referenceTokenPoint(pi:Int,ti:Int,pos:Int,w:Float,h:Float):FloatArray{
+            if(pos<0)return referenceHomePoint(pi,ti,w,h)
+            val logical=if(pos in 0..51){
+                val q=visualPath()[(pi*13+pos)%52]; floatArrayOf(q.first+.5f,q.second+.5f)
+            }else{
+                val finish=arrayOf(
+                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
+                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f)
+                )[pi]; val k=((pos-52).coerceIn(0,5))*2; floatArrayOf(finish[k],finish[k+1])
+            }
+            return refPoint((logical[1])/15f,(logical[0])/15f,w,h)
+        }
+
+        private fun drawReferenceHomeCover(canvas:Canvas,pi:Int,ti:Int,w:Float,h:Float){
+            // Hide the static reference pawn only after that logical token leaves its home slot.
+            val q=referenceHomePoint(pi,ti,w,h); val scale=maxOf(w/1376f,h/768f); val r=28f*scale
+            val color=cols[pi]
+            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{
+                shader=RadialGradient(q[0]-r*.25f,q[1]-r*.35f,r*1.25f,
+                    Color.rgb(minOf(255,Color.red(color)+38),minOf(255,Color.green(color)+38),minOf(255,Color.blue(color)+38)),color,Shader.TileMode.CLAMP)
+            }
+            canvas.drawCircle(q[0],q[1],r*.80f,p);p.shader=null
+            p.style=Paint.Style.STROKE;p.strokeWidth=1.1f*scale;p.color=0x55FFFFFF
+            canvas.drawCircle(q[0],q[1],r*.80f,p);p.style=Paint.Style.FILL
+        }
+
+        private fun drawReferenceDie(canvas:Canvas,w:Float,h:Float){
+            val scale=maxOf(w/1376f,h/768f)
+            val qx=(765f*scale)+(w-1376f*scale)/2f; val qy=(348f*scale)+(h-768f*scale)/2f
+            val size=42f*scale
+            val rolling=diceRolling; val phase=(System.currentTimeMillis()%900L)/900f
+            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
+            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{setShadowLayer(9f*scale,0f,5f*scale,0xAA000000.toInt())
+                shader=RadialGradient(qx-size*.25f,qy-size*.32f,size*.95f,
+                    intArrayOf(Color.WHITE,Color.rgb(243,247,250),Color.rgb(190,198,205),Color.rgb(86,98,109)),
+                    floatArrayOf(0f,.20f,.50f,1f),Shader.TileMode.CLAMP)}
+            canvas.drawRoundRect(qx-size/2f,qy-size/2f,qx+size/2f,qy+size/2f,8f*scale,8f*scale,p);p.clearShadowLayer();p.shader=null
+            p.style=Paint.Style.STROKE;p.strokeWidth=1.2f*scale;p.color=0xEEFFFFFF.toInt();canvas.drawRoundRect(qx-size/2f,qy-size/2f,qx+size/2f,qy+size/2f,8f*scale,8f*scale,p);p.style=Paint.Style.FILL
+            p.color=Color.rgb(48,55,63)
+            val d=size*.23f
+            val pts=when(face){1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)}
+            for((a,b) in pts)canvas.drawCircle(qx+a*d,qy+b*d,2.2f*scale,p)
+            p.color=Color.WHITE;canvas.drawCircle(qx-size*.27f,qy-size*.31f,3.4f*scale,p)
+        }
+
+        private fun drawReferenceGameplay(canvas:Canvas,w:Float,h:Float){
+            drawReferenceEnvironment(canvas,w,h)
+            val scale=maxOf(w/1376f,h/768f)
+            val activeState=if(currentScreen=="offline") offlineState else state
+            // Reference 2 already contains the exact table, trays and starting pawns. Preserve
+            // untouched home pawns; cover only the slots whose logical token has moved out.
+            for(pi in 0..3)for(ti in 0..3){
+                val pos=activeState?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1) ?: -1
+                if(pos>=0) drawReferenceHomeCover(canvas,pi,ti,w,h)
+                val q=referenceTokenPoint(pi,ti,pos,w,h)
+                if(pos>=0){
+                    val logicalQ=if(display[pi][ti][0].isNaN())q else refPoint(display[pi][ti][1]/15f,display[pi][ti][0]/15f,w,h)
+                    drawToken(canvas,logicalQ[0],logicalQ[1]-jumpLift[pi][ti]*scale,Math.min(w,h)/15f,cols[pi],pi==player,spawnScale[pi][ti])
+                    if(pi==player && tokenCanMoveForUi(pi,ti)){
+                        val hp=Paint(Paint.ANTI_ALIAS_FLAG).apply{style=Paint.Style.STROKE;strokeWidth=2.2f*scale;color=0xFFEBC348.toInt()}
+                        canvas.drawCircle(logicalQ[0],logicalQ[1],Math.min(w,h)/15f*.44f,hp)
+                    }
+                }
+            }
+            drawReferenceDie(canvas,w,h)
         }
         override fun onDraw(canvas:Canvas){
             super.onDraw(canvas)
             val w=width.toFloat(); val h=height.toFloat()
             val side=minOf(w-20f,h-8f).coerceAtLeast(1f)
+
+            // Screenshot 2 is the authoritative gameplay visual reference. Keep the complete
+            // supplied table/environment and overlay only authoritative, animated game state.
+            if(gameplayReference!=null && w>=h){
+                drawReferenceGameplay(canvas,w,h)
+                postInvalidateDelayed(16L)
+                return
+            }
             val ox=(w-side)/2f; val oy=((h-side)/2f).coerceAtLeast(0f)
             val cell=side/15f
 
@@ -1587,6 +1691,16 @@ class MainActivity : Activity() {
         }
         override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
             if(e.action==MotionEvent.ACTION_UP && player in 0..3){
+                if(gameplayReference!=null && width>=height){
+                    val touched=nearestReferenceOwnToken(e.x,e.y,width.toFloat(),height.toFloat())
+                    if(touched>=0){
+                        performClick()
+                        performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                        if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else move(touched)
+                        return true
+                    }
+                    return true
+                }
                 val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
                 val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
                 if(touched>=0){
@@ -1599,6 +1713,23 @@ class MainActivity : Activity() {
             return true
         }
         override fun performClick():Boolean{super.performClick();return true}
+        private fun nearestReferenceOwnToken(x:Float,y:Float,w:Float,h:Float):Int{
+            val activeState=if(currentScreen=="offline") offlineState else state
+            val activePlayer=if(currentScreen=="offline") offlineTurn else player
+            if(activePlayer !in 0..3)return -1
+            val tokens=activeState?.optJSONArray("players")?.optJSONObject(activePlayer)?.optJSONArray("tokens")
+            var best=-1;var bestD2=Float.MAX_VALUE
+            for(ti in 0..3){
+                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+                val q=if(pos>=0 && !display[activePlayer][ti][0].isNaN())
+                    refPoint(display[activePlayer][ti][1]/15f,display[activePlayer][ti][0]/15f,w,h)
+                else referenceHomePoint(activePlayer,ti,w,h)
+                val dx=x-q[0];val dy=y-q[1];val d2=dx*dx+dy*dy
+                if(d2<bestD2){bestD2=d2;best=ti}
+            }
+            val hit=(Math.min(w,h)/15f*.95f)*(Math.min(w,h)/15f*.95f)
+            return if(best>=0 && bestD2<=hit)best else -1
+        }
         private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
             val activeState=if(currentScreen=="offline") offlineState else state
             val activePlayer=if(currentScreen=="offline") offlineTurn else player

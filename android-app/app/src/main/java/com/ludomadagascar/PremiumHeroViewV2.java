@@ -237,6 +237,40 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float dw=bw*scale,dh=bh*scale,left=(W-dw)/2f,top=(H-dh)/2f;
       c.drawBitmap(bm,null,new RectF(left,top,left+dw,top+dh),p);p.setAlpha(255);
     }
+    void drawHomeReference(Canvas c,float W,float H){
+      // Reference 1 is a complete 16:9-ish landscape Home composition. Crop the small
+      // phone system chrome embedded in the supplied mockup to avoid a double status/nav bar.
+      float sw=lobbyRef.getWidth(), sh=lobbyRef.getHeight();
+      Rect src=new Rect(Math.round(sw*.005f),Math.round(sh*.040f),Math.round(sw*.982f),Math.round(sh*.975f));
+      float bw=src.width(), bh=src.height();
+      float scale=Math.max(W/bw,H/bh);
+      float dw=bw*scale, dh=bh*scale, left=(W-dw)/2f, top=(H-dh)/2f;
+      p.setShader(null);p.setAlpha(255);c.drawBitmap(lobbyRef,src,new RectF(left,top,left+dw,top+dh),p);
+    }
+    void drawLiveHomeFields(Canvas c,float W,float H){
+      // Only fields whose values can differ at runtime are redrawn; all decorative/layout
+      // elements remain exactly those from Screenshot 1.
+      float sx=W/1280f, sy=H/720f;
+      String u=str("username"); long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      // Profile chip / balance chip: cover the printed values, then render authoritative state.
+      p.setShader(new LinearGradient(0,38*sy,0,102*sy,0xFF102A4D,0xE613315C,Shader.TileMode.CLAMP));
+      c.drawRoundRect(105*sx,43*sy,520*sx,104*sy,18*sy,18*sy,p);p.setShader(null);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.2f*sx);p.setColor(0x66FFFFFF);c.drawRoundRect(105*sx,43*sy,520*sx,104*sy,18*sy,18*sy,p);p.setStyle(Paint.Style.FILL);
+      tScaled(c,dn,165*sx,74*sy,17*sx,Color.WHITE,true,false);
+      tScaled(c,"LudoMada • Joue • Gagne • Grandis",165*sx,94*sy,9.5f*sx,0xD7FFFFFF,false,false);
+      p.setShader(new LinearGradient(0,44*sy,0,104*sy,0xFF112B50,0xE616315E,Shader.TileMode.CLAMP));
+      c.drawRoundRect(920*sx,45*sy,1103*sx,102*sy,16*sy,16*sy,p);p.setShader(null);
+      tScaled(c,"SOLDE",944*sx,67*sy,8.5f*sx,gold2,true,false);
+      tScaled(c,(bal>0?formatBal(bal):"0")+" Ar",944*sx,88*sy,13.5f*sx,Color.WHITE,true,false);
+      // Keep the real music toggle visually legible on the supplied reference.
+      tScaled(c,"🎵",1193*sx,86*sy,17*sx,Color.WHITE,true,true);
+    }
+    void tScaled(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
+      p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(size);
+      p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);p.setTextAlign(center?Paint.Align.CENTER:Paint.Align.LEFT);
+      c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
+    }
     void background(Canvas c,float W,float H){
       // Direct 4K reference render: preserve the composition the user supplied.
       drawCover(c,lobbyRef,1f,W,H);
@@ -315,6 +349,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
       float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
       
+      // Screenshot 1 is the authoritative Home visual. Render it directly so the shipped UI
+      // does not double-render the mockup with a second vector composition underneath.
+      if(landscape && lobbyRef!=null){
+        c.save();
+        drawHomeReference(c,W,H);
+        drawLiveHomeFields(c,W,H);
+        c.restore();
+        postInvalidateDelayed(1000L);
+        return;
+      }
       c.save(); background(c,W,H); c.translate(ox,oy);
       // Cinematic landscape composition: menus frame a large central 3D board.
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
