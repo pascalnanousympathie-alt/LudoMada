@@ -669,7 +669,7 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            contentDescription="Musique"
+            contentDescription=musicLabel()
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
             isClickable=true
@@ -679,7 +679,8 @@ class MainActivity : Activity() {
         lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
         lobbyMusicRow.setOnClickListener{
             musicButton.performClick()
-            lobbyMusicRow.contentDescription="Musique"
+            lobbyMusicRow.contentDescription=musicLabel()
+            lobbyMusicRow.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
         add(lobbyMusicRow,52,0,5)
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
