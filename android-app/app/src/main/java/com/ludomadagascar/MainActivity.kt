@@ -294,6 +294,8 @@ class MainActivity : Activity() {
             setTypeface(null,android.graphics.Typeface.BOLD)
             setTextColor(Color.WHITE)
             gravity=Gravity.CENTER
+            contentDescription="Jouer hors-ligne"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isClickable=true
             isFocusable=true
             background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
