@@ -96,8 +96,16 @@ let success = false;
 try {
   rmSync("ramus-evidence", { recursive: true, force: true });
   mkdirSync("ramus-evidence", { recursive: true });
-  // Recover the known stale session left by the previous failed smoke run.
-  runAllowError("session", "end", "--session", "11a9fbfd-7117-48af-8466-6cab1fa8132e");
+  // Recover any stale/active Ramus sessions before creating a fresh smoke session.
+  const preflight = runAllowError("session", "list");
+  if (preflight.ok && Array.isArray(preflight.value?.sessions)) {
+    for (const s of preflight.value.sessions) {
+      const sid = s?.session || s?.id;
+      if (sid && (s?.status === "active" || s?.state === "active")) {
+        runAllowError("session", "end", "--session", sid);
+      }
+    }
+  }
   if (!process.env.RAMUS_API_KEY) run("trial");
   let startedResult = runAllowError("session", "start", "--apk", apk, "--wait");
   if (!startedResult.ok || !startedResult.value?.session) {
