@@ -183,7 +183,7 @@ try {
   // Dice + pawn validation without making the smoke gate depend on a long random search.
   // A roll must resolve to 1–6. The pawn interaction is then checked against the real rule:
   // with a non-six roll and all pawns home, the app must reject the move; with six, the pawn moves.
-  const roll = findRef("Lancer le dé");
+  const roll = findRef("GAME_DICE_ROLL");
   tapRef(roll);
   allow("wait", "--timeout", "1100", "--session", session);
   const status = allow("snapshot", "--session", session);
@@ -193,7 +193,7 @@ try {
   const rolled = Number(diceMatch[1]);
   console.log(`DICE ROLL PASS: ${rolled}`);
 
-  const pawn = findRef("Pion 1");
+  const pawn = findRef("GAME_PAWN_1");
   tapRef(pawn);
   allow("wait", "--timeout", "1200", "--session", session);
   const afterMove = allow("snapshot", "--session", session);
