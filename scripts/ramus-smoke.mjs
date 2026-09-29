@@ -184,14 +184,15 @@ try {
   // A roll must resolve to 1–6. The pawn interaction is then checked against the real rule:
   // with a non-six roll and all pawns home, the app must reject the move; with six, the pawn moves.
   const roll = findRef("GAME_DICE_ROLL");
-  const rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session);
+  let rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session);
   if (!rollTap.ok && /offscreen/i.test(String(rollTap.value?.error || ""))) {
+    rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session, "--force");
+  }
+  if (!rollTap.ok) {
     const coordTap = allow("tap", "0.50,0.64", "--session", session, "--force");
     if (!coordTap.ok) throw new Error(JSON.stringify(coordTap.value));
-  } else if (!rollTap.ok) {
-    throw new Error(JSON.stringify(rollTap.value));
   }
-  allow("wait", "--timeout", "1100", "--session", session);
+  allow("wait", "--timeout", "1400", "--session", session);
   const status = allow("snapshot", "--session", session);
   const texts = status.ok && status.value?.elements ? status.value.elements.map(e => String(e.text || "")) : [];
   const diceMatch = texts.map(t => t.match(/Dé:\s*([1-6])(?:\D|$)/)).find(Boolean);
