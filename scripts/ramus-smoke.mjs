@@ -190,46 +190,47 @@ try {
   runAllowError("wait", "--stable", "--timeout", "1200", "--session", session);
   run("screenshot", "--session", session, "--out", "ramus-evidence/lobby.jpg");
 
-  // Music control: the accessible overlay uses MUSIC_TOGGLE_ON/OFF; the visual Button keeps the colon labels as fallback.
-  const onLabel="MUSIC_TOGGLE_ON";
-  const offLabel="MUSIC_TOGGLE_OFF";
-  const visualOn="MUSIC_TOGGLE: activée";
-  const visualOff="MUSIC_TOGGLE: désactivée";
-  let music=runAllowError("snapshot","--session",session,"--find",onLabel);
-  let beforeLabel=onLabel;
-  let afterLabel=offLabel;
-  if(!music.ok || !music.value.elements?.length){
-    music=runAllowError("snapshot","--session",session,"--find",offLabel);
-    beforeLabel=offLabel;
-    afterLabel=onLabel;
-  }
-  if(!music.ok || !music.value.elements?.length){
-    music=runAllowError("snapshot","--session",session,"--find",visualOn);
-    beforeLabel=visualOn;
-    afterLabel=visualOff;
-    if(!music.ok || !music.value.elements?.length){
-      music=runAllowError("snapshot","--session",session,"--find",visualOff);
-      beforeLabel=visualOff;
-      afterLabel=visualOn;
+  // Music control: use one stable control identity and poll the state marker with bounded retries.
+  const musicControl=findRef("LOBBY_MUSIC_TOGGLE");
+  const readMusicState=()=>{
+    for(const label of ["MUSIC_TOGGLE_ON","MUSIC_TOGGLE_OFF"]){
+      const s=runAllowError("snapshot","--session",session,"--find",label);
+      if(s.ok && s.value.elements?.length) return {label,s};
     }
+    return null;
+  };
+
+  const beforeMusic=readMusicState();
+  if(!beforeMusic) throw new Error("Lobby music state marker not exposed");
+  const before=beforeMusic.label;
+
+  const control=run("snapshot","--session",session,"--find","LOBBY_MUSIC_TOGGLE");
+  const clickableMusic=control.elements.find(e=>e.clickable!==false) || control.elements[0];
+  run("tap",clickableMusic.ref,"--gen",String(control.gen),"--session",session);
+
+  const desired=before==="MUSIC_TOGGLE_ON" ? "MUSIC_TOGGLE_OFF" : "MUSIC_TOGGLE_ON";
+  let afterMusic=null;
+  for(let i=0;i<8;i++){
+    runAllowError("wait","--timeout","500","--session",session);
+    const s=runAllowError("snapshot","--session",session,"--find",desired);
+    if(s.ok && s.value.elements?.length){afterMusic=s;break;}
   }
-  let musicToggled=false;
-  if(music.ok && music.value.elements?.length){
-    const mb=music.value.elements.find(e=>e.clickable!==false) || music.value.elements[0];
-    run("tap",mb.ref,"--gen",String(music.value.gen),"--session",session);
-    runAllowError("wait","--stable","--timeout","1000","--session",session);
-    const afterShot=runAllowError("snapshot","--session",session,"--find",afterLabel);
-    musicToggled=afterShot.ok && afterShot.value.elements?.length>0;
-    if(musicToggled){
-      const after=afterShot.value.elements.find(e=>e.clickable!==false) || afterShot.value.elements[0];
-      run("tap",after.ref,"--gen",String(afterShot.value.gen),"--session",session);
-      runAllowError("wait","--stable","--timeout","500","--session",session);
-      console.log(`LOBBY MUSIC STATE PASS: ${beforeLabel} → ${afterLabel}`);
-    }
+  if(!afterMusic) throw new Error("Lobby music did not change state: "+before+" → "+desired);
+  console.log("LOBBY MUSIC STATE PASS: "+before+" → "+desired);
+
+  // Toggle back through the same stable control and verify the original state.
+  const controlBack=run("snapshot","--session",session,"--find","LOBBY_MUSIC_TOGGLE");
+  const clickableBack=controlBack.elements.find(e=>e.clickable!==false) || controlBack.elements[0];
+  run("tap",clickableBack.ref,"--gen",String(controlBack.gen),"--session",session);
+
+  let restored=false;
+  for(let i=0;i<8;i++){
+    runAllowError("wait","--timeout","500","--session",session);
+    const s=runAllowError("snapshot","--session",session,"--find",before);
+    if(s.ok && s.value.elements?.length){restored=true;break;}
   }
-  if(!musicToggled) throw new Error("Lobby music control could not be toggled");
+  if(!restored) throw new Error("Lobby music did not restore state: expected "+before);
   console.log("LOBBY MUSIC TOGGLE PASS");
-  runAllowError("wait", "--stable", "--timeout", "300", "--session", session);
 
   // Return from the lobby using its native accessible Accueil button; Android BACK remains the fallback.
   let lobbyHome = runAllowError("snapshot", "--session", session, "--find", "Accueil");
