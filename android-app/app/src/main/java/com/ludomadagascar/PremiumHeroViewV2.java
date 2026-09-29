@@ -36,7 +36,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setPadding(0,0,0,0);
     playHit.setMinWidth(0); playHit.setMinHeight(0);
     playHit.setOnClickListener(v->call("gameModeDialog"));
-    addView(playHit,new FrameLayout.LayoutParams(1,1));
+    FrameLayout.LayoutParams playLp=new FrameLayout.LayoutParams(64,48);
+    playLp.leftMargin=Math.max(0,getResources().getDisplayMetrics().widthPixels-80);
+    playLp.topMargin=220;
+    addView(playHit,playLp);
     post(()->positionPlayHit(playHit));
   }
   @Override protected void onAttachedToWindow(){
