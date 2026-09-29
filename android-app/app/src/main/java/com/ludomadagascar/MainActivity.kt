@@ -57,6 +57,12 @@ class MainActivity : Activity() {
     private fun add(v:View, h:Int=-2, top:Int=7, bottom:Int=7) {
         root.addView(v, LinearLayout.LayoutParams(-1, if(h==-1) -1 else dp(h)).apply { setMargins(0,dp(top),0,dp(bottom)) })
     }
+    // Game screens use a physical-height design scale. Using dp here would multiply every
+    // control by the emulator density and starve the board viewport on 720px-high devices.
+    private fun gamePx(v:Int):Int = (v.toFloat() * resources.displayMetrics.heightPixels / 720f).toInt().coerceAtLeast(1)
+    private fun addGame(v:View, h:Int, top:Int=4, bottom:Int=4) {
+        root.addView(v, LinearLayout.LayoutParams(-1,gamePx(h)).apply { setMargins(0,gamePx(top),0,gamePx(bottom)) })
+    }
     private val navy = Color.rgb(8,24,54)
     private val royal = Color.rgb(24,92,210)
     private val cyan = Color.rgb(34,171,255)
@@ -824,14 +830,14 @@ class MainActivity : Activity() {
     private fun offlineGame(players:Int) {
         page("offline","Ludo hors-ligne")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
+        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));addGame(info,34,0,4)
         val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
-        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,gamePx(2),0,gamePx(4))})
         host.animateState()
-        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+        addGame(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54,3,3)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,gamePx(46),1f).apply{setMargins(gamePx(2),0,gamePx(2),0)})
+        addGame(row,46,2,3);addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null

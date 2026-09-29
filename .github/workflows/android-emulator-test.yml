@@ -34,7 +34,9 @@ jobs:
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
       - name: Configure ARM64 AAPT2
-        run: bash scripts/setup-termux-aapt2.sh
+        run: |
+          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
+          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
 
       - name: Build debug APK for Ramus
         working-directory: android-app
