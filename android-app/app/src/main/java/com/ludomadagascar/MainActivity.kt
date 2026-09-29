@@ -669,7 +669,7 @@ class MainActivity : Activity() {
         val lobbyMusicRow=LinearLayout(this).apply{
             orientation=LinearLayout.HORIZONTAL
             gravity=Gravity.CENTER_VERTICAL
-            contentDescription="MUSIC_TOGGLE: "+musicLabel()
+            contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
             isClickable=true
@@ -679,7 +679,7 @@ class MainActivity : Activity() {
         lobbyMusicRow.addView(musicButton,LinearLayout.LayoutParams(dp(52),dp(52)))
         lobbyMusicRow.setOnClickListener{
             musicButton.performClick()
-            lobbyMusicRow.contentDescription=musicLabel()
+            lobbyMusicRow.contentDescription=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
             lobbyMusicRow.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
         add(lobbyMusicRow,52,0,5)
