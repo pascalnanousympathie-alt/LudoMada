@@ -197,7 +197,7 @@ class MainActivity : Activity() {
         minimumHeight = 0
         minWidth = 0
         minHeight = 0
-        contentDescription = if (music.enabled()) "Musique | activée" else "Musique | désactivée"
+        contentDescription = if (music.enabled()) "MUSIC_TOGGLE: activée" else "MUSIC_TOGGLE: désactivée"
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         isFocusable = true
         isClickable = true
