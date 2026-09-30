@@ -19,34 +19,30 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 20
     env:
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       NODE_OPTIONS: --max-old-space-size=512
+      npm_config_maxsockets: "1"
+      npm_config_jobs: "1"
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
+          clean: false
           fetch-depth: 1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
+      - name: Use runner Linux Node
+        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+      - run: node -v && npm -v
       - name: Install dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund --omit=optional
-
+        run: timeout -k 10s 600s npm install --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - name: Generate Prisma client
         run: npx prisma generate
-
       - name: Run backend tests
         run: npm test -- --maxWorkers=2
-
       - name: Build backend
         run: npm run build
