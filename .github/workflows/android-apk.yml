@@ -46,9 +46,10 @@ jobs:
       - run: chmod +x gradlew
       - run: bash ./gradlew --version
       - run: bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
-      - run: test -s app/build/outputs/apk/debug/app-debug.apk
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LudoMadagascar-debug-apk
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+      - run: |
+          set -eu
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          target="/sdcard/Download/LudoMada-premium-gles3-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$target"
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /sdcard/Download/LudoMada-premium-gles3-debug.sha256
+
