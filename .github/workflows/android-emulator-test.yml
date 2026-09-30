@@ -13,6 +13,10 @@ jobs:
   emulator-test:
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 20
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     concurrency:
       group: ramus-android-${{ github.ref }}
       cancel-in-progress: true
