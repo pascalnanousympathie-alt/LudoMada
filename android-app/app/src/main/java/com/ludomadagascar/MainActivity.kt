@@ -595,8 +595,8 @@ class MainActivity : Activity() {
         add(actions,52)
         sectionTitle("Paiements disponibles","Choisis un service pour ouvrir son parcours sécurisé.")
         val payRow1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        payRow1.addView(paymentTile("MVola","DÉSACTIVÉ • reste OFF","M",Color.rgb(28,111,224)){Toast.makeText(this,"MVola reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
-        payRow1.addView(paymentTile("Airtel Money","DÉSACTIVÉ • reste OFF","A",Color.rgb(205,40,55)){Toast.makeText(this,"Airtel Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        payRow1.addView(paymentTile("MVola","DÉSACTIVÉ • reste OFF","mV",Color.rgb(28,111,224)){Toast.makeText(this,"MVola reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        payRow1.addView(paymentTile("Airtel Money","DÉSACTIVÉ • reste OFF","AIR",Color.rgb(205,40,55)){Toast.makeText(this,"Airtel Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(payRow1,72,0,0)
         val payRow2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         payRow2.addView(paymentTile("Orange Money","DÉSACTIVÉ • reste OFF","O",Color.rgb(247,133,18)){Toast.makeText(this,"Orange Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
@@ -608,11 +608,11 @@ class MainActivity : Activity() {
         cr1.addView(paymentTile("Bitcoin / BTC","Binance OFF • indisponible","₿",Color.rgb(242,145,28)){Toast.makeText(this,"BTC indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(cr1,72,0,0)
         val cr2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        cr2.addView(paymentTile("Ethereum / ETH","Binance OFF • indisponible","◆",Color.rgb(76,92,150)){Toast.makeText(this,"ETH indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
-        cr2.addView(paymentTile("Solana / SOL","Binance OFF • indisponible","≈",Color.rgb(95,62,155)){Toast.makeText(this,"SOL indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        cr2.addView(paymentTile("Ethereum / ETH","Binance OFF • indisponible","Ξ",Color.rgb(76,92,150)){Toast.makeText(this,"ETH indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        cr2.addView(paymentTile("Solana / SOL","Binance OFF • indisponible","SOL",Color.rgb(95,62,155)){Toast.makeText(this,"SOL indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(cr2,72,0,0)
         val cr3=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        cr3.addView(paymentTile("Tron / TRX","Binance OFF • indisponible","TR",Color.rgb(210,48,58)){Toast.makeText(this,"TRX indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        cr3.addView(paymentTile("Tron / TRX","Binance OFF • indisponible","TRX",Color.rgb(210,48,58)){Toast.makeText(this,"TRX indisponible tant que Binance reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
         cr3.addView(paymentTile("Crypto catalogue","Provider OFF • aucune action","◎",Color.rgb(78,92,112)){Toast.makeText(this,"Aucun provider crypto actif dans cette build.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(cr3,72,0,6)
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
