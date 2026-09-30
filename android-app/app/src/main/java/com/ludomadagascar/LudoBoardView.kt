@@ -272,6 +272,7 @@ class LudoBoardView(
         private val pawnColors=intArrayOf(
             Color.rgb(219,59,66),Color.rgb(48,165,92),Color.rgb(239,186,46),Color.rgb(59,112,219)
         )
+        private var rayTracingHardware=false
         private lateinit var shader:PbrShader
         private lateinit var shadowShader:ShadowShader
         private lateinit var postShader:PostShader
@@ -319,6 +320,8 @@ class LudoBoardView(
             GLES30.glCullFace(GLES30.GL_BACK)
             GLES30.glEnable(GLES30.GL_BLEND)
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
+            rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
+            android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);disk=diskMesh(32);pips=sphereMesh(10,6)
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture()
