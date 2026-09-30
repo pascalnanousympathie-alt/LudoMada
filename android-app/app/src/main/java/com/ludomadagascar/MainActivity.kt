@@ -683,19 +683,6 @@ class MainActivity : Activity() {
 
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
-    private fun pay(deposit:Boolean, preselected:Int=0, cryptoCurrency:String?=null) {
-        val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
-        val contact=EditText(this).apply { hint="Téléphone ou identifiant (si requis)";inputType=1;setPadding(dp(12),0,dp(12),0) }
-        val methods=arrayOf("MVola","Airtel Money","Orange Money","Binance Pay / Crypto")
-        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
-        box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(contact,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(6)})
-        val cryptoNote=if(!cryptoCurrency.isNullOrBlank()) "Asset crypto sélectionné: ${cryptoCurrency.uppercase()}" else "Choisis un asset crypto depuis le menu Crypto avant un dépôt/retrait Binance."
-        box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. ${cryptoNote} Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
-        AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,preselected.coerceIn(0,3),null)
-            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim());if(method=="BINANCE" && !cryptoCurrency.isNullOrBlank())put("cryptoCurrency",cryptoCurrency.uppercase())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
-            .setNegativeButton("Aoka",null).show()
-    }
-
     private fun gameModeDialog() {
         AlertDialog.Builder(this).setTitle("Choisissez le mode")
             .setItems(arrayOf("🌐 En ligne — Joueurs réels","👥 Hors-ligne — 2 à 4 joueurs")){_,which->if(which==0)lobby() else offlineMenu()}
