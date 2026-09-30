@@ -581,6 +581,14 @@ class MainActivity : Activity() {
         return box
     }
 
+    private fun connectWallets() {
+        if (!BuildConfig.REOWN_ENABLED) {
+            Toast.makeText(this, "Connect Wallet: REOWN_PROJECT_ID mbola tsy configuré.", Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(Intent(this, ReownWalletActivity::class.java))
+    }
+
     private fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
@@ -589,6 +597,7 @@ class MainActivity : Activity() {
         balanceCard.addView(label("SOLDE MGA",10f,true,Color.rgb(105,116,132)),LinearLayout.LayoutParams(-1,dp(20)))
         balanceCard.addView(walletBalanceView,LinearLayout.LayoutParams(-1,dp(45)))
         add(balanceCard,82,6,8)
+        add(paymentTile("Connect Wallet","Wallets externes • Reown AppKit","↗",royal){connectWallets()},76,3,6)
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         actions.addView(button("➕ Dépôt • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Dépôt désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
         actions.addView(button("➖ Retrait • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Retrait désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
