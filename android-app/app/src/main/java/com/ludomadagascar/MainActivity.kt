@@ -25,6 +25,7 @@ import androidx.credentials.GetCredentialResponse
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import com.reown.appkit.client.AppKit
 
 class MainActivity : Activity() {
     private val apiBase = BuildConfig.API_BASE_URL
@@ -36,6 +37,7 @@ class MainActivity : Activity() {
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
+    private var externalWalletView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
@@ -461,6 +463,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        updateExternalWalletStatus()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
     }
 
@@ -589,6 +592,26 @@ class MainActivity : Activity() {
         startActivity(Intent(this, ReownWalletActivity::class.java))
     }
 
+    private fun updateExternalWalletStatus() {
+        if (!BuildConfig.REOWN_ENABLED) {
+            externalWalletView?.text = "Wallet externe: configuration requise"
+            return
+        }
+        runCatching {
+            val account = AppKit.getAccount()
+            account?.let {
+                externalWalletView?.text = "Connecté • " + it.address.take(6) + "…" + it.address.takeLast(4) + " • " + it.chain.chainName
+                externalWalletView?.setTextColor(Color.rgb(21,139,92))
+            } ?: run {
+                externalWalletView?.text = "Wallet externe: non connecté"
+                externalWalletView?.setTextColor(Color.rgb(97,110,128))
+            }
+        }.onFailure {
+            externalWalletView?.text = "Wallet externe: prêt à connecter"
+            externalWalletView?.setTextColor(Color.rgb(97,110,128))
+        }
+    }
+
     private fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
@@ -597,7 +620,14 @@ class MainActivity : Activity() {
         balanceCard.addView(label("SOLDE MGA",10f,true,Color.rgb(105,116,132)),LinearLayout.LayoutParams(-1,dp(20)))
         balanceCard.addView(walletBalanceView,LinearLayout.LayoutParams(-1,dp(45)))
         add(balanceCard,82,6,8)
-        add(paymentTile("Connect Wallet","Wallets externes • Reown AppKit","↗",royal){connectWallets()},76,3,6)
+        add(paymentTile("Connect Wallet","Wallets externes • Reown AppKit","↗",royal){connectWallets()},76,3,4)
+        externalWalletView = label("Wallet externe: non connecté", 12f, true, Color.rgb(97,110,128)).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = shape(Color.rgb(242,247,253), 16f, Color.rgb(215,226,240))
+            contentDescription = "CONNECTED_EXTERNAL_WALLET"
+        }
+        add(externalWalletView!!, 42, 0, 6)
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         actions.addView(button("➕ Dépôt • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Dépôt désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
         actions.addView(button("➖ Retrait • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Retrait désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
