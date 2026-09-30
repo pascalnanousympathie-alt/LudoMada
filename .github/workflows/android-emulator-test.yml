@@ -18,7 +18,7 @@ jobs:
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     concurrency:
-      group: ramus-cloud-${{ github.ref }}
+      group: ramus-android-refs/heads/feat/google-signin-real-22c32c1b5d1bfff59b3704449ac95612da434c1d
       cancel-in-progress: true
     steps:
       - name: Checkout
