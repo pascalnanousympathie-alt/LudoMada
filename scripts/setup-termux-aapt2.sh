@@ -11,8 +11,8 @@ LAUNCHER="$WRAPPER_DIR/aapt2"
 test -x "$QEMU_X86_64"
 test -x "$SYSROOT/lib64/ld-linux-x86-64.so.2"
 
-SDK_ROOT="$ANDROID_SDK_ROOT"
-if [ -z "$SDK_ROOT" ]; then SDK_ROOT="$ANDROID_HOME"; fi
+SDK_ROOT="${ANDROID_SDK_ROOT:-}"
+if [ -z "$SDK_ROOT" ]; then SDK_ROOT="${ANDROID_HOME:-}"; fi
 if [ -z "$SDK_ROOT" ]; then SDK_ROOT="$HOME/android-sdk"; fi
 BUILD_TOOLS="$SDK_ROOT/build-tools/36.0.0"
 BUILD_TOOLS_URL="https://dl.google.com/android/repository/build-tools_r36_linux.zip"
