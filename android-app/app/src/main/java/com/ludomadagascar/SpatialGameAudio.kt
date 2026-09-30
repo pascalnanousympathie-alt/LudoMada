@@ -41,7 +41,7 @@ class SpatialGameAudio {
             PresetReverb(0, track.audioSessionId).apply {
                 preset = PresetReverb.PRESET_SMALLROOM
                 enabled = true
-                setStrength(700)
+                setStrength(700.toShort())
             }
         }.getOrNull()
         track.play()
