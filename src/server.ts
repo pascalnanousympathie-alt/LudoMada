@@ -477,7 +477,9 @@ app.get("/api/wallet",auth,async(req:any,res)=>{
   res.json({balanceMGA:(w?.balance??0n).toString()});
 });
 
-const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional()});
+const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional(),cryptoCurrency:z.string().trim().regex(/^[A-Z0-9]{2,12}$/).transform(v=>v.toUpperCase()).optional()}).superRefine((v,ctx)=>{
+  if(v.cryptoCurrency && v.method!==PaymentMethod.BINANCE) ctx.addIssue({code:z.ZodIssueCode.custom,path:["cryptoCurrency"],message:"cryptoCurrency is only valid with BINANCE"});
+});
 
 app.get("/api/payments/config",auth,async(_req,res)=>{
   res.json(paymentConfig());
@@ -501,7 +503,10 @@ async function reconcilePayment(txId:string){
   if(!tx || tx.status!=="PENDING" || !tx.providerReference) return tx;
   const provider=providerFor(tx.method);
   if(!provider.enabled()) return tx;
-  const pr=await provider.query(tx.providerReference,{expectedAmountMGA:tx.amount,customerPhone:tx.customerPhone||undefined,type:tx.type});
+  const storedPayload=tx.providerPayload as any;
+  const cryptoCurrency=typeof storedPayload?.__ludomada?.cryptoCurrency === "string" ? storedPayload.__ludomada.cryptoCurrency : undefined;
+  const cryptoRate=Number(storedPayload?.__ludomada?.mgaRate);
+  const pr=await provider.query(tx.providerReference,{expectedAmountMGA:tx.amount,customerPhone:tx.customerPhone||undefined,type:tx.type,cryptoCurrency,cryptoRate:Number.isFinite(cryptoRate) && cryptoRate>0 ? cryptoRate : undefined});
   return prisma.$transaction(async(t)=>{
     const current=await t.transaction.findUnique({where:{id:txId}});
     if(!current || current.status!=="PENDING") return current;
@@ -526,7 +531,9 @@ app.get("/api/payments/:transactionId",auth,async(req:any,res)=>{
   const tx=await prisma.transaction.findFirst({where:{id:req.params.transactionId,userId:req.userId}});
   if(!tx) return res.status(404).json({error:"Transaction not found"});
   const reconciled=tx.status==="PENDING" ? await reconcilePayment(tx.id) : tx;
-  res.json({transactionId:reconciled?.id,status:reconciled?.status,method:reconciled?.method,amountMGA:reconciled?.amount.toString(),reference:reconciled?.reference,providerReference:reconciled?.providerReference,providerStatus:reconciled?.providerStatus});
+  const statusPayload:any=reconciled?.providerPayload as any;
+  const cryptoCurrency=typeof statusPayload?.__ludomada?.cryptoCurrency === "string" ? statusPayload.__ludomada.cryptoCurrency : undefined;
+  res.json({transactionId:reconciled?.id,status:reconciled?.status,method:reconciled?.method,amountMGA:reconciled?.amount.toString(),reference:reconciled?.reference,providerReference:reconciled?.providerReference,providerStatus:reconciled?.providerStatus,cryptoCurrency});
 });
 
 app.post("/api/payments/:method/webhook",async(req:any,res)=>{
@@ -580,7 +587,8 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
       if(
         existing.type!==TransactionType.DEPOSIT ||
         existing.amount!==amount ||
-        existing.method!==p.data.method
+        existing.method!==p.data.method ||
+        (p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency && String((existing.providerPayload as any)?.__ludomada?.cryptoCurrency || "").toUpperCase()!==p.data.cryptoCurrency)
       ){
         return res.status(409).json({
           error:"IDEMPOTENCY_KEY_CONFLICT"
@@ -602,13 +610,14 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
         amount,
         customerPhone:p.data.customerPhone,
         idempotencyKey:key,
-        status:"PENDING"
+        status:"PENDING",
+        providerPayload:p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency ? {__ludomada:{cryptoCurrency:p.data.cryptoCurrency}} : undefined
       }
     });
 
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
-      const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone});
+      const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone,cryptoCurrency:p.data.cryptoCurrency});
       if(!pr.accepted){
         await prisma.transaction.update({where:{id:tx.id},data:{status:"FAILED",providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
         await audit(prisma,req,"WALLET_DEPOSIT_REJECTED",{transactionId:tx.id,amount:p.data.amountMGA,method:p.data.method,errorCode:pr.errorCode});
@@ -715,7 +724,8 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
       if(
         existing.type!==TransactionType.WITHDRAWAL ||
         existing.amount!==amount ||
-        existing.method!==p.data.method
+        existing.method!==p.data.method ||
+        (p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency && String((existing.providerPayload as any)?.__ludomada?.cryptoCurrency || "").toUpperCase()!==p.data.cryptoCurrency)
       ){
         return res.status(409).json({
           error:"IDEMPOTENCY_KEY_CONFLICT"
@@ -745,7 +755,8 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
           amount,
           customerPhone:p.data.customerPhone,
           idempotencyKey:key,
-          status:"PENDING"
+          status:"PENDING",
+          providerPayload:p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency ? {__ludomada:{cryptoCurrency:p.data.cryptoCurrency}} : undefined
         }
       });
 
@@ -775,7 +786,7 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
 
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
-      const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone});
+      const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone,cryptoCurrency:p.data.cryptoCurrency});
       if(!pr.accepted){
         await prisma.$transaction(async(tx)=>{
           const current=await tx.transaction.findUnique({where:{id:r.id}});
@@ -881,7 +892,7 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
 
 app.get("/api/wallet/transactions",auth,async(req:any,res)=>{
   const rows=await prisma.transaction.findMany({where:{userId:req.userId},orderBy:{createdAt:"desc"},take:100});
-  res.json(rows.map(r=>({...r,amount:r.amount.toString(),fee:r.fee.toString()})));
+  res.json(rows.map(r=>{const payload:any=r.providerPayload as any;const cryptoCurrency=typeof payload?.__ludomada?.cryptoCurrency === "string" ? payload.__ludomada.cryptoCurrency : undefined;return {...r,amount:r.amount.toString(),fee:r.fee.toString(),cryptoCurrency};}));
 });
 
 /*
