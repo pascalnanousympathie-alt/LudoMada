@@ -46,3 +46,5 @@ jobs:
           name: LudoMadagascar-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+# recovery-marker: keep latest APK build authoritative
