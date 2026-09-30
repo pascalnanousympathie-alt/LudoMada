@@ -9,11 +9,15 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 25
     concurrency:
       group: android-apk-${{ github.ref }}
       cancel-in-progress: true
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     defaults:
       run:
         working-directory: android-app
@@ -21,34 +25,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      - name: Setup Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android platform/build tools
-        working-directory: .
-        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
       - name: Configure Android SDK path
-        run: printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties
-
-      - name: Build debug APK
+        run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+      - name: Configure ARM64 AAPT2
+        working-directory: .
         run: |
-          set -eu
-          chmod +x gradlew
-          ./gradlew --version
-          ./gradlew -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
-
-      - name: Verify APK exists
-        run: test -s app/build/outputs/apk/debug/app-debug.apk
-
+          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
+          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
+      - run: chmod +x gradlew
+      - run: sh ./gradlew --version
+      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+      - run: test -s app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: LudoMadagascar-debug-apk
