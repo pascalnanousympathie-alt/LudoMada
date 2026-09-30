@@ -33,9 +33,12 @@ class LudoMadaApplication : Application() {
                 Log.e("LudoMadaReown", "Core initialization failed", error.throwable)
             }
 
-            AppKit.initialize(Modal.Params.Init(core = CoreClient)) { error ->
-                Log.e("LudoMadaReown", "AppKit initialization failed", error.throwable)
-            }
+            AppKit.initialize(
+                init = Modal.Params.Init(core = CoreClient),
+                onError = { error ->
+                    Log.e("LudoMadaReown", "AppKit initialization failed", error.throwable)
+                }
+            )
 
             AppKit.setChains(AppKitChainsPresets.ethChains.values.toList())
         }.onFailure {
