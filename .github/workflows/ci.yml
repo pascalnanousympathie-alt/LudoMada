@@ -53,8 +53,20 @@ jobs:
           free -h
           awk '/MemTotal|MemAvailable|SwapTotal|SwapFree/ {print}' /proc/meminfo
           df -h "$GITHUB_WORKSPACE"
-      - name: Install dependencies
-        run: NODE_OPTIONS=--max-old-space-size=256 timeout -k 10s 600s npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional --install-strategy=shallow
+      - name: Prepare persistent dependencies
+        run: |
+          set -eu
+          source_dir="$HOME/LudoMada/node_modules"
+          test -d "$source_dir"
+          expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
+          source_lock="$(sha256sum "$HOME/LudoMada/package-lock.json" | awk '{print $1}')"
+          test "$expected_lock" = "$source_lock"
+          test -f "$source_dir/.package-lock.json"
+          if [ -L node_modules ] || [ -d node_modules ]; then
+            rm -rf node_modules
+          fi
+          ln -s "$source_dir" node_modules
+          node -e "require('prisma'); require('@prisma/client'); require('jest'); require('typescript')"
       - name: Generate Prisma client
         run: node node_modules/prisma/build/index.js generate
       - name: Run backend tests
