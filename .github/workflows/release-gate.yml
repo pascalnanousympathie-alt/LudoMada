@@ -41,7 +41,20 @@ jobs:
       - run: node -v && npm -v
       - name: Start isolated PostgreSQL
         run: bash scripts/ensure-test-postgres.sh
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
+      - name: Prepare persistent dependencies
+        run: |
+          set -eu
+          source_dir="$HOME/LudoMada/node_modules"
+          test -d "$source_dir"
+          expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
+          source_lock="$(sha256sum "$HOME/LudoMada/package-lock.json" | awk '{print $1}')"
+          test "$expected_lock" = "$source_lock"
+          test -f "$source_dir/.package-lock.json"
+          if [ -L node_modules ] || [ -d node_modules ]; then
+            rm -rf node_modules
+          fi
+          ln -s "$source_dir" node_modules
+          node -e "require('prisma'); require('@prisma/client'); require('jest'); require('typescript')"
       - run: npm run db:generate
       - run: npm run db:migrate
       - run: npm run test:all
