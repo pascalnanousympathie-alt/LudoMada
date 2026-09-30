@@ -54,7 +54,7 @@ jobs:
             rm -rf node_modules
           fi
           ln -s "$source_dir" node_modules
-          node -e "require('prisma'); require('@prisma/client'); require('jest'); require('typescript')"
+          node -e "require('@prisma/client'); require('jest'); require('typescript'); require('fs').accessSync('node_modules/prisma/build/index.js'); console.log('DEPS_CORE_OK')"
       - run: npm run db:generate
       - run: npm run db:migrate
       - run: npm run test:all
