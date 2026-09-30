@@ -37,6 +37,13 @@ describe("payment providers", () => {
     expect(providerFor(PaymentMethod.ORANGE_MONEY).enabled()).toBe(false);
   });
 
+  test("Binance remains disabled with credentials until explicit live activation", () => {
+    process.env.BINANCE_PAY_CURRENCIES = "USDT,BTC,ETH,SOL,TRX";
+    process.env.BINANCE_PAY_MGA_RATES_JSON = JSON.stringify({ USDT: 5000, BTC: 500000000, ETH: 25000000, SOL: 1200000, TRX: 1800 });
+    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
+    expect(providerFor(PaymentMethod.BINANCE).enabled()).toBe(false);
+  });
+
   test("MVola API-key configuration enables provider only with partner identity", () => {
     process.env.MVOLA_API_KEY = "test-api-key";
     process.env.MVOLA_PARTNER_MSISDN = "0343500004";
