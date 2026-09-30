@@ -179,6 +179,30 @@ try {
     waitStable(900);
   }
 
+  // Authentication/navigation gate: verify Online opens the real Login screen and the
+  // registration dialog without fabricating an account or submitting fake credentials.
+  const onlineEntry=allow("tap","0.576,0.132","--session",session,"--force");
+  if (onlineEntry.ok) waitStable(700);
+  if (!hasText("🌐 En ligne — Joueurs réels")) throw new Error("Online mode entry was not exposed from Premium Home");
+  tapAnyRef("🌐 En ligne — Joueurs réels");
+  waitStable(900);
+  if (!hasText("Nom, email ou mobile") && !hasText("Connexion")) throw new Error("Login screen was not reached from Online mode");
+  console.log("HOME→ONLINE→LOGIN PASS");
+  const signup=findRef("Créer un compte");
+  tapRef(signup);
+  waitStable(500);
+  if (!hasText("Créer un compte") || !hasText("S'inscrire")) throw new Error("Registration dialog was not exposed from Login");
+  console.log("LOGIN→REGISTER PASS");
+  const closeSignup=allow("snapshot","--session",session,"--find","Aoka");
+  if (closeSignup.ok && closeSignup.value?.elements?.length) {
+    tapRef({ref:closeSignup.value.elements[0].ref,gen:closeSignup.value.gen});
+    waitStable(400);
+  }
+  const offlineFromLogin=allow("snapshot","--session",session,"--find","Jouer hors-ligne");
+  if (!offlineFromLogin.ok || !offlineFromLogin.value?.elements?.length) throw new Error("Login offline fallback was not exposed");
+  tapRef({ref:offlineFromLogin.value.elements[0].ref,gen:offlineFromLogin.value.gen});
+  waitStable(800);
+
   // Open play from the actual premium Home. Ramus exposes the landscape render through
   // a portrait 720×1616 input surface, so the deterministic portrait coordinate is included.
   let offlineQuick = allow("snapshot", "--session", session, "--find", "Jouer hors-ligne");
