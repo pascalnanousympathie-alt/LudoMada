@@ -14,10 +14,6 @@ jobs:
     concurrency:
       group: android-apk-${{ github.ref }}
       cancel-in-progress: true
-    env:
-      ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
-      ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/21.0.9-10/x64
     defaults:
       run:
         working-directory: android-app
@@ -37,6 +33,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android platform/build tools
+        working-directory: .
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Configure Android SDK path
