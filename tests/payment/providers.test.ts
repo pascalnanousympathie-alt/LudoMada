@@ -106,6 +106,26 @@ describe("payment providers", () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  test("Binance multi-crypto selection is server-configured and rate-bound", async () => {
+    process.env.BINANCE_PAY_CURRENCIES = "USDT,BTC,ETH,SOL,TRX";
+    process.env.BINANCE_PAY_MGA_RATES_JSON = JSON.stringify({ USDT: 5000, BTC: 500000000, ETH: 25000000, SOL: 1200000, TRX: 1800 });
+    process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
+    process.env.BINANCE_PAY_API_SECRET = "test-secret";
+    process.env.PAYMENTS_BINANCE_LIVE_ENABLED = "true";
+    const calls:any[]=[];
+    global.fetch = jest.fn(async (_url:any, init:any) => {
+      calls.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ status:"SUCCESS", data:{ prepayId:"multi-crypto-1", status:"INITIAL", currency:JSON.parse(init.body).currency } }), {status:200});
+    }) as any;
+    const provider=providerFor(PaymentMethod.BINANCE);
+    expect(provider.enabled()).toBe(true);
+    await expect(provider.create({ transactionId:"multi-crypto-usdt", amountMGA:500n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"USDT" })).resolves.toMatchObject({accepted:true,providerReference:"multi-crypto-1"});
+    await expect(provider.create({ transactionId:"multi-crypto-btc", amountMGA:1000n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"BTC" })).resolves.toMatchObject({accepted:true,providerReference:"multi-crypto-1"});
+    await expect(provider.create({ transactionId:"multi-crypto-bad", amountMGA:500n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"DOGE" })).resolves.toMatchObject({accepted:false,errorCode:"BINANCE_CURRENCY_NOT_SUPPORTED"});
+    expect(calls[0].currency).toBe("USDT");
+    expect(calls[1].currency).toBe("BTC");
+  });
+
   test("Binance webhook signature is verified safely", () => {
     const p = providerFor(PaymentMethod.BINANCE);
     const ts = Date.now().toString();
