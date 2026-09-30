@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 20
     env:
       DB_SCHEMA: ci_${{ github.run_id }}
-      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci?schema=ci_${{ github.run_id }}
+      DATABASE_URL: postgresql://ludomada_test:ludomada_test@127.0.0.1:54329/ludomada_test?schema=ci_${{ github.run_id }}
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
@@ -41,11 +41,8 @@ jobs:
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
-      - name: Verify local PostgreSQL
-        run: |
-          set -eu
-          command -v psql
-          pg_isready -h 127.0.0.1 -p 5432 -U u0_a214
+      - name: Start isolated PostgreSQL
+        run: bash scripts/ensure-test-postgres.sh
       - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - run: npx prisma generate
       - run: npx prisma migrate deploy
