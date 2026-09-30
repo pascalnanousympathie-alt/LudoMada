@@ -42,3 +42,4 @@ jobs:
       - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - run: npx prisma generate
       - run: npm test -- --maxWorkers=2
+      - run: npm run build
