@@ -228,7 +228,10 @@ class LudoBoardView(
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             pulseHaptic(18L, 120)
             val pan = ((projected[best][0] / max(1f, width.toFloat())) * 2f - 1f).coerceIn(-1f, 1f)
-            gameAudio.play(pan, 0.65f, 520.0)
+            val centerDx = (projected[best][0] - width * 0.5f) / max(1f, width * 0.5f)
+            val centerDy = (projected[best][1] - height * 0.5f) / max(1f, height * 0.5f)
+            val distance = kotlin.math.sqrt(centerDx * centerDx + centerDy * centerDy).coerceIn(0f, 1f)
+            gameAudio.play(pan, 0.65f, 520.0, distance)
             onPawnTap?.invoke(best)
         }
         return true
@@ -297,6 +300,7 @@ class LudoBoardView(
         private var neutralTex=0
         private var metalTex=0
         private var normalTex=0
+        private var envCube=0
         internal val lightVp=FloatArray(16)
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
@@ -324,7 +328,7 @@ class LudoBoardView(
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);disk=diskMesh(32);pips=sphereMesh(10,6)
-            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture()
+            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap()
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
@@ -356,7 +360,7 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex);drawWorld(false);shader.endFrame();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
         fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
@@ -402,8 +406,51 @@ class LudoBoardView(
         private fun updateParticles(dt:Float){for(i in 0 until 64){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
         private fun drawParticles(){var count=0;for(i in 0 until 64)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/0.5f).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);particleShader.draw(dustData,count,particleVbo,vp);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)}
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,0.28f,0.10f);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
-        private fun createMaterialTexture(kind:Int):Int{val size=128;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val grain=sin(u*34.0+sin(v*9.0)*4.0)*0.5+0.5;val band=sin(v*19.0+u*6.0)*0.5+0.5;val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
-        private fun createNormalTexture():Int{val size=128;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createMaterialTexture(kind:Int):Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val grain=sin(u*34.0+sin(v*9.0)*4.0)*0.5+0.5;val band=sin(v*19.0+u*6.0)*0.5+0.5;val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createEnvironmentCubemap():Int{
+            val size=64
+            val ids=IntArray(1)
+            GLES30.glGenTextures(1,ids,0)
+            val tex=ids[0]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,tex)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_CUBE_MAP,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_CUBE_MAP,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_CUBE_MAP,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_CUBE_MAP,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_CUBE_MAP,GLES30.GL_TEXTURE_WRAP_R,GLES30.GL_CLAMP_TO_EDGE)
+            for(face in 0 until 6){
+                val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder())
+                for(y in 0 until size)for(x in 0 until size){
+                    val a=x.toFloat()/(size-1)*2f-1f
+                    val b=y.toFloat()/(size-1)*2f-1f
+                    var dx=0f;var dy=0f;var dz=0f
+                    when(face){
+                        0->{dx=1f;dy=-b;dz=-a}
+                        1->{dx=-1f;dy=-b;dz=a}
+                        2->{dx=a;dy=1f;dz=b}
+                        3->{dx=a;dy=-1f;dz=-b}
+                        4->{dx=a;dy=-b;dz=1f}
+                        else->{dx=-a;dy=-b;dz=-1f}
+                    }
+                    val len=max(0.001f,kotlin.math.sqrt(dx*dx+dy*dy+dz*dz));dx/=len;dy/=len;dz/=len
+                    val sky=(dy*0.5f+0.5f).coerceIn(0f,1f)
+                    val horizon=kotlin.math.exp(-kotlin.math.abs(dy)*3.2f).toFloat()
+                    val sun=max(0f,dx*0.55f+dy*0.72f+dz*0.42f).toDouble().pow(48.0).toFloat()
+                    val warm=0.10f*horizon+0.08f*sun
+                    val r=(0.018f+0.19f*sky+warm).coerceIn(0f,1f)
+                    val g=(0.030f+0.27f*sky+warm*0.78f).coerceIn(0f,1f)
+                    val bl=(0.060f+0.46f*sky+sun*0.36f).coerceIn(0f,1f)
+                    data.put((r*255f).toInt().toByte()).put((g*255f).toInt().toByte()).put((bl*255f).toInt().toByte()).put(255.toByte())
+                }
+                data.position(0)
+                GLES30.glTexImage2D(GLES30.GL_TEXTURE_CUBE_MAP_POSITIVE_X+face,0,GLES30.GL_RGBA,size,size,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,data)
+            }
+            GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_CUBE_MAP)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,0)
+            return tex
+        }
+
         private fun uploadTexture(size:Int,data:ByteBuffer):Int{val ids=IntArray(1);GLES30.glGenTextures(1,ids,0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,ids[0]);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_REPEAT);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_REPEAT);GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,size,size,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,data);GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0);return ids[0]}
         private fun identityAt(x:Float,y:Float,z:Float,sx:Float=1f,sy:Float=1f,sz:Float=1f):FloatArray{Matrix.setIdentityM(modelScratch,0);Matrix.translateM(modelScratch,0,x,y,z);Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()}
         private fun rgba(c:Int)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,1f)
@@ -565,7 +612,7 @@ class LudoBoardView(
 
     private class PbrShader(private val renderer:SceneRenderer){
         private val program:Int
-        private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uShadowMap:Int
+        private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uShadowMap:Int;private val uEnvCube:Int
         private val mv=FloatArray(16);private val mvp=FloatArray(16);private val light=FloatArray(16)
         private var wood=0;private var board=0;private var neutral=0;private var metal=0;private var normal=0
         init{
@@ -576,7 +623,7 @@ class LudoBoardView(
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*w;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
             val fs="""#version 300 es
-                precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength;uniform sampler2D uAlbedoTex,uNormalTex,uShadowMap;
+                precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength;uniform sampler2D uAlbedoTex,uNormalTex,uShadowMap;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
                 float G(float nv,float r){float k=((r+1.0)*(r+1.0))/8.0;return nv/max(nv*(1.0-k)+k,0.0001);}
@@ -587,14 +634,14 @@ class LudoBoardView(
                     vec3 N=normalize(mix(N0,T*nm.x+B*nm.y+N0*max(nm.z,0.15),uNormalStrength));vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;vec3 albedo=mix(uColor.rgb*tex,uColor.rgb,0.52);
                     float m=clamp(uMetallic,0.0,1.0),r=clamp(uRoughness,0.045,1.0);vec3 V=normalize(-vP),L=normalize(vec3(-0.42,0.92,0.36)),H=normalize(V+L);float nv=max(dot(N,V),0.0),nl=max(dot(N,L),0.0);
                     vec3 f0=mix(vec3(0.04),albedo,m),f=F(max(dot(H,V),0.0),f0);float d=DGGX(N,H,r),g=G(nv,r)*G(nl,r);vec3 spec=(d*g*f)/max(4.0*nv*nl,0.001);vec3 kd=(vec3(1)-f)*(1-m);float sh=shadowV();
-                    vec3 direct=(kd*albedo/PI+spec)*vec3(1.05,0.98,0.84)*nl*sh;vec3 R=reflect(-V,N);float sky=clamp(R.y*0.5+0.5,0.0,1.0);vec3 envS=mix(vec3(0.018,0.028,0.050),vec3(0.26,0.38,0.58),sky);vec3 envD=mix(vec3(0.020,0.028,0.048),vec3(0.10,0.145,0.21),clamp(N.y*0.5+0.5,0.0,1.0));
-                    vec3 color=(envD*albedo*kd+envS*f*(1.0-r)*0.42)*uAO+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0)),uColor.a);
+                    vec3 direct=(kd*albedo/PI+spec)*vec3(1.05,0.98,0.84)*nl*sh;vec3 R=reflect(-V,N);vec3 envS=textureLod(uEnvCube,R,r*5.0).rgb;vec3 envD=textureLod(uEnvCube,N,4.0).rgb;
+                    float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*0.72+envS*f*(0.26+0.74*fres))*uAO+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0)),uColor.a);
                 }
             """.trimIndent()
             program=buildProgram(vs,fs)
-            uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap")
+            uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap")
         }
-        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2)}
+        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
         fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean){
             val albedo=when(material){1->wood;2->board;3->neutral;4->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)

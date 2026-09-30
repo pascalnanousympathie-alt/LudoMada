@@ -1,6 +1,6 @@
 plugins { id("com.android.application") }
 
-android { namespace="com.ludomadagascar"; compileSdk=35; buildToolsVersion="35.0.0"
+android { namespace="com.ludomadagascar"; compileSdk=35
  buildFeatures { buildConfig = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
  defaultConfig { applicationId="com.ludomadagascar"; minSdk=24; targetSdk=35; versionCode=2; versionName="1.0.1"; testInstrumentationRunner="androidx.test.runner.AndroidJUnitRunner"

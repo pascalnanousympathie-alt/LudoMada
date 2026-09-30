@@ -52,10 +52,11 @@ class SpatialGameAudio {
         }
     }
 
-    fun play(pan: Float, intensity: Float = 0.8f, frequency: Double = 620.0) {
+    fun play(pan: Float, intensity: Float = 0.8f, frequency: Double = 620.0, distance: Float = 0f) {
         val audio = track ?: return
         val p = pan.coerceIn(-1f, 1f)
-        val gain = intensity.coerceIn(0f, 1f)
+        val distanceNorm = distance.coerceIn(0f, 1f)
+        val gain = (intensity.coerceIn(0f, 1f) * (1f - 0.48f * distanceNorm * distanceNorm)).coerceIn(0f, 1f)
         Thread {
             val frames = (sampleRate * 0.12f).toInt().coerceAtLeast(1)
             val pcm = ShortArray(frames * 2)

@@ -11,6 +11,35 @@ LAUNCHER="$WRAPPER_DIR/aapt2"
 test -x "$QEMU_X86_64"
 test -x "$SYSROOT/lib64/ld-linux-x86-64.so.2"
 
+SDK_ROOT="$ANDROID_SDK_ROOT"
+if [ -z "$SDK_ROOT" ]; then SDK_ROOT="$ANDROID_HOME"; fi
+if [ -z "$SDK_ROOT" ]; then SDK_ROOT="$HOME/android-sdk"; fi
+BUILD_TOOLS="$SDK_ROOT/build-tools/36.0.0"
+BUILD_TOOLS_URL="https://dl.google.com/android/repository/build-tools_r36_linux.zip"
+BUILD_TOOLS_SHA1="b0b6376977657e8ad9b969bacf4093601da2c6fb"
+BUILD_TOOLS_ARCHIVE="$HOME/.cache/ludomada/build-tools_r36_linux.zip"
+
+if [ ! -x "$BUILD_TOOLS/aapt2" ] || [ ! -x "$BUILD_TOOLS/d8" ] || [ ! -f "$BUILD_TOOLS/source.properties" ]; then
+  mkdir -p "$HOME/.cache/ludomada" "$SDK_ROOT/build-tools"
+  if [ ! -s "$BUILD_TOOLS_ARCHIVE" ] || [ "$(sha1sum "$BUILD_TOOLS_ARCHIVE" 2>/dev/null | awk '{print $1}')" != "$BUILD_TOOLS_SHA1" ]; then
+    rm -f "$BUILD_TOOLS_ARCHIVE"
+    curl -L --fail --retry 3 --retry-delay 2 -o "$BUILD_TOOLS_ARCHIVE.tmp" "$BUILD_TOOLS_URL"
+    test "$(sha1sum "$BUILD_TOOLS_ARCHIVE.tmp" | awk '{print $1}')" = "$BUILD_TOOLS_SHA1"
+    mv "$BUILD_TOOLS_ARCHIVE.tmp" "$BUILD_TOOLS_ARCHIVE"
+  fi
+  rm -rf "$SDK_ROOT/build-tools/.36.0.0.extract"
+  mkdir -p "$SDK_ROOT/build-tools/.36.0.0.extract"
+  unzip -q "$BUILD_TOOLS_ARCHIVE" -d "$SDK_ROOT/build-tools/.36.0.0.extract"
+  src="$(find "$SDK_ROOT/build-tools/.36.0.0.extract" -type f -name aapt2 -perm -u+x -print -quit)"
+  test -n "$src"
+  srcdir="$(dirname "$src")"
+  rm -rf "$BUILD_TOOLS"
+  mv "$srcdir" "$BUILD_TOOLS"
+  rm -rf "$SDK_ROOT/build-tools/.36.0.0.extract"
+fi
+
+test -f "$BUILD_TOOLS/source.properties"
+
 mkdir -p "$WRAPPER_DIR" "$STATE_DIR"
 
 AAPT2=""
