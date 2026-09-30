@@ -35,7 +35,6 @@ jobs:
           fi
           git fetch --depth=1 origin "$GITHUB_SHA"
           git reset --hard "$GITHUB_SHA"
-          git clean -fdx
       - name: Accept Android SDK licenses
         working-directory: .
         run: |
