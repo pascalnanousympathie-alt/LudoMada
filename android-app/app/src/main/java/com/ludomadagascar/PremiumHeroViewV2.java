@@ -187,12 +187,17 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
     Bitmap lobbyRef;
+    Bitmap bgBaobab;
+    Bitmap bgAlt;
+    int bgIndex=0;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
       lobbyRef=BitmapFactory.decodeResource(getResources(),R.drawable.ludomada_lobby_reference_4k);
+      bgBaobab=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab_landscape);
+      bgAlt=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt_landscape);
       p.setFilterBitmap(true);
     }
-    void flipBackground(){ invalidate(); }
+    void flipBackground(){ bgIndex=1-bgIndex; invalidate(); }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
@@ -285,8 +290,14 @@ public class PremiumHeroViewV2 extends FrameLayout {
       c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
     }
     void background(Canvas c,float W,float H){
-      // Direct 4K reference render: preserve the composition the user supplied.
-      drawCover(c,lobbyRef,1f,W,H);
+      // Real rotating landscape backgrounds. The board/menu are rendered as live UI on top;
+      // no screenshot/mockup is used as the Home surface.
+      Bitmap bm = bgIndex==0 ? bgBaobab : bgAlt;
+      if(bm==null) bm=lobbyRef;
+      drawCover(c,bm,1f,W,H);
+      p.setShader(new LinearGradient(0,0,0,H,0x33030C24,0xB5030C24,Shader.TileMode.CLAMP));
+      c.drawRect(0,0,W,H,p);
+      p.setShader(null);
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
@@ -362,16 +373,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
       float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
       
-      // Screenshot 1 is the authoritative Home visual. Render it directly so the shipped UI
-      // does not double-render the mockup with a second vector composition underneath.
-      if(landscape && lobbyRef!=null){
-        c.save();
-        drawHomeReference(c,W,H);
-        drawLiveHomeFields(c,W,H);
-        c.restore();
-        postInvalidateDelayed(1000L);
-        return;
-      }
+      // Landscape Home is always rendered as live UI. Reference assets remain visual inspiration/fallback only.
       c.save(); background(c,W,H); c.translate(ox,oy);
       // Cinematic landscape composition: menus frame a large central 3D board.
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
@@ -402,7 +404,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       t(c,"Mise actuelle",1105,314,9,0xBFFFFFFF,false,true);t(c,fee+" Ar",1105,344,24,gold2,true,true);
       box(c,1010,378,1200,452,22,0xFFFFC32D,0xEEFFF0B0);t(c,"▶",1042,422,24,0xFF4A2900,true,true);t(c,"JOUER",1110,418,19,0xFF452500,true,true);t(c,"EN LIGNE / HORS-LIGNE",1105,438,8,0xFF694A15,true,true);
       t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
-      box(c,1010,516,1200,570,18,0xB316315A,0x557EB8FF);t(c,"♟",1042,550,18,Color.WHITE,true,true);t(c,"ROOM",1110,546,10,Color.WHITE,true,true);t(c,"Créer ou rejoindre",1110,562,8,0xD0FFFFFF,false,true);
+      box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
+      box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
       box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"Madagasikara • Miray",1105,612,8,gold2,true,true);
       c.restore();postInvalidateDelayed(16);
     }
@@ -438,6 +441,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=325&&y<420&&x<310){call("wallet");return true;}
       if(y>=420&&y<515&&x<310){call("profile");return true;}
       if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
+      if(y>=465&&y<525&&x>970){call("events");return true;}
+      if(y>=525&&y<585&&x>970){call("tutorials");return true;}
       if(y>=520&&y<650&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
         int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
