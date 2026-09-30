@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # TEMP_DRAIN_PR_CI: Android/Ramus release gates use the single ARM64 runner; restore backend PR gate after release validation.
   test:
     if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, ARM64]
