@@ -2,10 +2,6 @@ name: Build Ludo Madagascar APK
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "android-app/**"
-      - ".github/workflows/android-apk.yml"
 
 jobs:
   build:
