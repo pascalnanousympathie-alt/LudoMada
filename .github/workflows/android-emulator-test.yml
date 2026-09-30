@@ -1,5 +1,6 @@
 name: Android Emulator Automated Tests
 # Premium landscape visual/gameplay validation gate
+# CI trigger: validate the latest Android source after every build-system fix
 
 on:
   workflow_dispatch:
@@ -7,6 +8,7 @@ on:
     paths:
       - "android-app/**"
       - "scripts/ramus-smoke.mjs"
+      - "scripts/setup-termux-aapt2.sh"
       - ".github/workflows/android-emulator-test.yml"
 
 jobs:
