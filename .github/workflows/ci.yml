@@ -2,15 +2,10 @@ name: Ludo Mada V6.3 CI
 
 on:
   workflow_dispatch:
-  pull_request:
+  # Keep a push trigger only for workflow-maintenance commits. The job itself
+  # stays skipped on push so the single ARM64 runner is reserved for Android.
+  push:
     paths:
-      - "src/**"
-      - "tests/**"
-      - "prisma/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "jest.config.cjs"
       - ".github/workflows/ci.yml"
 
 concurrency:
@@ -19,6 +14,7 @@ concurrency:
 
 jobs:
   test:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 20
     env:
