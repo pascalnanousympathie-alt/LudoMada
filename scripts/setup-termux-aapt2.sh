@@ -11,13 +11,25 @@ LAUNCHER="$WRAPPER_DIR/aapt2"
 test -x "$QEMU_X86_64"
 test -x "$SYSROOT/lib64/ld-linux-x86-64.so.2"
 
-AAPT2="$(find "$HOME/.gradle/caches" -type f -path '*/transformed/aapt2-*-linux/aapt2' -perm -u+x -print 2>/dev/null | sort | tail -n 1)"
+mkdir -p "$WRAPPER_DIR" "$STATE_DIR"
+
+AAPT2=""
+if [ -s "$AAPT2_PATH_FILE" ]; then
+  CACHED_AAPT2="$(head -n 1 "$AAPT2_PATH_FILE")"
+  if [ -x "$CACHED_AAPT2" ]; then
+    AAPT2="$CACHED_AAPT2"
+  fi
+fi
+
 if [ -z "$AAPT2" ]; then
+  AAPT2="$(find "$HOME/.gradle/caches" -type f -path '*/transformed/aapt2-*-linux/aapt2' -perm -u+x -print 2>/dev/null | sort | tail -n 1)"
+fi
+
+if [ -z "$AAPT2" ] || [ ! -x "$AAPT2" ]; then
   echo "AGP AAPT2 binary not found in Gradle cache" >&2
   exit 2
 fi
 
-mkdir -p "$WRAPPER_DIR" "$STATE_DIR"
 printf '%s\n' "$AAPT2" > "$AAPT2_PATH_FILE"
 
 cat > "$STATE_DIR/aapt2_launcher.c" <<'EOF'
