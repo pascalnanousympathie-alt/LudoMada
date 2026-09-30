@@ -629,8 +629,8 @@ class MainActivity : Activity() {
         }
         add(externalWalletView!!, 42, 0, 6)
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        actions.addView(button("➕ Dépôt • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Dépôt désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
-        actions.addView(button("➖ Retrait • OFF",Color.rgb(95,105,118)){Toast.makeText(this,"Retrait désactivé: aucun provider de paiement n’est actif.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
+        actions.addView(button("🔗 Connect Wallet",Color.rgb(37,93,196)){connectWallets()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
+        actions.addView(button("⇄ Conversion Crypto",Color.rgb(35,150,84)){cryptoDialog()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
         add(actions,52)
         sectionTitle("Paiements disponibles","Choisis un service pour ouvrir son parcours sécurisé.")
         val payRow1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
@@ -707,7 +707,11 @@ class MainActivity : Activity() {
         val mga=EditText(this).apply{hint="Montant MGA";inputType=2;setPadding(dp(12),0,dp(12),0)}
         val assetButton=Button(this).apply{isAllCaps=false;text="Asset: chargement…";setTextColor(Color.WHITE);background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(38,102,185),Color.rgb(24,53,94))).apply{cornerRadius=dp(16).toFloat()}}
         val info=label("Lecture de la configuration crypto serveur…",11f,false,Color.rgb(95,107,125))
-        val external=label("Wallet externe: aucun connecteur WalletConnect configuré dans cette build — aucun faux état de connexion.",10.5f,false,Color.rgb(125,82,42))
+        val external=label(
+            if(BuildConfig.REOWN_ENABLED) "Wallet externe: Reown AppKit prêt — connecte ton wallet EVM."
+            else "Wallet externe: REOWN_PROJECT_ID manquant dans cette build.",
+            10.5f,false,Color.rgb(95,107,125)
+        )
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
         box.addView(assetButton,LinearLayout.LayoutParams(-1,dp(50)).apply{bottomMargin=dp(7)})
         box.addView(crypto,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
@@ -715,10 +719,10 @@ class MainActivity : Activity() {
         box.addView(info,LinearLayout.LayoutParams(-1,dp(46)))
         box.addView(external,LinearLayout.LayoutParams(-1,dp(54)))
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        val deposit=button("➕ Dépôt crypto",Color.rgb(35,150,84)){}
-        val withdraw=button("➖ Retrait crypto",Color.rgb(210,55,65)){}
-        actions.addView(deposit,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(4),0)})
-        actions.addView(withdraw,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(4),0,0)})
+        val connect=button("🔗 Connecter Wallet",Color.rgb(37,93,196)){connectWallets()}
+        val convert=button("⇄ Conversion",Color.rgb(35,150,84)){}
+        actions.addView(connect,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(4),0)})
+        actions.addView(convert,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(4),0,0)})
         box.addView(actions,LinearLayout.LayoutParams(-1,dp(58)))
         var assets=emptyList<String>()
         var rates=JSONObject()
@@ -734,13 +738,10 @@ class MainActivity : Activity() {
         assetButton.setOnClickListener{
             if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->applyAsset(assets[which])}.setNegativeButton("Aoka",null).show()
         }
-        deposit.setOnClickListener{
-            val rate=if(selected.isBlank())0.0 else rates.optDouble(selected,0.0)
-            if(selected.isBlank() || rate<=0) Toast.makeText(this,"Crypto-actif non configurable pour les transactions.",Toast.LENGTH_LONG).show() else {dialog.dismiss();pay(true,3,selected)}
-        }
-        withdraw.setOnClickListener{
-            val rate=if(selected.isBlank())0.0 else rates.optDouble(selected,0.0)
-            if(selected.isBlank() || rate<=0) Toast.makeText(this,"Crypto-actif non configurable pour les transactions.",Toast.LENGTH_LONG).show() else {dialog.dismiss();pay(false,3,selected)}
+        convert.setOnClickListener{
+            val rateHolder=info.tag as? Double ?: 0.0
+            if(rateHolder<=0) Toast.makeText(this,"Taux crypto non disponible.",Toast.LENGTH_LONG).show()
+            else Toast.makeText(this,"Conversion active avec le taux serveur. Aucun solde n’est crédité ici.",Toast.LENGTH_LONG).show()
         }
         dialog=AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
             .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
@@ -761,7 +762,11 @@ class MainActivity : Activity() {
             val enabled=b?.optBoolean("enabled",false)==true
             runOnUiThread{
                 if(assets.isNotEmpty()) applyAsset(assets.first()) else {assetButton.text="Crypto: aucun asset configuré";info.text="Aucun crypto-actif avec rate serveur n’est configuré."}
-                external.text=if(enabled) "Wallet externe: aucun connecteur WalletConnect configuré. Binance Pay est le provider crypto serveur actif." else "Wallet externe: aucun connecteur WalletConnect configuré. Provider crypto non activé sur le serveur."
+                external.text = when {
+                    !BuildConfig.REOWN_ENABLED -> "Wallet externe: REOWN_PROJECT_ID manquant dans cette build."
+                    enabled -> "Wallet externe: Reown AppKit actif. Binance Pay serveur reste une voie séparée."
+                    else -> "Wallet externe: Reown AppKit actif. Binance Pay serveur reste OFF."
+                }
             }
         }
     }
