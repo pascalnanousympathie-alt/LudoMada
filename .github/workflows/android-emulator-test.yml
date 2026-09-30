@@ -22,11 +22,20 @@ jobs:
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
+      - name: Checkout source without external action
+        working-directory: .
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE"
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          elif ! git remote get-url origin >/dev/null 2>&1; then
+            git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          fi
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git reset --hard "$GITHUB_SHA"
+          git clean -fdx
       - name: Accept Android SDK licenses
         run: |
           mkdir -p "$ANDROID_HOME/licenses"
