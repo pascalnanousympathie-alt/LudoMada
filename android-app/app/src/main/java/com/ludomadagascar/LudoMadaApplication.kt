@@ -9,6 +9,10 @@ import com.reown.appkit.client.Modal
 import com.reown.appkit.presets.AppKitChainsPresets
 
 class LudoMadaApplication : Application() {
+    companion object {
+        @Volatile private var reownReady = false
+        fun isReownReady(): Boolean = reownReady
+    }
     override fun onCreate() {
         super.onCreate()
 
@@ -35,7 +39,12 @@ class LudoMadaApplication : Application() {
 
             AppKit.initialize(
                 init = Modal.Params.Init(core = CoreClient),
+                onSuccess = {
+                    reownReady = true
+                    Log.i("LudoMadaReown", "AppKit ready")
+                },
                 onError = { error ->
+                    reownReady = false
                     Log.e("LudoMadaReown", "AppKit initialization failed", error.throwable)
                 }
             )
