@@ -21,7 +21,11 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "Starting PostgreSQL test service with Docker Compose"
   docker compose -f docker-compose.test.yml up -d postgres
   for _ in $(seq 1 30); do
-    if ready; then
+    SCHEMA_NAME="${DB_SCHEMA:-public}"
+  if [ "$SCHEMA_NAME" != "public" ]; then
+    PGPASSWORD="$PASSWORD" psql -h "$HOST" -p "$PORT" -U "$USER_NAME" -d "$DB_NAME" -v ON_ERROR_STOP=1 -c "CREATE SCHEMA IF NOT EXISTS \"$SCHEMA_NAME\" AUTHORIZATION \"$USER_NAME\";" >/dev/null
+  fi
+  if ready; then
       echo "PostgreSQL Docker service is ready"
       exit 0
     fi
