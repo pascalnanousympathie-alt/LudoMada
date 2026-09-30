@@ -40,7 +40,7 @@ jobs:
       - name: Show toolchain
         run: node -v && npm -v
       - name: Install dependencies
-        run: timeout -k 10s 600s npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional --install-strategy=shallow
+        run: NODE_OPTIONS=--max-old-space-size=256 timeout -k 10s 600s npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional --install-strategy=shallow
       - name: Generate Prisma client
         run: npx prisma generate
       - name: Run backend tests
