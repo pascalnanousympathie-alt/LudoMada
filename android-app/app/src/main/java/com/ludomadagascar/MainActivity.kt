@@ -627,17 +627,18 @@ class MainActivity : Activity() {
         add(button("↻ Havaozina",Color.rgb(37,93,196)){loadHistory()},52);add(button("← Wallet",Color.rgb(70,82,100)){wallet()},52);loadHistory()
     }
 
-    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}\n")}}}} }
+    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
-    private fun pay(deposit:Boolean, preselected:Int=0) {
+    private fun pay(deposit:Boolean, preselected:Int=0, cryptoCurrency:String?=null) {
         val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
         val contact=EditText(this).apply { hint="Téléphone ou identifiant (si requis)";inputType=1;setPadding(dp(12),0,dp(12),0) }
         val methods=arrayOf("MVola","Airtel Money","Orange Money","Binance Pay / Crypto")
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
         box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(contact,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(6)})
-        box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
+        val cryptoNote=if(!cryptoCurrency.isNullOrBlank()) "Asset crypto sélectionné: ${cryptoCurrency.uppercase()}" else "Choisis un asset crypto depuis le menu Crypto avant un dépôt/retrait Binance."
+        box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. ${cryptoNote} Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
         AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,preselected.coerceIn(0,3),null)
-            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
+            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim());if(method=="BINANCE" && !cryptoCurrency.isNullOrBlank())put("cryptoCurrency",cryptoCurrency.uppercase())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
             .setNegativeButton("Aoka",null).show()
     }
 
@@ -649,14 +650,46 @@ class MainActivity : Activity() {
 
     private fun cryptoDialog() {
         if(token.isBlank()){login();return}
-        val crypto=EditText(this).apply{hint="Montant crypto (0.1 / 0.5 / 1 / 2 / 5)";inputType=8194;setPadding(dp(12),0,dp(12),0)}
+        val crypto=EditText(this).apply{hint="Montant crypto";inputType=8194;setPadding(dp(12),0,dp(12),0)}
         val mga=EditText(this).apply{hint="Montant MGA";inputType=2;setPadding(dp(12),0,dp(12),0)}
-        val info=label("Récupération du taux serveur…",11f,false,Color.rgb(95,107,125))
+        val assetButton=Button(this).apply{isAllCaps=false;text="Asset: chargement…";setTextColor(Color.WHITE);background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(38,102,185),Color.rgb(24,53,94))).apply{cornerRadius=dp(16).toFloat()}}
+        val info=label("Lecture de la configuration crypto serveur…",11f,false,Color.rgb(95,107,125))
+        val external=label("Wallet externe: aucun connecteur WalletConnect configuré dans cette build — aucun faux état de connexion.",10.5f,false,Color.rgb(125,82,42))
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        box.addView(assetButton,LinearLayout.LayoutParams(-1,dp(50)).apply{bottomMargin=dp(7)})
         box.addView(crypto,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
         box.addView(mga,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
-        box.addView(info,LinearLayout.LayoutParams(-1,dp(42)))
-        AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
+        box.addView(info,LinearLayout.LayoutParams(-1,dp(46)))
+        box.addView(external,LinearLayout.LayoutParams(-1,dp(54)))
+        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        val deposit=button("➕ Dépôt crypto",Color.rgb(35,150,84)){}
+        val withdraw=button("➖ Retrait crypto",Color.rgb(210,55,65)){}
+        actions.addView(deposit,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(4),0)})
+        actions.addView(withdraw,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(4),0,0)})
+        box.addView(actions,LinearLayout.LayoutParams(-1,dp(58)))
+        var assets=emptyList<String>()
+        var rates=JSONObject()
+        var selected=""
+        lateinit var dialog: AlertDialog
+        fun applyAsset(asset:String){
+            selected=asset.uppercase()
+            assetButton.text="Asset crypto: $selected"
+            val rate=rates.optDouble(selected,0.0)
+            info.tag=rate
+            info.text=if(rate>0) "1 $selected = ${formatDecimal(rate)} Ar" else "Taux non configuré pour $selected."
+        }
+        assetButton.setOnClickListener{
+            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->applyAsset(assets[which])}.setNegativeButton("Aoka",null).show()
+        }
+        deposit.setOnClickListener{
+            val rate=if(selected.isBlank())0.0 else rates.optDouble(selected,0.0)
+            if(selected.isBlank() || rate<=0) Toast.makeText(this,"Crypto-actif non configurable pour les transactions.",Toast.LENGTH_LONG).show() else {dialog.dismiss();pay(true,3,selected)}
+        }
+        withdraw.setOnClickListener{
+            val rate=if(selected.isBlank())0.0 else rates.optDouble(selected,0.0)
+            if(selected.isBlank() || rate<=0) Toast.makeText(this,"Crypto-actif non configurable pour les transactions.",Toast.LENGTH_LONG).show() else {dialog.dismiss();pay(false,3,selected)}
+        }
+        dialog=AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
             .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
                 val rateHolder=info.tag as? Double ?: 0.0
                 if(rateHolder>0){
@@ -665,12 +698,21 @@ class MainActivity : Activity() {
                 }
             }
             .setPositiveButton("CONVERTIR"){_,_->Toast.makeText(this,"Conversion calculée avec le taux serveur. Aucun solde n’est crédité sans provider actif.",Toast.LENGTH_LONG).show()}
-            .setNegativeButton("Aoka",null).show()
+            .setNegativeButton("Aoka",null).create()
+        dialog.show()
         get("/api/payments/config"){j->
-            val b=j.optJSONObject("BINANCE");val rate=b?.optDouble("mgaRate",0.0)?:0.0;val cur=b?.optString("currency","CRYPTO")?:"CRYPTO";info.tag=rate
-            runOnUiThread{info.text=if(rate>0) "Taux: 1 $cur = ${formatDecimal(rate)} Ar • Provider ${if(b?.optBoolean("enabled",false)==true) "ACTIF" else "non activé"}" else "Taux crypto non configuré sur le serveur. Provider non activé."}
+            val b=j.optJSONObject("BINANCE")
+            val arr=b?.optJSONArray("currencies")
+            assets=(0 until (arr?.length()?:0)).mapNotNull{arr?.optString(it)?.trim()?.uppercase()?.takeIf{v->v.isNotBlank()}}
+            rates=b?.optJSONObject("rates")?:JSONObject()
+            val enabled=b?.optBoolean("enabled",false)==true
+            runOnUiThread{
+                if(assets.isNotEmpty()) applyAsset(assets.first()) else {assetButton.text="Crypto: aucun asset configuré";info.text="Aucun crypto-actif avec rate serveur n’est configuré."}
+                external.text=if(enabled) "Wallet externe: aucun connecteur WalletConnect configuré. Binance Pay est le provider crypto serveur actif." else "Wallet externe: aucun connecteur WalletConnect configuré. Provider crypto non activé sur le serveur."
+            }
         }
     }
+
     private fun formatDecimal(v:Double):String = String.format(java.util.Locale.US,"%.8f",v).trimEnd('0').trimEnd('.')
     private fun lobby() {
         page("lobby","Lalao")
