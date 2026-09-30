@@ -6,12 +6,15 @@ export type PaymentRequest = {
   method: PaymentMethod;
   type: TransactionType;
   customerPhone?: string;
+  cryptoCurrency?: string;
 };
 
 export type ProviderQueryContext = {
   expectedAmountMGA?: bigint;
   customerPhone?: string;
   type?: TransactionType;
+  cryptoCurrency?: string;
+  cryptoRate?: number;
 };
 
 export type ProviderResult = {
