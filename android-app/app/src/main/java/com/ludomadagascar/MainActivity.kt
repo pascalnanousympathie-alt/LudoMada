@@ -639,7 +639,7 @@ class MainActivity : Activity() {
         add(payRow1,72,0,0)
         val payRow2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         payRow2.addView(paymentTile("Orange Money","DÉSACTIVÉ • reste OFF","O",Color.rgb(247,133,18)){Toast.makeText(this,"Orange Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
-        payRow2.addView(paymentTile("Binance Pay","DÉSACTIVÉ • crypto OFF","B",Color.rgb(25,44,74)){Toast.makeText(this,"Binance Pay reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        payRow2.addView(paymentTile("Binance Pay","DÉSACTIVÉ • Binance Pay OFF","B",Color.rgb(25,44,74)){Toast.makeText(this,"Binance Pay reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(payRow2,72,0,6)
         sectionTitle("Crypto-actifs","Actifs séparés de Binance Pay • connexion externe sans balance fictive")
         add(label("USDT et ETH peuvent utiliser un wallet externe EVM. BTC, SOL et TRX restent affichés sans balance fictive tant que leur connecteur natif n’est pas configuré.", 11f, false, Color.rgb(102,114,132)), -2, 0, 4)
