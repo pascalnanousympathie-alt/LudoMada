@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 const cli = process.env.RAMUS_CLI;
 const apk = process.env.RAMUS_APK;
@@ -87,6 +88,11 @@ function screenshotExists(name) {
   const file = `ramus-evidence/${name}.jpg`;
   return existsSync(file) && statSync(file).size > 10000;
 }
+function sha256File(name) {
+  const file = `ramus-evidence/${name}.jpg`;
+  if (!existsSync(file)) return "";
+  return createHash("sha256").update(readFileSync(file)).digest("hex");
+}
 
 let session = "";
 let success = false;
@@ -135,6 +141,11 @@ try {
     shot("home-a");
     allow("wait", "--timeout", "6200", "--session", session);
     shot("home-b");
+    if (screenshotExists("home-a") && screenshotExists("home-b") &&
+        sha256File("home-a") === sha256File("home-b")) {
+      throw new Error("Premium Home background rotation did not change the rendered frame");
+    }
+    console.log("PREMIUM HOME BACKGROUND ROTATION PASS");
 
     // Wallet provider safety gate: the visible wallet/crypto catalog must expose
     // distinct marks, while all payment actions remain disabled until explicitly activated.
