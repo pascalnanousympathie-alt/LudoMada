@@ -24,6 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          clean: false
           fetch-depth: 1
       - name: Configure Android SDK
         working-directory: android-app
