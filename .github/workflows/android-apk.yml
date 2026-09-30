@@ -37,7 +37,7 @@ jobs:
           printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
 
       - run: sh ./gradlew --version
-      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+ - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
