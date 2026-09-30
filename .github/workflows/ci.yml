@@ -19,32 +19,34 @@ concurrency:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: ludomada_ci
-          POSTGRES_PASSWORD: ludomada_ci
-          POSTGRES_DB: ludomada_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U ludomada_ci -d ludomada_ci"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 20
     env:
-      DATABASE_URL: postgresql://ludomada_ci:ludomada_ci@localhost:5432/ludomada_ci?schema=public
+      DB_SCHEMA: ci_${{ github.run_id }}
+      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci?schema=ci_${{ github.run_id }}
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      NODE_OPTIONS: --max-old-space-size=512
+      npm_config_maxsockets: "1"
+      npm_config_jobs: "1"
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           fetch-depth: 1
+      - name: Use runner Linux Node
+        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
+      - name: Verify local PostgreSQL
+        run: |
+          set -eu
+          command -v psql
+          pg_isready -h 127.0.0.1 -p 5432 -U u0_a214
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm test -- --maxWorkers=2
