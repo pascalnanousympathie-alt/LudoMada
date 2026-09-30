@@ -44,7 +44,6 @@ jobs:
           fi
           git fetch --depth=1 origin "$GITHUB_SHA"
           git reset --hard "$GITHUB_SHA"
-          git clean -fdx
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - name: Show toolchain
