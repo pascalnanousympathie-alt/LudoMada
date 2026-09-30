@@ -13,7 +13,7 @@ jobs:
   backend-staging:
     runs-on: [self-hosted, linux, ARM64]
     env:
-      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
+      DATABASE_URL: postgresql://ludomada_test:ludomada_test@127.0.0.1:54329/ludomada_test?schema=staging
       NODE_ENV: staging
       PORT: 3101
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
@@ -30,6 +30,8 @@ jobs:
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
+      - name: Start isolated PostgreSQL
+        run: bash scripts/ensure-test-postgres.sh
       - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
       - run: npm run db:generate
       - run: npm run db:migrate
