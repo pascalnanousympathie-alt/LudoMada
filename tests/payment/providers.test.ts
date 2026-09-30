@@ -12,6 +12,7 @@ describe("payment providers", () => {
     delete process.env.MVOLA_PARTNER_NAME;
     delete process.env.MVOLA_TIMEOUT_MS;
     delete process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED;
+    delete process.env.PAYMENTS_MVOLA_LIVE_ENABLED;
     delete process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED;
     delete process.env.AIRTEL_CLIENT_ID;
     delete process.env.AIRTEL_CLIENT_SECRET;
@@ -21,12 +22,17 @@ describe("payment providers", () => {
     delete process.env.AIRTEL_TIMEOUT_MS;
     delete process.env.AIRTEL_MESSAGE_SIGNING_ENABLED;
     delete process.env.AIRTEL_RELAY_TOKEN;
+    delete process.env.BINANCE_PAY_CERTIFICATE_SN;
+    delete process.env.BINANCE_PAY_API_SECRET;
+    delete process.env.BINANCE_PAY_CURRENCY;
+    delete process.env.BINANCE_PAY_MGA_RATE;
+    delete process.env.BINANCE_PAY_CURRENCIES;
+    delete process.env.BINANCE_PAY_MGA_RATES_JSON;
+    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
     process.env.BINANCE_PAY_CURRENCY = "USDT";
     process.env.BINANCE_PAY_MGA_RATE = "5000";
-    delete process.env.PAYMENTS_MVOLA_LIVE_ENABLED;
-    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
   });
   afterEach(() => { global.fetch = oldFetch; });
 
