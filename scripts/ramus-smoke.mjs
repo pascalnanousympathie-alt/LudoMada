@@ -10,7 +10,7 @@ function runCli(...args) {
   const isSnapshot = args[0] === "snapshot";
   const isSessionStart = args[0] === "session" && args[1] === "start";
   const timeoutMs = isSnapshot ? 15000 : (isSessionStart ? 180000 : 60000);
-  const timeoutBin = "/data/data/com.termux/files/usr/bin/timeout";
+  const timeoutBin = process.env.RAMUS_TIMEOUT_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/timeout" : "timeout");
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
   for (let attempt = 1; attempt <= 3; attempt++) {
     const r = spawnSync(timeoutBin, ["-k", "2s", `${timeoutSec}s`, process.execPath, cli, ...args], {
@@ -26,7 +26,8 @@ function runCli(...args) {
       catch { value = { error: "non_json", message: out.slice(0, 1200) }; }
       if (r.status === 0 && !value.error) return { ok: true, value };
       if (transient && attempt < 3) {
-        spawnSync("/data/data/com.termux/files/usr/bin/sleep", ["2"], { stdio: "ignore" });
+        const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
+        spawnSync(sleepBin, ["2"], { stdio: "ignore" });
         continue;
       }
       if (/no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out + "\n" + err) && !process.env.RAMUS_API_KEY && args[0] !== "trial" && attempt === 1) {
