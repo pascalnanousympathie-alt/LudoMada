@@ -262,7 +262,7 @@ class LudoBoardView(
     }
 
 
-    private class SceneRenderer(private val host: LudoBoardView) : Renderer {
+    internal class SceneRenderer(private val host: LudoBoardView) : Renderer {
         var state: JSONObject? = null
         var player: Int = -1
         var diceAnim = 1f
@@ -438,7 +438,7 @@ class LudoBoardView(
                     val len=max(0.001f,kotlin.math.sqrt(dx*dx+dy*dy+dz*dz));dx/=len;dy/=len;dz/=len
                     val sky=(dy*0.5f+0.5f).coerceIn(0f,1f)
                     val horizon=kotlin.math.exp(-kotlin.math.abs(dy)*3.2f).toFloat()
-                    val sun=max(0f,dx*0.55f+dy*0.72f+dz*0.42f).toDouble().pow(48.0).toFloat()
+                    val sun=Math.pow(max(0f,dx*0.55f+dy*0.72f+dz*0.42f).toDouble(),48.0).toFloat()
                     val warm=0.10f*horizon+0.08f*sun
                     val r=(0.018f+0.19f*sky+warm).coerceIn(0f,1f)
                     val g=(0.030f+0.27f*sky+warm*0.78f).coerceIn(0f,1f)
