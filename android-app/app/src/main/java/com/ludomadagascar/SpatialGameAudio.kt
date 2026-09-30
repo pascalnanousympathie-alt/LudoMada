@@ -12,42 +12,48 @@ import kotlin.math.pow
 
 /**
  * Offline procedural game SFX with stereo spatialisation and optional room reverb.
- * No network or large sound assets are required.
+ * No network or large sound assets are required. Audio is always best-effort.
  */
 class SpatialGameAudio {
     private val sampleRate = 44100
-    private val track: AudioTrack
-    private val reverb: PresetReverb?
+    private var track: AudioTrack? = null
+    private var reverb: PresetReverb? = null
 
     init {
-        track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_GAME)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
-                    .build()
-            )
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(sampleRate / 2 * 4)
-            .build()
-        reverb = runCatching {
-            PresetReverb(0, track.audioSessionId).apply {
-                preset = PresetReverb.PRESET_SMALLROOM
-                enabled = true
-                setStrength(700.toShort())
-            }
-        }.getOrNull()
-        track.play()
+        runCatching {
+            track = AudioTrack.Builder()
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_GAME)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                .setAudioFormat(
+                    AudioFormat.Builder()
+                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                        .setSampleRate(sampleRate)
+                        .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                        .build()
+                )
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .setBufferSizeInBytes(sampleRate / 2 * 4)
+                .build()
+            track?.play()
+            reverb = runCatching {
+                PresetReverb(0, track!!.audioSessionId).apply {
+                    preset = PresetReverb.PRESET_SMALLROOM
+                    enabled = true
+                    setStrength(700.toShort())
+                }
+            }.getOrNull()
+        }.onFailure {
+            track = null
+            reverb = null
+        }
     }
 
     fun play(pan: Float, intensity: Float = 0.8f, frequency: Double = 620.0) {
+        val audio = track ?: return
         val p = pan.coerceIn(-1f, 1f)
         val gain = intensity.coerceIn(0f, 1f)
         Thread {
@@ -62,13 +68,16 @@ class SpatialGameAudio {
                 pcm[i * 2] = left
                 pcm[i * 2 + 1] = right
             }
-            runCatching { track.write(pcm, 0, pcm.size) }
+            runCatching { audio.setStereoVolume(1f, 1f); audio.write(pcm, 0, pcm.size) }
         }.start()
     }
 
     fun release() {
         runCatching { reverb?.release() }
-        runCatching { track.stop() }
-        runCatching { track.release() }
+        reverb = null
+        val audio = track
+        track = null
+        runCatching { audio?.stop() }
+        runCatching { audio?.release() }
     }
 }
