@@ -134,6 +134,49 @@ try {
     shot("home-a");
     allow("wait", "--timeout", "6200", "--session", session);
     shot("home-b");
+
+    // Wallet provider safety gate: the visible wallet/crypto catalog must expose
+    // distinct marks, while all payment actions remain disabled until explicitly activated.
+    let walletOpened = false;
+    for (const pt of ["0.52,0.80", "0.55,0.80", "0.50,0.78"]) {
+      const t = allow("tap", pt, "--session", session, "--force");
+      if (t.ok) {
+        waitStable(800);
+        if (hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay")) {
+          walletOpened = true;
+          break;
+        }
+      }
+    }
+    if (!walletOpened) throw new Error("Wallet screen was not reachable from Premium Home");
+
+    const disabled = allow("snapshot", "--session", session, "--find", "DÉSACTIVÉ");
+    const mv = allow("snapshot", "--session", session, "--find", "mV");
+    const btc = allow("snapshot", "--session", session, "--find", "₿");
+    const eth = allow("snapshot", "--session", session, "--find", "Ξ");
+    const sol = allow("snapshot", "--session", session, "--find", "SOL");
+    const trx = allow("snapshot", "--session", session, "--find", "TRX");
+    if (!disabled.ok || !disabled.value?.elements?.length) throw new Error("Disabled payment state is not visible");
+    if (!mv.ok || !mv.value?.elements?.length || !btc.ok || !btc.value?.elements?.length ||
+        !eth.ok || !eth.value?.elements?.length || !sol.ok || !sol.value?.elements?.length ||
+        !trx.ok || !trx.value?.elements?.length) {
+      throw new Error("Wallet/crypto brand marks are incomplete");
+    }
+    console.log("WALLET PROVIDER/CRYPTO MARKS + DISABLED STATE PASS");
+    shot("wallet-disabled");
+
+    for (const providerText of ["MVola", "Binance Pay"]) {
+      const target = allow("snapshot", "--session", session, "--find", providerText);
+      if (target.ok && target.value?.elements?.length) {
+        tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
+        waitStable(500);
+        if (!hasText("SOLDE MGA") || !hasText("DÉSACTIVÉ")) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
+      }
+    }
+    console.log("DISABLED PROVIDER TAP GUARD PASS");
+
+    allow("press", "BACK", "--session", session);
+    waitStable(900);
   }
 
   // Open play from the actual premium Home. Ramus exposes the landscape render through
