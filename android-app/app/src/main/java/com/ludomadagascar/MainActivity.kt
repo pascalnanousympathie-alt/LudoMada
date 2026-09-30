@@ -28,6 +28,7 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingExcept
 import com.reown.appkit.client.AppKit
 
 class MainActivity : Activity() {
+    // Build gate recovery marker: no runtime/gameplay behavior change.
     private val apiBase = BuildConfig.API_BASE_URL
     private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
     private var entryFee = 500
