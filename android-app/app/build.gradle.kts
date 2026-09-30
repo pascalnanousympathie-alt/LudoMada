@@ -1,12 +1,4 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
-plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-    }
-}
+plugins { id("com.android.application") }
 
 android { namespace="com.ludomadagascar"; compileSdk=37
  buildFeatures { buildConfig = true }
