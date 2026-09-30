@@ -189,15 +189,22 @@ public class PremiumHeroViewV2 extends FrameLayout {
     Bitmap lobbyRef;
     Bitmap bgBaobab;
     Bitmap bgAlt;
+    Bitmap bgMatory;
+    Bitmap bg322;
+    Bitmap bg7cc;
     int bgIndex=0;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
       lobbyRef=BitmapFactory.decodeResource(getResources(),R.drawable.ludomada_lobby_reference_4k);
       bgBaobab=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab_landscape);
       bgAlt=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt_landscape);
+      bgMatory=BitmapFactory.decodeResource(getResources(),R.drawable.bg_matory_landscape);
+      bg322=BitmapFactory.decodeResource(getResources(),R.drawable.bg_322517a0_landscape);
+      bg7cc=BitmapFactory.decodeResource(getResources(),R.drawable.bg_7cc058_landscape);
       p.setFilterBitmap(true);
     }
-    void flipBackground(){ bgIndex=1-bgIndex; invalidate(); }
+    void flipBackground(){ bgIndex=(bgIndex+1)%backgroundCount(); invalidate(); }
+    int backgroundCount(){ return 5; }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
@@ -292,8 +299,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
     void background(Canvas c,float W,float H){
       // Real rotating landscape backgrounds. The board/menu are rendered as live UI on top;
       // no screenshot/mockup is used as the Home surface.
-      Bitmap bm = bgIndex==0 ? bgBaobab : bgAlt;
-      if(bm==null) bm=lobbyRef;
+      Bitmap bm;
+      switch(bgIndex){
+        case 1: bm=bgAlt; break;
+        case 2: bm=bgMatory; break;
+        case 3: bm=bg322; break;
+        case 4: bm=bg7cc; break;
+        default: bm=bgBaobab; break;
+      }
+      if(bm==null) bm=bgBaobab!=null?bgBaobab:lobbyRef;
       drawCover(c,bm,1f,W,H);
       p.setShader(new LinearGradient(0,0,0,H,0x33030C24,0xB5030C24,Shader.TileMode.CLAMP));
       c.drawRect(0,0,W,H,p);

@@ -380,7 +380,9 @@ class LudoBoardView(
             drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),floatArrayOf(0.47f,0.18f,0.05f,1f),0.42f,0.12f,1f,0f,1,false)
             drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),floatArrayOf(0.78f,0.48f,0.16f,1f),0.46f,0.10f,1f,0f,1,false)
             drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),floatArrayOf(0.88f,0.84f,0.73f,1f),0.58f,0.04f,1f,0f,2,false)
-            drawMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.48f,0.04f,0.98f,0f,2,false)
+            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
+            // Thin metallic center plinth gives the die a physical resting area and a contact shadow.
+            drawMesh(disk,identityAt(0f,boardTop+0.20f,0f,0.95f,1f,0.95f),floatArrayOf(0.72f,0.75f,0.78f,0.90f),0.18f,0.78f,0.98f,0.02f,4,false)
             for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
             val homes=arrayOf(floatArrayOf(-2.55f,-2.55f),floatArrayOf(2.55f,-2.55f),floatArrayOf(-2.55f,2.55f),floatArrayOf(2.55f,2.55f))
             for(i in 0..3){val hc=homes[i];drawMesh(disk,identityAt(hc[0],boardTop+0.16f,hc[1],1.05f,1f,1.05f),rgba(zoneColorInt(i)),0.25f,0.06f,1f,0.015f,3,false);drawMesh(disk,identityAt(hc[0],boardTop+0.17f,hc[1],0.88f,1f,0.88f),floatArrayOf(0.96f,0.96f,0.96f,0.20f),0.12f,0f,1f,0f,2,true)}
@@ -496,7 +498,11 @@ class LudoBoardView(
             for ((r,c) in visualPath()) {
                 val x = (c - 7.0f) * 0.50f
                 val z = (r - 7.0f) * 0.50f
-                addBox(v, n, i, base, x, boardTop + 0.02f, z, 0.235f, 0.035f, 0.235f)
+                addBox(v, n, i, base, x, boardTop + 0.018f, z, 0.245f, 0.040f, 0.245f)
+                base += 24
+                // Raised lacquered inset: a second, smaller tier makes each playable cell read as
+                // a molded/finished surface instead of a flat sticker.
+                addBox(v, n, i, base, x, boardTop + 0.052f, z, 0.218f, 0.018f, 0.218f)
                 base += 24
             }
             return Mesh(v.toFloatArray(), n.toFloatArray(), i.toShortArray())
