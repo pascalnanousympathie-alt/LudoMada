@@ -31,19 +31,16 @@ jobs:
       run:
         shell: bash
     steps:
-      - name: Checkout source without external action
+      - name: Checkout source from local runner mirror
         working-directory: .
         run: |
           set -eu
-          cd "$GITHUB_WORKSPACE"
-          if [ ! -d .git ]; then
-            git init
-            git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          elif ! git remote get-url origin >/dev/null 2>&1; then
-            git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          fi
-          git fetch --depth=1 origin "$GITHUB_SHA"
-          git reset --hard "$GITHUB_SHA"
+          src="$HOME/LudoMada"
+          test -d "$src/.git"
+          git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
       - name: Show toolchain
