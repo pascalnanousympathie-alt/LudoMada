@@ -189,23 +189,19 @@ try {
     // semantic provider/asset labels exposed by the actual Wallet tiles.
     const requiredMarks = ["DÉSACTIVÉ", "MVola", "Bitcoin / BTC", "Ethereum / ETH", "Solana / SOL", "Tron / TRX", "Binance Pay"];
     const seenMarks = new Set();
-    for (let i = 0; i < 16 && seenMarks.size < requiredMarks.length; i++) {
-      // Include offscreen accessibility nodes: the Wallet crypto grid is a two-column
-      // landscape layout, while Ramus normalizes the input surface to portrait.
-      // BTC/SOL can therefore be offscreen in the normalized viewport but remain real
-      // nodes in Android's current accessibility tree.
-      const pageSnap = allow("snapshot", "--session", session, "--include-offscreen");
-      if (pageSnap.ok) {
-        for (const el of pageSnap.value?.elements || []) {
-          const hay = [el.text, el.contentDesc].filter(Boolean).join(" ");
-          for (const mark of requiredMarks) if (hay.includes(mark)) seenMarks.add(mark);
-        }
-      }
-      if (seenMarks.size < requiredMarks.length) {
-        // The Android ScrollView settles synchronously after the DPAD action on Ramus.
-        // Avoid the generic stable wait here; its 60s process wrapper can make a 250ms
-        // UI settle request unnecessarily expensive and can starve the 900s smoke budget.
-        allow("press", "DPAD_DOWN", "--session", session);
+    // The Wallet crypto grid becomes attached at this scroll position. Eight DPAD_DOWN
+    // actions are deterministic on the current landscape/portrait Ramus projection and
+    // avoid overscrolling the grid, which can recycle the right-column nodes.
+    for (let i = 0; i < 8; i++) {
+      allow("press", "DPAD_DOWN", "--session", session);
+    }
+    // Include offscreen accessibility nodes: BTC/SOL live in the right column of the
+    // landscape grid and are offscreen in Ramus's normalized portrait coordinates.
+    const pageSnap = allow("snapshot", "--session", session, "--include-offscreen");
+    if (pageSnap.ok) {
+      for (const el of pageSnap.value?.elements || []) {
+        const hay = [el.text, el.contentDesc].filter(Boolean).join(" ");
+        for (const mark of requiredMarks) if (hay.includes(mark)) seenMarks.add(mark);
       }
     }
     if (seenMarks.size !== requiredMarks.length) {
