@@ -35,10 +35,9 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="/data/data/com.termux/files/home/LudoMada"
-          test -d "$src/.git"
-          git -C "$src" fetch --no-tags origin "$GITHUB_SHA"
-          git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
           git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
