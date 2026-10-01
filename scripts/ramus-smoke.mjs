@@ -150,7 +150,10 @@ try {
     // Wallet provider safety gate: the visible wallet/crypto catalog must expose
     // distinct marks, while all payment actions remain disabled until explicitly activated.
     let walletOpened = false;
-    for (const pt of ["0.52,0.80", "0.55,0.80", "0.50,0.78"]) {
+    // Premium Home is rendered landscape on Ramus. The WALLET rail is around
+    // x=0.18–0.30, y=0.45–0.58 of the reported landscape surface; keep a few
+    // nearby fallbacks for slightly different device chrome/insets.
+    for (const pt of ["0.21,0.52", "0.20,0.54", "0.23,0.50"]) {
       const t = allow("tap", pt, "--session", session, "--force");
       if (t.ok) {
         waitStable(800);
