@@ -25,6 +25,7 @@ jobs:
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       NODE_OPTIONS: --max-old-space-size=512
+      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
       npm_config_maxsockets: "1"
       npm_config_jobs: "1"
     defaults:

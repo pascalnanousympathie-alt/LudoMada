@@ -21,6 +21,7 @@ jobs:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
     steps:
       - name: Checkout source from GitHub
         working-directory: .

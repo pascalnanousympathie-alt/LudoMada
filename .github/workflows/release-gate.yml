@@ -21,6 +21,7 @@ jobs:
       npm_config_maxsockets: "1"
       npm_config_jobs: "1"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - name: Checkout source from local runner mirror
