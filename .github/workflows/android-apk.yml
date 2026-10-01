@@ -26,12 +26,13 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="/root/LudoMada"
-          test -d "$src/.git"
-          git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
           git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
       - name: Accept Android SDK licenses
         working-directory: .
         run: |
