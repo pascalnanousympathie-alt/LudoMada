@@ -185,13 +185,22 @@ try {
     // the crypto grid is reached. Test them before scrolling; then test crypto assets
     // at the deterministic grid position below.
     for (const providerText of ["MVola", "Binance Pay"]) {
-      // --find may select a decorative child or fail to index contentDesc. Read the
-      // accessibility tree directly and select the clickable paymentTile parent.
-      const tree = allow("snapshot", "--session", session, "--include-offscreen");
-      const candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
+      // Ramus initially exposes only the Wallet header. One DPAD_DOWN advances the
+      // ScrollView to the provider-row attachment point; then inspect the live tree
+      // and select the clickable paymentTile parent by its semantic contentDesc.
+      let tree = allow("snapshot", "--session", session, "--include-offscreen");
+      let candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
         const desc = String(el.contentDesc || "");
         return el.clickable && desc.startsWith(providerText + " • DÉSACTIVÉ");
       }) : [];
+      if (!candidates.length) {
+        allow("press", "DPAD_DOWN", "--session", session);
+        tree = allow("snapshot", "--session", session, "--include-offscreen");
+        candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
+          const desc = String(el.contentDesc || "");
+          return el.clickable && desc.startsWith(providerText + " • DÉSACTIVÉ");
+        }) : [];
+      }
       const parent = candidates[0];
       if (!parent) {
         throw new Error("Wallet provider tile not reachable at Wallet entry: " + providerText);
