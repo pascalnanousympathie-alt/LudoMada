@@ -30,6 +30,8 @@ jobs:
           set -eu
           if [ -d "$GITHUB_WORKSPACE/.git" ]; then
             git -C "$GITHUB_WORKSPACE" remote remove origin 2>/dev/null || true
+            git -C "$GITHUB_WORKSPACE" reset --hard HEAD 2>/dev/null || true
+            git -C "$GITHUB_WORKSPACE" clean -fd
           else
             rm -rf "$GITHUB_WORKSPACE"
             mkdir -p "$GITHUB_WORKSPACE"
