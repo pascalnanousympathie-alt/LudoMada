@@ -39,17 +39,17 @@ jobs:
           set -eu
           mkdir -p "$HOME/.ci-node-bin"
           cat > "$HOME/.ci-node-bin/node" <<'EOF'
-          #!/bin/sh
+          #!/data/data/com.termux/files/usr/bin/sh
           export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
           exec /data/data/com.termux/files/usr/bin/node "$@"
           EOF
           cat > "$HOME/.ci-node-bin/npm" <<'EOF'
-          #!/bin/sh
+          #!/data/data/com.termux/files/usr/bin/sh
           export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
           exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npm "$@"
           EOF
           cat > "$HOME/.ci-node-bin/npx" <<'EOF'
-          #!/bin/sh
+          #!/data/data/com.termux/files/usr/bin/sh
           export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
           exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npx "$@"
           EOF
