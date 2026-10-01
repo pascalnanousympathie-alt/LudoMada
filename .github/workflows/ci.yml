@@ -35,7 +35,7 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="$HOME/LudoMada"
+          src="/root/LudoMada"
           test -d "$src/.git"
           git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
@@ -53,10 +53,10 @@ jobs:
       - name: Prepare persistent dependencies
         run: |
           set -eu
-          source_dir="$HOME/LudoMada/node_modules"
+          source_dir="/root/LudoMada/node_modules"
           test -d "$source_dir"
           expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
-          source_lock="$(sha256sum "$HOME/LudoMada/package-lock.json" | awk '{print $1}')"
+          source_lock="$(sha256sum "/root/LudoMada/package-lock.json" | awk '{print $1}')"
           test "$expected_lock" = "$source_lock"
           test -f "$source_dir/.package-lock.json"
           if [ -L node_modules ] || [ -d node_modules ]; then
