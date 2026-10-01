@@ -185,7 +185,9 @@ try {
     // input surface, so DPAD_DOWN is more reliable than synthetic swipe gestures.
     // Accumulate evidence across the visible accessibility pages instead of
     // requiring every provider/crypto tile to coexist in one viewport.
-    const requiredMarks = ["DÉSACTIVÉ", "mV", "₿", "Ξ", "SOL", "TRX"];
+    // Ramus accessibility may normalize/omit the visual Bitcoin glyph; assert its
+    // semantic label instead (Bitcoin / BTC).
+    const requiredMarks = ["DÉSACTIVÉ", "mV", "BTC", "Ξ", "SOL", "TRX"];
     const seenMarks = new Set();
     for (let i = 0; i < 16 && seenMarks.size < requiredMarks.length; i++) {
       const pageSnap = allow("snapshot", "--session", session);
