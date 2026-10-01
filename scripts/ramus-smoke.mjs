@@ -185,7 +185,14 @@ try {
     // the crypto grid is reached. Test them before scrolling; then test crypto assets
     // at the deterministic grid position below.
     for (const providerText of ["MVola", "Binance Pay"]) {
-      const target = allow("snapshot", "--session", session, "--find", providerText, "--include-offscreen");
+      // paymentTile exposes the clickable parent as "<title> • <subtitle>" while
+      // the first accessibility match for the bare title can be the decorative logo child.
+      // Target the parent's full accessible description so the disabled-state tap exercises
+      // the real clickable tile instead of its non-clickable logo.
+      const providerFind = providerText === "MVola"
+        ? "MVola • DÉSACTIVÉ • reste OFF"
+        : "Binance Pay • DÉSACTIVÉ • Binance Pay OFF";
+      const target = allow("snapshot", "--session", session, "--find", providerFind, "--include-offscreen");
       if (!target.ok || !target.value?.elements?.length) {
         throw new Error(`Wallet provider tile not reachable at Wallet entry: ${providerText}`);
       }
