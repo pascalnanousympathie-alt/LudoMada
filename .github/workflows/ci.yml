@@ -35,14 +35,16 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="/root/LudoMada"
-          test -d "$src/.git"
-          git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
           git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+
+      - name: Use Termux Node
+        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
+
       - name: Show toolchain
         run: node -v && npm -v
       - name: Show runner memory
@@ -53,10 +55,10 @@ jobs:
       - name: Prepare persistent dependencies
         run: |
           set -eu
-          source_dir="/root/LudoMada/node_modules"
+          source_dir="/data/data/com.termux/files/home/LudoMada/node_modules"
           test -d "$source_dir"
           expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
-          source_lock="$(sha256sum "/root/LudoMada/package-lock.json" | awk '{print $1}')"
+          source_lock="$(sha256sum "/data/data/com.termux/files/home/LudoMada/package-lock.json" | awk '{print $1}')"
           test "$expected_lock" = "$source_lock"
           test -f "$source_dir/.package-lock.json"
           if [ -L node_modules ] || [ -d node_modules ]; then
