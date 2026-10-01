@@ -176,28 +176,46 @@ try {
       }
     }
     if (!walletOpened) throw new Error("Wallet screen was not reachable from Premium Home");
+    console.log("HOME→WALLET PASS");
 
-    const disabled = allow("snapshot", "--session", session, "--find", "DÉSACTIVÉ");
-    const mv = allow("snapshot", "--session", session, "--find", "mV");
-    const btc = allow("snapshot", "--session", session, "--find", "₿");
-    const eth = allow("snapshot", "--session", session, "--find", "Ξ");
-    const sol = allow("snapshot", "--session", session, "--find", "SOL");
-    const trx = allow("snapshot", "--session", session, "--find", "TRX");
-    if (!disabled.ok || !disabled.value?.elements?.length) throw new Error("Disabled payment state is not visible");
-    if (!mv.ok || !mv.value?.elements?.length || !btc.ok || !btc.value?.elements?.length ||
-        !eth.ok || !eth.value?.elements?.length || !sol.ok || !sol.value?.elements?.length ||
-        !trx.ok || !trx.value?.elements?.length) {
-      throw new Error("Wallet/crypto brand marks are incomplete");
+    // Wallet is a real ScrollView. Ramus maps the landscape render to a portrait
+    // input surface, so DPAD_DOWN is more reliable than synthetic swipe gestures.
+    // Accumulate evidence across the visible accessibility pages instead of
+    // requiring every provider/crypto tile to coexist in one viewport.
+    const requiredMarks = ["DÉSACTIVÉ", "mV", "₿", "Ξ", "SOL", "TRX"];
+    const seenMarks = new Set();
+    for (let i = 0; i < 16 && seenMarks.size < requiredMarks.length; i++) {
+      const pageSnap = allow("snapshot", "--session", session);
+      if (pageSnap.ok) {
+        for (const el of pageSnap.value?.elements || []) {
+          const hay = [el.text, el.contentDesc].filter(Boolean).join(" ");
+          for (const mark of requiredMarks) if (hay.includes(mark)) seenMarks.add(mark);
+        }
+      }
+      if (seenMarks.size < requiredMarks.length) {
+        allow("press", "DPAD_DOWN", "--session", session);
+        waitStable(250);
+      }
+    }
+    if (seenMarks.size !== requiredMarks.length) {
+      throw new Error(`Wallet/crypto brand marks are incomplete: ${requiredMarks.filter(x => !seenMarks.has(x)).join(", ")}`);
     }
     console.log("WALLET PROVIDER/CRYPTO MARKS + DISABLED STATE PASS");
     shot("wallet-disabled");
 
     for (const providerText of ["MVola", "Binance Pay"]) {
-      const target = allow("snapshot", "--session", session, "--find", providerText);
+      let target = allow("snapshot", "--session", session, "--find", providerText);
+      for (let i = 0; i < 12 && (!target.ok || !target.value?.elements?.length); i++) {
+        allow("press", "DPAD_DOWN", "--session", session);
+        waitStable(250);
+        target = allow("snapshot", "--session", session, "--find", providerText);
+      }
       if (target.ok && target.value?.elements?.length) {
         tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
         waitStable(500);
         if (!hasText("SOLDE MGA") || !hasText("DÉSACTIVÉ")) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
+      } else {
+        throw new Error(`Wallet provider tile not reachable: ${providerText}`);
       }
     }
     console.log("DISABLED PROVIDER TAP GUARD PASS");
