@@ -198,8 +198,10 @@ try {
         }
       }
       if (seenMarks.size < requiredMarks.length) {
+        // The Android ScrollView settles synchronously after the DPAD action on Ramus.
+        // Avoid the generic stable wait here; its 60s process wrapper can make a 250ms
+        // UI settle request unnecessarily expensive and can starve the 900s smoke budget.
         allow("press", "DPAD_DOWN", "--session", session);
-        waitStable(250);
       }
     }
     if (seenMarks.size !== requiredMarks.length) {
