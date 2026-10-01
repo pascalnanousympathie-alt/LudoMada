@@ -185,30 +185,29 @@ try {
     // the crypto grid is reached. Test them before scrolling; then test crypto assets
     // at the deterministic grid position below.
     for (const providerText of ["MVola", "Binance Pay"]) {
-      // paymentTile exposes the clickable parent as "<title> • <subtitle>" while
-      // the first accessibility match for the bare title can be the decorative logo child.
-      // Target the parent's full accessible description so the disabled-state tap exercises
-      // the real clickable tile instead of its non-clickable logo.
-      const providerFind = providerText === "MVola"
-        ? "MVola • DÉSACTIVÉ • reste OFF"
-        : "Binance Pay • DÉSACTIVÉ • Binance Pay OFF";
-      const target = allow("snapshot", "--session", session, "--find", providerFind, "--include-offscreen");
-      if (!target.ok || !target.value?.elements?.length) {
-        throw new Error(`Wallet provider tile not reachable at Wallet entry: ${providerText}`);
+      // --find may select a decorative child or fail to index contentDesc. Read the
+      // accessibility tree directly and select the clickable paymentTile parent.
+      const tree = allow("snapshot", "--session", session, "--include-offscreen");
+      const candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
+        const desc = String(el.contentDesc || "");
+        return el.clickable && desc.startsWith(providerText + " • DÉSACTIVÉ");
+      }) : [];
+      const parent = candidates[0];
+      if (!parent) {
+        throw new Error("Wallet provider tile not reachable at Wallet entry: " + providerText);
       }
-      const el = target.value.elements[0];
-      const tapArgs = ["tap", el.ref, "--gen", String(target.value.gen), "--session", session];
-      if (el.offscreen) tapArgs.push("--force");
+      const tapArgs = ["tap", parent.ref, "--gen", String(tree.value.gen), "--session", session];
+      if (parent.offscreen) tapArgs.push("--force");
       const tapped = allow(...tapArgs);
       if (!tapped.ok) {
-        throw new Error(`Wallet provider tile could not be activated for disabled-state verification: ${providerText}`);
+        throw new Error("Wallet provider tile could not be activated for disabled-state verification: " + providerText);
       }
       const providerState = allow("snapshot", "--session", session, "--include-offscreen");
       const providerTexts = providerState.ok
         ? (providerState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
         : [];
       if (!providerTexts.some(t => t.includes(providerText)) || !providerTexts.some(t => t.includes("DÉSACTIVÉ"))) {
-        throw new Error(`${providerText} disabled state is not preserved in Wallet`);
+        throw new Error(providerText + " disabled state is not preserved in Wallet");
       }
     }
     console.log("DISABLED PROVIDER TAP GUARD PASS");
