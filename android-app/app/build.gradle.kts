@@ -48,6 +48,8 @@ dependencies {
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    // Reown transitively requests coroutines-reactive 1.9.0; 1.11.0 is cached on the ARM64 runner.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.11.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
