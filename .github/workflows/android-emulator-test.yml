@@ -22,15 +22,20 @@ jobs:
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     steps:
-      - name: Checkout source from local runner mirror
+      - name: Checkout source from GitHub
         working-directory: .
         run: |
           set -eu
-          src="/home/runner/ludomada-mirror.git"
-          test -d "$src"
-          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
-          rm -rf "$GITHUB_WORKSPACE"
-          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          if [ -d "$GITHUB_WORKSPACE/.git" ]; then
+            git -C "$GITHUB_WORKSPACE" remote remove origin 2>/dev/null || true
+          else
+            rm -rf "$GITHUB_WORKSPACE"
+            mkdir -p "$GITHUB_WORKSPACE"
+            git -C "$GITHUB_WORKSPACE" init
+          fi
+          git -C "$GITHUB_WORKSPACE" remote add origin "https://github.com/$GITHUB_REPOSITORY.git" 2>/dev/null || true
+          git -C "$GITHUB_WORKSPACE" remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -C "$GITHUB_WORKSPACE" fetch --depth=1 origin "$GITHUB_SHA"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
 
       - name: Accept Android SDK licenses
