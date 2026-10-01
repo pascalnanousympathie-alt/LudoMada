@@ -188,18 +188,20 @@ try {
       // Ramus initially exposes only the Wallet header. One DPAD_DOWN advances the
       // ScrollView to the provider-row attachment point; then inspect the live tree
       // and select the clickable paymentTile parent by its semantic contentDesc.
+      // Provider rows are attached lazily in Ramus's normalized portrait projection.
+      // Walk the ScrollView until the live accessibility tree contains the clickable parent.
       let tree = allow("snapshot", "--session", session, "--include-offscreen");
-      let candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
-        const desc = String(el.contentDesc || "");
-        return el.clickable && desc.startsWith(providerText + " • DÉSACTIVÉ");
-      }) : [];
-      if (!candidates.length) {
-        allow("press", "DPAD_DOWN", "--session", session);
-        tree = allow("snapshot", "--session", session, "--include-offscreen");
+      let candidates = [];
+      for (let i = 0; i <= 8; i++) {
         candidates = tree.ok ? (tree.value?.elements || []).filter(el => {
           const desc = String(el.contentDesc || "");
           return el.clickable && desc.startsWith(providerText + " • DÉSACTIVÉ");
         }) : [];
+        if (candidates.length) break;
+        if (i < 8) {
+          allow("press", "DPAD_DOWN", "--session", session);
+          tree = allow("snapshot", "--session", session, "--include-offscreen");
+        }
       }
       const parent = candidates[0];
       if (!parent) {
