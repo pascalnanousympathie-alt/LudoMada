@@ -181,13 +181,28 @@ try {
     if (!walletOpened) throw new Error("Wallet screen was not reachable from Premium Home");
     console.log("HOME→WALLET PASS");
 
+    // Provider rows sit at the top of the Wallet ScrollView and are recycled once
+    // the crypto grid is reached. Test them before scrolling; then test crypto assets
+    // at the deterministic grid position below.
+    for (const providerText of ["MVola", "Binance Pay"]) {
+      const target = allow("snapshot", "--session", session, "--find", providerText);
+      if (!target.ok || !target.value?.elements?.length) {
+        throw new Error(`Wallet provider tile not reachable at Wallet entry: ${providerText}`);
+      }
+      tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
+      const providerState = allow("snapshot", "--session", session, "--include-offscreen");
+      const providerTexts = providerState.ok
+        ? (providerState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
+        : [];
+      if (!providerTexts.some(t => t.includes(providerText)) || !providerTexts.some(t => t.includes("DÉSACTIVÉ"))) {
+        throw new Error(`${providerText} disabled state is not preserved in Wallet`);
+      }
+    }
+    console.log("DISABLED PROVIDER TAP GUARD PASS");
+
     // Wallet is a real ScrollView. Ramus maps the landscape render to a portrait
     // input surface, so DPAD_DOWN is more reliable than synthetic swipe gestures.
-    // Accumulate evidence across the visible accessibility pages instead of
-    // requiring every provider/crypto tile to coexist in one viewport.
-    // Ramus accessibility may normalize/omit visual crypto glyphs; assert the
-    // semantic provider/asset labels exposed by the actual Wallet tiles.
-    const requiredMarks = ["DÉSACTIVÉ", "MVola", "Bitcoin / BTC", "Ethereum / ETH", "Solana / SOL", "Tron / TRX", "Binance Pay"];
+    const requiredMarks = ["Bitcoin / BTC", "Ethereum / ETH", "Solana / SOL", "Tron / TRX", "Binance Pay"];
     const seenMarks = new Set();
     // The Wallet crypto grid becomes attached at this scroll position. Eight DPAD_DOWN
     // actions are deterministic on the current landscape/portrait Ramus projection and
@@ -209,28 +224,6 @@ try {
     }
     console.log("WALLET PROVIDER/CRYPTO MARKS + DISABLED STATE PASS");
     shot("wallet-disabled");
-
-    for (const providerText of ["MVola", "Binance Pay"]) {
-      let target = allow("snapshot", "--session", session, "--find", providerText);
-      for (let i = 0; i < 12 && (!target.ok || !target.value?.elements?.length); i++) {
-        allow("press", "DPAD_DOWN", "--session", session);
-        waitStable(250);
-        target = allow("snapshot", "--session", session, "--find", providerText);
-      }
-      if (target.ok && target.value?.elements?.length) {
-        tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
-        waitStable(500);
-        const walletState = allow("snapshot", "--session", session, "--include-offscreen");
-        const walletTexts = walletState.ok
-          ? (walletState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
-          : [];
-        const walletStillOpen = walletTexts.some(t => t.includes(providerText)) && walletTexts.some(t => t.includes("DÉSACTIVÉ"));
-        if (!walletStillOpen) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
-      } else {
-        throw new Error(`Wallet provider tile not reachable: ${providerText}`);
-      }
-    }
-    console.log("DISABLED PROVIDER TAP GUARD PASS");
 
     allow("press", "BACK", "--session", session);
     waitStable(900);
