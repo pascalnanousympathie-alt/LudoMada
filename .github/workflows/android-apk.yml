@@ -26,7 +26,7 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="$HOME/LudoMada"
+          src="/root/LudoMada"
           test -d "$src/.git"
           git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
