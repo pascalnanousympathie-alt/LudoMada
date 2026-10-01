@@ -247,9 +247,13 @@ try {
     // input surface, so DPAD_DOWN is more reliable than synthetic swipe gestures.
     const requiredMarks = ["Bitcoin / BTC", "Ethereum / ETH", "Solana / SOL", "Tron / TRX", "Binance Pay"];
     const seenMarks = new Set();
-    // The Wallet crypto grid becomes attached at this scroll position. Eight DPAD_DOWN
-    // actions are deterministic on the current landscape/portrait Ramus projection and
-    // avoid overscrolling the grid, which can recycle the right-column nodes.
+    // Provider verification can leave focus inside the payment grid. Re-anchor to the
+    // top of the Wallet ScrollView before entering the deterministic crypto-grid position.
+    for (let i = 0; i < 10; i++) {
+      allow("press", "DPAD_UP", "--session", session);
+    }
+    // From the top anchor, eight DPAD_DOWN actions attach the crypto grid without
+    // overscrolling the right-column nodes.
     for (let i = 0; i < 8; i++) {
       allow("press", "DPAD_DOWN", "--session", session);
     }
