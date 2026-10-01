@@ -59,8 +59,7 @@ jobs:
           exec /data/data/com.termux/files/usr/bin/node "$@"
           EOF
           chmod +x "$HOME/.ci-node-bin/node"
-          echo "$HOME/.ci-node-bin" >> "$GITHUB_PATH"
-          echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Show toolchain
         run: node -v && npm -v
