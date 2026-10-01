@@ -25,7 +25,6 @@ jobs:
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       NODE_OPTIONS: --max-old-space-size=512
-      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
       npm_config_maxsockets: "1"
       npm_config_jobs: "1"
     defaults:
@@ -51,7 +50,17 @@ jobs:
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
 
       - name: Use Termux Node
-        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "$HOME/.ci-node-bin" >> "$GITHUB_PATH"
+          echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
 
       - name: Show toolchain
         run: node -v && npm -v

@@ -21,7 +21,6 @@ jobs:
       npm_config_maxsockets: "1"
       npm_config_jobs: "1"
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
       - name: Checkout source from local runner mirror
@@ -36,8 +35,17 @@ jobs:
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
 
       - name: Use Termux Node
-        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
-
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "$HOME/.ci-node-bin" >> "$GITHUB_PATH"
+          echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
       - name: Start isolated PostgreSQL
         run: bash scripts/ensure-test-postgres.sh

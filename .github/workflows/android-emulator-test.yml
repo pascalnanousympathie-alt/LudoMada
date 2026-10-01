@@ -21,7 +21,6 @@ jobs:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
-      LD_LIBRARY_PATH: /data/data/com.termux/files/usr/lib
     steps:
       - name: Checkout source from GitHub
         working-directory: .
@@ -53,6 +52,18 @@ jobs:
       - name: Configure Android SDK
         working-directory: android-app
         run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+      - name: Use Termux Node
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "$HOME/.ci-node-bin" >> "$GITHUB_PATH"
+          echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
       - name: Configure ARM64 AAPT2
         working-directory: .
         run: |
