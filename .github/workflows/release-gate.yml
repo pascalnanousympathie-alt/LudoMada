@@ -34,7 +34,7 @@ jobs:
           elif ! git remote get-url origin >/dev/null 2>&1; then
             git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
           fi
-          git fetch --depth=1 origin "$GITHUB_SHA"
+          git -c http.extraheader="AUTHORIZATION: bearer ${GITHUB_TOKEN}" fetch --depth=1 origin "$GITHUB_SHA"
           git reset --hard "$GITHUB_SHA"
       - name: Use runner Linux Node
         run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
