@@ -63,13 +63,14 @@ public class PremiumHeroViewV2 extends FrameLayout {
     homeA11y.setFocusable(true);
     homeA11y.setAlpha(0.01f);
     walletHit=new Button(c);
-    walletHit.setText("");
+    walletHit.setText("WALLET");
+    walletHit.setTextColor(Color.TRANSPARENT);
     walletHit.setContentDescription("WALLET_NAV");
     walletHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     walletHit.setClickable(true);
     walletHit.setFocusable(true);
     walletHit.setBackgroundColor(Color.TRANSPARENT);
-    walletHit.setAlpha(0.01f);
+    walletHit.setAlpha(1f);
     walletHit.setOnClickListener(v->call("wallet"));
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
