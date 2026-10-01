@@ -43,7 +43,17 @@ jobs:
           export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
           exec /data/data/com.termux/files/usr/bin/node "$@"
           EOF
-          chmod +x "$HOME/.ci-node-bin/node"
+          cat > "$HOME/.ci-node-bin/npm" <<'EOF'
+          #!/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npm "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npx" <<'EOF'
+          #!/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npx "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
           echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
       - run: node -v && npm -v
       - name: Start isolated PostgreSQL
