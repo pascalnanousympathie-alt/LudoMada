@@ -662,6 +662,19 @@ class MainActivity : Activity() {
     }
 
     private fun loadWallet() {
+        // Wallet UI remains reachable from Premium Home even before authentication.
+        // Never fabricate a balance and never turn an unauthenticated 401 into a login redirect.
+        if(token.isBlank()){
+            accountBalanceMGA=0L
+            runOnUiThread{
+                topBalanceView?.text="— Ar"
+                if(currentScreen=="wallet"){
+                    status.text="Connexion requise pour afficher le solde."
+                    walletBalanceView?.text="— Ar"
+                }
+            }
+            return
+        }
         get("/api/wallet"){j->
             val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
             accountBalanceMGA=value
