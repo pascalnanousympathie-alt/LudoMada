@@ -190,7 +190,11 @@ try {
     const requiredMarks = ["DÉSACTIVÉ", "MVola", "Bitcoin / BTC", "Ethereum / ETH", "Solana / SOL", "Tron / TRX", "Binance Pay"];
     const seenMarks = new Set();
     for (let i = 0; i < 16 && seenMarks.size < requiredMarks.length; i++) {
-      const pageSnap = allow("snapshot", "--session", session);
+      // Include offscreen accessibility nodes: the Wallet crypto grid is a two-column
+      // landscape layout, while Ramus normalizes the input surface to portrait.
+      // BTC/SOL can therefore be offscreen in the normalized viewport but remain real
+      // nodes in Android's current accessibility tree.
+      const pageSnap = allow("snapshot", "--session", session, "--include-offscreen");
       if (pageSnap.ok) {
         for (const el of pageSnap.value?.elements || []) {
           const hay = [el.text, el.contentDesc].filter(Boolean).join(" ");
