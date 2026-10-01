@@ -11,6 +11,7 @@ import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
+  private final Button walletHit;
   private final Runnable homeBgFlip=new Runnable(){
     @Override public void run(){
       home.flipBackground();invalidate();postDelayed(this,6000L);
@@ -61,15 +62,29 @@ public class PremiumHeroViewV2 extends FrameLayout {
     homeA11y.setBackgroundColor(Color.TRANSPARENT);
     homeA11y.setFocusable(true);
     homeA11y.setAlpha(0.01f);
+    walletHit=new Button(c);
+    walletHit.setText("");
+    walletHit.setContentDescription("WALLET_NAV");
+    walletHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    walletHit.setClickable(true);
+    walletHit.setFocusable(true);
+    walletHit.setBackgroundColor(Color.TRANSPARENT);
+    walletHit.setAlpha(0.01f);
+    walletHit.setOnClickListener(v->call("wallet"));
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
+    FrameLayout.LayoutParams walletLp=new FrameLayout.LayoutParams(1,1);
     FrameLayout.LayoutParams playLp=new FrameLayout.LayoutParams(64,48);
     playLp.leftMargin=Math.max(0,getResources().getDisplayMetrics().widthPixels-80);
     playLp.topMargin=220;
     addView(homeA11y,homeA11yLp);
+    addView(walletHit,walletLp);
     addView(playHit,playLp);
     addView(playHitAlt,new FrameLayout.LayoutParams(1,1));
-    post(()->positionPlayHit(playHit,playHitAlt));
+    post(()->{
+      positionWalletHit(walletHit);
+      positionPlayHit(playHit,playHitAlt);
+    });
   }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();
@@ -116,6 +131,18 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Keeping this auxiliary view at 1×1 prevents it from stealing the WALLET touch area.
     setHit(playHitAlt,0,0,1,1);
   }
+  private void positionWalletHit(View wallet){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    int left=Math.round(ox+70f*sc);
+    int top=Math.round(oy+312f*sc);
+    int width=Math.max(1,Math.round(250f*sc));
+    int height=Math.max(1,Math.round(116f*sc));
+    setHit(wallet,left,top,width,height);
+  }
   private void setHit(View v,int left,int top,int width,int height){
     FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
     lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
@@ -124,6 +151,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   @Override protected void onSizeChanged(int w,int h,int ow,int oh){
     super.onSizeChanged(w,h,ow,oh);
+    positionWalletHit(walletHit);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
@@ -439,7 +467,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
         return true;
       }
 
-      return hitHomeActions(lx,ly);
+      // Ramus may keep a 720×1616 portrait touch surface while Android reports
+      // the rendered View as landscape. Try the direct landscape hit first, then
+      // both inverse quarter-turns so left-rail actions remain deterministic.
+      if(hitHomeActions(lx,ly)) return true;
+      float nx=e.getX()/Math.max(1f,W), ny=e.getY()/Math.max(1f,H);
+      float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+      float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+      if(hitHomeActions(lxCW,lyCW)) return true;
+      if(hitHomeActions(lxCCW,lyCCW)) return true;
+      return true;
     }
 
     private boolean hitHomeActions(float x,float y){

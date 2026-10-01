@@ -149,16 +149,29 @@ try {
 
     // Wallet provider safety gate: the visible wallet/crypto catalog must expose
     // distinct marks, while all payment actions remain disabled until explicitly activated.
+    // Prefer the native accessibility target so the test does not depend on Ramus'
+    // portrait/landscape touch-coordinate transform.
     let walletOpened = false;
-    // Ramus exposes the landscape render through a portrait 720×1616 input
-    // surface. These normalized portrait coordinates map into the WALLET rail.
-    for (const pt of ["0.52,0.80", "0.55,0.80", "0.50,0.78"]) {
-      const t = allow("tap", pt, "--session", session, "--force");
-      if (t.ok) {
+    const walletNav = allow("snapshot", "--session", session, "--find", "WALLET_NAV");
+    if (walletNav.ok && walletNav.value?.elements?.length) {
+      const target = walletNav.value.elements[0];
+      const tapped = allow("tap", target.ref, "--gen", String(walletNav.value.gen), "--session", session);
+      if (tapped.ok) {
         waitStable(800);
-        if (hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay")) {
-          walletOpened = true;
-          break;
+        walletOpened = hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay");
+      }
+    }
+
+    // Coordinate probes remain a fallback only for older APKs without WALLET_NAV.
+    if (!walletOpened) {
+      for (const pt of ["0.52,0.80", "0.55,0.80", "0.50,0.78"]) {
+        const t = allow("tap", pt, "--session", session, "--force");
+        if (t.ok) {
+          waitStable(800);
+          if (hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay")) {
+            walletOpened = true;
+            break;
+          }
         }
       }
     }
