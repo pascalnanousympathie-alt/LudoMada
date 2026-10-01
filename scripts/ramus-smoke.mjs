@@ -158,17 +158,20 @@ try {
       const tapped = allow("tap", target.ref, "--gen", String(walletNav.value.gen), "--session", session);
       if (tapped.ok) {
         waitStable(800);
-        walletOpened = hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay");
+        // Only the Wallet header is required to prove navigation. Provider rows
+        // are below the initial viewport and are validated by the scroll phase.
+        walletOpened = hasText("SOLDE MGA");
       }
     }
 
-    // Coordinate probes remain a fallback only for older APKs without WALLET_NAV.
+    // Coordinate fallback targets the actual Wallet accessibility hitbox on Ramus'
+    // 720×1616 portrait input surface (center ≈ 0.504,0.229).
     if (!walletOpened) {
-      for (const pt of ["0.52,0.80", "0.55,0.80", "0.50,0.78"]) {
+      for (const pt of ["0.504,0.229", "0.50,0.23", "0.53,0.23"]) {
         const t = allow("tap", pt, "--session", session, "--force");
         if (t.ok) {
           waitStable(800);
-          if (hasText("SOLDE MGA") && hasText("MVola") && hasText("Binance Pay")) {
+          if (hasText("SOLDE MGA")) {
             walletOpened = true;
             break;
           }
