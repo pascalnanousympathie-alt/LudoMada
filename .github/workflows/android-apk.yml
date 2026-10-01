@@ -37,7 +37,7 @@ jobs:
           fi
           git -C "$GITHUB_WORKSPACE" remote add origin "https://github.com/$GITHUB_REPOSITORY.git" 2>/dev/null || true
           git -C "$GITHUB_WORKSPACE" remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
-          git -c http.extraheader="AUTHORIZATION: bearer $GIT_AUTH_TOKEN" -C "$GITHUB_WORKSPACE" fetch --depth=1 origin "$GITHUB_SHA"
+          git -c credential.helper= -C "$GITHUB_WORKSPACE" fetch --depth=1 "https://x-access-token:$GIT_AUTH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
 
       - name: Accept Android SDK licenses
