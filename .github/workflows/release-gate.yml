@@ -27,24 +27,26 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          src="/root/LudoMada"
-          test -d "$src/.git"
-          git -C "$src" cat-file -e "$GITHUB_SHA^{commit}"
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
           rm -rf "$GITHUB_WORKSPACE"
           git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+
+      - name: Use Termux Node
+        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
+
       - run: node -v && npm -v
       - name: Start isolated PostgreSQL
         run: bash scripts/ensure-test-postgres.sh
       - name: Prepare persistent dependencies
         run: |
           set -eu
-          source_dir="/root/LudoMada/node_modules"
+          source_dir="/data/data/com.termux/files/home/LudoMada/node_modules"
           test -d "$source_dir"
           expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
-          source_lock="$(sha256sum "/root/LudoMada/package-lock.json" | awk '{print $1}')"
+          source_lock="$(sha256sum "/data/data/com.termux/files/home/LudoMada/package-lock.json" | awk '{print $1}')"
           test "$expected_lock" = "$source_lock"
           test -f "$source_dir/.package-lock.json"
           if [ -L node_modules ] || [ -d node_modules ]; then
@@ -79,10 +81,17 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
+      - name: Checkout source from local runner mirror
+        working-directory: .
+        run: |
+          set -eu
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
       - name: Accept Android SDK licenses
         run: |
           mkdir -p "$ANDROID_HOME/licenses"
@@ -176,10 +185,17 @@ jobs:
     runs-on: [self-hosted, linux, ARM64]
     needs: android-final
     steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
+      - name: Checkout source from local runner mirror
+        working-directory: .
+        run: |
+          set -eu
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
       - run: java -version
       - name: Build instrumentation APKs
         working-directory: android-app
