@@ -185,11 +185,17 @@ try {
     // the crypto grid is reached. Test them before scrolling; then test crypto assets
     // at the deterministic grid position below.
     for (const providerText of ["MVola", "Binance Pay"]) {
-      const target = allow("snapshot", "--session", session, "--find", providerText);
+      const target = allow("snapshot", "--session", session, "--find", providerText, "--include-offscreen");
       if (!target.ok || !target.value?.elements?.length) {
         throw new Error(`Wallet provider tile not reachable at Wallet entry: ${providerText}`);
       }
-      tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
+      const el = target.value.elements[0];
+      const tapArgs = ["tap", el.ref, "--gen", String(target.value.gen), "--session", session];
+      if (el.offscreen) tapArgs.push("--force");
+      const tapped = allow(...tapArgs);
+      if (!tapped.ok) {
+        throw new Error(`Wallet provider tile could not be activated for disabled-state verification: ${providerText}`);
+      }
       const providerState = allow("snapshot", "--session", session, "--include-offscreen");
       const providerTexts = providerState.ok
         ? (providerState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
