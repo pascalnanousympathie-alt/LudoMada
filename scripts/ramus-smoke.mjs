@@ -208,11 +208,24 @@ try {
         throw new Error("Wallet provider tile not reachable at Wallet entry: " + providerText);
       }
       let tapped;
-      if (parent.offscreen && parent.focused) {
-        // Ramus rejects coordinate/ref taps for offscreen nodes even when they are the
-        // currently focused clickable parent. ENTER activates the focused Android view
-        // without fabricating offscreen coordinates.
-        tapped = allow("press", "ENTER", "--session", session);
+      if (parent.offscreen) {
+        // Ramus rejects ref/coordinate taps for offscreen nodes. Walk focus through the
+        // attached payment grid until the requested provider parent is focused, then
+        // activate it with ENTER. Re-snapshot after every key because refs expire.
+        let focused = Boolean(parent.focused);
+        for (let i = 0; i < 8 && !focused; i++) {
+          allow("press", "DPAD_DOWN", "--session", session);
+          tree = allow("snapshot", "--session", session, "--include-offscreen");
+          const active = tree.ok ? (tree.value?.elements || []).find(el => {
+            const desc = String(el.contentDesc || "");
+            return el.clickable && el.focused && desc.startsWith(providerText + " • DÉSACTIVÉ");
+          }) : null;
+          if (active) {
+            focused = true;
+            break;
+          }
+        }
+        tapped = focused ? allow("press", "ENTER", "--session", session) : { ok: false };
       } else {
         const tapArgs = ["tap", parent.ref, "--gen", String(tree.value.gen), "--session", session];
         tapped = allow(...tapArgs);
