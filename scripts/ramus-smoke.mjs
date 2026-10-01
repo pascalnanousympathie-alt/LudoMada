@@ -224,7 +224,7 @@ try {
         const walletTexts = walletState.ok
           ? (walletState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
           : [];
-        const walletStillOpen = walletTexts.some(t => t.includes("SOLDE MGA")) && walletTexts.some(t => t.includes("DÉSACTIVÉ"));
+        const walletStillOpen = walletTexts.some(t => t.includes(providerText)) && walletTexts.some(t => t.includes("DÉSACTIVÉ"));
         if (!walletStillOpen) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
       } else {
         throw new Error(`Wallet provider tile not reachable: ${providerText}`);
