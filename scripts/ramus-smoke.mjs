@@ -276,11 +276,12 @@ try {
     waitStable(900);
   }
 
-  // Authentication/navigation gate: verify Online opens the real Login screen and the
-  // registration dialog without fabricating an account or submitting fake credentials.
-  const onlineEntry=allow("tap","0.576,0.132","--session",session,"--force");
-  if (onlineEntry.ok) waitStable(700);
-  if (!hasText("🌐 En ligne — Joueurs réels")) throw new Error("Online mode entry was not exposed from Premium Home");
+  // Authentication/navigation gate: JOUER is the real Home control. It opens the
+  // game-mode dialog, whose first option is the real Online entry.
+  const playEntry=findRef("JOUER");
+  tapRef(playEntry);
+  waitStable(500);
+  if (!hasText("🌐 En ligne — Joueurs réels")) throw new Error("Online mode was not exposed from the Home JOUER dialog");
   tapAnyRef("🌐 En ligne — Joueurs réels");
   waitStable(900);
   if (!hasText("Nom, email ou mobile") && !hasText("Connexion")) throw new Error("Login screen was not reached from Online mode");
