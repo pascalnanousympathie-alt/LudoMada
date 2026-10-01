@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout source from GitHub
         working-directory: .
+        env:
+          GIT_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           if [ -d "$GITHUB_WORKSPACE/.git" ]; then
@@ -35,7 +37,7 @@ jobs:
           fi
           git -C "$GITHUB_WORKSPACE" remote add origin "https://github.com/$GITHUB_REPOSITORY.git" 2>/dev/null || true
           git -C "$GITHUB_WORKSPACE" remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
-          git -c http.extraheader="AUTHORIZATION: bearer $GITHUB_TOKEN" -C "$GITHUB_WORKSPACE" fetch --depth=1 origin "$GITHUB_SHA"
+          git -c http.extraheader="AUTHORIZATION: bearer $GIT_AUTH_TOKEN" -C "$GITHUB_WORKSPACE" fetch --depth=1 origin "$GITHUB_SHA"
           git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
 
       - name: Accept Android SDK licenses
