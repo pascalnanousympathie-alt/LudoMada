@@ -220,7 +220,12 @@ try {
       if (target.ok && target.value?.elements?.length) {
         tapRef({ref:target.value.elements[0].ref,gen:target.value.gen});
         waitStable(500);
-        if (!hasText("SOLDE MGA") || !hasText("DÉSACTIVÉ")) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
+        const walletState = allow("snapshot", "--session", session, "--include-offscreen");
+        const walletTexts = walletState.ok
+          ? (walletState.value?.elements || []).map(e => [e.text, e.contentDesc].filter(Boolean).join(" "))
+          : [];
+        const walletStillOpen = walletTexts.some(t => t.includes("SOLDE MGA")) && walletTexts.some(t => t.includes("DÉSACTIVÉ"));
+        if (!walletStillOpen) throw new Error(`${providerText} tile navigated away from disabled Wallet state`);
       } else {
         throw new Error(`Wallet provider tile not reachable: ${providerText}`);
       }
