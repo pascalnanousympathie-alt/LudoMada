@@ -111,17 +111,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int width=Math.max(1,Math.round(190f*sc));
     int height=Math.max(1,Math.round(74f*sc));
     setHit(playHit,left,top,width,height);
-    // In Ramus the landscape artwork is exposed through the portrait 720×1616 touch surface.
-    // Mirror the visual JOUER rectangle into that portrait surface so it stays above HomeView's
-    // left-menu hit regions instead of accidentally opening "Hiditra amin'ny room".
-    if(getWidth()<getHeight()){
-      float sx=getWidth()/1280f, sy=getHeight()/720f;
-      int px=Math.round(378f*sx), py=Math.round(88f*sy);
-      int pw=Math.max(1,Math.round(74f*sx)), ph=Math.max(1,Math.round(252f*sy));
-      setHit(playHitAlt,px,py,pw,ph);
-    }else{
-      setHit(playHitAlt,0,0,1,1);
-    }
+    // Do not place a second transparent JOUER overlay over the left rail.
+    // PremiumHeroViewV2 already maps alternate Ramus portrait input in onTouchEvent().
+    // Keeping this auxiliary view at 1×1 prevents it from stealing the WALLET touch area.
+    setHit(playHitAlt,0,0,1,1);
   }
   private void setHit(View v,int left,int top,int width,int height){
     FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
