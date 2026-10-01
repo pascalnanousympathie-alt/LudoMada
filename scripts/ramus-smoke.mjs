@@ -207,9 +207,16 @@ try {
       if (!parent) {
         throw new Error("Wallet provider tile not reachable at Wallet entry: " + providerText);
       }
-      const tapArgs = ["tap", parent.ref, "--gen", String(tree.value.gen), "--session", session];
-      if (parent.offscreen) tapArgs.push("--force");
-      const tapped = allow(...tapArgs);
+      let tapped;
+      if (parent.offscreen && parent.focused) {
+        // Ramus rejects coordinate/ref taps for offscreen nodes even when they are the
+        // currently focused clickable parent. ENTER activates the focused Android view
+        // without fabricating offscreen coordinates.
+        tapped = allow("press", "ENTER", "--session", session);
+      } else {
+        const tapArgs = ["tap", parent.ref, "--gen", String(tree.value.gen), "--session", session];
+        tapped = allow(...tapArgs);
+      }
       if (!tapped.ok) {
         throw new Error("Wallet provider tile could not be activated for disabled-state verification: " + providerText);
       }
