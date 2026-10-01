@@ -102,6 +102,39 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home.draw(c);
   }
   private boolean isPlayGesture(float x,float y){ final float W=getWidth(),H=getHeight(); if(W<=0 || H<=0)return false; float nx=x/W,ny=y/H; boolean portraitHit=nx>=0.50f && nx<=0.66f && ny>=0.045f && ny<=0.235f; boolean landscapeHit=nx>=0.76f && nx<=0.96f && ny>=0.50f && ny<=0.78f; return portraitHit || landscapeHit; }
+  private boolean walletGesture;
+  private boolean isWalletGesture(float x,float y){
+    final float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return false;
+    final float den=getResources().getDisplayMetrics().density;
+    final float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    if(sc>0){
+      final float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+      final float lx=(x-ox)/sc, ly=(y-oy)/sc;
+      if(ly>=325f && ly<420f && lx<310f)return true;
+    }
+    final float nx=x/Math.max(1f,W), ny=y/Math.max(1f,H);
+    final float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+    final float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+    return (lyCW>=325f && lyCW<420f && lxCW<310f) ||
+           (lyCCW>=325f && lyCCW<420f && lxCCW<310f);
+  }
+  @Override public boolean dispatchTouchEvent(MotionEvent e){
+    final int action=e.getActionMasked();
+    if(action==MotionEvent.ACTION_DOWN){
+      walletGesture=isWalletGesture(e.getX(),e.getY());
+    }
+    if(walletGesture){
+      if(action==MotionEvent.ACTION_UP){
+        walletGesture=false;
+        call("wallet");
+      }else if(action==MotionEvent.ACTION_CANCEL){
+        walletGesture=false;
+      }
+      return true;
+    }
+    return super.dispatchTouchEvent(e);
+  }
   @Override public boolean onInterceptTouchEvent(MotionEvent e){ if(e.getActionMasked()==MotionEvent.ACTION_DOWN && isPlayGesture(e.getX(),e.getY())) return true; return false; }
   @Override public boolean onTouchEvent(MotionEvent e){ if(isPlayGesture(e.getX(),e.getY())){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; } return home.onTouchEvent(e); }
   @Override public boolean performClick(){super.performClick();return true;}
