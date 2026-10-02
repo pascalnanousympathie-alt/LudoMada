@@ -31,9 +31,12 @@ function runCli(...args) {
         spawnSync(sleepBin, ["2"], { stdio: "ignore" });
         continue;
       }
-      if (/no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out + "\n" + err) && !process.env.RAMUS_API_KEY && args[0] !== "trial" && attempt === 1) {
+      if (/no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out + "\n" + err) && !trialEnsured && !process.env.RAMUS_API_KEY && args[0] !== "trial" && attempt === 1) {
         const renewed = runCli("trial", "--force");
-        if (renewed.ok) continue;
+        if (renewed.ok) {
+          trialEnsured = true;
+          continue;
+        }
       }
       return { ok: false, value };
     }
@@ -96,6 +99,7 @@ function sha256File(name) {
 
 let session = "";
 let success = false;
+let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
 
 try {
   rmSync("ramus-evidence", { recursive: true, force: true });
@@ -110,7 +114,10 @@ try {
       }
     }
   }
-  if (!process.env.RAMUS_API_KEY) run("trial", "--force");
+  if (!process.env.RAMUS_API_KEY) {
+    run("trial", "--force");
+    trialEnsured = true;
+  }
 
   let started = allow("session", "start", "--apk", apk, "--wait");
   if (!started.ok || !started.value?.session) {
