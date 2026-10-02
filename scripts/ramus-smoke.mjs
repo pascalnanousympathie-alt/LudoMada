@@ -287,8 +287,13 @@ try {
   if (!playNode) throw new Error("Home JOUER control was not exposed");
   if (playNode.offscreen) {
     let focusedPlay = Boolean(playNode.focused);
-    for (let i = 0; i < 4 && !focusedPlay; i++) {
-      allow("press", "DPAD_RIGHT", "--session", session);
+    // After BACK from Wallet, the Android focus is often restored to the left rail
+    // rather than preserved on the right CTA. TAB establishes a deterministic
+    // accessibility focus, then DPAD_RIGHT reaches the real JOUER control.
+    const focusKeys = ["TAB", "DPAD_RIGHT", "DPAD_RIGHT", "DPAD_RIGHT"];
+    for (const key of focusKeys) {
+      if (focusedPlay) break;
+      allow("press", key, "--session", session);
       playTree = allow("snapshot", "--session", session, "--include-offscreen");
       playNode = playTree.ok
         ? (playTree.value?.elements || []).find(el =>
