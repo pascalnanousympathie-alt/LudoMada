@@ -179,7 +179,11 @@ app.use((req:any,res,next)=>{
 
 
 
-const authRateLimit = rateLimit({
+const AUTH_RATE_LIMIT_DISABLED = ["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase());
+
+const authRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
   windowMs: 15 * 60_000,
   max: 20,
   standardHeaders: true,
@@ -250,7 +254,7 @@ app.get("/ready",async(_req,res)=>{
   }
 });
 
-if (process.env.NODE_ENV !== "loadtest") {
+if (!["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase())) {
   app.use(rateLimit({
     windowMs: 60_000,
     max: 120,
