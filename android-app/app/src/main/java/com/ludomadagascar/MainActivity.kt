@@ -726,7 +726,7 @@ class MainActivity : Activity() {
         }
         panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
         panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
-        dialog=AlertDialog.Builder(this).setView(panel).create()
+        dialog=AlertDialog.Builder(this).setTitle("Choisissez le mode").setView(panel).create()
         dialog.setCanceledOnTouchOutside(true)
         dialog.setOnShowListener{
             dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))

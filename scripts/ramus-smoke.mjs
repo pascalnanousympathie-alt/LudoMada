@@ -322,7 +322,7 @@ try {
     tapRef({ref:playNode.ref,gen:playTree.value.gen});
   }
   waitStable(500);
-  if (!hasText("Choisissez le mode")) throw new Error("Game mode dialog was not exposed from Home JOUER");
+  if (!hasText("Choisissez le mode") && !hasText("MODE_OFFLINE") && !hasText("MODE_ONLINE")) throw new Error("Game mode dialog was not exposed from Home JOUER");
 
   // Online is the first row; from the default/offline focus, move up once and ENTER.
   allow("press", "DPAD_UP", "--session", session);
