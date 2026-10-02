@@ -278,8 +278,16 @@ try {
 
   // Authentication/navigation gate: JOUER is the real Home control. It opens the
   // game-mode dialog, whose first option is the real Online entry.
-  const playEntry=findRef("JOUER");
-  tapRef(playEntry);
+  // After returning from Wallet, Ramus can temporarily omit the native JOUER node
+  // from the accessibility tree. Prefer the ref when present; otherwise use the
+  // deterministic portrait coordinate mapped to the real JOUER visual hitbox.
+  const playNode = snap("JOUER");
+  if (playNode.elements?.length) {
+    tapRef({ref:playNode.elements[0].ref,gen:playNode.gen});
+  } else {
+    const playFallback = allow("tap", "0.576,0.132", "--session", session, "--force");
+    if (!playFallback.ok) throw new Error("JOUER control was neither accessible nor tappable after Wallet");
+  }
   waitStable(500);
   if (!hasText("🌐 En ligne — Joueurs réels")) throw new Error("Online mode was not exposed from the Home JOUER dialog");
   tapAnyRef("🌐 En ligne — Joueurs réels");
