@@ -715,9 +715,8 @@ class MainActivity : Activity() {
         val overlay=FrameLayout(this).apply{
             setBackgroundColor(Color.argb(150,0,0,0))
             isClickable=true
-            isFocusable=true
-            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            contentDescription="GAME_MODE_OVERLAY"
+            isFocusable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         val panel=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
@@ -731,7 +730,8 @@ class MainActivity : Activity() {
                 setStroke(dp(1),0x66EDB734)
             }
             elevation=dp(18).toFloat()
-            isClickable=true
+            isClickable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
             gravity=Gravity.CENTER
