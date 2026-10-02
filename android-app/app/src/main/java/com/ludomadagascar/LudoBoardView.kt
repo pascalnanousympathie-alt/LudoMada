@@ -150,10 +150,10 @@ class LudoBoardView(
 
     private fun homeGrid(pi: Int, ti: Int): FloatArray {
         val xy = arrayOf(
-            floatArrayOf(-2.65f, -2.65f), floatArrayOf(-1.35f, -2.65f), floatArrayOf(-2.65f, -1.35f), floatArrayOf(-1.35f, -1.35f),
-            floatArrayOf(1.35f, -2.65f), floatArrayOf(2.65f, -2.65f), floatArrayOf(1.35f, -1.35f), floatArrayOf(2.65f, -1.35f),
-            floatArrayOf(-2.65f, 1.35f), floatArrayOf(-1.35f, 1.35f), floatArrayOf(-2.65f, 2.65f), floatArrayOf(-1.35f, 2.65f),
-            floatArrayOf(1.35f, 1.35f), floatArrayOf(2.65f, 1.35f), floatArrayOf(1.35f, 2.65f), floatArrayOf(2.65f, 2.65f)
+            floatArrayOf(2.65f, -2.65f), floatArrayOf(1.35f, -2.65f), floatArrayOf(2.65f, -1.35f), floatArrayOf(1.35f, -1.35f),
+            floatArrayOf(2.65f, 1.35f), floatArrayOf(1.35f, 2.65f), floatArrayOf(2.65f, 2.65f), floatArrayOf(1.35f, 1.35f),
+            floatArrayOf(-2.65f, 2.65f), floatArrayOf(-1.35f, 2.65f), floatArrayOf(-2.65f, 1.35f), floatArrayOf(-1.35f, 1.35f),
+            floatArrayOf(-2.65f, -1.35f), floatArrayOf(-1.35f, -2.65f), floatArrayOf(-2.65f, -2.65f), floatArrayOf(-1.35f, -1.35f)
         )
         return xy[pi * 4 + ti].clone()
     }
@@ -201,16 +201,21 @@ class LudoBoardView(
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
-        val cx = width * 0.5f
-        val cy = height * 0.52f
-        val dieR = min(width, height) * 0.13f
-        val dx = e.x - cx
-        val dy = e.y - cy
-        if (dx * dx + dy * dy <= dieR * dieR) {
-            performClick()
-            performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            onRollTap?.invoke()
-            return true
+        val projectedDice = renderer.projectedDice()
+        val dieHit = min(width, height) * 0.095f
+        for (pi in 0..3) {
+            val p = projectedDice[pi]
+            if (p[0] < 0f || p[1] < 0f) continue
+            val dx = e.x - p[0]
+            val dy = e.y - p[1]
+            if (dx * dx + dy * dy <= dieHit * dieHit) {
+                if (pi == player) {
+                    performClick()
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onRollTap?.invoke()
+                }
+                return true
+            }
         }
         val projected = renderer.projectedTokens(player)
         var best = -1
@@ -283,6 +288,7 @@ class LudoBoardView(
         private lateinit var cube:Mesh
         private lateinit var pathMesh:Mesh
         private lateinit var coloredZones:Array<Mesh>
+        private lateinit var coloredLanes:Array<Mesh>
         private lateinit var pawnBody:Mesh
         private lateinit var sphere:Mesh
         private lateinit var disk:Mesh
@@ -327,7 +333,7 @@ class LudoBoardView(
             rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
-            cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);disk=diskMesh(32);pips=sphereMesh(10,6)
+            cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);disk=diskMesh(32);pips=sphereMesh(10,6)
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap()
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
@@ -367,13 +373,25 @@ class LudoBoardView(
             for(ti in 0..3){val xz=host.display[pi][ti];val x=xz[0];val z=xz[1];if(x.isNaN())continue;val y=boardTop+0.60f;val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[ti][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[ti][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
+        fun projectedDice():Array<FloatArray>{
+            val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
+            for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
+            return out
+        }
+        private fun dieCenterWorld(pi:Int):FloatArray = when(pi){
+            0 -> floatArrayOf(4.72f,boardTop+0.10f,-4.72f)
+            1 -> floatArrayOf(4.72f,boardTop+0.10f,4.72f)
+            2 -> floatArrayOf(-4.72f,boardTop+0.10f,4.72f)
+            else -> floatArrayOf(-4.72f,boardTop+0.10f,-4.72f)
+        }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
                 drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
-                drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f))
-                val homes=arrayOf(floatArrayOf(-2.55f,-2.55f),floatArrayOf(2.55f,-2.55f),floatArrayOf(-2.55f,2.55f),floatArrayOf(2.55f,2.55f));for(hc in homes)drawShadowMesh(disk,identityAt(hc[0],boardTop+0.16f,hc[1],1.05f,1f,1.05f))
+                drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
+                val homes=arrayOf(floatArrayOf(2.55f,-2.55f),floatArrayOf(2.55f,2.55f),floatArrayOf(-2.55f,2.55f),floatArrayOf(-2.55f,-2.55f));for(hc in homes)drawShadowMesh(disk,identityAt(hc[0],boardTop+0.16f,hc[1],1.05f,1f,1.05f))
                 for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti));drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))}
-                drawShadowMesh(cube,dieModel());return
+                for(pi in 0..3){val p=dieCenterWorld(pi);drawShadowMesh(cube,identityAt(p[0],boardTop+0.035f,p[2],0.92f,0.06f,0.92f));drawShadowMesh(cube,dieModel(pi))}
+                return
             }
             drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(Color.rgb(18,33,62)),0.90f,0.02f,1f,0f,0,true)
             drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
@@ -381,24 +399,56 @@ class LudoBoardView(
             drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),floatArrayOf(0.78f,0.48f,0.16f,1f),0.46f,0.10f,1f,0f,1,false)
             drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),floatArrayOf(0.88f,0.84f,0.73f,1f),0.58f,0.04f,1f,0f,2,false)
             drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
-            // Thin metallic center plinth gives the die a physical resting area and a contact shadow.
-            drawMesh(disk,identityAt(0f,boardTop+0.20f,0f,0.95f,1f,0.95f),floatArrayOf(0.72f,0.75f,0.78f,0.90f),0.18f,0.78f,0.98f,0.02f,4,false)
             for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
-            val homes=arrayOf(floatArrayOf(-2.55f,-2.55f),floatArrayOf(2.55f,-2.55f),floatArrayOf(-2.55f,2.55f),floatArrayOf(2.55f,2.55f))
+            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.28f,0.05f,1f,0.012f,3,false)
+            val homes=arrayOf(floatArrayOf(2.55f,-2.55f),floatArrayOf(2.55f,2.55f),floatArrayOf(-2.55f,2.55f),floatArrayOf(-2.55f,-2.55f))
             for(i in 0..3){val hc=homes[i];drawMesh(disk,identityAt(hc[0],boardTop+0.16f,hc[1],1.05f,1f,1.05f),rgba(zoneColorInt(i)),0.25f,0.06f,1f,0.015f,3,false);drawMesh(disk,identityAt(hc[0],boardTop+0.17f,hc[1],0.88f,1f,0.88f),floatArrayOf(0.96f,0.96f,0.96f,0.20f),0.12f,0f,1f,0f,2,true)}
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
-            drawDie()
+            for(pi in 0..3)drawDie(pi)
         }
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
-            if(active)drawMesh(disk,identityAt(x,boardTop+0.022f,z,0.42f,1f,0.42f),floatArrayOf(0.93f,0.70f,0.15f,0.82f),0.10f,0.38f,1f,0.02f,4,true)
+            if(active && isLegalPawn(pi,ti)){
+                val pulse=(0.42f+0.06f*sin(System.nanoTime()/180_000_000.0).toFloat()).coerceIn(0.34f,0.50f)
+                drawMesh(disk,identityAt(x,boardTop+0.022f,z,pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.16f,0.88f),0.08f,0.52f,1f,0.035f,4,true)
+            }
             drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(color),0.22f,0.04f,1f,0.015f,3,false);drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(color),0.18f,0.05f,1f,0.018f,3,false)
+        }
+        private fun isLegalPawn(pi:Int,ti:Int):Boolean{
+            if(pi!=player)return false
+            val dice=state?.optInt("dice",0)?:0
+            if(dice !in 1..6)return false
+            val pos=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+            return if(pos<0) dice==6 else pos+dice<=57
         }
         private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{val m=identityAt(x,y,z,pawnScale,pawnScale,pawnScale);val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f;Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f),0f,0f,1f);Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f),1f,0f,0f);return m}
         private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{val m=identityAt(x,y+pawnScale*0.74f,z,pawnScale*0.37f,pawnScale*0.37f,pawnScale*0.37f);val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f;Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f),0f,0f,1f);return m}
-        private fun dieModel():FloatArray{val value=max(1,state?.optInt("dice",0)?:1);val t=diceAnim;val sx=(1f-t)*720f+if(value%2==0)12f else 31f;val sy=(1f-t)*430f+17f;val m=identityAt(0f,boardTop+0.74f,0f,0.62f,0.62f,0.62f);Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f);return m}
-        private fun drawDie(){
-            val value=max(1,state?.optInt("dice",0)?:1);val die=dieModel();drawMesh(cube,die,floatArrayOf(0.97f,0.985f,0.995f,1f),0.10f,0.88f,1f,0.035f,4,false);val pip=0.20f
-            val positions=when(value){1->arrayOf(0f to 0f);2->arrayOf(-pip to -pip,pip to pip);3->arrayOf(-pip to -pip,0f to 0f,pip to pip);4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip);5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip);else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)}
+        private fun dieValue(pi:Int):Int{
+            val live=max(0,state?.optInt("dice",0)?:0)
+            return if(pi==player && live in 1..6) live else intArrayOf(4,3,5,5)[pi]
+        }
+        private fun dieModel(pi:Int):FloatArray{
+            val p=dieCenterWorld(pi)
+            val value=dieValue(pi)
+            val t=if(pi==player)diceAnim else 1f
+            val sx=(1f-t)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-t)*(430f+pi*37f)+17f+pi*11f
+            val m=identityAt(p[0],p[1]+0.38f,p[2],0.52f,0.52f,0.52f)
+            Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f)
+            return m
+        }
+        private fun drawDie(pi:Int){
+            val p=dieCenterWorld(pi)
+            val active=pi==player
+            val die=dieModel(pi)
+            drawMesh(cube,identityAt(p[0],boardTop+0.035f,p[2],0.96f,0.07f,0.96f),floatArrayOf(0.065f,0.075f,0.092f,0.96f),0.24f,0.72f,1f,0.01f,4,false)
+            drawMesh(disk,identityAt(p[0],boardTop+0.105f,p[2],0.72f,1f,0.72f),floatArrayOf(0.42f,0.46f,0.50f,0.72f),0.20f,0.46f,1f,0f,4,false)
+            if(active){
+                val pulse=(0.77f+0.05f*sin(System.nanoTime()/170_000_000.0).toFloat()).coerceIn(0.70f,0.84f)
+                drawMesh(disk,identityAt(p[0],boardTop+0.11f,p[2],pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.15f,0.46f),0.10f,0.66f,1f,0.025f,4,true)
+            }
+            drawMesh(cube,die,floatArrayOf(0.97f,0.985f,0.995f,1f),0.10f,0.88f,1f,0.035f,4,false)
+            val pip=0.20f
+            val positions=when(dieValue(pi)){1->arrayOf(0f to 0f);2->arrayOf(-pip to -pip,pip to pip);3->arrayOf(-pip to -pip,0f to 0f,pip to pip);4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip);5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip);else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)}
             for((px,pz)in positions){val pm=identityAt(px,0.51f,pz,0.065f,0.028f,0.065f);val c=FloatArray(16);Matrix.multiplyMM(c,0,die,0,pm,0);drawMesh(pips,c,floatArrayOf(0.045f,0.052f,0.06f,1f),0.16f,0.74f,1f,0f,4,false)}
         }
         private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean)=shader.draw(mesh,mat,color,rough,metallic,ao,emission,material,unlit)
@@ -510,11 +560,26 @@ class LudoBoardView(
 
         private fun zoneMesh(pi: Int): Mesh {
             val v = ArrayList<Float>(); val n = ArrayList<Float>(); val i = ArrayList<Short>()
-            val x = if (pi == 0 || pi == 2) -2.55f else 2.55f
-            val z = if (pi == 0 || pi == 1) -2.55f else 2.55f
+            val x = when (pi) { 0, 1 -> 2.55f; else -> -2.55f }
+            val z = when (pi) { 0, 3 -> -2.55f; else -> 2.55f }
             addBox(v, n, i, 0, x, boardTop + 0.04f, z, 1.42f, 0.055f, 1.42f)
             addBox(v, n, i, 24, x, boardTop + 0.095f, z, 1.14f, 0.04f, 1.14f)
             return Mesh(v.toFloatArray(), n.toFloatArray(), i.toShortArray())
+        }
+
+        private fun laneMesh(pi:Int):Mesh{
+            val v=ArrayList<Float>();val n=ArrayList<Float>();val i=ArrayList<Short>();var base=0
+            val cells=when(pi){
+                0 -> (1..6).map{it to 7}
+                1 -> listOf(7 to 8,7 to 9,7 to 10,7 to 11,7 to 12,7 to 13)
+                2 -> (8..13).map{it to 7}
+                else -> listOf(7 to 1,7 to 2,7 to 3,7 to 4,7 to 5,7 to 6)
+            }
+            for((r,c) in cells){
+                val x=(c-7.0f)*0.50f;val z=(r-7.0f)*0.50f
+                addBox(v,n,i,base,x,boardTop+0.083f,z,0.218f,0.020f,0.218f);base+=24
+            }
+            return Mesh(v.toFloatArray(),n.toFloatArray(),i.toShortArray())
         }
 
         private fun pawnBodyMesh(): Mesh {

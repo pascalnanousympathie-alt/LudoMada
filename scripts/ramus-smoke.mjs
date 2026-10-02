@@ -416,49 +416,64 @@ try {
   if (!screenshotExists("board-4p")) throw new Error("Gameplay screenshot was not produced");
   console.log("GAMEPLAY REFERENCE SCREENSHOT PASS");
 
-  // Dice + pawn validation without making the smoke gate depend on a long random search.
-  // A roll must resolve to 1–6. The pawn interaction is then checked against the real rule:
-  // with a non-six roll and all pawns home, the app must reject the move; with six, the pawn moves.
-  const roll = findRef("GAME_DICE_ROLL");
-  let rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session);
-  if (!rollTap.ok && /offscreen/i.test(String(rollTap.value?.error || ""))) {
-    rollTap = allow("tap", roll.ref, "--gen", String(roll.gen), "--session", session, "--force");
+  // Physical gameplay validation: no textual "Pion 1–4" or "Lancer le dé" controls.
+  // Ramus exposes the landscape game surface through portrait-normalized coordinates.
+  // Player 0 is red, and the reference layout places the red die at top-right and
+  // the four red pawns in the top-right home quadrant.
+  const redDiePoints = [
+    "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13",
+  ];
+  let rollTap = { ok: false };
+  for (const pt of redDiePoints) {
+    const t = allow("tap", pt, "--session", session, "--force");
+    if (t.ok) {
+      rollTap = t;
+      await new Promise(r => setTimeout(r, 120));
+      const probe = allow("snapshot", "--session", session);
+      const probeTexts = probe.ok && probe.value?.elements ? probe.value.elements.map(e => String(e.text || "")) : [];
+      if (probeTexts.some(t => /Dé:\s*[1-6]/.test(t))) break;
+    }
   }
-  if (!rollTap.ok) {
-    const coordTap = allow("tap", "0.351,0.500", "--session", session, "--force");
-    if (!coordTap.ok) throw new Error(JSON.stringify(coordTap.value));
-  }
+  if (!rollTap.ok) throw new Error("Physical red die hitbox could not be reached");
   allow("wait", "--timeout", "1400", "--session", session);
   const status = allow("snapshot", "--session", session);
   const texts = status.ok && status.value?.elements ? status.value.elements.map(e => String(e.text || "")) : [];
   const diceMatch = texts.map(t => t.match(/Dé:\s*([1-6])(?:\D|$)/)).find(Boolean);
-  if (!diceMatch) throw new Error(`Dice result was not exposed after Lancer le dé: ${texts.join(" | ")}`);
+  if (!diceMatch) throw new Error(`Dice result was not exposed after physical die tap: ${texts.join(" | ")}`);
   const rolled = Number(diceMatch[1]);
-  console.log(`DICE ROLL PASS: ${rolled}`);
+  console.log(`PHYSICAL DIE ROLL PASS: ${rolled}`);
 
-  const pawn = findRef("GAME_PAWN_1");
-  const pawnTap = allow("tap", pawn.ref, "--gen", String(pawn.gen), "--session", session);
-  if (!pawnTap.ok && /offscreen/i.test(String(pawnTap.value?.error || ""))) {
-    const coordTap = allow("tap", "0.13,0.70", "--session", session, "--force");
-    if (!coordTap.ok) throw new Error(JSON.stringify(coordTap.value));
-  } else if (!pawnTap.ok) {
-    throw new Error(JSON.stringify(pawnTap.value));
+  const redPawnPoints = [
+    "0.14,0.28", "0.21,0.28", "0.14,0.35", "0.21,0.35",
+    "0.11,0.31", "0.24,0.31",
+  ];
+  let pawnTap = { ok: false };
+  for (const pt of redPawnPoints) {
+    const t = allow("tap", pt, "--session", session, "--force");
+    if (t.ok) {
+      pawnTap = t;
+      allow("wait", "--timeout", "500", "--session", session);
+      const probe = allow("snapshot", "--session", session);
+      const probeText = probe.ok && probe.value?.elements ? probe.value.elements.map(e => String(e.text || "")).join(" | ") : "";
+      if (/Mila 6|Tsy afaka mihetsika|Rejouez|Déplacement|Capture|Joueur/i.test(probeText)) break;
+    }
   }
+  if (!pawnTap.ok) throw new Error("Physical red pawn hitbox could not be reached");
   allow("wait", "--timeout", "1200", "--session", session);
   const afterMove = allow("snapshot", "--session", session);
   const afterText = afterMove.ok && afterMove.value?.elements ? afterMove.value.elements.map(e => String(e.text || "")).join(" | ") : "";
   if (rolled === 6) {
     if (!/Rejouez|Déplacement|Capture|Joueur/i.test(afterText)) {
-      throw new Error(`Six did not expose a pawn-move state: ${afterText}`);
+      throw new Error(`Six did not expose a pawn-move state after physical pawn tap: ${afterText}`);
     }
-    console.log("DICE 6→PAWN MOVE PASS");
+    console.log("PHYSICAL DIE 6→PHYSICAL PAWN MOVE PASS");
   } else {
     if (!/Mila 6|Tsy afaka mihetsika|Joueur/i.test(afterText)) {
-      throw new Error(`Non-six pawn guard was not exposed: ${afterText}`);
+      throw new Error(`Non-six pawn guard was not exposed after physical pawn tap: ${afterText}`);
     }
-    console.log("PAWN LEGAL-MOVE GUARD PASS");
+    console.log("PHYSICAL PAWN LEGAL-MOVE GUARD PASS");
   }
-  shot("board-after-dice");
+  shot("board-after-physical-dice-pawn");
 
   // Opportunistic online lobby/music check: never fabricate it when CI has no authenticated account.
   allow("press", "BACK", "--session", session);

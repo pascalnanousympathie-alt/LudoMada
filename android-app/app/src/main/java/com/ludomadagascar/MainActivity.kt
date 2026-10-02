@@ -697,9 +697,43 @@ class MainActivity : Activity() {
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
     private fun gameModeDialog() {
-        AlertDialog.Builder(this).setTitle("Choisissez le mode")
-            .setItems(arrayOf("🌐 En ligne — Joueurs réels","👥 Hors-ligne — 2 à 4 joueurs")){_,which->if(which==0)lobby() else offlineMenu()}
-            .setNegativeButton("Aoka",null).show()
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(22),dp(18),dp(22),dp(18))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))).apply{
+                cornerRadius=dp(24).toFloat();setStroke(dp(1),0x66EDB734)
+            }
+        }
+        val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
+            gravity=Gravity.CENTER
+            contentDescription="Choisissez le mode"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        panel.addView(title,LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(label("La partie se joue directement depuis la scène 3D.",11f,false,0xB8FFFFFF.toInt()).apply{
+            gravity=Gravity.CENTER
+        },LinearLayout.LayoutParams(-1,dp(28)))
+        lateinit var dialog:AlertDialog
+        val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){dialog.dismiss();offlineMenu()}.apply{
+            contentDescription="MODE_OFFLINE"
+            isFocusable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        val online=button("🌐  En ligne — Joueurs réels",gold){dialog.dismiss();lobby()}.apply{
+            contentDescription="MODE_ONLINE"
+            isFocusable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
+        panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
+        dialog=AlertDialog.Builder(this).setView(panel).create()
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnShowListener{
+            dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            offline.requestFocus()
+            dialog.window?.setLayout((resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),WindowManager.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
     }
 
     private fun cryptoDialog() {
@@ -941,16 +975,7 @@ class MainActivity : Activity() {
         val host=LudoBoardView(this);host.onRollTap={offlineRoll(host)};host.onPawnTap={offlineMove(host,players,it)};host.state=offlineState;host.player=offlineTurn;offlineHost=host
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,gamePx(2),0,gamePx(4))})
         host.animateState()
-        addGame(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)}.apply{
-            contentDescription="GAME_DICE_ROLL"
-            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        },54,3,3)
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)}.apply{
-            contentDescription="GAME_PAWN_${i+1}"
-            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        },LinearLayout.LayoutParams(0,gamePx(46),1f).apply{setMargins(gamePx(2),0,gamePx(2),0)})
-        addGame(row,46,2,3);addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
+        addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
@@ -1020,10 +1045,7 @@ class MainActivity : Activity() {
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
         val host=LudoBoardView(this);host.onRollTap={roll()};host.onPawnTap={move(it)};boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        status=st;add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
-        val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        status=st
         updateBoard(host);root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
     }
 
