@@ -215,7 +215,7 @@ class LudoBoardView(
                 )
             } catch (_:Throwable) {}
         }
-        val dieHit = min(width, height) * 0.095f
+        val dieHit = min(width, height) * 0.120f
         for (pi in 0..3) {
             val p = projectedDice[pi]
             if (p[0] < 0f || p[1] < 0f) continue
@@ -516,10 +516,10 @@ class LudoBoardView(
         }
 
         private fun dieCenter(pi:Int):FloatArray=when(pi){
-            0->floatArrayOf(4.35f,-4.35f)
-            1->floatArrayOf(4.35f,4.35f)
-            2->floatArrayOf(-4.35f,4.35f)
-            else->floatArrayOf(-4.35f,-4.35f)
+            0->floatArrayOf(2.80f,-1.80f)
+            1->floatArrayOf(2.80f,1.80f)
+            2->floatArrayOf(-2.80f,1.80f)
+            else->floatArrayOf(-2.80f,-1.80f)
         }
 
         fun projectedTokens(pi:Int):Array<FloatArray>{
@@ -536,7 +536,7 @@ class LudoBoardView(
             val out=Array(4){FloatArray(2){-1000f}}
             for(pi in 0..3){
                 val d=dieCenter(pi)
-                project(d[0],0.98f,d[1],out[pi])
+                project(d[0],0.70f,d[1],out[pi])
             }
             return out
         }
