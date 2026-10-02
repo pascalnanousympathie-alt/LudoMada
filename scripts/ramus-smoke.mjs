@@ -302,8 +302,15 @@ try {
         : null;
       focusedPlay = Boolean(playNode?.focused);
     }
-    if (!focusedPlay) throw new Error("Home JOUER control could not be focused");
-    allow("press", "ENTER", "--session", session);
+    if (!focusedPlay) {
+      // Ramus may not expose the canvas-backed JOUER control as focusable after
+      // returning from the Wallet. Use the verified portrait touch point for the
+      // real JOUER visual hitbox instead of failing on accessibility focus alone.
+      const playFallback = allow("tap", "0.576,0.132", "--session", session, "--force");
+      if (!playFallback.ok) throw new Error("Home JOUER control could not be focused or tapped");
+    } else {
+      allow("press", "ENTER", "--session", session);
+    }
   } else {
     tapRef({ref:playNode.ref,gen:playTree.value.gen});
   }
