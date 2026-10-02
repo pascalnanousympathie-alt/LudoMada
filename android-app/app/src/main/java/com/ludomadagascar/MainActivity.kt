@@ -484,6 +484,10 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        if(modeOverlay!=null){
+            dismissGameModeOverlay()
+            return
+        }
         when (currentScreen) {
             "offlineMenu" -> home()
             "offline" -> offlineMenu()
@@ -696,46 +700,82 @@ class MainActivity : Activity() {
 
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
+    private var modeOverlay: FrameLayout? = null
+
+    private fun dismissGameModeOverlay() {
+        modeOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        modeOverlay=null
+    }
+
     private fun gameModeDialog() {
+        dismissGameModeOverlay()
+        val host=findViewById<ViewGroup>(android.R.id.content) ?: return
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(Color.argb(150,0,0,0))
+            isClickable=true
+            isFocusable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            contentDescription="GAME_MODE_OVERLAY"
+        }
         val panel=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
             setPadding(dp(22),dp(18),dp(22),dp(18))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))).apply{
-                cornerRadius=dp(24).toFloat();setStroke(dp(1),0x66EDB734)
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))
+            ).apply{
+                cornerRadius=dp(24).toFloat()
+                setStroke(dp(1),0x66EDB734)
             }
+            elevation=dp(18).toFloat()
+            isClickable=true
         }
         val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
             gravity=Gravity.CENTER
             contentDescription="Choisissez le mode"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
         }
         panel.addView(title,LinearLayout.LayoutParams(-1,dp(34)))
         panel.addView(label("La partie se joue directement depuis la scène 3D.",11f,false,0xB8FFFFFF.toInt()).apply{
             gravity=Gravity.CENTER
         },LinearLayout.LayoutParams(-1,dp(28)))
-        lateinit var dialog:AlertDialog
-        val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){dialog.dismiss();offlineMenu()}.apply{
+        val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){
+            dismissGameModeOverlay()
+            offlineMenu()
+        }.apply{
             contentDescription="MODE_OFFLINE"
             isFocusable=true
+            isClickable=true
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        val online=button("🌐  En ligne — Joueurs réels",gold){dialog.dismiss();lobby()}.apply{
+        val online=button("🌐  En ligne — Joueurs réels",gold){
+            dismissGameModeOverlay()
+            lobby()
+        }.apply{
             contentDescription="MODE_ONLINE"
             isFocusable=true
+            isClickable=true
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
         panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
         panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
-        dialog=AlertDialog.Builder(this).setTitle("Choisissez le mode").setView(panel).create()
-        dialog.setCanceledOnTouchOutside(true)
-        dialog.setOnShowListener{
-            dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        overlay.addView(panel,FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),
+            dp(210),
+            Gravity.CENTER
+        ))
+        overlay.setOnClickListener{ dismissGameModeOverlay() }
+        host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+        modeOverlay=overlay
+        overlay.post{
             offline.requestFocus()
-            dialog.window?.setLayout((resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),WindowManager.LayoutParams.WRAP_CONTENT)
+            offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
         }
-        dialog.show()
     }
-
     private fun cryptoDialog() {
         if(token.isBlank()){login();return}
         val crypto=EditText(this).apply{hint="Montant crypto";inputType=8194;setPadding(dp(12),0,dp(12),0)}
