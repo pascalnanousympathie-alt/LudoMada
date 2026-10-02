@@ -276,26 +276,77 @@ try {
     waitStable(900);
   }
 
-  // Authentication/navigation gate: JOUER is the real Home control. It opens the
-  // game-mode dialog, whose first option is the real Online entry.
-  // After returning from Wallet, Ramus can temporarily omit the native JOUER node
-  // from the accessibility tree. Prefer the ref when present; otherwise use the
-  // deterministic portrait coordinate mapped to the real JOUER visual hitbox.
-  const playNode = snap("JOUER");
-  if (playNode.elements?.length) {
-    tapRef({ref:playNode.elements[0].ref,gen:playNode.gen});
+  // Authentication/navigation gate: use the real Home JOUER control, which is offscreen
+  // in Ramus's portrait-normalized coordinates. Focus it with DPAD_RIGHT and ENTER.
+  let playTree = allow("snapshot", "--session", session, "--include-offscreen");
+  let playNode = playTree.ok
+    ? (playTree.value?.elements || []).find(el =>
+        el.clickable && String(el.contentDesc || el.text || "") === "JOUER"
+      )
+    : null;
+  if (!playNode) throw new Error("Home JOUER control was not exposed");
+  if (playNode.offscreen) {
+    let focusedPlay = Boolean(playNode.focused);
+    for (let i = 0; i < 4 && !focusedPlay; i++) {
+      allow("press", "DPAD_RIGHT", "--session", session);
+      playTree = allow("snapshot", "--session", session, "--include-offscreen");
+      playNode = playTree.ok
+        ? (playTree.value?.elements || []).find(el =>
+            el.clickable && String(el.contentDesc || el.text || "") === "JOUER"
+          )
+        : null;
+      focusedPlay = Boolean(playNode?.focused);
+    }
+    if (!focusedPlay) throw new Error("Home JOUER control could not be focused");
+    allow("press", "ENTER", "--session", session);
   } else {
-    const playFallback = allow("tap", "0.576,0.132", "--session", session, "--force");
-    if (!playFallback.ok) throw new Error("JOUER control was neither accessible nor tappable after Wallet");
+    tapRef({ref:playNode.ref,gen:playTree.value.gen});
   }
   waitStable(500);
-  if (!hasText("🌐 En ligne — Joueurs réels")) throw new Error("Online mode was not exposed from the Home JOUER dialog");
-  tapAnyRef("🌐 En ligne — Joueurs réels");
-  waitStable(900);
-  if (!hasText("Nom, email ou mobile") && !hasText("Connexion")) throw new Error("Login screen was not reached from Online mode");
-  console.log("HOME→ONLINE→LOGIN PASS");
-  const signup=findRef("Créer un compte");
-  tapRef(signup);
+  if (!hasText("Choisissez le mode")) throw new Error("Game mode dialog was not exposed from Home JOUER");
+
+  // Online is the first row; from the default/offline focus, move up once and ENTER.
+  allow("press", "DPAD_UP", "--session", session);
+  allow("press", "ENTER", "--session", session);
+  waitStable(700);
+
+  // The online flow selects the stake before presenting the real Login screen.
+  const feeTree = allow("snapshot", "--session", session, "--find", "500 Ar");
+  if (!feeTree.ok || !feeTree.value?.elements?.length) {
+    throw new Error("Online stake selector did not expose 500 Ar");
+  }
+  tapRef({ref:feeTree.value.elements[0].ref,gen:feeTree.value.gen});
+  waitStable(700);
+  if (!hasText("Nom, email ou mobile") && !hasText("CONNEXION")) {
+    throw new Error("Login screen was not reached after selecting the 500 Ar online stake");
+  }
+  console.log("HOME→ONLINE→STAKE→LOGIN PASS");
+
+  // Login controls live in the landscape right panel and are offscreen to Ramus.
+  const signupTree = allow("snapshot", "--session", session, "--include-offscreen");
+  let signupNode = signupTree.ok
+    ? (signupTree.value?.elements || []).find(el =>
+        el.clickable && String(el.text || el.contentDesc || "") === "Créer un compte"
+      )
+    : null;
+  if (!signupNode) throw new Error("Registration control was not exposed from Login");
+  if (signupNode.offscreen) {
+    let focusedSignup = Boolean(signupNode.focused);
+    for (let i = 0; i < 4 && !focusedSignup; i++) {
+      allow("press", "DPAD_RIGHT", "--session", session);
+      const t = allow("snapshot", "--session", session, "--include-offscreen");
+      signupNode = t.ok
+        ? (t.value?.elements || []).find(el =>
+            el.clickable && String(el.text || el.contentDesc || "") === "Créer un compte"
+          )
+        : null;
+      focusedSignup = Boolean(signupNode?.focused);
+    }
+    if (!focusedSignup) throw new Error("Registration control could not be focused");
+    allow("press", "ENTER", "--session", session);
+  } else {
+    tapRef({ref:signupNode.ref,gen:signupTree.value.gen});
+  }
   waitStable(500);
   if (!hasText("Créer un compte") || !hasText("S'inscrire")) throw new Error("Registration dialog was not exposed from Login");
   console.log("LOGIN→REGISTER PASS");
