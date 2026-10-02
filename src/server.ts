@@ -1,7 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { randomInt, randomUUID, createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { PrismaClient, PaymentMethod, TransactionType } from "@prisma/client";
@@ -184,7 +184,10 @@ const authRateLimit = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req:any) => req.path + ":" + String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"),
+  // Use Express's normalized client IP instead of trusting the raw X-Forwarded-For
+  // header supplied by the caller. In production trust proxy is pinned to the
+  // Railway edge proxy above, so req.ip is the canonical rate-limit key.
+  keyGenerator: (req:any) => req.path + ":" + ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
   message: { error: "Too many authentication attempts" }
 });
 
@@ -321,7 +324,7 @@ app.post("/api/auth/google",authRateLimit,async(req,res)=>{
   }
 });
 
-app.post("/api/auth/register",async(req,res)=>{
+app.post("/api/auth/register",authRateLimit,async(req,res)=>{
   try {
     const b=z.object({username:z.string().min(3).max(32).regex(/^[A-Za-z0-9_]+$/),password:z.string().min(10).max(128),email:z.string().email().optional(),phoneNumber:z.string().min(7).max(20).regex(/^\+?[0-9() .-]+$/).optional()}).parse(req.body);
     const hash=await bcrypt.hash(b.password,12);
