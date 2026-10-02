@@ -3,6 +3,7 @@ package com.ludomadagascar
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Color
+import android.opengl.GLES20
 import android.opengl.GLES30
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
@@ -15,6 +16,7 @@ import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
+import java.io.File
 import java.nio.ShortBuffer
 import kotlin.math.cos
 import kotlin.math.floor
@@ -35,15 +37,15 @@ class LudoBoardView(
 
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
-    private val renderer = SceneRenderer(this)
+    private val renderer = SafeSceneRenderer(this)
     private val gameAudio = SpatialGameAudio()
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
     init {
-        setEGLContextClientVersion(3)
+        setEGLContextClientVersion(2)
         setRenderer(renderer)
-        renderMode = RENDERMODE_CONTINUOUSLY
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = true
         isClickable = true
     }
@@ -202,6 +204,17 @@ class LudoBoardView(
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
+        if (BuildConfig.DEBUG) {
+            contentDescription = "LudoBoard3D|touch=" + e.x + "," + e.y + "|size=" + width + "x" + height + "|die0=" + projectedDice[0][0] + "," + projectedDice[0][1]
+            try {
+                File(context.filesDir, "touch-debug.txt").appendText(
+                    "touch=" + e.x + "," + e.y +
+                    " size=" + width + "x" + height +
+                    " die0=" + projectedDice[0][0] + "," + projectedDice[0][1] +
+                    " die1=" + projectedDice[1][0] + "," + projectedDice[1][1] + "\n"
+                )
+            } catch (_:Throwable) {}
+        }
         val dieHit = min(width, height) * 0.095f
         for (pi in 0..3) {
             val p = projectedDice[pi]
@@ -267,6 +280,437 @@ class LudoBoardView(
     }
 
 
+
+    /**
+     * Compact GLES2 gameplay renderer used on constrained/mobile/cloud devices.
+     * It remains a real perspective 3D scene: depth, normals, specular lighting,
+     * geometric board cells, 3D pawns, physical die mesh and animated highlights.
+     */
+    internal class SafeSceneRenderer(private val host:LudoBoardView) : Renderer {
+        var state:JSONObject?=null
+        var player:Int=-1
+        var diceAnim=1f
+        val lift=Array(4){FloatArray(4)}
+
+        private val proj=FloatArray(16)
+        private val view=FloatArray(16)
+        private val vp=FloatArray(16)
+        private val snapshot=FloatArray(16)
+        private val scratch=FloatArray(16)
+        private val tmp=FloatArray(16)
+        private var width=1
+        private var height=1
+        private var program=0
+        private var uMvp=0
+        private var uModel=0
+        private var uCamera=0
+        private var uLight=0
+        private var uColor=0
+        private var uMetallic=0
+        private var uRoughness=0
+        private var uEmission=0
+
+        private lateinit var cube:Mesh
+        private lateinit var disk:Mesh
+        private lateinit var sphere:Mesh
+        private lateinit var pawn:Mesh
+
+        private val pawnColors=intArrayOf(
+            Color.rgb(219,59,66),Color.rgb(48,165,92),
+            Color.rgb(239,186,46),Color.rgb(59,112,219)
+        )
+
+        override fun onSurfaceCreated(
+            gl:javax.microedition.khronos.opengles.GL10?,
+            cfg:javax.microedition.khronos.egl.EGLConfig?
+        ){
+            GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
+            GLES20.glEnable(GLES20.GL_DEPTH_TEST)
+            GLES20.glDepthFunc(GLES20.GL_LEQUAL)
+            GLES20.glEnable(GLES20.GL_CULL_FACE)
+            GLES20.glCullFace(GLES20.GL_BACK)
+            GLES20.glEnable(GLES20.GL_BLEND)
+            GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA,GLES20.GL_ONE_MINUS_SRC_ALPHA)
+
+            val vs="""
+                attribute vec3 aPos;
+                attribute vec3 aNormal;
+                uniform mat4 uMvp;
+                uniform mat4 uModel;
+                varying vec3 vWorld;
+                varying vec3 vNormal;
+                void main(){
+                    vec4 w=uModel*vec4(aPos,1.0);
+                    vWorld=w.xyz;
+                    vNormal=normalize(mat3(uModel)*aNormal);
+                    gl_Position=uMvp*vec4(aPos,1.0);
+                }
+            """.trimIndent()
+
+            val fs="""
+                precision mediump float;
+                uniform vec4 uColor;
+                uniform vec3 uCamera;
+                uniform vec3 uLight;
+                uniform float uMetallic;
+                uniform float uRoughness;
+                uniform float uEmission;
+                varying vec3 vWorld;
+                varying vec3 vNormal;
+                void main(){
+                    vec3 N=normalize(vNormal);
+                    vec3 L=normalize(uLight-vWorld);
+                    vec3 V=normalize(uCamera-vWorld);
+                    vec3 H=normalize(L+V);
+                    float ndl=max(dot(N,L),0.0);
+                    float ndv=max(dot(N,V),0.0);
+                    float ndh=max(dot(N,H),0.0);
+                    float shin=mix(18.0,96.0,1.0-clamp(uRoughness,0.0,1.0));
+                    float spec=pow(ndh,shin)*(0.08+0.74*clamp(uMetallic,0.0,1.0));
+                    float rim=pow(1.0-ndv,2.0)*0.09;
+                    vec3 base=uColor.rgb;
+                    vec3 ambient=base*(0.20+0.10*ndv);
+                    vec3 diffuse=base*(0.78*ndl);
+                    vec3 highlight=vec3(1.0,0.96,0.88)*spec;
+                    vec3 c=ambient+diffuse+highlight+base*(uEmission+rim);
+                    c=c/(c+vec3(1.0));
+                    c=pow(max(c,vec3(0.0)),vec3(0.92));
+                    gl_FragColor=vec4(c,uColor.a);
+                }
+            """.trimIndent()
+
+            program=buildProgram(vs,fs)
+            uMvp=GLES20.glGetUniformLocation(program,"uMvp")
+            uModel=GLES20.glGetUniformLocation(program,"uModel")
+            uCamera=GLES20.glGetUniformLocation(program,"uCamera")
+            uLight=GLES20.glGetUniformLocation(program,"uLight")
+            uColor=GLES20.glGetUniformLocation(program,"uColor")
+            uMetallic=GLES20.glGetUniformLocation(program,"uMetallic")
+            uRoughness=GLES20.glGetUniformLocation(program,"uRoughness")
+            uEmission=GLES20.glGetUniformLocation(program,"uEmission")
+
+            cube=cubeMesh()
+            disk=diskMesh(40)
+            sphere=sphereMesh(16,10)
+            pawn=pawnMesh()
+        }
+
+        override fun onSurfaceChanged(
+            gl:javax.microedition.khronos.opengles.GL10?,
+            w:Int,h:Int
+        ){
+            width=max(1,w)
+            height=max(1,h)
+            GLES20.glViewport(0,0,width,height)
+            host.requestRender()
+        }
+
+        override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
+            val aspect=width.toFloat()/height.toFloat()
+            Matrix.perspectiveM(proj,0,24f,aspect,0.1f,50f)
+            Matrix.setLookAtM(
+                view,0,0f,6.8f,6.8f,
+                0f,0.18f,0f,
+                0f,1f,0f
+            )
+            Matrix.multiplyMM(vp,0,proj,0,view,0)
+            System.arraycopy(vp,0,snapshot,0,16)
+
+            GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER,0)
+            GLES20.glViewport(0,0,width,height)
+            GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
+            GLES20.glUseProgram(program)
+            GLES20.glUniform3f(uCamera,0f,6.8f,6.8f)
+            GLES20.glUniform3f(uLight,-5.5f,10f,5f)
+
+            drawMesh(cube,model(0f,-1.0f,0f,13f,0.08f,13f,0f),color(12,23,48,1f),0.84f,0.02f,0f)
+            drawMesh(cube,model(0f,-0.42f,0f,5.0f,0.32f,5.0f,0f),color(72,31,8,1f),0.58f,0.12f,0f)
+            drawMesh(cube,model(0f,-0.02f,0f,4.55f,0.12f,4.55f,0f),color(118,57,14,1f),0.50f,0.18f,0f)
+            drawMesh(cube,model(0f,0.09f,0f,4.24f,0.07f,4.24f,0f),color(210,171,103,1f),0.54f,0.22f,0f)
+            drawMesh(cube,model(0f,0.17f,0f,4.0f,0.065f,4.0f,0f),color(239,228,197,1f),0.42f,0.12f,0f)
+
+            drawPath()
+            drawZones()
+            drawPawns()
+            drawDice()
+        }
+
+        private fun drawPath(){
+            for((r,c) in host.visualPath()){
+                val x=(c-7f)*0.50f
+                val z=(r-7f)*0.50f
+                drawMesh(cube,model(x,0.245f,z,0.225f,0.055f,0.225f,0f),color(236,229,205,1f),0.66f,0.02f,0f)
+                drawMesh(cube,model(x,0.302f,z,0.198f,0.018f,0.198f,0f),color(248,244,231,1f),0.50f,0.05f,0f)
+            }
+        }
+
+        private fun drawZones(){
+            val centers=arrayOf(
+                floatArrayOf(2.56f,-2.56f),
+                floatArrayOf(2.56f,2.56f),
+                floatArrayOf(-2.56f,2.56f),
+                floatArrayOf(-2.56f,-2.56f)
+            )
+            for(i in 0..3){
+                val c=centers[i]
+                drawMesh(cube,model(c[0],0.23f,c[1],1.42f,0.05f,1.42f,0f),colorFromInt(pawnColors[i],0.78f),0.62f,0.02f,0.01f)
+                drawMesh(disk,model(c[0],0.295f,c[1],1.10f,0.025f,1.10f,0f),color(255,255,255,0.17f),0.34f,0.52f,0f)
+            }
+
+            val lanes=arrayOf(
+                listOf(1 to 7,2 to 7,3 to 7,4 to 7,5 to 7,6 to 7),
+                listOf(7 to 8,7 to 9,7 to 10,7 to 11,7 to 12,7 to 13),
+                listOf(8 to 7,9 to 7,10 to 7,11 to 7,12 to 7,13 to 7),
+                listOf(7 to 1,7 to 2,7 to 3,7 to 4,7 to 5,7 to 6)
+            )
+            for(pi in 0..3){
+                for((r,c) in lanes[pi]){
+                    val x=(c-7f)*0.50f
+                    val z=(r-7f)*0.50f
+                    drawMesh(cube,model(x,0.325f,z,0.196f,0.025f,0.196f,0f),colorFromInt(pawnColors[pi],0.90f),0.48f,0.05f,0.02f)
+                }
+            }
+
+            drawMesh(disk,model(0f,0.33f,0f,1.24f,0.028f,1.24f,0f),color(241,235,218,1f),0.52f,0.03f,0f)
+            drawMesh(disk,model(0f,0.365f,0f,0.86f,0.022f,0.86f,0f),color(194,146,56,0.85f),0.32f,0.35f,0.01f)
+        }
+
+        private fun drawPawns(){
+            for(pi in 0..3) for(ti in 0..3){
+                val p=host.display[pi][ti]
+                if(p[0].isNaN())continue
+                if(pi==player && isLegalPawn(pi,ti)){
+                    val pulse=0.45f+0.07f*sin(System.nanoTime()/180_000_000.0).toFloat()
+                    drawMesh(disk,model(p[0],0.275f,p[1],pulse,0.016f,pulse,0f),color(255,204,45,0.82f),0.20f,0.20f,0.08f)
+                }
+                drawMesh(disk,model(p[0],0.295f,p[1],0.28f,0.018f,0.28f,0f),color(18,20,25,0.38f),0.92f,0f,0f)
+                val ly=0.42f+lift[pi][ti]
+                drawMesh(pawn,model(p[0],ly,p[1],0.31f,0.31f,0.31f,0f),colorFromInt(pawnColors[pi],1f),0.24f,0.28f,0.015f)
+                drawMesh(sphere,model(p[0],ly+0.22f,p[1],0.16f,0.16f,0.16f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.34f,0.02f)
+                drawMesh(sphere,model(p[0]-0.05f,ly+0.34f,p[1]-0.10f,0.035f,0.028f,0.018f,0f),color(255,255,255,0.70f),0.12f,0.70f,0.06f)
+            }
+        }
+
+        private fun drawDice(){
+            for(pi in 0..3){
+                val d=dieCenter(pi)
+                val rot=if(pi==player)(1f-diceAnim)*32f else 0f
+                val die=model(d[0],0.70f,d[1],0.50f,0.50f,0.50f,rot)
+                drawMesh(cube,die,color(242,244,246,1f),0.10f,0.82f,0.035f)
+                val value=if(pi==player)(state?.optInt("dice",0)?:0) else 1
+                val pip=0.20f
+                val positions=when(value){
+                    1->arrayOf(0f to 0f)
+                    2->arrayOf(-pip to -pip,pip to pip)
+                    3->arrayOf(-pip to -pip,0f to 0f,pip to pip)
+                    4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip)
+                    5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip)
+                    else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)
+                }
+                for((px,pz) in positions){
+                    val pipModel=localModel(die,px,0.54f,pz,0.06f,0.04f,0.06f)
+                    drawMesh(sphere,pipModel,color(38,42,48,1f),0.16f,0.66f,0f)
+                }
+            }
+        }
+
+        private fun dieCenter(pi:Int):FloatArray=when(pi){
+            0->floatArrayOf(4.35f,-4.35f)
+            1->floatArrayOf(4.35f,4.35f)
+            2->floatArrayOf(-4.35f,4.35f)
+            else->floatArrayOf(-4.35f,-4.35f)
+        }
+
+        fun projectedTokens(pi:Int):Array<FloatArray>{
+            val out=Array(4){FloatArray(2){-1000f}}
+            for(ti in 0..3){
+                val p=host.display[pi][ti]
+                if(p[0].isNaN())continue
+                project(p[0],0.94f,p[1],out[ti])
+            }
+            return out
+        }
+
+        fun projectedDice():Array<FloatArray>{
+            val out=Array(4){FloatArray(2){-1000f}}
+            for(pi in 0..3){
+                val d=dieCenter(pi)
+                project(d[0],0.98f,d[1],out[pi])
+            }
+            return out
+        }
+
+        private fun project(x:Float,y:Float,z:Float,out:FloatArray){
+            val v=floatArrayOf(x,y,z,1f)
+            Matrix.multiplyMV(tmp,0,vp,0,v,0)
+            val w=tmp[3]
+            if(kotlin.math.abs(w)>0.0001f){
+                out[0]=(tmp[0]/w*0.5f+0.5f)*width
+                out[1]=(1f-(tmp[1]/w*0.5f+0.5f))*height
+            }
+        }
+
+        private fun isLegalPawn(pi:Int,ti:Int):Boolean{
+            val dice=state?.optInt("dice",0)?:0
+            if(pi!=player || dice !in 1..6)return false
+            val pos=state?.optJSONArray("players")?.optJSONObject(pi)
+                ?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
+            return if(pos<0)dice==6 else pos+dice<=57
+        }
+
+        private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,roughness:Float,metallic:Float,emission:Float){
+            Matrix.multiplyMM(tmp,0,vp,0,mat,0)
+            GLES20.glUseProgram(program)
+            GLES20.glUniformMatrix4fv(uMvp,1,false,tmp,0)
+            GLES20.glUniformMatrix4fv(uModel,1,false,mat,0)
+            GLES20.glUniform4fv(uColor,1,color,0)
+            GLES20.glUniform1f(uMetallic,metallic)
+            GLES20.glUniform1f(uRoughness,roughness)
+            GLES20.glUniform1f(uEmission,emission)
+            GLES20.glEnableVertexAttribArray(0)
+            GLES20.glEnableVertexAttribArray(1)
+            GLES20.glVertexAttribPointer(0,3,GLES20.GL_FLOAT,false,0,mesh.p)
+            GLES20.glVertexAttribPointer(1,3,GLES20.GL_FLOAT,false,0,mesh.n)
+            GLES20.glDrawElements(GLES20.GL_TRIANGLES,mesh.indices.size,GLES20.GL_UNSIGNED_SHORT,mesh.i)
+            GLES20.glDisableVertexAttribArray(0)
+            GLES20.glDisableVertexAttribArray(1)
+        }
+
+        private fun color(r:Int,g:Int,b:Int,a:Float)=floatArrayOf(r/255f,g/255f,b/255f,a)
+        private fun colorFromInt(c:Int,a:Float)=color(Color.red(c),Color.green(c),Color.blue(c),a)
+
+        private fun model(x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float,ry:Float):FloatArray{
+            Matrix.setIdentityM(scratch,0)
+            Matrix.translateM(scratch,0,x,y,z)
+            if(ry!=0f)Matrix.rotateM(scratch,0,ry,0f,1f,0f)
+            Matrix.scaleM(scratch,0,sx,sy,sz)
+            return scratch.clone()
+        }
+
+        private fun localModel(parent:FloatArray,x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float):FloatArray{
+            Matrix.setIdentityM(scratch,0)
+            Matrix.translateM(scratch,0,x,y,z)
+            Matrix.scaleM(scratch,0,sx,sy,sz)
+            Matrix.multiplyMM(tmp,0,parent,0,scratch,0)
+            return tmp.clone()
+        }
+
+        private fun cubeMesh():Mesh{
+            val p=floatArrayOf(
+                -1f,-1f,1f,1f,-1f,1f,1f,1f,1f,-1f,1f,1f,
+                1f,-1f,-1f,-1f,-1f,-1f,-1f,1f,-1f,1f,1f,-1f,
+                -1f,1f,1f,1f,1f,1f,1f,1f,-1f,-1f,1f,-1f,
+                -1f,-1f,-1f,1f,-1f,-1f,1f,-1f,1f,-1f,-1f,1f,
+                1f,-1f,1f,1f,-1f,-1f,1f,1f,-1f,1f,1f,1f,
+                -1f,-1f,-1f,-1f,-1f,1f,-1f,1f,1f,-1f,1f,-1f
+            )
+            val n=FloatArray(72)
+            val normals=arrayOf(
+                floatArrayOf(0f,0f,1f),floatArrayOf(0f,0f,-1f),
+                floatArrayOf(0f,1f,0f),floatArrayOf(0f,-1f,0f),
+                floatArrayOf(1f,0f,0f),floatArrayOf(-1f,0f,0f)
+            )
+            for(f in 0..5)for(k in 0..3){
+                val q=(f*4+k)*3
+                n[q]=normals[f][0];n[q+1]=normals[f][1];n[q+2]=normals[f][2]
+            }
+            val idx=shortArrayOf(
+                0,1,2,0,2,3,4,5,6,4,6,7,
+                8,9,10,8,10,11,12,13,14,12,14,15,
+                16,17,18,16,18,19,20,21,22,20,22,23
+            )
+            return Mesh(p,n,idx)
+        }
+
+        private fun diskMesh(seg:Int):Mesh{
+            val p=ArrayList<Float>();val n=ArrayList<Float>();val idx=ArrayList<Short>()
+            p+=0f;p+=0f;p+=0f;n+=0f;n+=1f;n+=0f
+            for(s in 0..seg){
+                val a=s.toFloat()/seg*Math.PI*2
+                p+=cos(a).toFloat();p+=0f;p+=sin(a).toFloat()
+                n+=0f;n+=1f;n+=0f
+            }
+            for(s in 1..seg){idx+=0;idx+=s.toShort();idx+=(s+1).toShort()}
+            return Mesh(p.toFloatArray(),n.toFloatArray(),idx.toShortArray())
+        }
+
+        private fun sphereMesh(seg:Int,rings:Int):Mesh{
+            val p=ArrayList<Float>();val n=ArrayList<Float>();val idx=ArrayList<Short>()
+            for(r in 0..rings){
+                val ph=(r.toFloat()/rings-0.5f)*Math.PI
+                val cp=cos(ph);val sp=sin(ph)
+                for(s in 0..seg){
+                    val th=s.toFloat()/seg*Math.PI*2
+                    val x=(cp*cos(th)).toFloat();val y=sp.toFloat();val z=(cp*sin(th)).toFloat()
+                    p+=x;p+=y;p+=z;n+=x;n+=y;n+=z
+                }
+            }
+            val row=seg+1
+            for(r in 0 until rings)for(s in 0 until seg){
+                val a=(r*row+s).toShort();val b=(r*row+s+1).toShort()
+                val c=((r+1)*row+s+1).toShort();val d=((r+1)*row+s).toShort()
+                idx+=a;idx+=b;idx+=c;idx+=a;idx+=c;idx+=d
+            }
+            return Mesh(p.toFloatArray(),n.toFloatArray(),idx.toShortArray())
+        }
+
+        private fun pawnMesh():Mesh{
+            val profile=arrayOf(
+                0.82f to 0.00f,0.92f to 0.07f,0.84f to 0.14f,
+                0.61f to 0.23f,0.46f to 0.32f,0.33f to 0.45f,
+                0.26f to 0.58f,0.24f to 0.67f
+            )
+            val seg=24;val p=ArrayList<Float>();val n=ArrayList<Float>();val idx=ArrayList<Short>()
+            for(pi in profile.indices)for(s in 0 until seg){
+                val a=s.toFloat()/seg*Math.PI*2
+                val r=profile[pi].first;val y=profile[pi].second
+                p+=(cos(a)*r).toFloat();p+=y;p+=(sin(a)*r).toFloat()
+                val slope=when(pi){
+                    0->profile[1].first-r
+                    profile.lastIndex->r-profile[pi-1].first
+                    else->(profile[pi+1].first-profile[pi-1].first)*0.5f
+                }
+                val dy=when(pi){
+                    0->profile[1].second-y
+                    profile.lastIndex->y-profile[pi-1].second
+                    else->profile[pi+1].second-profile[pi-1].second
+                }
+                val nx=cos(a).toFloat();val nz=sin(a).toFloat()
+                val ny=if(kotlin.math.abs(dy)<0.001f)1f else -slope/max(0.001f,dy)
+                val len=max(0.001f,kotlin.math.sqrt(nx*nx+ny*ny+nz*nz))
+                n+=nx/len;n+=ny/len;n+=nz/len
+            }
+            for(pi in 0 until profile.lastIndex)for(s in 0 until seg){
+                val a=(pi*seg+s).toShort();val b=(pi*seg+(s+1)%seg).toShort()
+                val c=((pi+1)*seg+(s+1)%seg).toShort();val d=((pi+1)*seg+s).toShort()
+                idx+=a;idx+=b;idx+=c;idx+=a;idx+=c;idx+=d
+            }
+            return Mesh(p.toFloatArray(),n.toFloatArray(),idx.toShortArray())
+        }
+
+        private fun buildProgram(vs:String,fs:String):Int{
+            fun compile(type:Int,src:String):Int{
+                val id=GLES20.glCreateShader(type)
+                GLES20.glShaderSource(id,src)
+                GLES20.glCompileShader(id)
+                val ok=IntArray(1)
+                GLES20.glGetShaderiv(id,GLES20.GL_COMPILE_STATUS,ok,0)
+                if(ok[0]==0)throw IllegalStateException("GL shader: "+GLES20.glGetShaderInfoLog(id))
+                return id
+            }
+            val v=compile(GLES20.GL_VERTEX_SHADER,vs)
+            val f=compile(GLES20.GL_FRAGMENT_SHADER,fs)
+            val p=GLES20.glCreateProgram()
+            GLES20.glAttachShader(p,v);GLES20.glAttachShader(p,f);GLES20.glLinkProgram(p)
+            val ok=IntArray(1)
+            GLES20.glGetProgramiv(p,GLES20.GL_LINK_STATUS,ok,0)
+            if(ok[0]==0)throw IllegalStateException("GL link: "+GLES20.glGetProgramInfoLog(p))
+            GLES20.glDeleteShader(v);GLES20.glDeleteShader(f)
+            return p
+        }
+    }
+
     internal class SceneRenderer(private val host: LudoBoardView) : Renderer {
         var state: JSONObject? = null
         var player: Int = -1
@@ -298,6 +742,7 @@ class LudoBoardView(
         private var sceneFbo=0
         private var sceneColorTex=0
         private var sceneDepthTex=0
+        private var fallbackShadowTex=0
         private val shadowSize=512
         private var sceneWidth=1
         private var sceneHeight=1
@@ -334,19 +779,20 @@ class LudoBoardView(
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);disk=diskMesh(32);pips=sphereMesh(10,6)
-            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap()
+            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
-            sceneWidth=max(1,w);sceneHeight=max(1,h);GLES30.glViewport(0,0,sceneWidth,sceneHeight);createSceneTargets(sceneWidth,sceneHeight)
+            sceneWidth=max(1,w);sceneHeight=max(1,h);GLES30.glViewport(0,0,sceneWidth,sceneHeight);host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now)
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f;val camY=if(land)6.7f else 7.9f;val camZ=if(land)6.7f else 9.2f;val fov=if(land)24f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,50f);Matrix.setLookAtM(view,0,0f,camY,camZ,0f,0.10f,0f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
-            renderShadowMap();renderScene();drawParticles();renderPostProcess();System.arraycopy(vp,0,projectionSnapshot,0,16)
+            renderDirectFrame()
+            System.arraycopy(vp,0,projectionSnapshot,0,16)
         }
         private fun createSceneTargets(w:Int,h:Int){
             if(sceneFbo!=0){GLES30.glDeleteFramebuffers(1,intArrayOf(sceneFbo),0);GLES30.glDeleteTextures(1,intArrayOf(sceneColorTex),0);GLES30.glDeleteTextures(1,intArrayOf(sceneDepthTex),0)}
@@ -367,6 +813,17 @@ class LudoBoardView(
         }
         private fun renderScene(){
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+        }
+
+        private fun renderDirectFrame(){
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+            shader.beginFrame(fallbackShadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            drawWorld(false)
+            shader.endFrame()
+            drawParticles()
         }
         fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
@@ -456,7 +913,7 @@ class LudoBoardView(
         private fun maybeSpawnDust(now:Long){for(pi in 0..3)for(ti in 0..3){if(lift[pi][ti]<=0.035f||now-lastDust[pi][ti]<90_000_000L)continue;val xz=host.display[pi][ti];if(xz[0].isNaN())continue;lastDust[pi][ti]=now;spawnDust(xz[0],xz[1],pawnColors[pi])}}
         private fun spawnDust(x:Float,z:Float,color:Int){for(n in 0 until 3){val slot=(0 until 64).firstOrNull{dustLife[it]<=0f}?:continue;val a=slot*2.3999631f+x*1.7f+z*0.9f+n*0.9f;dustLife[slot]=0.45f+(slot%5)*0.03f;dustPos[slot*3]=x+cos(a)*0.10f;dustPos[slot*3+1]=boardTop+0.08f;dustPos[slot*3+2]=z+sin(a)*0.10f;dustVel[slot*3]=cos(a)*0.18f;dustVel[slot*3+1]=0.55f+(slot%3)*0.08f;dustVel[slot*3+2]=sin(a)*0.18f;dustColor[slot*4]=Color.red(color)/255f;dustColor[slot*4+1]=Color.green(color)/255f;dustColor[slot*4+2]=Color.blue(color)/255f;dustColor[slot*4+3]=0.75f;dustSize[slot]=4f+(slot%4)}}
         private fun updateParticles(dt:Float){for(i in 0 until 64){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
-        private fun drawParticles(){var count=0;for(i in 0 until 64)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/0.5f).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);particleShader.draw(dustData,count,particleVbo,vp);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)}
+        private fun drawParticles(){var count=0;for(i in 0 until 64)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/0.5f).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,0.28f,0.10f);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
         private fun createMaterialTexture(kind:Int):Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val grain=sin(u*34.0+sin(v*9.0)*4.0)*0.5+0.5;val band=sin(v*19.0+u*6.0)*0.5+0.5;val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
@@ -501,6 +958,12 @@ class LudoBoardView(
             GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_CUBE_MAP)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,0)
             return tex
+        }
+
+        private fun createFallbackShadowTexture():Int{
+            val data=ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder())
+            data.put(255.toByte()).put(255.toByte()).put(255.toByte()).put(255.toByte()).position(0)
+            return uploadTexture(1,data)
         }
 
         private fun uploadTexture(size:Int,data:ByteBuffer):Int{val ids=IntArray(1);GLES30.glGenTextures(1,ids,0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,ids[0]);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_REPEAT);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_REPEAT);GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,size,size,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,data);GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0);return ids[0]}
