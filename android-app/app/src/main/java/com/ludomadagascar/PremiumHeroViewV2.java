@@ -2,6 +2,7 @@ package com.ludomadagascar;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.*;
 import com.ludomadagascar.R;
 import android.view.*;
@@ -81,7 +82,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
     addView(playHit,playLp);
-    addView(playHitAlt,new FrameLayout.LayoutParams(1,1));
+    FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
+    playAltLp.leftMargin=2; playAltLp.topMargin=96;
+    addView(playHitAlt,playAltLp);
     post(()->{
       positionWalletHit(walletHit);
       positionPlayHit(playHit,playHitAlt);
@@ -162,8 +165,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     setHit(playHit,left,top,width,height);
     // Do not place a second transparent JOUER overlay over the left rail.
     // PremiumHeroViewV2 already maps alternate Ramus portrait input in onTouchEvent().
-    // Keeping this auxiliary view at 1×1 prevents it from stealing the WALLET touch area.
-    setHit(playHitAlt,0,0,1,1);
+    // Keep the auxiliary JOUER target in a small neutral corner; it stays transparent and off the visible CTA.
+    setHit(playHitAlt,2,96,48,48);
   }
   private void positionWalletHit(View wallet){
     float W=getWidth(),H=getHeight();
@@ -224,8 +227,34 @@ public class PremiumHeroViewV2 extends FrameLayout {
     f.addView(playHitAlt);
     f.post(()->positionPlayHit(playHit,playHitAlt));
   }
+  private Activity activityContext(){
+    Context c=getContext();
+    while(c instanceof ContextWrapper && !(c instanceof Activity)){
+      c=((ContextWrapper)c).getBaseContext();
+    }
+    return c instanceof Activity ? (Activity)c : null;
+  }
+
   private void call(String n){
-    try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
+    try{
+      Activity a=activityContext();
+      android.util.Log.i("LudoMada","HOME_CALL name="+n+" context="+getContext().getClass().getName()+" activity="+(a==null?"null":a.getClass().getName()));
+      if(a instanceof MainActivity){
+        MainActivity m=(MainActivity)a;
+        if("gameModeDialog".equals(n)){
+          m.gameModeDialog();
+          return;
+        }
+        if("wallet".equals(n)){
+          m.wallet();
+          return;
+        }
+      }
+      if(a==null)return;
+      Method m=a.getClass().getDeclaredMethod(n);
+      m.setAccessible(true);
+      m.invoke(a);
+    }catch(Throwable ignored){}
   }
   private void set(String n,Object v){
     try{Field f=getContext().getClass().getDeclaredField(n);f.setAccessible(true);f.set(getContext(),v);}catch(Throwable ignored){}

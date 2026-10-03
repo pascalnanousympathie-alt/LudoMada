@@ -617,7 +617,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun wallet() {
+    fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
         walletBalanceView=label("— Ar",27f,true,Color.rgb(35,150,84));walletBalanceView!!.gravity=Gravity.CENTER
@@ -709,9 +709,13 @@ class MainActivity : Activity() {
         modeOverlay=null
     }
 
-    private fun gameModeDialog() {
+    fun gameModeDialog() {
+        android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
-        val host=findViewById<ViewGroup>(android.R.id.content) ?: return
+        val host=findViewById<ViewGroup>(android.R.id.content) ?: run {
+            android.util.Log.e("LudoMada","GAME_MODE_NO_CONTENT_ROOT")
+            return
+        }
         val overlay=FrameLayout(this).apply{
             setBackgroundColor(Color.argb(150,0,0,0))
             isClickable=true
@@ -771,6 +775,7 @@ class MainActivity : Activity() {
         overlay.setOnClickListener{ dismissGameModeOverlay() }
         host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
         modeOverlay=overlay
+        android.util.Log.i("LudoMada","GAME_MODE_OVERLAY_ADDED")
         overlay.post{
             offline.requestFocus()
             offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
@@ -1002,6 +1007,7 @@ class MainActivity : Activity() {
     }
 
     private fun startOffline(players:Int) {
+        android.util.Log.i("LudoMada","OFFLINE_START players="+players)
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
         offlineState=JSONObject().put("players",arr)
