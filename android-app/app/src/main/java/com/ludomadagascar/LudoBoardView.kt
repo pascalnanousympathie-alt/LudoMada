@@ -832,7 +832,7 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now)
-            val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f;val camY=if(land)6.7f else 7.9f;val camZ=if(land)6.7f else 9.2f;val fov=if(land)24f else 34f
+            val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f;val camY=if(land)18.0f else 8.2f;val camZ=if(land)1.0f else 8.8f;val fov=if(land)30f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,50f);Matrix.setLookAtM(view,0,0f,camY,camZ,0f,0.10f,0f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
@@ -875,10 +875,10 @@ class LudoBoardView(
             return out
         }
         private fun dieCenterWorld(pi:Int):FloatArray = when(pi){
-            0 -> floatArrayOf(4.72f,boardTop+0.10f,-4.72f)
-            1 -> floatArrayOf(4.72f,boardTop+0.10f,4.72f)
-            2 -> floatArrayOf(-4.72f,boardTop+0.10f,4.72f)
-            else -> floatArrayOf(-4.72f,boardTop+0.10f,-4.72f)
+            0 -> floatArrayOf(4.25f,boardTop+0.10f,-4.25f)
+            1 -> floatArrayOf(4.25f,boardTop+0.10f,4.25f)
+            2 -> floatArrayOf(-4.25f,boardTop+0.10f,4.25f)
+            else -> floatArrayOf(-4.25f,boardTop+0.10f,-4.25f)
         }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){

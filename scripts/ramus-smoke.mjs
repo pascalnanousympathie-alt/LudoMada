@@ -386,10 +386,12 @@ try {
   // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
   // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
   const redDiePoints = [
-    "0.113,0.214", "0.100,0.205", "0.126,0.205",
-    "0.113,0.190", "0.113,0.238", "0.090,0.214", "0.136,0.214",
-    "0.786,0.113", "0.770,0.105", "0.802,0.105", "0.786,0.085", "0.786,0.141",
-    "0.887,0.786", "0.860,0.770", "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13"
+    // Current premium camera: projected die0 ≈ (1131,36) on a 1616×720 landscape
+    // framebuffer, which maps to ≈ (0.050,0.300) on Ramus's portrait-normalized plane.
+    "0.050,0.300", "0.040,0.290", "0.060,0.290",
+    "0.050,0.280", "0.050,0.320", "0.030,0.300", "0.070,0.300",
+    // Keep the former transforms as compatibility probes for different emulator rotation paths.
+    "0.113,0.214", "0.786,0.113", "0.887,0.786", "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13"
   ];
   let rollTap = { ok: false };
   for (const pt of redDiePoints) {
