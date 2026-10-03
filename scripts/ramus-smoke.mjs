@@ -382,15 +382,21 @@ try {
   // Ramus exposes the landscape game surface through portrait-normalized coordinates.
   // Player 0 is red, and the reference layout places the red die at top-right and
   // the four red pawns in the top-right home quadrant.
+  // The renderer projects player 0's die near (0.786,0.113) in the landscape
+  // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
+  // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
   const redDiePoints = [
-    "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13",
+    "0.113,0.214", "0.100,0.205", "0.126,0.205",
+    "0.113,0.190", "0.113,0.238", "0.090,0.214", "0.136,0.214",
+    "0.786,0.113", "0.770,0.105", "0.802,0.105", "0.786,0.085", "0.786,0.141",
+    "0.887,0.786", "0.860,0.770", "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13"
   ];
   let rollTap = { ok: false };
   for (const pt of redDiePoints) {
     const t = allow("tap", pt, "--session", session, "--force");
     if (t.ok) {
       rollTap = t;
-      await new Promise(r => setTimeout(r, 120));
+      waitStable(250);
       const probe = allow("snapshot", "--session", session);
       const probeTexts = probe.ok && probe.value?.elements ? probe.value.elements.map(e => String(e.text || "")) : [];
       if (probeTexts.some(t => /Dé:\s*[1-6]/.test(t))) break;

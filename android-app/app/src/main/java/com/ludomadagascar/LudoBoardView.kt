@@ -215,12 +215,17 @@ class LudoBoardView(
                 )
             } catch (_:Throwable) {}
         }
+        // Ramus can expose a landscape GLSurfaceView through a portrait-normalized
+        // input plane. In that case rotate the input point CCW back into the renderer
+        // framebuffer before testing the real projected hitboxes.
+        val touchX = if (width < height) (1f - (e.y / max(1f, height.toFloat()))) * height else e.x
+        val touchY = if (width < height) (e.x / max(1f, width.toFloat())) * width else e.y
         val dieHit = min(width, height) * 0.120f
         for (pi in 0..3) {
             val p = projectedDice[pi]
             if (p[0] < 0f || p[1] < 0f) continue
-            val dx = e.x - p[0]
-            val dy = e.y - p[1]
+            val dx = touchX - p[0]
+            val dy = touchY - p[1]
             if (dx * dx + dy * dy <= dieHit * dieHit) {
                 if (pi == player) {
                     performClick()
@@ -235,8 +240,8 @@ class LudoBoardView(
         var bestD = Float.MAX_VALUE
         for (ti in 0..3) {
             val p = projected[ti]
-            val ddx = e.x - p[0]
-            val ddy = e.y - p[1]
+            val ddx = touchX - p[0]
+            val ddy = touchY - p[1]
             val d2 = ddx * ddx + ddy * ddy
             if (d2 < bestD) { bestD = d2; best = ti }
         }
