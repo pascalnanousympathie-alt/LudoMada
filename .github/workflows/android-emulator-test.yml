@@ -85,7 +85,7 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          JAVA_TOOL_OPTIONS="-XX:ActiveProcessorCount=2" nice -n 10 bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.internal.instrumentation.agent=false -Dorg.gradle.workers.max=1 --no-daemon --no-parallel assembleDebug --console=plain --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Install Ramus CLI
         working-directory: .
