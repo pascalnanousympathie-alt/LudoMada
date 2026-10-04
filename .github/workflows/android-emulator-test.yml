@@ -108,16 +108,20 @@ jobs:
       - name: Save Ramus visual evidence locally
         if: always()
         run: tar -czf "$HOME/LudoMada-ramus-evidence.tgz" ramus-evidence ramus-smoke.log 2>/dev/null || true
+      - name: Package Ramus visual evidence
+        if: always()
+        run: |
+          set -eu
+          tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence ramus-smoke.log
+          test -s "ludomada-ramus-visual-${{ github.run_id }}.tgz"
       - name: Upload Ramus visual evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: ludomada-ramus-visual-${{ github.run_id }}
-          path: |
-            ramus-evidence/
-            ramus-smoke.log
-            android-app/app/src/main/res/drawable-nodpi/ludomada_gameplay_reference.jpg
-          if-no-files-found: warn
+          path: ludomada-ramus-visual-${{ github.run_id }}.tgz
+          if-no-files-found: error
           retention-days: 7
       - name: Save verified debug APK locally
         if: success()
