@@ -509,10 +509,11 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            Matrix.perspectiveM(proj,0,33f,aspect,0.1f,60f)
+            Matrix.perspectiveM(proj,0,33f,aspect,0.1f,70f)
+            // Wider oblique framing: complete board + wooden rim + all four dice stay visible.
             Matrix.setLookAtM(
-                view,0,0f,12.4f,13.4f,
-                0f,0.10f,0f,
+                view,0,0f,16.6f,18.2f,
+                0f,0.12f,0f,
                 0f,1f,0f
             )
             Matrix.multiplyMM(vp,0,proj,0,view,0)
@@ -523,8 +524,8 @@ class LudoBoardView(
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             GLES20.glUseProgram(program)
-            GLES20.glUniform3f(uCamera,0f,12.4f,13.4f)
-            GLES20.glUniform3f(uLight,-6.0f,14f,7f)
+            GLES20.glUniform3f(uCamera,0f,16.6f,18.2f)
+            GLES20.glUniform3f(uLight,-7.0f,18f,9f)
 
             // Blue woven cloth + deep wood substrate + lacquered wood frame + cream playing surface.
             drawMesh(cube,model(0f,-1.0f,0f,13f,0.08f,13f,0f),color(20,65,118,1f),0.74f,0.02f,0f)
@@ -596,9 +597,9 @@ class LudoBoardView(
                 drawMesh(disk,model(p[0],0.300f,p[1],0.30f,0.020f,0.30f,0f),color(32,24,20,0.30f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
                 // Bright lacquered 3D pawn silhouette, closer to the supplied reference.
-                drawMesh(pawn,model(p[0],ly,p[1],0.34f,0.50f,0.34f,0f),colorFromInt(pawnColors[pi],1f),0.22f,0.03f,0.16f)
-                drawMesh(sphere,model(p[0],ly+0.35f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.03f,0.17f)
-                drawMesh(sphere,model(p[0]-0.05f,ly+0.47f,p[1]-0.09f,0.038f,0.028f,0.018f,0f),color(255,255,255,0.82f),0.10f,0.55f,0.08f)
+                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.52f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.22f,0.02f,0.22f)
+                drawMesh(sphere,model(p[0],ly+0.36f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.02f,0.23f)
+                drawMesh(sphere,model(p[0]-0.05f,ly+0.48f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.82f),0.10f,0.55f,0.10f)
             }
         }
 
@@ -653,10 +654,10 @@ class LudoBoardView(
         }
 
         private fun dieCenter(pi:Int):FloatArray=when(pi){
-            0->floatArrayOf(-3.72f,-3.72f)
-            1->floatArrayOf(3.72f,-3.72f)
-            2->floatArrayOf(3.72f,3.72f)
-            else->floatArrayOf(-3.72f,3.72f)
+            0->floatArrayOf(-3.35f,-3.35f)
+            1->floatArrayOf(3.35f,-3.35f)
+            2->floatArrayOf(3.35f,3.35f)
+            else->floatArrayOf(-3.35f,3.35f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
