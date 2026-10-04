@@ -429,16 +429,13 @@ class LudoBoardView(
                     float shin=mix(18.0,96.0,1.0-clamp(uRoughness,0.0,1.0));
                     float spec=pow(ndh,shin)*(0.08+0.74*clamp(uMetallic,0.0,1.0));
                     float rim=pow(1.0-ndv,2.0)*0.09;
-                    // Hydro-plated chrome approximation for GLES2: a procedural
-                    // environment/reflection response plus a tight Fresnel edge.
                     vec3 R=reflect(-V,N);
-                    float horizon=smoothstep(-0.70,0.70,R.y);
-                    float sweep=0.5+0.5*sin(R.x*7.0+R.z*11.0);
-                    // Neutral studio reflection keeps the silver coat readable even on
-                    // side faces, while the horizon gradient/sweep provides the plated
-                    // mirror character without a texture or external cubemap.
-                    vec3 chromeEnv=mix(vec3(0.55,0.62,0.70),vec3(1.30,1.34,1.40),horizon);
-                    chromeEnv*=0.95+0.05*sweep;
+                    float horizon=smoothstep(-0.58,0.78,R.y);
+                    float sweep=0.5+0.5*sin(R.x*8.0+R.z*13.0);
+                    float band=exp(-pow((R.y-0.10)*4.2,2.0));
+                    vec3 chromeEnv=mix(vec3(0.035,0.055,0.085),vec3(1.55,1.60,1.66),horizon);
+                    chromeEnv*=0.84+0.16*sweep;
+                    chromeEnv+=vec3(1.0,0.98,0.96)*0.55*band;
                     float fresnel=pow(1.0-ndv,4.0);
                     float chromeMask=clamp(uChrome,0.0,1.0);
                     vec3 base=uColor.rgb;
@@ -472,7 +469,7 @@ class LudoBoardView(
                     vec3 diffuse=base*(0.82*ndl);
                     vec3 highlight=vec3(1.0,0.96,0.88)*spec;
                     vec3 c=ambient+diffuse+highlight+base*(uEmission+rim);
-                    vec3 chrome=chromeEnv*(0.72+0.70*fresnel)+vec3(1.0)*spec*2.25;
+                    vec3 chrome=chromeEnv*(0.68+0.92*fresnel)+vec3(1.0)*spec*3.25;
                     c=mix(c,chrome,chromeMask);
                     c=c/(c+vec3(1.0));
                     c=pow(max(c,vec3(0.0)),vec3(0.92));
@@ -600,15 +597,14 @@ class LudoBoardView(
         private fun drawDice(){
             for(pi in 0..3){
                 val d=dieCenter(pi)
-                val rot=if(pi==player)(1f-diceAnim)*32f else 0f
-                // Two-layer die body: plated outer rim + rounded silver core.
-                val rim=model(d[0],0.64f,d[1],0.56f,0.56f,0.56f,rot)
-                drawMesh(die,rim,color(58,64,72,1f),0.10f,0.98f,0.012f,0.96f)
-                val dieModel=model(d[0],0.70f,d[1],0.50f,0.50f,0.50f,rot)
-                // Silver base + near-mirror chrome coat: hydro-plated look on GLES2.
-                drawMesh(die,dieModel,color(214,222,230,1f),0.035f,1.0f,0.022f,1.0f)
+                val rot=if(pi==player)(1f-diceAnim)*32f + if(pi%2==0)-7f else 7f
+                // Two-layer hydro-plated die: dark chrome rim + polished silver body.
+                val rim=model(d[0],0.66f,d[1],0.50f,0.50f,0.50f,rot)
+                drawMesh(die,rim,color(50,58,68,1f),0.08f,1.0f,0.018f,0.95f)
+                val dieModel=model(d[0],0.72f,d[1],0.46f,0.46f,0.46f,rot)
+                drawMesh(die,dieModel,color(225,231,236,1f),0.022f,1.0f,0.026f,1.0f)
                 val value=if(pi==player)(state?.optInt("dice",0)?:0) else 1
-                val pip=0.20f
+                val pip=0.19f
                 val positions=when(value){
                     1->arrayOf(0f to 0f)
                     2->arrayOf(-pip to -pip,pip to pip)
@@ -618,8 +614,9 @@ class LudoBoardView(
                     else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)
                 }
                 for((px,pz) in positions){
-                    val pipModel=localModel(dieModel,px,1.02f,pz,0.07f,0.035f,0.07f)
-                    drawMesh(sphere,pipModel,color(26,30,36,1f),0.12f,0.72f,0f)
+                    // Flat dark pips make every face legible on small mobile screenshots.
+                    val pipModel=localModel(dieModel,px,1.015f,pz,0.070f,0.018f,0.070f)
+                    drawMesh(disk,pipModel,color(18,22,28,1f),0.12f,0.55f,0.0f)
                 }
             }
         }
@@ -647,11 +644,11 @@ class LudoBoardView(
             return Mesh(v.toFloatArray(),n.toFloatArray(),idx.toShortArray())
         }
 
-        private fun dieCenter(pi:Int):FloatArray=when(pi){
-            0->floatArrayOf(2.80f,-1.80f)
-            1->floatArrayOf(2.80f,1.80f)
-            2->floatArrayOf(-2.80f,1.80f)
-            else->floatArrayOf(-2.80f,-1.80f)
+        private fun dieCenter(pi:Int):FloatArray=when(pi:Int){
+            0->floatArrayOf(2.62f,-1.66f)
+            1->floatArrayOf(2.62f,1.66f)
+            2->floatArrayOf(-2.62f,1.66f)
+            else->floatArrayOf(-2.62f,-1.66f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
