@@ -191,11 +191,11 @@ class LudoBoardView(
 
     private fun homeGrid(pi: Int, ti: Int): FloatArray {
         val xy = arrayOf(
-            // Reference layout: red top, green right, yellow bottom, blue left.
-            floatArrayOf(-0.68f, -3.02f), floatArrayOf(0.68f, -3.02f), floatArrayOf(-0.68f, -2.12f), floatArrayOf(0.68f, -2.12f),
-            floatArrayOf(2.12f, -0.68f), floatArrayOf(3.02f, -0.68f), floatArrayOf(2.12f, 0.68f), floatArrayOf(3.02f, 0.68f),
-            floatArrayOf(-0.68f, 2.12f), floatArrayOf(0.68f, 2.12f), floatArrayOf(-0.68f, 3.02f), floatArrayOf(0.68f, 3.02f),
-            floatArrayOf(-3.02f, -0.68f), floatArrayOf(-2.12f, -0.68f), floatArrayOf(-3.02f, 0.68f), floatArrayOf(-2.12f, 0.68f)
+            // Reference layout: four compact pawns inside each outer home plinth.
+            floatArrayOf(-0.45f, -2.92f), floatArrayOf(0.45f, -2.92f), floatArrayOf(-0.45f, -2.24f), floatArrayOf(0.45f, -2.24f),
+            floatArrayOf(2.24f, -0.45f), floatArrayOf(2.92f, -0.45f), floatArrayOf(2.24f, 0.45f), floatArrayOf(2.92f, 0.45f),
+            floatArrayOf(-0.45f, 2.24f), floatArrayOf(0.45f, 2.24f), floatArrayOf(-0.45f, 2.92f), floatArrayOf(0.45f, 2.92f),
+            floatArrayOf(-2.92f, -0.45f), floatArrayOf(-2.24f, -0.45f), floatArrayOf(-2.92f, 0.45f), floatArrayOf(-2.24f, 0.45f)
         )
         return xy[pi * 4 + ti].clone()
     }
@@ -531,7 +531,9 @@ class LudoBoardView(
             drawMesh(cube,model(0f,-0.48f,0f,5.45f,0.34f,5.45f,0f),color(66,26,8,1f),0.54f,0.10f,0f)
             drawMesh(cube,model(0f,-0.04f,0f,5.12f,0.12f,5.12f,0f),color(112,55,18,1f),0.42f,0.16f,0f)
             drawMesh(cube,model(0f,0.095f,0f,4.82f,0.075f,4.82f,0f),color(182,112,42,1f),0.34f,0.18f,0f)
-            drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(236,224,193,1f),0.48f,0.06f,0f)
+            // Warm wood top matches the physical board in the reference; playable cells are
+            // layered separately above it in ivory, so the wood remains visible between lanes.
+            drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(142,78,27,1f),0.36f,0.16f,0.01f)
 
             drawPath()
             drawZones()
@@ -559,9 +561,9 @@ class LudoBoardView(
             for(i in 0..3){
                 val c=centers[i]
                 // Beveled colored plinths like the reference image.
-                drawMesh(die,model(c[0],0.19f,c[1],1.62f,0.085f,1.62f,0f),color(37,30,28,1f),0.46f,0.08f,0f,0.10f)
-                drawMesh(die,model(c[0],0.28f,c[1],1.47f,0.070f,1.47f,0f),colorFromInt(pawnColors[i],0.92f),0.32f,0.12f,0.010f)
-                drawMesh(die,model(c[0],0.355f,c[1],1.23f,0.040f,1.23f,0f),colorFromInt(pawnColors[i],0.98f),0.24f,0.14f,0.018f)
+                drawMesh(die,model(c[0],0.19f,c[1],1.50f,0.085f,1.50f,0f),color(37,30,28,1f),0.46f,0.08f,0f,0.10f)
+                drawMesh(die,model(c[0],0.28f,c[1],1.34f,0.070f,1.34f,0f),colorFromInt(pawnColors[i],0.94f),0.30f,0.12f,0.018f)
+                drawMesh(die,model(c[0],0.355f,c[1],1.12f,0.040f,1.12f,0f),colorFromInt(pawnColors[i],1f),0.22f,0.12f,0.030f)
             }
 
             val lanes=arrayOf(
@@ -591,12 +593,12 @@ class LudoBoardView(
                     val pulse=0.45f+0.07f*sin(System.nanoTime()/180_000_000.0).toFloat()
                     drawMesh(disk,model(p[0],0.275f,p[1],pulse,0.016f,pulse,0f),color(255,204,45,0.82f),0.20f,0.20f,0.08f)
                 }
-                drawMesh(disk,model(p[0],0.300f,p[1],0.34f,0.020f,0.34f,0f),color(32,24,20,0.58f),0.84f,0.04f,0f)
+                drawMesh(disk,model(p[0],0.300f,p[1],0.34f,0.020f,0.34f,0f),color(32,24,20,0.38f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
-                // Saturated lacquer + softer metallic response keeps the pawn visibly colored.
-                drawMesh(pawn,model(p[0],ly,p[1],0.42f,0.62f,0.42f,0f),colorFromInt(pawnColors[pi],1f),0.12f,0.12f,0.035f)
-                drawMesh(sphere,model(p[0],ly+0.43f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.10f,0.16f,0.045f)
-                drawMesh(sphere,model(p[0]-0.06f,ly+0.56f,p[1]-0.10f,0.045f,0.030f,0.020f,0f),color(255,255,255,0.82f),0.10f,0.70f,0.08f)
+                // High-saturation lacquer with a restrained metallic term, like the reference pions.
+                drawMesh(pawn,model(p[0],ly,p[1],0.42f,0.62f,0.42f,0f),colorFromInt(pawnColors[pi],1f),0.10f,0.08f,0.090f)
+                drawMesh(sphere,model(p[0],ly+0.43f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.08f,0.10f,0.110f)
+                drawMesh(sphere,model(p[0]-0.06f,ly+0.56f,p[1]-0.10f,0.045f,0.030f,0.020f,0f),color(255,255,255,0.82f),0.10f,0.65f,0.08f)
             }
         }
 
