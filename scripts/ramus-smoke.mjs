@@ -306,16 +306,28 @@ try {
   waitStable(500);
   if (!hasText("Choisissez le mode") && !hasText("MODE_OFFLINE") && !hasText("MODE_ONLINE")) throw new Error("Game mode dialog was not exposed from Home JOUER");
 
-  // Ramus exposes the landscape mode overlay through a portrait-normalized input surface.
-  // Verified coordinate 0.70,0.28 activates the online button without changing app behavior.
+  // Prefer the real accessibility target for the mode overlay. Ramus coordinate
+  // transforms differ across rotation paths, while MODE_ONLINE is the authoritative UI marker.
   let onlineOpened = false;
-  for (const pt of ["0.70,0.28", "0.70,0.30", "0.68,0.28"]) {
-    const tapped = allow("tap", pt, "--session", session, "--force");
-    if (!tapped.ok) continue;
-    waitStable(500);
-    if (hasText("Choisir la mise") || hasText("500 Ar")) {
-      onlineOpened = true;
-      break;
+  const onlineMode = allow("snapshot", "--session", session, "--find", "MODE_ONLINE");
+  if (onlineMode.ok && onlineMode.value?.elements?.length) {
+    const target = onlineMode.value.elements[0];
+    const tapped = allow("tap", target.ref, "--gen", String(onlineMode.value.gen), "--session", session);
+    if (tapped.ok) {
+      waitStable(500);
+      onlineOpened = hasText("Choisir la mise") || hasText("500 Ar");
+    }
+  }
+  // Coordinate fallback remains only for emulator paths where MODE_ONLINE is not exposed.
+  if (!onlineOpened) {
+    for (const pt of ["0.70,0.28", "0.70,0.30", "0.68,0.28"]) {
+      const tapped = allow("tap", pt, "--session", session, "--force");
+      if (!tapped.ok) continue;
+      waitStable(500);
+      if (hasText("Choisir la mise") || hasText("500 Ar")) {
+        onlineOpened = true;
+        break;
+      }
     }
   }
   if (!onlineOpened) throw new Error("Online lobby was not reached from the game mode dialog");
@@ -332,18 +344,32 @@ try {
   }
   console.log("HOME→ONLINE→STAKE→LOGIN PASS");
 
-  // Login controls live in the landscape right panel and are offscreen in Ramus' normalized view.
-  // The verified landscape input mapping reaches "Créer un compte" at ~0.95,0.275.
-  const signupTap = allow("tap", "0.95,0.275", "--session", session, "--force");
-  if (!signupTap.ok) throw new Error("Registration button tap failed");
+  // Prefer the real accessibility target for registration. The Login panel is fully
+  // exposed by Ramus, so coordinate mapping is only a fallback.
   let signupOpened = false;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    waitStable(450);
-    const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
-    const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
-    if (elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"))) {
-      signupOpened = true;
-      break;
+  const signupTree = allow("snapshot", "--session", session, "--find", "Créer un compte");
+  if (signupTree.ok && signupTree.value?.elements?.length) {
+    const target = signupTree.value.elements[0];
+    const tapped = allow("tap", target.ref, "--gen", String(signupTree.value.gen), "--session", session);
+    if (tapped.ok) {
+      waitStable(500);
+      const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
+      const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
+      signupOpened = elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"));
+    }
+  }
+  if (!signupOpened) {
+    const signupTap = allow("tap", "0.95,0.275", "--session", session, "--force");
+    if (signupTap.ok) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        waitStable(450);
+        const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
+        const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
+        if (elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"))) {
+          signupOpened = true;
+          break;
+        }
+      }
     }
   }
   if (!signupOpened) throw new Error("Registration dialog was not exposed from Login");
@@ -368,7 +394,15 @@ try {
 
   const offlineFour = offlineMenu.value.elements[0];
   run("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);
-  waitStable(1200);
+  waitStable(1600);
+  shot("after-offline-4p");
+  const afterFour = allow("snapshot", "--session", session, "--include-offscreen");
+  if (afterFour.ok) {
+    const compact = (afterFour.value?.elements || []).slice(0, 80).map(e => ({text:e.text,desc:e.contentDesc,clickable:e.clickable,focused:e.focused,offscreen:e.offscreen}));
+    console.log("AFTER_4P_SNAPSHOT=" + JSON.stringify(compact));
+  } else {
+    console.log("AFTER_4P_SNAPSHOT_ERROR=" + JSON.stringify(afterFour.value));
+  }
   if (!hasText("Joueur 1/4")) throw new Error("4-player gameplay screen did not open");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
@@ -386,12 +420,13 @@ try {
   // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
   // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
   const redDiePoints = [
-    // Current premium camera: projected die0 ≈ (1131,36) on a 1616×720 landscape
-    // framebuffer, which maps to ≈ (0.050,0.300) on Ramus's portrait-normalized plane.
-    "0.050,0.300", "0.040,0.290", "0.060,0.290",
-    "0.050,0.280", "0.050,0.320", "0.030,0.300", "0.070,0.300",
-    // Keep the former transforms as compatibility probes for different emulator rotation paths.
-    "0.113,0.214", "0.786,0.113", "0.887,0.786", "0.15,0.10", "0.13,0.12", "0.18,0.09", "0.20,0.13"
+    // Ramus normalized coordinates map directly to the 1616×720 screen.
+    // Board starts at about (21,186); current projected red die0 is ≈ (1076.6,60.6)
+    // in the 1574×458 board, hence screen ≈ (1098,247) => normalized ≈ (0.679,0.343).
+    "0.679,0.343", "0.670,0.332", "0.688,0.332",
+    "0.679,0.353", "0.670,0.345", "0.688,0.345",
+    // Small compatibility probes around the verified center.
+    "0.660,0.343", "0.700,0.343"
   ];
   let rollTap = { ok: false };
   for (const pt of redDiePoints) {
@@ -430,8 +465,10 @@ try {
 
   if (rolled === 6) {
     const redPawnPoints = [
-      "0.14,0.28", "0.21,0.28", "0.14,0.35", "0.21,0.35",
-      "0.11,0.31", "0.24,0.31",
+      // Red home is the upper-right quadrant. Approximate screen centers from the
+      // verified 1616×720 landscape screenshot are around x=0.59..0.65, y=0.28..0.39.
+      "0.590,0.280", "0.645,0.280", "0.590,0.375", "0.645,0.375",
+      "0.570,0.330", "0.665,0.330",
     ];
     let pawnTap = { ok: false };
     for (const pt of redPawnPoints) {
@@ -495,9 +532,11 @@ try {
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
-  if (session) {
+  if (session && (success || process.env.RAMUS_KEEP_ON_FAIL !== "1")) {
     const ended = allow("session", "end", "--session", session);
     if (!ended.ok) console.error("session end:", JSON.stringify(ended.value));
+  } else if (session && !success) {
+    console.error("RAMUS_KEEP_ON_FAIL=1: preserving session for post-failure logcat");
   }
   if (!success) {
     console.error("RAMUS_SMOKE_FAIL");

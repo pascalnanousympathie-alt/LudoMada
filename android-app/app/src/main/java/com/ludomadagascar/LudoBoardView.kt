@@ -1,6 +1,7 @@
 package com.ludomadagascar
 
 import android.animation.ValueAnimator
+import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Color
 import android.opengl.GLES20
@@ -41,14 +42,48 @@ class LudoBoardView(
 
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
-    private val renderer = SceneRenderer(this)
-    private val gameAudio = SpatialGameAudio()
+    private lateinit var renderer: GameplayRenderer
+    private var gameAudio: SpatialGameAudio? = null
+    private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
+    private fun smokeMarker(value:String) {
+        if (!BuildConfig.DEBUG) return
+        runCatching {
+            context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                .edit().putString("last_marker", value).apply()
+        }
+        android.util.Log.i("LudoMadaSmoke", "BOARD_MARKER=" + value)
+    }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
+    private fun deviceSupportsGles3(): Boolean {
+        val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
+        return (info?.reqGlEsVersion ?: 0) >= 0x30000
+    }
+
+    private fun isLikelyEmulator(): Boolean {
+        val f = android.os.Build.FINGERPRINT.lowercase()
+        val m = android.os.Build.MODEL.lowercase()
+        val h = android.os.Build.HARDWARE.lowercase()
+        val p = android.os.Build.PRODUCT.lowercase()
+        return f.contains("generic") || f.contains("emulator") ||
+            m.contains("emulator") || m.contains("android sdk") ||
+            h.contains("ranchu") || h.contains("goldfish") ||
+            p.contains("sdk") || p.contains("emulator")
+    }
+
     init {
-        setEGLContextClientVersion(3)
+        smokeMarker("BOARD_INIT_START:" + android.os.Build.MODEL + "|" + android.os.Build.FINGERPRINT)
+        val gles3Available = deviceSupportsGles3()
+        val gles3 = gles3Available && !isLikelyEmulator()
+        smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + isLikelyEmulator())
+        setEGLContextClientVersion(if (gles3) 3 else 2)
+        smokeMarker("BOARD_EGL_VERSION_SET:" + if (gles3) 3 else 2)
+        renderer = if (gles3) SceneRenderer(this) else SafeSceneRenderer(this)
+        smokeMarker("BOARD_RENDERER_OBJECT:" + if (gles3) "PBR" else "SAFE_3D")
+        android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
+        smokeMarker("BOARD_RENDERER_SET")
         renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = true
         isClickable = true
@@ -59,7 +94,7 @@ class LudoBoardView(
     fun startDiceAnimation() {
         if (diceRolling) return
         diceRolling = true
-        gameAudio.play(0f, 0.85f, 760.0)
+        audio().play(0f, 0.85f, 760.0)
         pulseHaptic(24L, 180)
         ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 720L
@@ -258,7 +293,7 @@ class LudoBoardView(
             val centerDx = (projected[best][0] - width * 0.5f) / max(1f, width * 0.5f)
             val centerDy = (projected[best][1] - height * 0.5f) / max(1f, height * 0.5f)
             val distance = kotlin.math.sqrt(centerDx * centerDx + centerDy * centerDy).coerceIn(0f, 1f)
-            gameAudio.play(pan, 0.65f, 520.0, distance)
+            audio().play(pan, 0.65f, 520.0, distance)
             onPawnTap?.invoke(best)
         }
         return true
@@ -284,22 +319,32 @@ class LudoBoardView(
     }
 
     override fun onDetachedFromWindow() {
-        gameAudio.release()
+        gameAudio?.release()
+        gameAudio = null
         super.onDetachedFromWindow()
     }
 
 
+
+    private interface GameplayRenderer : GLSurfaceView.Renderer {
+        var state: JSONObject?
+        var player: Int
+        var diceAnim: Float
+        val lift: Array<FloatArray>
+        fun projectedTokens(pi: Int): Array<FloatArray>
+        fun projectedDice(): Array<FloatArray>
+    }
 
     /**
      * Compact GLES2 gameplay renderer used on constrained/mobile/cloud devices.
      * It remains a real perspective 3D scene: depth, normals, specular lighting,
      * geometric board cells, 3D pawns, physical die mesh and animated highlights.
      */
-    internal class SafeSceneRenderer(private val host:LudoBoardView) : Renderer {
-        var state:JSONObject?=null
-        var player:Int=-1
-        var diceAnim=1f
-        val lift=Array(4){FloatArray(4)}
+    internal class SafeSceneRenderer(private val host:LudoBoardView) : GameplayRenderer {
+        override var state:JSONObject?=null
+        override var player:Int=-1
+        override var diceAnim=1f
+        override val lift=Array(4){FloatArray(4)}
 
         private val proj=FloatArray(16)
         private val view=FloatArray(16)
@@ -333,6 +378,10 @@ class LudoBoardView(
             gl:javax.microedition.khronos.opengles.GL10?,
             cfg:javax.microedition.khronos.egl.EGLConfig?
         ){
+            runCatching {
+                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                    .edit().putString("last_marker", "SAFE_SURFACE_CREATED").apply()
+            }
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             GLES20.glDepthFunc(GLES20.GL_LEQUAL)
@@ -561,7 +610,7 @@ class LudoBoardView(
             else->floatArrayOf(-2.80f,-1.80f)
         }
 
-        fun projectedTokens(pi:Int):Array<FloatArray>{
+        override fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}}
             for(ti in 0..3){
                 val p=host.display[pi][ti]
@@ -571,7 +620,7 @@ class LudoBoardView(
             return out
         }
 
-        fun projectedDice():Array<FloatArray>{
+        override fun projectedDice():Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}}
             for(pi in 0..3){
                 val d=dieCenter(pi)
@@ -750,11 +799,11 @@ class LudoBoardView(
         }
     }
 
-    internal class SceneRenderer(private val host: LudoBoardView) : Renderer {
-        var state: JSONObject? = null
-        var player: Int = -1
-        var diceAnim = 1f
-        val lift = Array(4) { FloatArray(4) }
+    internal class SceneRenderer(private val host: LudoBoardView) : GameplayRenderer {
+        override var state: JSONObject? = null
+        override var player: Int = -1
+        override var diceAnim = 1f
+        override val lift = Array(4) { FloatArray(4) }
         private val vp=FloatArray(16)
         internal val proj=FloatArray(16)
         internal val view=FloatArray(16)
@@ -808,6 +857,11 @@ class LudoBoardView(
         private val pawnScale=0.62f
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
+            android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
+            runCatching {
+                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                    .edit().putString("last_marker", "PBR_SURFACE_CREATED").apply()
+            }
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
             GLES30.glDepthFunc(GLES30.GL_LEQUAL)
@@ -824,12 +878,20 @@ class LudoBoardView(
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
+            runCatching {
+                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                    .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
+            }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
             GLES30.glViewport(0,0,sceneWidth,sceneHeight)
             createSceneTargets(sceneWidth,sceneHeight)
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
+            runCatching {
+                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                    .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+            }
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now)
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f;val camY=if(land)18.0f else 8.2f;val camZ=if(land)1.0f else 8.8f;val fov=if(land)30f else 34f
@@ -864,12 +926,12 @@ class LudoBoardView(
             renderScene()
             renderPostProcess()
         }
-        fun projectedTokens(pi:Int):Array<FloatArray>{
+        override fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
             for(ti in 0..3){val xz=host.display[pi][ti];val x=xz[0];val z=xz[1];if(x.isNaN())continue;val y=boardTop+0.60f;val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[ti][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[ti][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
-        fun projectedDice():Array<FloatArray>{
+        override fun projectedDice():Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
             for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out

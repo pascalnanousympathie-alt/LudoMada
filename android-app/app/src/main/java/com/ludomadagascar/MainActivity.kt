@@ -498,6 +498,21 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun smokeMarker(value:String) {
+        if (!BuildConfig.DEBUG) return
+        runCatching {
+            getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                .edit().putString("last_marker", value).apply()
+        }
+        android.util.Log.i("LudoMadaSmoke", "MARKER=$value")
+    }
+
+    private fun smokeLastMarker(): String =
+        if (!BuildConfig.DEBUG) "" else runCatching {
+            getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                .getString("last_marker", "") ?: ""
+        }.getOrDefault("")
+
     private fun home() {
         currentScreen="home"
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -512,7 +527,9 @@ class MainActivity : Activity() {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         ) and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
         window.setBackgroundDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(3,12,36),Color.rgb(57,18,67))))
-        setContentView(PremiumHeroViewV2(this))
+        val hero = PremiumHeroViewV2(this)
+        if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
+        setContentView(hero)
         refreshAccountBalance()
     }
 
@@ -1007,21 +1024,30 @@ class MainActivity : Activity() {
     }
 
     private fun startOffline(players:Int) {
+        smokeMarker("OFFLINE_START:"+players)
         android.util.Log.i("LudoMada","OFFLINE_START players="+players)
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
         offlineState=JSONObject().put("players",arr)
+        smokeMarker("OFFLINE_STATE_READY")
         offlineGame(players)
     }
 
     private fun offlineGame(players:Int) {
+        smokeMarker("OFFLINE_PAGE_BEFORE")
         page("offline","Ludo hors-ligne")
+        smokeMarker("OFFLINE_PAGE_AFTER")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));addGame(info,34,0,4)
+        smokeMarker("OFFLINE_BEFORE_BOARD_CTOR")
         val host=LudoBoardView(this);host.onRollTap={offlineRoll(host)};host.onPawnTap={offlineMove(host,players,it)};host.state=offlineState;host.player=offlineTurn;offlineHost=host
+        smokeMarker("OFFLINE_AFTER_BOARD_CTOR")
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,gamePx(2),0,gamePx(4))})
+        smokeMarker("OFFLINE_AFTER_BOARD_ADD")
         host.animateState()
+        smokeMarker("OFFLINE_AFTER_ANIMATE")
         addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
+        smokeMarker("OFFLINE_DONE")
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
