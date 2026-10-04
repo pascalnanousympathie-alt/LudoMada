@@ -420,13 +420,18 @@ try {
   // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
   // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
   const redDiePoints = [
-    // Ramus normalized coordinates map directly to the 1616×720 screen.
-    // Board starts at about (21,186); current projected red die0 is ≈ (1076.6,60.6)
-    // in the 1574×458 board, hence screen ≈ (1098,247) => normalized ≈ (0.679,0.343).
-    "0.679,0.343", "0.670,0.332", "0.688,0.332",
-    "0.679,0.353", "0.670,0.345", "0.688,0.345",
-    // Small compatibility probes around the verified center.
-    "0.660,0.343", "0.700,0.343"
+    // The reference scene puts player dice on the four outer corners of the wooden
+    // table. Ramus normalizes the landscape surface into its portrait input plane, so
+    // do not bind this physical gate to one hard-coded center. Probe compact grids around
+    // all four corner trays; non-active dice are safely ignored by onTouchEvent().
+    "0.12,0.26","0.17,0.26","0.22,0.26","0.27,0.26",
+    "0.12,0.32","0.17,0.32","0.22,0.32","0.27,0.32",
+    "0.73,0.26","0.78,0.26","0.83,0.26","0.88,0.26",
+    "0.73,0.32","0.78,0.32","0.83,0.32","0.88,0.32",
+    "0.12,0.70","0.17,0.70","0.22,0.70","0.27,0.70",
+    "0.12,0.76","0.17,0.76","0.22,0.76","0.27,0.76",
+    "0.73,0.70","0.78,0.70","0.83,0.70","0.88,0.70",
+    "0.73,0.76","0.78,0.76","0.83,0.76","0.88,0.76"
   ];
   let rollTap = { ok: false };
   for (const pt of redDiePoints) {
