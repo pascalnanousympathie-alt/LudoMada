@@ -644,7 +644,7 @@ class LudoBoardView(
             return Mesh(v.toFloatArray(),n.toFloatArray(),idx.toShortArray())
         }
 
-        private fun dieCenter(pi:Int):FloatArray=when(pi:Int){
+        private fun dieCenter(pi:Int):FloatArray=when(pi){
             0->floatArrayOf(2.62f,-1.66f)
             1->floatArrayOf(2.62f,1.66f)
             2->floatArrayOf(-2.62f,1.66f)
