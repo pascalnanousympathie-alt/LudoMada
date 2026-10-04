@@ -508,11 +508,11 @@ class LudoBoardView(
 
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
-            // Oblique tabletop view matching the supplied premium reference.
-            Matrix.perspectiveM(proj,0,30f,aspect,0.1f,60f)
+            // Closer oblique tabletop framing: the board must fill the landscape playfield.
+            Matrix.perspectiveM(proj,0,28f,aspect,0.1f,50f)
             Matrix.setLookAtM(
-                view,0,0f,9.4f,10.6f,
-                0f,0.12f,0f,
+                view,0,0f,6.4f,7.2f,
+                0f,0.16f,0f,
                 0f,1f,0f
             )
             Matrix.multiplyMM(vp,0,proj,0,view,0)
@@ -593,9 +593,10 @@ class LudoBoardView(
                 }
                 drawMesh(disk,model(p[0],0.300f,p[1],0.34f,0.020f,0.34f,0f),color(32,24,20,0.58f),0.84f,0.04f,0f)
                 val ly=0.46f+lift[pi][ti]
-                drawMesh(pawn,model(p[0],ly,p[1],0.42f,0.62f,0.42f,0f),colorFromInt(pawnColors[pi],1f),0.16f,0.18f,0.014f)
-                drawMesh(sphere,model(p[0],ly+0.43f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.12f,0.24f,0.025f)
-                drawMesh(sphere,model(p[0]-0.06f,ly+0.56f,p[1]-0.10f,0.045f,0.030f,0.020f,0f),color(255,255,255,0.78f),0.10f,0.70f,0.07f)
+                // Saturated lacquer + softer metallic response keeps the pawn visibly colored.
+                drawMesh(pawn,model(p[0],ly,p[1],0.42f,0.62f,0.42f,0f),colorFromInt(pawnColors[pi],1f),0.12f,0.12f,0.035f)
+                drawMesh(sphere,model(p[0],ly+0.43f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.10f,0.16f,0.045f)
+                drawMesh(sphere,model(p[0]-0.06f,ly+0.56f,p[1]-0.10f,0.045f,0.030f,0.020f,0f),color(255,255,255,0.82f),0.10f,0.70f,0.08f)
             }
         }
 
