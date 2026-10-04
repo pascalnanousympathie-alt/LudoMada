@@ -597,7 +597,7 @@ class LudoBoardView(
         private fun drawDice(){
             for(pi in 0..3){
                 val d=dieCenter(pi)
-                val rot=if(pi==player)(1f-diceAnim)*32f + if(pi%2==0)-7f else 7f
+                val rot=if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
                 // Two-layer hydro-plated die: dark chrome rim + polished silver body.
                 val rim=model(d[0],0.66f,d[1],0.50f,0.50f,0.50f,rot)
                 drawMesh(die,rim,color(50,58,68,1f),0.08f,1.0f,0.018f,0.95f)
