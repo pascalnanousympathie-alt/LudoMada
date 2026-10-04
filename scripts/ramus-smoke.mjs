@@ -403,7 +403,7 @@ try {
   } else {
     console.log("AFTER_4P_SNAPSHOT_ERROR=" + JSON.stringify(afterFour.value));
   }
-  if (!hasText("Joueur 1/4")) throw new Error("4-player gameplay screen did not open");
+  if (!hasText("Joueur 1/4") && !hasText("GAMEPLAY_3D_OFFLINE_4P")) throw new Error("4-player gameplay screen did not open");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
   shot("board-4p");

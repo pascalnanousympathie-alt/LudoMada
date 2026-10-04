@@ -1040,7 +1040,7 @@ class MainActivity : Activity() {
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));addGame(info,34,0,4)
         smokeMarker("OFFLINE_BEFORE_BOARD_CTOR")
-        val host=LudoBoardView(this);host.onRollTap={offlineRoll(host)};host.onPawnTap={offlineMove(host,players,it)};host.state=offlineState;host.player=offlineTurn;offlineHost=host
+        val host=LudoBoardView(this);host.onRollTap={offlineRoll(host)};host.onPawnTap={offlineMove(host,players,it)};host.state=offlineState;host.player=offlineTurn;offlineHost=host;host.contentDescription="GAMEPLAY_3D_OFFLINE_${players}P";host.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         smokeMarker("OFFLINE_AFTER_BOARD_CTOR")
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,gamePx(2),0,gamePx(4))})
         smokeMarker("OFFLINE_AFTER_BOARD_ADD")
