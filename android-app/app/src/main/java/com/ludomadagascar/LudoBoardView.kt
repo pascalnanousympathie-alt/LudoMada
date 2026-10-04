@@ -562,7 +562,7 @@ class LudoBoardView(
                 val c=centers[i]
                 // Beveled colored plinths like the reference image.
                 drawMesh(die,model(c[0],0.19f,c[1],1.34f,0.085f,1.34f,0f),color(37,30,28,1f),0.46f,0.08f,0.015f,0.10f)
-                drawMesh(die,model(c[0],0.28f,c[1],1.20f,0.070f,1.20f,0f),colorFromInt(pawnColors[i],0.94f),0.30f,0.12f,0.020f)
+                drawMesh(die,model(c[0],0.28f,c[1],1.20f,0.070f,1.20f,0f),colorFromInt(pawnColors[i],0.96f),0.30f,0.08f,0.045f)
                 drawMesh(die,model(c[0],0.355f,c[1],1.03f,0.040f,1.03f,0f),colorFromInt(pawnColors[i],1f),0.22f,0.06f,0.060f)
             }
 
@@ -607,9 +607,9 @@ class LudoBoardView(
                 val d=dieCenter(pi)
                 val rot=if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
                 // Four compact chrome dice trays + hydro-plated die bodies.
-                drawMesh(die,model(d[0],0.24f,d[1],0.64f,0.11f,0.64f,0f),color(72,76,82,1f),0.14f,1.0f,0.0f,0.88f)
-                drawMesh(die,model(d[0],0.35f,d[1],0.53f,0.055f,0.53f,0f),color(165,171,178,1f),0.10f,1.0f,0.0f,0.92f)
-                val dieModel=model(d[0],0.73f,d[1],0.36f,0.36f,0.36f,rot)
+                drawMesh(die,model(d[0],0.24f,d[1],0.74f,0.11f,0.74f,0f),color(58,63,70,1f),0.12f,1.0f,0.015f,0.92f)
+                drawMesh(die,model(d[0],0.35f,d[1],0.60f,0.055f,0.60f,0f),color(175,181,188,1f),0.08f,1.0f,0.0f,0.96f)
+                val dieModel=model(d[0],0.75f,d[1],0.44f,0.44f,0.44f,rot)
                 drawMesh(die,dieModel,color(232,236,240,1f),0.045f,1.0f,0.018f,0.98f)
                 val value=if(pi==player)(state?.optInt("dice",0)?:0) else 1
                 val pip=0.19f
