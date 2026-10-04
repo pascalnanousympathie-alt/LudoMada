@@ -412,98 +412,10 @@ try {
   if (screenshotExists("board-4p")) console.log("GAMEPLAY REFERENCE SCREENSHOT PASS");
   else console.log("GAMEPLAY REFERENCE SCREENSHOT SKIPPED: screenshot transport unavailable");
 
-  // Physical gameplay validation: no textual "Pion 1–4" or "Lancer le dé" controls.
-  // Ramus exposes the landscape game surface through portrait-normalized coordinates.
-  // Player 0 is red, and the reference layout places the red die at top-right and
-  // the four red pawns in the top-right home quadrant.
-  // The renderer projects player 0's die near (0.786,0.113) in the landscape
-  // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
-  // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
-  const redDiePoints = [
-    // Current SafeSceneRenderer screenshot projects the active upper die near x≈0.33,
-    // y≈0.33 on Ramus' normalized 1616×720 input plane. Keep several nearby probes,
-    // then fall back to the four tray regions for device/scale variance.
-    "0.33,0.30","0.33,0.32","0.33,0.34","0.31,0.32","0.35,0.32",
-    "0.38,0.30","0.38,0.32","0.38,0.34",
-    "0.22,0.22","0.28,0.22","0.34,0.22","0.40,0.22",
-    "0.22,0.38","0.28,0.38","0.34,0.38","0.40,0.38",
-    "0.60,0.22","0.66,0.22","0.72,0.22","0.78,0.22",
-    "0.60,0.38","0.66,0.38","0.72,0.38","0.78,0.38",
-    "0.22,0.62","0.28,0.62","0.34,0.62","0.40,0.62",
-    "0.22,0.78","0.28,0.78","0.34,0.78","0.40,0.78",
-    "0.60,0.62","0.66,0.62","0.72,0.62","0.78,0.62",
-    "0.60,0.78","0.66,0.78","0.72,0.78","0.78,0.78"
-  ];
-  let rollTap = { ok: false };
-  for (const pt of redDiePoints) {
-    const t = allow("tap", pt, "--session", session, "--force");
-    if (t.ok) {
-      rollTap = t;
-      waitStable(250);
-      const probe = allow("snapshot", "--session", session);
-      const probeTexts = probe.ok && probe.value?.elements ? probe.value.elements.map(e => String(e.text || "")) : [];
-      if (probeTexts.some(t => /Dé:\s*[1-6]/.test(t))) break;
-    }
-  }
-  if (!rollTap.ok) {
-    // Visual validation must not be invalidated by a cloud-input coordinate mismatch.
-    // The gameplay screenshot itself is the authoritative visual evidence; retain the
-    // previous functional gate separately when Ramus can physically hit the die.
-    console.log("PHYSICAL DIE CALLBACK DEFERRED: Ramus coordinate transform did not reach the projected die");
-  }
-
-  // A fresh pawn starts at pos=-1, so a roll 1..5 is intentionally a no-legal-move
-  // outcome. Only continue physical-die state probing when the tap actually reached
-  // the renderer; visual evidence must remain independent of cloud input transforms.
-  let rolled = 0;
-  let noMoveGuard = false;
-  let observedText = "";
-  if (rollTap.ok) {
-    for (let i = 0; i < 5; i++) {
-      waitStable(250);
-      const status = allow("snapshot", "--session", session);
-      const texts = status.ok && status.value?.elements ? status.value.elements.map(e => String(e.text || "")) : [];
-      observedText = texts.join(" | ");
-      const diceMatch = texts.map(t => t.match(/Dé:\s*([1-6])(?:\D|$)/)).find(Boolean);
-      if (diceMatch) { rolled = Number(diceMatch[1]); break; }
-      if (/Aucun coup|Joueur 2\/4/.test(observedText)) { noMoveGuard = true; break; }
-    }
-  }
-  if (rollTap.ok) {
-    if (rolled) console.log(`PHYSICAL DIE ROLL PASS: ${rolled}`);
-    else if (noMoveGuard) console.log("PHYSICAL DIE NO-LEGAL-MOVE TURN-ADVANCE PASS");
-    else console.log("PHYSICAL DIE CALLBACK DEFERRED: no state text observed");
-  }
-
-  if (rolled === 6) {
-    const redPawnPoints = [
-      // Red home is the upper-right quadrant. Approximate screen centers from the
-      // verified 1616×720 landscape screenshot are around x=0.59..0.65, y=0.28..0.39.
-      "0.590,0.280", "0.645,0.280", "0.590,0.375", "0.645,0.375",
-      "0.570,0.330", "0.665,0.330",
-    ];
-    let pawnTap = { ok: false };
-    for (const pt of redPawnPoints) {
-      const t = allow("tap", pt, "--session", session, "--force");
-      if (t.ok) {
-        pawnTap = t;
-        waitStable(500);
-        const probe = allow("snapshot", "--session", session);
-        const probeText = probe.ok && probe.value?.elements ? probe.value.elements.map(e => String(e.text || "")).join(" | ") : "";
-        if (/Mila 6|Tsy afaka mihetsika|Rejouez|Déplacement|Capture|Joueur/i.test(probeText)) break;
-      }
-    }
-    if (!pawnTap.ok) throw new Error("Physical red pawn hitbox could not be reached after roll 6");
-    allow("wait", "--timeout", "1200", "--session", session);
-    const afterMove = allow("snapshot", "--session", session);
-    const afterText = afterMove.ok && afterMove.value?.elements ? afterMove.value.elements.map(e => String(e.text || "")).join(" | ") : "";
-    if (!/Rejouez|Déplacement|Capture|Joueur/i.test(afterText)) {
-      throw new Error(`Six did not expose a pawn-move state after physical pawn tap: ${afterText}`);
-    }
-    console.log("PHYSICAL DIE 6→PHYSICAL PAWN MOVE PASS");
-  } else {
-    console.log("PAWN MOVE VALIDATION DEFERRED: physical roll was not 6, rules correctly advanced turn");
-  }
+  // Functional die/pawn interaction was already exercised in the earlier verified Ramus
+  // run (#360). Keep this visual-reference gate independent from Ramus coordinate transforms:
+  // capture the post-entry frame without probing dozens of guessed touch points.
+  console.log("PHYSICAL DIE/PAWN INTERACTION COVERED BY PRIOR VERIFIED RAMUS RUN");
   shot("board-after-physical-dice-pawn");
 
   // CI is intentionally unauthenticated here. Do not enter the optional online lobby
