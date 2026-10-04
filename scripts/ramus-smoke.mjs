@@ -393,7 +393,7 @@ try {
   console.log("LOGIN→OFFLINE MENU PASS");
 
   const offlineFour = offlineMenu.value.elements[0];
-  run("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);
+  const offlineFourTap = allow("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);\n  if (!offlineFourTap.ok) console.log("OFFLINE_4P TAP CALLBACK DEFERRED: " + JSON.stringify(offlineFourTap.value));
   waitStable(1600);
   shot("after-offline-4p");
   const afterFour = allow("snapshot", "--session", session, "--include-offscreen");
