@@ -466,9 +466,9 @@ class LudoBoardView(
                     base=mix(base,base*tileShade,blueMask*0.42);
                     base=mix(base,base*(0.78+0.10*line),blueMask*0.36);
 
-                    vec3 ambient=base*(0.24+0.12*ndv);
-                    vec3 diffuse=base*(0.82*ndl);
-                    vec3 highlight=vec3(1.0,0.96,0.88)*spec;
+                    vec3 ambient=base*(0.40+0.14*ndv);
+                    vec3 diffuse=base*(1.05*ndl);
+                    vec3 highlight=vec3(1.0,0.97,0.91)*spec;
                     vec3 c=ambient+diffuse+highlight+base*(uEmission+rim);
                     vec3 chrome=chromeEnv*(0.68+0.92*fresnel)+vec3(1.0)*spec*3.25;
                     c=mix(c,chrome,chromeMask);
@@ -509,10 +509,10 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            Matrix.perspectiveM(proj,0,28f,aspect,0.1f,50f)
+            Matrix.perspectiveM(proj,0,33f,aspect,0.1f,60f)
             Matrix.setLookAtM(
-                view,0,0f,6.4f,7.2f,
-                0f,0.16f,0f,
+                view,0,0f,12.4f,13.4f,
+                0f,0.10f,0f,
                 0f,1f,0f
             )
             Matrix.multiplyMM(vp,0,proj,0,view,0)
@@ -523,8 +523,8 @@ class LudoBoardView(
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             GLES20.glUseProgram(program)
-            GLES20.glUniform3f(uCamera,0f,6.8f,6.8f)
-            GLES20.glUniform3f(uLight,-5.5f,10f,5f)
+            GLES20.glUniform3f(uCamera,0f,12.4f,13.4f)
+            GLES20.glUniform3f(uLight,-6.0f,14f,7f)
 
             // Blue woven cloth + deep wood substrate + lacquered wood frame + cream playing surface.
             drawMesh(cube,model(0f,-1.0f,0f,13f,0.08f,13f,0f),color(20,65,118,1f),0.74f,0.02f,0f)
@@ -561,9 +561,9 @@ class LudoBoardView(
             for(i in 0..3){
                 val c=centers[i]
                 // Beveled colored plinths like the reference image.
-                drawMesh(die,model(c[0],0.19f,c[1],1.50f,0.085f,1.50f,0f),color(37,30,28,1f),0.46f,0.08f,0f,0.10f)
-                drawMesh(die,model(c[0],0.28f,c[1],1.34f,0.070f,1.34f,0f),colorFromInt(pawnColors[i],0.94f),0.30f,0.12f,0.018f)
-                drawMesh(die,model(c[0],0.355f,c[1],1.12f,0.040f,1.12f,0f),colorFromInt(pawnColors[i],1f),0.22f,0.12f,0.030f)
+                drawMesh(die,model(c[0],0.19f,c[1],1.34f,0.085f,1.34f,0f),color(37,30,28,1f),0.46f,0.08f,0f,0.10f)
+                drawMesh(die,model(c[0],0.28f,c[1],1.20f,0.070f,1.20f,0f),colorFromInt(pawnColors[i],0.94f),0.30f,0.12f,0.020f)
+                drawMesh(die,model(c[0],0.355f,c[1],1.03f,0.040f,1.03f,0f),colorFromInt(pawnColors[i],1f),0.22f,0.10f,0.035f)
             }
 
             val lanes=arrayOf(
@@ -593,12 +593,12 @@ class LudoBoardView(
                     val pulse=0.45f+0.07f*sin(System.nanoTime()/180_000_000.0).toFloat()
                     drawMesh(disk,model(p[0],0.275f,p[1],pulse,0.016f,pulse,0f),color(255,204,45,0.82f),0.20f,0.20f,0.08f)
                 }
-                drawMesh(disk,model(p[0],0.300f,p[1],0.34f,0.020f,0.34f,0f),color(32,24,20,0.38f),0.86f,0.02f,0f)
+                drawMesh(disk,model(p[0],0.300f,p[1],0.30f,0.020f,0.30f,0f),color(32,24,20,0.30f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
-                // High-saturation lacquer with a restrained metallic term, like the reference pions.
-                drawMesh(pawn,model(p[0],ly,p[1],0.42f,0.62f,0.42f,0f),colorFromInt(pawnColors[pi],1f),0.10f,0.08f,0.090f)
-                drawMesh(sphere,model(p[0],ly+0.43f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.08f,0.10f,0.110f)
-                drawMesh(sphere,model(p[0]-0.06f,ly+0.56f,p[1]-0.10f,0.045f,0.030f,0.020f,0f),color(255,255,255,0.82f),0.10f,0.65f,0.08f)
+                // Bright lacquered 3D pawn silhouette, closer to the supplied reference.
+                drawMesh(pawn,model(p[0],ly,p[1],0.34f,0.50f,0.34f,0f),colorFromInt(pawnColors[pi],1f),0.22f,0.03f,0.16f)
+                drawMesh(sphere,model(p[0],ly+0.35f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.03f,0.17f)
+                drawMesh(sphere,model(p[0]-0.05f,ly+0.47f,p[1]-0.09f,0.038f,0.028f,0.018f,0f),color(255,255,255,0.82f),0.10f,0.55f,0.08f)
             }
         }
 
