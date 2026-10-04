@@ -420,18 +420,19 @@ try {
   // framebuffer. Ramus feeds the landscape surface through its portrait-normalized
   // input plane; the corresponding CCW coordinate is approximately (0.113,0.214).
   const redDiePoints = [
-    // The reference scene puts player dice on the four outer corners of the wooden
-    // table. Ramus normalizes the landscape surface into its portrait input plane, so
-    // do not bind this physical gate to one hard-coded center. Probe compact grids around
-    // all four corner trays; non-active dice are safely ignored by onTouchEvent().
-    "0.12,0.26","0.17,0.26","0.22,0.26","0.27,0.26",
-    "0.12,0.32","0.17,0.32","0.22,0.32","0.27,0.32",
-    "0.73,0.26","0.78,0.26","0.83,0.26","0.88,0.26",
-    "0.73,0.32","0.78,0.32","0.83,0.32","0.88,0.32",
-    "0.12,0.70","0.17,0.70","0.22,0.70","0.27,0.70",
-    "0.12,0.76","0.17,0.76","0.22,0.76","0.27,0.76",
-    "0.73,0.70","0.78,0.70","0.83,0.70","0.88,0.70",
-    "0.73,0.76","0.78,0.76","0.83,0.76","0.88,0.76"
+    // Current SafeSceneRenderer screenshot projects the active upper die near x≈0.33,
+    // y≈0.33 on Ramus' normalized 1616×720 input plane. Keep several nearby probes,
+    // then fall back to the four tray regions for device/scale variance.
+    "0.33,0.30","0.33,0.32","0.33,0.34","0.31,0.32","0.35,0.32",
+    "0.38,0.30","0.38,0.32","0.38,0.34",
+    "0.22,0.22","0.28,0.22","0.34,0.22","0.40,0.22",
+    "0.22,0.38","0.28,0.38","0.34,0.38","0.40,0.38",
+    "0.60,0.22","0.66,0.22","0.72,0.22","0.78,0.22",
+    "0.60,0.38","0.66,0.38","0.72,0.38","0.78,0.38",
+    "0.22,0.62","0.28,0.62","0.34,0.62","0.40,0.62",
+    "0.22,0.78","0.28,0.78","0.34,0.78","0.40,0.78",
+    "0.60,0.62","0.66,0.62","0.72,0.62","0.78,0.62",
+    "0.60,0.78","0.66,0.78","0.72,0.78","0.78,0.78"
   ];
   let rollTap = { ok: false };
   for (const pt of redDiePoints) {
