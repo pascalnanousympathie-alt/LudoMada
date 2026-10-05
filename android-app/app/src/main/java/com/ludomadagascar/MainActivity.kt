@@ -233,6 +233,170 @@ class MainActivity : Activity() {
         }
     }
 
+
+    private fun gameplayPlayerCard(index:Int, accent:Int, frame:FrameLayout, leftSide:Boolean, topSide:Boolean, players:Int) {
+        val enabled = index < players
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(6), dp(10), dp(6))
+            alpha = if (enabled) 1f else 0.42f
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.argb(235, 8, 16, 25), Color.argb(214, 26, 31, 40))
+            ).apply {
+                cornerRadius = dp(21).toFloat()
+                setStroke(dp(2), accent)
+            }
+            elevation = dp(7f).toFloat()
+        }
+        val avatar = TextView(this).apply {
+            text = "J" + (index + 1)
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(accent)
+                setStroke(dp(2), Color.WHITE)
+            }
+        }
+        card.addView(avatar, LinearLayout.LayoutParams(dp(43), dp(43)))
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(9), 0, 0, 0)
+        }
+        info.addView(TextView(this).apply {
+            text = "Joueur " + (index + 1)
+            textSize = 13.5f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        info.addView(TextView(this).apply {
+            text = if (!enabled) "En attente" else if (index == offlineTurn) "♛  Vous" else "○  ○  ○  ○"
+            textSize = 10.5f
+            setTextColor(if (index == offlineTurn && enabled) accent else 0xFFD9DEE6.toInt())
+            setPadding(0, dp(2), 0, 0)
+        })
+        card.addView(info, LinearLayout.LayoutParams(dp(112), -2))
+        val lp = FrameLayout.LayoutParams(dp(176), dp(56))
+        lp.gravity = (if (leftSide) Gravity.START else Gravity.END) or (if (topSide) Gravity.TOP else Gravity.BOTTOM)
+        lp.setMargins(dp(18), if (topSide) dp(84) else dp(14), dp(18), if (topSide) dp(14) else dp(16))
+        frame.addView(card, lp)
+    }
+
+    private fun addGameplayHud(frame:FrameLayout, players:Int) {
+        val logo = BrandLogoView(this).apply { contentDescription = "LudoMada" }
+        frame.addView(logo, FrameLayout.LayoutParams(dp(205), dp(70)).apply {
+            gravity = Gravity.TOP or Gravity.START
+            setMargins(dp(18), dp(10), 0, 0)
+        })
+
+        status = label("●  Joueur " + (offlineTurn + 1) + " • Votre tour", 17f, true, Color.WHITE)
+        status.gravity = Gravity.CENTER
+        status.setPadding(dp(16), dp(7), dp(16), dp(7))
+        status.background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xE60A1421.toInt(), 0xE61D1C23.toInt())
+        ).apply {
+            cornerRadius = dp(22).toFloat()
+            setStroke(dp(2), gold)
+        }
+        status.elevation = dp(8f).toFloat()
+        status.contentDescription = "VOTRE_TOUR"
+        frame.addView(status, FrameLayout.LayoutParams(dp(285), dp(52)).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = dp(18)
+        })
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun control(symbol:String, desc:String, tint:Int, action:(()->Unit)? = null) = TextView(this).apply {
+            text = symbol
+            textSize = 21f
+            setTextColor(tint)
+            gravity = Gravity.CENTER
+            contentDescription = desc
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xD90B1422.toInt())
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(6f).toFloat()
+            if (action != null) setOnClickListener { action() }
+        }
+        controls.addView(control("🔊", "SON") { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("⚙", "PARAMETRES", gold), LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("☰", "MENU_JEU", gold) { offlineMenu() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        frame.addView(controls, FrameLayout.LayoutParams(dp(170), dp(54)).apply {
+            gravity = Gravity.TOP or Gravity.END
+            topMargin = dp(10)
+            rightMargin = dp(12)
+        })
+
+        val playerColors = intArrayOf(
+            Color.rgb(57, 191, 91),
+            Color.rgb(238, 191, 39),
+            Color.rgb(234, 61, 57),
+            Color.rgb(57, 113, 230)
+        )
+        gameplayPlayerCard(0, playerColors[0], frame, true, true, players)
+        gameplayPlayerCard(1, playerColors[1], frame, false, true, players)
+        gameplayPlayerCard(2, playerColors[2], frame, true, false, players)
+        gameplayPlayerCard(3, playerColors[3], frame, false, false, players)
+
+        val hint = TextView(this).apply {
+            text = "🎲  Touchez le dé\npour lancer"
+            textSize = 14.5f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(dp(17), 0, dp(18), 0)
+            contentDescription = "TOUCHEZ_LE_DE"
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xE6111723.toInt(), 0xE51B1A21.toInt())
+            ).apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(7f).toFloat()
+            setOnClickListener {
+                offlineHost?.let { h -> if (!h.isDiceRolling()) offlineRoll(h) }
+            }
+        }
+        frame.addView(hint, FrameLayout.LayoutParams(dp(238), dp(68)).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+            leftMargin = dp(18)
+            bottomMargin = dp(16)
+        })
+
+        val turnBadge = TextView(this).apply {
+            text = "♛  " + (offlineTurn + 1) + "/" + players + "\nTour"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xE607121E.toInt(), 0xE51B1A21.toInt())
+            ).apply {
+                cornerRadius = dp(17).toFloat()
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(7f).toFloat()
+            contentDescription = "TOUR_" + (offlineTurn + 1) + "_SUR_" + players
+        }
+        frame.addView(turnBadge, FrameLayout.LayoutParams(dp(108), dp(62)).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            rightMargin = dp(18)
+            bottomMargin = dp(16)
+        })
+    }
+
     private val sessionPrefs by lazy { getSharedPreferences("ludomada_session", Context.MODE_PRIVATE) }
 
     private fun saveSession() {
@@ -1042,19 +1206,28 @@ class MainActivity : Activity() {
         smokeMarker("OFFLINE_PAGE_BEFORE")
         page("offline","Ludo hors-ligne")
         smokeMarker("OFFLINE_PAGE_AFTER")
-        val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));addGame(info,34,0,4)
         smokeMarker("OFFLINE_BEFORE_BOARD_CTOR")
-        val host=LudoBoardView(this);host.onRollTap={offlineRoll(host)};host.onPawnTap={offlineMove(host,players,it)};host.state=offlineState;host.player=offlineTurn;offlineHost=host;host.contentDescription="GAMEPLAY_3D_OFFLINE_${players}P";host.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        val host=LudoBoardView(this)
+        host.onRollTap={offlineRoll(host)}
+        host.onPawnTap={offlineMove(host,players,it)}
+        host.state=offlineState
+        host.player=offlineTurn
+        offlineHost=host
+        host.contentDescription="GAMEPLAY_3D_OFFLINE_" + players + "P"
+        host.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         smokeMarker("OFFLINE_AFTER_BOARD_CTOR")
-        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,gamePx(2),0,gamePx(4))})
+
+        val frame=FrameLayout(this)
+        frame.setBackgroundColor(Color.rgb(7,16,25))
+        frame.addView(host,FrameLayout.LayoutParams(-1,-1))
+        root.addView(frame,LinearLayout.LayoutParams(-1,0,1f))
         smokeMarker("OFFLINE_AFTER_BOARD_ADD")
+
+        addGameplayHud(frame,players)
         host.animateState()
         smokeMarker("OFFLINE_AFTER_ANIMATE")
-        addGame(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},44,2,2)
         smokeMarker("OFFLINE_DONE")
     }
-
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
     private fun offlineCanMove(pos:Int,dice:Int):Boolean = if(dice !in 1..6) false else if(pos<0) dice==6 else pos+dice<=57
     private fun offlineHasLegalMove(playersState:org.json.JSONArray,dice:Int,player:Int):Boolean {
