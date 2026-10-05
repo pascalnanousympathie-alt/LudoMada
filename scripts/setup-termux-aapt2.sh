@@ -48,9 +48,14 @@ NATIVE_AAPT2_URL="https://github.com/Commit451/android-arm-build-tools/releases/
 NATIVE_AAPT2_SHA256="7512ff7e381bea6fd310b6f6e347422c8fda21e07c6e3f0162742e95eb9d7f98"
 NATIVE_AAPT2="$STATE_DIR/aapt2-arm64-36.0.0"
 
-# Prefer a native ARM64/glibc AAPT2 on the Debian ARM64 runner.
-# Keep the QEMU wrapper below for plain Termux/non-glibc shells.
-if [ "$HOST_ARCH" = "aarch64" ] && [ -e "/lib/ld-linux-aarch64.so.1" ]; then
+# Prefer a native ARM64/glibc AAPT2 through the already-installed Debian ARM64 rootfs.
+# The runner itself is Termux on Android, so /lib has no glibc loader; proot supplies
+# the Debian loader while keeping the Gradle project visible through a stable /home bind.
+NATIVE_ROOTFS="/data/data/com.termux/files/usr/var/lib/proot-distro/containers/debian/rootfs"
+HOST_HOME="/data/data/com.termux/files/home"
+PROOT_BIN="/data/data/com.termux/files/usr/bin/proot"
+NATIVE_LD="$NATIVE_ROOTFS/lib/ld-linux-aarch64.so.1"
+if [ "$HOST_ARCH" = "aarch64" ] && [ -e "$NATIVE_LD" ] && [ -x "$PROOT_BIN" ]; then
   if [ ! -x "$NATIVE_AAPT2" ] || [ "$(sha256sum "$NATIVE_AAPT2" 2>/dev/null | awk '{print $1}')" != "$NATIVE_AAPT2_SHA256" ]; then
     mkdir -p "$STATE_DIR"
     curl -L --fail --retry 3 --retry-delay 2 -o "$NATIVE_AAPT2.tmp" "$NATIVE_AAPT2_URL"
@@ -59,11 +64,17 @@ if [ "$HOST_ARCH" = "aarch64" ] && [ -e "/lib/ld-linux-aarch64.so.1" ]; then
     mv "$NATIVE_AAPT2.tmp" "$NATIVE_AAPT2"
   fi
   chmod +x "$NATIVE_AAPT2"
-  AAPT2="$NATIVE_AAPT2"
-  cp -f "$AAPT2" "$LAUNCHER"
+  cat > "$LAUNCHER" <<EOF
+#!/data/data/com.termux/files/usr/bin/bash
+set -eu
+exec "$PROOT_BIN" --kill-on-exit --link2symlink -L -0 -r "$NATIVE_ROOTFS" -w / \
+  -b "$HOST_HOME:$HOST_HOME" \
+  -b "$NATIVE_AAPT2:/usr/local/bin/ludomada-aapt2" \
+  /usr/local/bin/ludomada-aapt2 "\$@"
+EOF
   chmod +x "$LAUNCHER"
   "$LAUNCHER" version
-  printf '%s\n' "$AAPT2" > "$AAPT2_PATH_FILE"
+  printf '%s\n' "$LAUNCHER" > "$AAPT2_PATH_FILE"
   if [ -n "${GITHUB_ENV:-}" ]; then
     printf 'AAPT2_WRAPPER=%s\n' "$LAUNCHER" >> "$GITHUB_ENV"
   fi
