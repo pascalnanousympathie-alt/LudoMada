@@ -19,8 +19,8 @@ const kt = fs.readFileSync(materialPath, "utf8");
 
 const assertions = [
   ["entry point", /object PremiumMaterialLighting/],
-  ["hydro chrome 0.95 / 0.08", /hydroChrome\(\)[\s\S]*?metallic = 0\.95f,[\s\S]*?roughness = 0\.08f/],
-  ["hydro chrome clear coat", /hydroChrome\(\)[\s\S]*?clearCoat = 0\.34f,[\s\S]*?clearCoatRoughness = 0\.060f/],
+  ["hydro chrome calibration source", /hydroChrome\(\)[\s\S]*?metallic = PremiumMaterialLighting\.Calibration\.CHROME_METALLIC,[\s\S]*?roughness = PremiumMaterialLighting\.Calibration\.CHROME_ROUGHNESS/],
+  ["hydro chrome clear coat calibration", /hydroChrome\(\)[\s\S]*?clearCoat = PremiumMaterialLighting\.Calibration\.CHROME_CLEAR_COAT,[\s\S]*?clearCoatRoughness = PremiumMaterialLighting\.Calibration\.CHROME_CLEAR_COAT_ROUGHNESS/],
   ["pawn lacquer 0.06 / 0.23", /lacquer\(argb: Int\)[\s\S]*?metallic = 0\.06f,[\s\S]*?roughness = 0\.23f/],
   ["pawn clear coat", /lacquer\(argb: Int\)[\s\S]*?clearCoat = 0\.22f/],
   ["premium light rig", /fun mobilePremium\(\) = PremiumLightRig/],
