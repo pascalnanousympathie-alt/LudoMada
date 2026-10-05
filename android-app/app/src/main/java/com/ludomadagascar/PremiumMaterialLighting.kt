@@ -89,7 +89,7 @@ data class PremiumMaterial(
             roughness = PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
             ao = 0.99f,
             emission = 0.012f,
-            normalStrength = Calibration.CHROME_NORMAL_STRENGTH,
+            normalStrength = PremiumMaterialLighting.Calibration.CHROME_NORMAL_STRENGTH,
             environmentStrength = 1.00f,
             clearCoat = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT,
             clearCoatRoughness = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS
