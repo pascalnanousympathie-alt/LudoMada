@@ -82,8 +82,15 @@ function tapRef(target) {
   return r;
 }
 function tapAnyRef(text) {
-  const target = findRef(text);
-  return tapRef(target);
+  let target = findRef(text);
+  let r = tapRef(target);
+  if (!r.ok && r.value?.error === "stale_ref") {
+    // Accessibility nodes can be reattached between find and tap; refresh once.
+    waitStable(250);
+    target = findRef(text);
+    r = tapRef(target);
+  }
+  return r;
 }
 function waitStable(ms = 1200) {
   // Ramus can expose the session before Android has attached the accessibility stream.
