@@ -318,7 +318,26 @@ try {
     if (!freshTap.ok) throw new Error("Fresh Home JOUER tap failed: " + JSON.stringify(freshTap.value));
   }
   waitStable(500);
-  if (!hasText("Choisissez le mode") && !hasText("MODE_OFFLINE") && !hasText("MODE_ONLINE")) throw new Error("Game mode dialog was not exposed from Home JOUER");
+  let modeOpened = hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE");
+  if (!modeOpened) {
+    // Canvas-backed Home can miss the first tap after returning from Wallet. Refresh the
+    // actual JOUER node once, then fall back through several portrait-normalized points.
+    const retryTree = allow("snapshot", "--session", session, "--include-offscreen");
+    const retryNode = retryTree.ok
+      ? (retryTree.value?.elements || []).find(el => el.clickable && String(el.contentDesc || el.text || "") === "JOUER")
+      : null;
+    if (retryNode) {
+      const rt = tapRef({ref: retryNode.ref, gen: retryTree.value.gen});
+      if (rt.ok) { waitStable(500); modeOpened = hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE"); }
+    }
+  }
+  if (!modeOpened) {
+    for (const pt of ["0.576,0.132","0.576,0.160","0.62,0.15","0.66,0.15"]) {
+      const rt = allow("tap", pt, "--session", session, "--force");
+      if (rt.ok) { waitStable(450); if (hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE")) { modeOpened = true; break; } }
+    }
+  }
+  if (!modeOpened) throw new Error("Game mode dialog was not exposed from Home JOUER");
 
   // Prefer the real accessibility target for the mode overlay. Ramus coordinate
   // transforms differ across rotation paths, while MODE_ONLINE is the authoritative UI marker.
