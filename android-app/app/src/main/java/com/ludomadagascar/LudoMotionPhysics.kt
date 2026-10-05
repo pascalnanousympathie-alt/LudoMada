@@ -42,6 +42,6 @@ object LudoMotionPhysics {
         if (u == 0f || u == 1f) return u
         val c4 = (2f * PI) / 3f
         return (2.0.pow((-10f * u).toDouble()).toFloat() *
-            sin((u * 10f - 0.75f) * c4) + 1f)
+            sin((u * 10f - 0.75f) * c4).toFloat() + 1f)
     }
 }
