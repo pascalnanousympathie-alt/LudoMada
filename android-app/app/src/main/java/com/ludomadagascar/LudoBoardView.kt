@@ -955,10 +955,12 @@ class LudoBoardView(
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
+                    host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_OK" }
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
+                host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_FALLBACK" }
                 emptyMap()
             }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
