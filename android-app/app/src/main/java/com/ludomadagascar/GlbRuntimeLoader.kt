@@ -131,9 +131,9 @@ internal class GlbRuntimeLoader(private val context: Context) {
 
             val translation = node.optJSONArray("translation")?.let { t ->
                 if (t.length() == 3) floatArrayOf(
-                    t.optDouble(0).toFloat() - (subtractTranslation?.getOrNull(0) ?: 0f),
-                    t.optDouble(1).toFloat() - (subtractTranslation?.getOrNull(1) ?: 0f),
-                    t.optDouble(2).toFloat() - (subtractTranslation?.getOrNull(2) ?: 0f)
+                    t.optDouble(0).toFloat(),
+                    t.optDouble(1).toFloat(),
+                    t.optDouble(2).toFloat()
                 ) else floatArrayOf(0f, 0f, 0f)
             } ?: floatArrayOf(0f, 0f, 0f)
             if (nodeName == "LM_Die_HydroChrome_Body") diePivot = translation.copyOf()
