@@ -29,7 +29,6 @@ const checks = [
   ["center wedges", manifest.board_geometry?.center_wedges === 4],
   ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
-const failed = checks.filter(([, ok]) => !ok);
 const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
 const expectedAsset = path.join(root, "ludomada-premium-3d-rev3.glb");
 const packagedBytes = fs.existsSync(expectedAsset) ? fs.statSync(expectedAsset).size : 0;
@@ -37,7 +36,12 @@ const packagedSha256 = fs.existsSync(expectedAsset)
   ? createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
   : "";
 checks.push(["source tree bundle flag", manifest.asset_bundled_in_source_tree === true]);
-checks.push(["runtime loader explicit", manifest.runtime_loader === "not-integrated"]);
+checks.push(["runtime loader explicit", manifest.runtime_loader === "GlbRuntimeLoader"]);
+const loaderPath = path.join(
+  "android-app/app/src/main/java/com/ludomadagascar",
+  "GlbRuntimeLoader.kt"
+);
+checks.push(["runtime loader source present", fs.existsSync(loaderPath)]);
 checks.push(["runtime packaged remains unclaimed", manifest.runtime_packaged === false]);
 checks.push(["rev3 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["rev3 asset size", packagedBytes === 846104]);
@@ -45,6 +49,7 @@ checks.push(["rev3 asset sha256", packagedSha256 === "765646c3b285eff4dc50594a2a
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
 );
+const failed = checks.filter(([, ok]) => !ok);
 console.log(JSON.stringify({
   schema: manifest.schema,
   runtimePackaged: manifest.runtime_packaged,
