@@ -8,9 +8,6 @@ import kotlin.math.min
  *
  * Pure rendering data and small color helpers only: no game state, turn,
  * movement, wallet, auth, or payment behavior belongs here.
- *
- * The runtime renderer can consume these presets incrementally without
- * coupling gameplay code to shader tuning.
  */
 data class PbrMaterialProfile(
     val metallic: Float,
@@ -28,15 +25,60 @@ data class PbrMaterialProfile(
     }
 }
 
+enum class MaterialQualityTier {
+    SAFE,
+    BALANCED,
+    PREMIUM
+}
+
+data class ReflectionProfile(
+    val intensity: Float,
+    val fresnelBoost: Float,
+    val maxMip: Float,
+    val roughnessFloor: Float
+) {
+    init {
+        require(intensity >= 0f)
+        require(fresnelBoost >= 0f)
+        require(maxMip >= 0f)
+        require(roughnessFloor in 0.045f..1f)
+    }
+}
+
+data class RenderBudget(
+    val shadowMapSize: Int,
+    val environmentResolution: Int,
+    val ssao: Float,
+    val bloom: Float,
+    val particleCap: Int
+) {
+    init {
+        require(shadowMapSize >= 128)
+        require(environmentResolution >= 16)
+        require(ssao in 0f..1f)
+        require(bloom >= 0f)
+        require(particleCap >= 0)
+    }
+}
+
+data class RenderQualityProfile(
+    val tier: MaterialQualityTier,
+    val wood: PbrMaterialProfile,
+    val pawn: PbrMaterialProfile,
+    val board: PbrMaterialProfile,
+    val tray: PbrMaterialProfile,
+    val chromeDie: PbrMaterialProfile,
+    val gold: PbrMaterialProfile,
+    val reflections: ReflectionProfile,
+    val budget: RenderBudget
+)
+
 object LudoMaterialLighting {
 
-    // Physically motivated starting points. Final visual tuning remains
-    // device/profile dependent and belongs to the renderer.
     val WOOD = PbrMaterialProfile(
         metallic = 0.02f,
         roughness = 0.52f,
         ao = 0.96f,
-        emission = 0f,
         normalStrength = 0.28f
     )
 
@@ -52,7 +94,6 @@ object LudoMaterialLighting {
         metallic = 0.0f,
         roughness = 0.43f,
         ao = 0.98f,
-        emission = 0.0f,
         normalStrength = 0.16f
     )
 
@@ -80,12 +121,13 @@ object LudoMaterialLighting {
         normalStrength = 0.08f
     )
 
-    /**
-     * Main studio-style light directions used by the GLES3 path.
-     *
-     * Values are intentionally kept in world-space and independent of
-     * gameplay state so Lane A can map them into uniforms or a lighting rig.
-     */
+    val PREMIUM_REFLECTIONS = ReflectionProfile(
+        intensity = 0.92f,
+        fresnelBoost = 1.18f,
+        maxMip = 5f,
+        roughnessFloor = 0.05f
+    )
+
     data class KeyLight(
         val x: Float,
         val y: Float,
@@ -113,16 +155,56 @@ object LudoMaterialLighting {
         fill = KeyLight(5.5f, 8.0f, 1.5f, 0.28f),
         rim = KeyLight(0.0f, 9.0f, -8.0f, 0.44f),
         ambientIntensity = 0.62f,
-        // Tuned conservatively for a 512² depth shadow map on mobile.
         shadowBias = 0.0016f,
         shadowNormalBias = 0.0035f
     )
 
-    /**
-     * Post-processing contract for GLES3 devices.
-     *
-     * AO and bloom remain bounded for Android 8 / mid-range GPU use.
-     */
+    val POST_PREMIUM = PostProcess(
+        exposure = 1.04f,
+        saturation = 1.045f,
+        contrast = 1.035f,
+        warmBias = 0.020f,
+        ssao = 0.30f,
+        bloom = 0.12f,
+        bloomThreshold = 0.72f
+    )
+
+    val SAFE_PROFILE = RenderQualityProfile(
+        tier = MaterialQualityTier.SAFE,
+        wood = WOOD.copy(roughness = 0.58f, normalStrength = 0.18f),
+        pawn = LACQUERED_PLAYER.copy(roughness = 0.28f, normalStrength = 0.10f),
+        board = IVORY_BOARD.copy(normalStrength = 0.08f),
+        tray = DARK_METAL_TRAY.copy(metallic = 0.82f),
+        chromeDie = HYDRO_CHROME_DIE.copy(roughness = 0.11f),
+        gold = GOLD_ACCENT.copy(roughness = 0.20f),
+        reflections = PREMIUM_REFLECTIONS.copy(intensity = 0.45f, maxMip = 2f),
+        budget = RenderBudget(256, 32, 0.08f, 0.04f, 48)
+    )
+
+    val BALANCED_PROFILE = RenderQualityProfile(
+        tier = MaterialQualityTier.BALANCED,
+        wood = WOOD,
+        pawn = LACQUERED_PLAYER,
+        board = IVORY_BOARD,
+        tray = DARK_METAL_TRAY,
+        chromeDie = HYDRO_CHROME_DIE.copy(roughness = 0.065f),
+        gold = GOLD_ACCENT,
+        reflections = PREMIUM_REFLECTIONS.copy(intensity = 0.72f, maxMip = 4f),
+        budget = RenderBudget(384, 48, 0.18f, 0.07f, 96)
+    )
+
+    val PREMIUM_PROFILE = RenderQualityProfile(
+        tier = MaterialQualityTier.PREMIUM,
+        wood = WOOD,
+        pawn = LACQUERED_PLAYER,
+        board = IVORY_BOARD,
+        tray = DARK_METAL_TRAY,
+        chromeDie = HYDRO_CHROME_DIE,
+        gold = GOLD_ACCENT,
+        reflections = PREMIUM_REFLECTIONS,
+        budget = RenderBudget(512, 64, 0.30f, 0.12f, 128)
+    )
+
     data class PostProcess(
         val exposure: Float,
         val saturation: Float,
@@ -139,21 +221,12 @@ object LudoMaterialLighting {
         }
     }
 
-    val PREMIUM_POST = PostProcess(
-        exposure = 1.04f,
-        saturation = 1.045f,
-        contrast = 1.035f,
-        warmBias = 0.020f,
-        ssao = 0.30f,
-        bloom = 0.12f,
-        bloomThreshold = 0.72f
-    )
+    fun profileFor(tier: MaterialQualityTier): RenderQualityProfile = when (tier) {
+        MaterialQualityTier.SAFE -> SAFE_PROFILE
+        MaterialQualityTier.BALANCED -> BALANCED_PROFILE
+        MaterialQualityTier.PREMIUM -> PREMIUM_PROFILE
+    }
 
-    /**
-     * Fresnel/surface response helpers shared by renderer tuning code.
-     * These are CPU-side reference calculations, useful for tests and
-     * for keeping material semantics consistent with shader code.
-     */
     fun schlickFresnel(cosTheta: Float, f0: Float): Float {
         val c = clamp(cosTheta, 0f, 1f)
         val base = clamp(f0, 0f, 1f)
@@ -167,6 +240,28 @@ object LudoMaterialLighting {
 
     fun clampExposure(exposure: Float): Float =
         clamp(exposure, 0.70f, 1.40f)
+
+    /**
+     * Converts a material roughness into an IBL mip level.
+     * The floor keeps the chrome die from losing highlight contrast.
+     */
+    fun reflectionMip(roughness: Float, profile: ReflectionProfile): Float {
+        val r = clamp(roughness, profile.roughnessFloor, 1f)
+        return (r * r * profile.maxMip).coerceIn(0f, profile.maxMip)
+    }
+
+    /**
+     * Fresnel-weighted reflection multiplier for metallic materials.
+     */
+    fun reflectionStrength(
+        cosTheta: Float,
+        metallic: Float,
+        profile: ReflectionProfile
+    ): Float {
+        val m = clamp(metallic, 0f, 1f)
+        val fresnel = schlickFresnel(cosTheta, 0.04f + 0.96f * m)
+        return (fresnel * profile.fresnelBoost * profile.intensity).coerceIn(0f, 2f)
+    }
 
     private fun pow5(x: Float): Float {
         val y = clamp(x, 0f, 1f)
