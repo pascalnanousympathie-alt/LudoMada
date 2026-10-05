@@ -1,5 +1,7 @@
 package com.ludomadagascar
 
+import kotlin.math.pow
+
 /**
  * Material / lighting contract for the premium 3D gameplay lane.
  *
