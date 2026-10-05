@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
+  private final LudoBoardView home3d;
   private final Button walletHit;
   private final Runnable homeBgFlip=new Runnable(){
     @Override public void run(){
@@ -29,6 +30,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
+    home.setLive3DBoard(true);
+    home3d=new LudoBoardView(c);
+    home3d.setContentDescription("LudoMada Home 3D Board");
+    home3d.configureHomePreview();
+    home3d.setClickable(false);
+    addView(home3d,new FrameLayout.LayoutParams(1,1));
     final Button playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
@@ -86,6 +93,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
     addView(playHitAlt,playAltLp);
     post(()->{
+      positionHome3d();
       positionWalletHit(walletHit);
       positionPlayHit(playHit,playHitAlt);
     });
@@ -180,6 +188,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int height=Math.max(1,Math.round(116f*sc));
     setHit(wallet,left,top,width,height);
   }
+  private void positionHome3d(){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    float sc=Math.min(W/1280f,H/720f);
+    int left=Math.round(420f*sc);
+    int top=Math.round(138f*sc);
+    int size=Math.max(1,Math.round(550f*sc));
+    setHit(home3d,left,top,size,size);
+  }
   private void setHit(View v,int left,int top,int width,int height){
     FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
     lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
@@ -188,6 +205,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   @Override protected void onSizeChanged(int w,int h,int ow,int oh){
     super.onSizeChanged(w,h,ow,oh);
+    positionHome3d();
     positionWalletHit(walletHit);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
@@ -267,7 +285,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
 
   private class HomeView extends View {
-    Paint p=new Paint(3); float s=1f; int fee=500;
+    Paint p=new Paint(3); float s=1f; int fee=500; boolean liveBoard3d=false;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
     Bitmap lobbyRef;
@@ -287,6 +305,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       bg7cc=BitmapFactory.decodeResource(getResources(),R.drawable.bg_7cc058_landscape);
       p.setFilterBitmap(true);
     }
+    void setLive3DBoard(boolean enabled){ liveBoard3d=enabled; invalidate(); }
     void flipBackground(){ bgIndex=(bgIndex+1)%backgroundCount(); invalidate(); }
     int backgroundCount(){ return 5; }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
@@ -398,6 +417,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       p.setShader(null);
     }
     void board(Canvas c){
+      if(liveBoard3d)return;
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
       c.save();c.scale(pulse,pulse,d(195),d(298));
       // Polished walnut table + stainless/chrome bezel.
