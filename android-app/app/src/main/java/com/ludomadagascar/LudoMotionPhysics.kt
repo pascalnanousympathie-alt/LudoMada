@@ -1,6 +1,7 @@
 package com.ludomadagascar
 
 import kotlin.math.PI
+import kotlin.math.pow
 import kotlin.math.sin
 
 /**
@@ -24,5 +25,23 @@ object LudoMotionPhysics {
     fun sway(t: Float, degrees: Float): Float {
         val u = t.coerceIn(0f, 1f)
         return degrees * sin(u * PI.toFloat() * 2.0f) * (1f - u)
+    }
+
+    /** Back-style ease for a controlled overshoot around the landing point. */
+    fun backOut(t: Float): Float {
+        val u = t.coerceIn(0f, 1f)
+        val c1 = 1.70158f
+        val c3 = c1 + 1f
+        val x = u - 1f
+        return 1f + c3 * x * x * x + c1 * x * x
+    }
+
+    /** Elastic-out curve used only for visual squash/stretch; never feeds game state. */
+    fun elasticOut(t: Float): Float {
+        val u = t.coerceIn(0f, 1f)
+        if (u == 0f || u == 1f) return u
+        val c4 = (2f * PI) / 3f
+        return (2.0.pow((-10f * u).toDouble()).toFloat() *
+            sin((u * 10f - 0.75f) * c4) + 1f)
     }
 }

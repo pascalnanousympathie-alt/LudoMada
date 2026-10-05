@@ -147,6 +147,7 @@ class LudoBoardView(
             addUpdateListener {
                 val f = it.animatedValue as Float
                 for (pi in 0..3) for (ti in 0..3) {
+                    renderer.bounce[pi][ti] = f
                     val from = oldPos[pi][ti]
                     val to = newPos[pi][ti]
                     val base = if (from == Int.MIN_VALUE) to else from
@@ -180,6 +181,7 @@ class LudoBoardView(
                         display[pi][ti][0] = targets[pi][ti][0]
                         display[pi][ti][1] = targets[pi][ti][1]
                         renderer.lift[pi][ti] = 0f
+                        renderer.bounce[pi][ti] = 0f
                         lastPos[pi][ti] = newPos[pi][ti]
                     }
                     requestRender()
@@ -332,6 +334,7 @@ class LudoBoardView(
         var player: Int
         var diceAnim: Float
         val lift: Array<FloatArray>
+        val bounce: Array<FloatArray>
         fun projectedTokens(pi: Int): Array<FloatArray>
         fun projectedDice(): Array<FloatArray>
     }
@@ -346,6 +349,7 @@ class LudoBoardView(
         override var player:Int=-1
         override var diceAnim=1f
         override val lift=Array(4){FloatArray(4)}
+        override val bounce=Array(4){FloatArray(4)}
 
         private val proj=FloatArray(16)
         private val view=FloatArray(16)
@@ -854,6 +858,7 @@ class LudoBoardView(
         override var player: Int = -1
         override var diceAnim = 1f
         override val lift = Array(4) { FloatArray(4) }
+        override val bounce = Array(4) { FloatArray(4) }
         private val vp=FloatArray(16)
         internal val proj=FloatArray(16)
         internal val view=FloatArray(16)
@@ -895,12 +900,13 @@ class LudoBoardView(
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
         private var lastFrameNanos=0L
-        private val dustLife=FloatArray(64)
-        private val dustPos=FloatArray(64*3)
-        private val dustVel=FloatArray(64*3)
-        private val dustColor=FloatArray(64*4)
-        private val dustSize=FloatArray(64)
-        private val dustData=FloatArray(64*8)
+        private val dustLife=FloatArray(128)
+        private val dustMaxLife=FloatArray(128)
+        private val dustPos=FloatArray(128*3)
+        private val dustVel=FloatArray(128*3)
+        private val dustColor=FloatArray(128*4)
+        private val dustSize=FloatArray(128)
+        private val dustData=FloatArray(128*8)
         private var particleVbo=0
         private val lastDust=Array(4){LongArray(4)}
         private val boardTop=0.20f
@@ -943,7 +949,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
             }
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
-            updateParticles(dt);maybeSpawnDust(now)
+            updateParticles(dt);maybeSpawnDust(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
             val camY=if(land)11.8f else 8.2f;val camZ=if(land)8.8f else 8.8f;val fov=if(land)31f else 34f
@@ -969,7 +975,7 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
         private fun renderDirectFrame(){
@@ -1036,8 +1042,31 @@ class LudoBoardView(
             val pos=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
             return if(pos<0) dice==6 else pos+dice<=57
         }
-        private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{val m=identityAt(x,y,z,pawnScale,pawnScale,pawnScale);val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f;Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f),0f,0f,1f);Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f),1f,0f,0f);return m}
-        private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{val m=identityAt(x,y+pawnScale*0.74f,z,pawnScale*0.37f,pawnScale*0.37f,pawnScale*0.37f);val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f;Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f),0f,0f,1f);return m}
+        private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
+            val b=bounce[pi][ti].coerceIn(0f,1f)
+            val elastic=LudoMotionPhysics.elasticOut(b)
+            val overshoot=(elastic-b)
+            val backOvershoot=LudoMotionPhysics.backOut(b)-b
+            val sx=pawnScale*(1f-0.055f*overshoot)
+            val sy=pawnScale*(1f+0.115f*overshoot)
+            val m=identityAt(x,y,z,sx,sy,sx)
+            val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
+            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
+            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
+            return m
+        }
+        private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
+            val b=bounce[pi][ti].coerceIn(0f,1f)
+            val elastic=LudoMotionPhysics.elasticOut(b)
+            val overshoot=elastic-b
+            val backOvershoot=LudoMotionPhysics.backOut(b)-b
+            val s=pawnScale*0.37f*(1f-0.035f*overshoot)
+            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)
+            val m=identityAt(x,y+pawnScale*0.74f,z,s,sy,s)
+            val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
+            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
+            return m
+        }
         private fun dieValue(pi:Int):Int{
             val live=max(0,state?.optInt("dice",0)?:0)
             return if(pi==player && live in 1..6) live else intArrayOf(4,3,5,5)[pi]
@@ -1071,9 +1100,35 @@ class LudoBoardView(
         private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean)=shader.draw(mesh,mat,color,rough,metallic,ao,emission,material,unlit)
         private fun drawShadowMesh(mesh:Mesh,mat:FloatArray)=shadowShader.draw(mesh,mat)
         private fun maybeSpawnDust(now:Long){for(pi in 0..3)for(ti in 0..3){if(lift[pi][ti]<=0.035f||now-lastDust[pi][ti]<90_000_000L)continue;val xz=host.display[pi][ti];if(xz[0].isNaN())continue;lastDust[pi][ti]=now;spawnDust(xz[0],xz[1],pawnColors[pi])}}
-        private fun spawnDust(x:Float,z:Float,color:Int){for(n in 0 until 3){val slot=(0 until 64).firstOrNull{dustLife[it]<=0f}?:continue;val a=slot*2.3999631f+x*1.7f+z*0.9f+n*0.9f;dustLife[slot]=0.45f+(slot%5)*0.03f;dustPos[slot*3]=x+cos(a)*0.10f;dustPos[slot*3+1]=boardTop+0.08f;dustPos[slot*3+2]=z+sin(a)*0.10f;dustVel[slot*3]=cos(a)*0.18f;dustVel[slot*3+1]=0.55f+(slot%3)*0.08f;dustVel[slot*3+2]=sin(a)*0.18f;dustColor[slot*4]=Color.red(color)/255f;dustColor[slot*4+1]=Color.green(color)/255f;dustColor[slot*4+2]=Color.blue(color)/255f;dustColor[slot*4+3]=0.75f;dustSize[slot]=4f+(slot%4)}}
-        private fun updateParticles(dt:Float){for(i in 0 until 64){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
-        private fun drawParticles(){var count=0;for(i in 0 until 64)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/0.5f).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
+        private var victoryKey=""
+        private fun maybeSpawnVictory(){
+            val s=state?:return
+            val phase=s.optString("phase","")
+            if(phase!="FINISHED"){victoryKey="";return}
+            val winner=s.optString("winnerId","")
+            val key=phase+"|"+winner
+            if(key==victoryKey)return
+            victoryKey=key
+            spawnVictoryBurst()
+        }
+        private fun spawnDust(x:Float,z:Float,color:Int){for(n in 0 until 3){val slot=(0 until 128).firstOrNull{dustLife[it]<=0f}?:continue;val a=slot*2.3999631f+x*1.7f+z*0.9f+n*0.9f;val life=0.45f+(slot%5)*0.03f;dustLife[slot]=life;dustMaxLife[slot]=life;dustPos[slot*3]=x+cos(a)*0.10f;dustPos[slot*3+1]=boardTop+0.08f;dustPos[slot*3+2]=z+sin(a)*0.10f;dustVel[slot*3]=cos(a)*0.18f;dustVel[slot*3+1]=0.55f+(slot%3)*0.08f;dustVel[slot*3+2]=sin(a)*0.18f;dustColor[slot*4]=Color.red(color)/255f;dustColor[slot*4+1]=Color.green(color)/255f;dustColor[slot*4+2]=Color.blue(color)/255f;dustColor[slot*4+3]=0.75f;dustSize[slot]=4f+(slot%4)}}
+        private fun spawnVictoryBurst(){
+            val colors=intArrayOf(Color.rgb(255,203,58),Color.rgb(255,239,176),pawnColors[0],pawnColors[1],pawnColors[2],pawnColors[3])
+            for(n in 0 until 56){
+                val slot=(0 until 128).firstOrNull{dustLife[it]<=0f}?:continue
+                val a=n*2.3999631f
+                val radial=0.75f+(n%7)*0.14f
+                val life=0.78f+(n%6)*0.07f
+                dustLife[slot]=life;dustMaxLife[slot]=life
+                dustPos[slot*3]=cos(a)*0.16f;dustPos[slot*3+1]=boardTop+0.58f+(n%5)*0.025f;dustPos[slot*3+2]=sin(a)*0.16f
+                dustVel[slot*3]=cos(a)*radial;dustVel[slot*3+1]=1.35f+(n%5)*0.12f;dustVel[slot*3+2]=sin(a)*radial
+                val col=colors[n%colors.size]
+                dustColor[slot*4]=Color.red(col)/255f;dustColor[slot*4+1]=Color.green(col)/255f;dustColor[slot*4+2]=Color.blue(col)/255f;dustColor[slot*4+3]=0.92f
+                dustSize[slot]=7f+(n%5)*2.2f
+            }
+        }
+        private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
+        private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,0.28f,0.10f);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
@@ -1397,7 +1452,7 @@ class LudoBoardView(
     }
 
     private class ParticleShader{
-        private val program:Int;private val vp:Int;private val buffer=ByteBuffer.allocateDirect(64*8*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        private val program:Int;private val vp:Int;private val buffer=ByteBuffer.allocateDirect(128*8*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
         init{val vs="""#version 300 es
             layout(location=0)in vec3 aPos;layout(location=1)in vec4 aColor;layout(location=2)in float aSize;uniform mat4 uVp;out vec4 vColor;void main(){gl_Position=uVp*vec4(aPos,1.0);gl_PointSize=aSize;vColor=aColor;}
         """.trimIndent();val fs="""#version 300 es
