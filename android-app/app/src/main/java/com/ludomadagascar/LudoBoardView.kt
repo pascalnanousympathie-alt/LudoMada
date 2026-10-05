@@ -375,6 +375,7 @@ class LudoBoardView(
         private lateinit var disk:Mesh
         private lateinit var sphere:Mesh
         private lateinit var pawn:Mesh
+        private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
 
         private val pawnColors=intArrayOf(
             Color.rgb(219,59,66),Color.rgb(48,165,92),
@@ -498,6 +499,18 @@ class LudoBoardView(
             disk=diskMesh(40)
             sphere=sphereMesh(16,10)
             pawn=pawnMesh()
+            glbParts=runCatching{
+                GlbRuntimeLoader(host.context).loadHeroParts().also{
+                    android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
+                    runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
+                    host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_OK" }
+                }
+            }.getOrElse{
+                android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
+                runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
+                host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_FALLBACK" }
+                emptyMap()
+            }
         }
 
         override fun onSurfaceChanged(
