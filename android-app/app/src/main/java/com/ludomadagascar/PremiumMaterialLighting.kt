@@ -85,14 +85,14 @@ data class PremiumMaterial(
         /** Hydro-plated silver/chrome target from the asset contract. */
         fun hydroChrome() = PremiumMaterial(
             rgba(Color.rgb(244, 247, 250)),
-            metallic = 1.00f,
-            roughness = 0.055f,
+            metallic = PremiumMaterialLighting.Calibration.CHROME_METALLIC,
+            roughness = PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
             ao = 0.99f,
             emission = 0.012f,
             normalStrength = Calibration.CHROME_NORMAL_STRENGTH,
             environmentStrength = 1.00f,
-            clearCoat = 0.72f,
-            clearCoatRoughness = 0.055f
+            clearCoat = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT,
+            clearCoatRoughness = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS
         )
 
         fun chromeTray() = PremiumMaterial(
@@ -180,19 +180,19 @@ data class PremiumLightRig(
         fun mobilePremium() = PremiumLightRig(
             keyDirection = floatArrayOf(-0.42f, 0.92f, 0.36f),
             keyColor = floatArrayOf(1.00f, 0.94f, 0.82f),
-            keyIntensity = 1.08f,
+            keyIntensity = PremiumMaterialLighting.Calibration.KEY_INTENSITY,
             fillDirection = floatArrayOf(0.62f, 0.54f, -0.55f),
             fillColor = floatArrayOf(0.32f, 0.42f, 0.58f),
-            fillIntensity = 0.22f,
+            fillIntensity = PremiumMaterialLighting.Calibration.FILL_INTENSITY,
             rimDirection = floatArrayOf(0.0f, 0.75f, -0.66f),
             rimColor = floatArrayOf(1.00f, 0.84f, 0.60f),
-            rimIntensity = 0.34f,
+            rimIntensity = PremiumMaterialLighting.Calibration.RIM_INTENSITY,
             ambientColor = floatArrayOf(0.12f, 0.15f, 0.22f),
-            ambientIntensity = 0.82f,
-            shadowBias = 0.00135f,
+            ambientIntensity = PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY,
+            shadowBias = PremiumMaterialLighting.Calibration.SHADOW_BIAS,
             shadowNormalBias = 0.0035f,
             shadowMapResolution = 512,
-            iblIntensity = 0.82f
+            iblIntensity = PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY
         )
 
         fun safeFallback() = PremiumLightRig(
@@ -227,8 +227,8 @@ data class PremiumPostProcess(
     companion object {
         fun mobileHigh() = PremiumPostProcess(
             exposure = 1.00f,
-            bloom = 0.10f,
-            ssao = 0.28f,
+            bloom = PremiumMaterialLighting.Calibration.BLOOM,
+            ssao = PremiumMaterialLighting.Calibration.SSAO,
             saturation = 1.025f,
             contrast = 1.04f,
             warmBias = 0.018f,
