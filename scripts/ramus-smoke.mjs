@@ -451,7 +451,7 @@ try {
     if(glbSnap.ok && glbSnap.value?.elements?.length){glbRuntimeOk=true;break;}
     waitStable(350);
   }
-  if(!glbRuntimeOk){ const diag=allow("snapshot","--session",session,"--include-offscreen"); if(diag.ok) console.log("GLB_RUNTIME_DIAGNOSTIC="+JSON.stringify((diag.value?.elements||[]).filter(e=>String(e.text||e.contentDesc||"").includes("GLB_RUNTIME_LOAD")); throw new Error("Runtime GLB did not report GLB_RUNTIME_LOAD_OK on gameplay SurfaceView"); }
+  if(!glbRuntimeOk){ const diag=allow("snapshot","--session",session,"--include-offscreen"); if(diag.ok) console.log("GLB_RUNTIME_DIAGNOSTIC="+JSON.stringify((diag.value?.elements||[]).filter(e=>String(e.text||e.contentDesc||"").includes("GLB_RUNTIME_LOAD")))); throw new Error("Runtime GLB did not report GLB_RUNTIME_LOAD_OK on gameplay SurfaceView"); }
   console.log("GLB_RUNTIME_LOAD PASS");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
