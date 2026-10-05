@@ -53,7 +53,7 @@ object PremiumMaterialProfiles {
         baseR = 0.92f, baseG = 0.95f, baseB = 1.00f,
         metallic = 1.0f, roughness = 0.055f, ao = 0.99f,
         emission = 0.0f, normalStrength = 0.05f,
-        clearCoat = 0.22f, clearCoatRoughness = 0.07f,
+        clearCoat = 0.72f, clearCoatRoughness = 0.055f,
         environmentIntensity = 1.35f
     )
 
@@ -125,6 +125,24 @@ object PremiumMaterialProfiles {
 }
 
 /**
+ * sRGB transfer helpers for albedo/base-color boundaries.
+ * BRDF parameters (metallic/roughness/AO/normal) remain linear/data values.
+ */
+object PremiumColorSpace {
+    fun srgbToLinear(c: Float): Float {
+        val v = c.coerceIn(0f, 1f)
+        return if (v <= 0.04045f) v / 12.92f
+        else ((v + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
+    }
+
+    fun linearToSrgb(c: Float): Float {
+        val v = c.coerceIn(0f, 1f)
+        return if (v <= 0.0031308f) v * 12.92f
+        else (1.055 * v.toDouble().pow(1.0 / 2.4) - 0.055).toFloat()
+    }
+}
+
+/**
  * Compact lighting rig contract. Values are world-space directions/intensities
  * and can be mapped directly to Filament Light, GLES uniforms, or baked lightmaps.
  */
@@ -150,18 +168,18 @@ data class PremiumLightingRig(
             keyDirectionX = -0.42f,
             keyDirectionY = 0.92f,
             keyDirectionZ = 0.36f,
-            keyIntensity = 1.00f,
+            keyIntensity = 1.08f,
             fillDirectionX = 0.62f,
             fillDirectionY = 0.54f,
             fillDirectionZ = -0.55f,
-            fillIntensity = 0.42f,
+            fillIntensity = 0.22f,
             rimDirectionX = 0.18f,
             rimDirectionY = 0.74f,
             rimDirectionZ = -0.62f,
-            rimIntensity = 0.30f,
-            ambientIntensity = 0.78f,
+            rimIntensity = 0.34f,
+            ambientIntensity = 0.82f,
             shadowStrength = 0.88f,
-            shadowBias = 0.0018f
+            shadowBias = 0.00135f
         )
     }
 }
