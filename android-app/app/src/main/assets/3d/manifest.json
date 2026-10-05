@@ -3,34 +3,46 @@
   "units": "meters",
   "format": "glb/gltf2",
   "target": "android-realtime",
-  "source_scene": "https://higgsfield.ai/3d-jutsu/083cab86-9817-4ddc-8d12-92d9212d008b",
+  "runtime_packaged": true,
+  "source_scene": {
+    "provider": "Higgsfield 3D Jutsu",
+    "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 3,
+    "glb_bytes": 846104,
+    "material_revision": 3,
+    "material_calibration": "PremiumMaterialLighting.Calibration",
+    "sha256": "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027",
+    "delivery": {
+      "type": "higgsfield-media",
+      "media_id": "f77cf216-1a71-4b86-84b9-26339b96c4df",
+      "url": "https://d2ol7oe51mr4n.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb",
+      "verified_size_bytes": 846104
+    }
+  },
+  "board_geometry": {
+    "square_board_m": 5.05,
+    "table_m": 5.6,
+    "path_cells": 52,
+    "finish_cells": 24,
+    "home_plinths": 4,
+    "center_wedges": 4,
+    "topology": "matches current Android visualPath ordering"
+  },
   "assets": {
     "pawn": {
-      "parts": [
-        "base",
-        "body",
-        "collar",
-        "head"
-      ],
+      "parts": ["base", "body", "collar", "head"],
       "pivot": "bottom-center",
       "material": "lacquer-pbr"
     },
     "die": {
-      "parts": [
-        "body",
-        "pips"
-      ],
+      "parts": ["body", "pips"],
       "pivot": "center",
       "material": "hydro-chrome",
       "metallic": 0.95,
       "roughness": 0.08
     },
     "table": {
-      "parts": [
-        "deep-base",
-        "recessed-board",
-        "gold-frame"
-      ],
+      "parts": ["deep-base", "recessed-board", "gold-frame"],
       "pivot": "center"
     }
   },
@@ -50,30 +62,10 @@
       "pawn": "pawn",
       "vfx": "vfx"
     },
-    "board_ids": [
-      "madagascar",
-      "royal_gold",
-      "ocean_night",
-      "baobab_sunset"
-    ],
-    "dice_ids": [
-      "chrome",
-      "heroic",
-      "crystal",
-      "obsidian"
-    ],
-    "pawn_ids": [
-      "lacquer",
-      "gold",
-      "gem",
-      "obsidian"
-    ],
-    "vfx_ids": [
-      "classic",
-      "spark",
-      "flame",
-      "ice"
-    ],
+    "board_ids": ["madagascar", "royal_gold", "ocean_night", "baobab_sunset"],
+    "dice_ids": ["chrome", "heroic", "crystal", "obsidian"],
+    "pawn_ids": ["lacquer", "gold", "gem", "obsidian"],
+    "vfx_ids": ["classic", "spark", "flame", "ice"],
     "licensed_glb_root": "cosmetics/",
     "max_asset_bytes": 12582912
   }
