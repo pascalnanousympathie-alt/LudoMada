@@ -341,94 +341,96 @@ try {
 
   // Prefer the real accessibility target for the mode overlay. Ramus coordinate
   // transforms differ across rotation paths, while MODE_ONLINE is the authoritative UI marker.
-  let onlineOpened = false;
-  const onlineMode = allow("snapshot", "--session", session, "--find", "MODE_ONLINE");
-  if (onlineMode.ok && onlineMode.value?.elements?.length) {
-    const target = onlineMode.value.elements[0];
-    const tapped = allow("tap", target.ref, "--gen", String(onlineMode.value.gen), "--session", session);
-    if (tapped.ok) {
-      waitStable(500);
-      onlineOpened = hasText("Choisir la mise") || hasText("500 Ar");
-    }
-  }
-  // Coordinate fallback remains only for emulator paths where MODE_ONLINE is not exposed.
-  if (!onlineOpened) {
-    for (const pt of ["0.70,0.28", "0.70,0.30", "0.68,0.28"]) {
-      const tapped = allow("tap", pt, "--session", session, "--force");
-      if (!tapped.ok) continue;
-      waitStable(500);
-      if (hasText("Choisir la mise") || hasText("500 Ar")) {
-        onlineOpened = true;
-        break;
+    let onlineOpened = false;
+  let offlineMenu = null;
+
+  if (process.env.RAMUS_API_KEY) {
+    const onlineMode = allow("snapshot", "--session", session, "--find", "MODE_ONLINE");
+    if (onlineMode.ok && onlineMode.value?.elements?.length) {
+      const target = onlineMode.value.elements[0];
+      const tapped = allow("tap", target.ref, "--gen", String(onlineMode.value.gen), "--session", session);
+      if (tapped.ok) {
+        waitStable(500);
+        onlineOpened = hasText("Choisir la mise") || hasText("500 Ar");
       }
     }
-  }
-  if (!onlineOpened) throw new Error("Online lobby was not reached from the game mode dialog");
-
-  // The online flow selects the stake before presenting the real Login screen.
-  const feeTree = allow("snapshot", "--session", session, "--find", "500 Ar");
-  if (!feeTree.ok || !feeTree.value?.elements?.length) {
-    throw new Error("Online stake selector did not expose 500 Ar");
-  }
-  // Refresh immediately before the interaction; Ramus generations can reset after a
-  // delayed accessibility attach even though the matching text is still present.
-  const feeTapTree = allow("snapshot", "--session", session, "--find", "500 Ar");
-  if (!feeTapTree.ok || !feeTapTree.value?.elements?.length) throw new Error("500 Ar target disappeared before tap");
-  const feeTap = allow("tap", feeTapTree.value.elements[0].ref, "--gen", String(feeTapTree.value.gen), "--session", session);
-  if (!feeTap.ok) throw new Error("500 Ar tap failed: " + JSON.stringify(feeTap.value));
-  waitStable(700);
-  if (!hasText("Nom, email ou mobile") && !hasText("CONNEXION")) {
-    throw new Error("Login screen was not reached after selecting the 500 Ar online stake");
-  }
-  console.log("HOME→ONLINE→STAKE→LOGIN PASS");
-
-  // Prefer the real accessibility target for registration. The Login panel is fully
-  // exposed by Ramus, so coordinate mapping is only a fallback.
-  let signupOpened = false;
-  const signupTree = allow("snapshot", "--session", session, "--find", "Créer un compte");
-  if (signupTree.ok && signupTree.value?.elements?.length) {
-    const target = signupTree.value.elements[0];
-    const tapped = allow("tap", target.ref, "--gen", String(signupTree.value.gen), "--session", session);
-    if (tapped.ok) {
-      waitStable(500);
-      const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
-      const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
-      signupOpened = elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"));
-    }
-  }
-  if (!signupOpened) {
-    const signupTap = allow("tap", "0.95,0.275", "--session", session, "--force");
-    if (signupTap.ok) {
-      for (let attempt = 0; attempt < 5; attempt++) {
-        waitStable(450);
-        const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
-        const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
-        if (elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"))) {
-          signupOpened = true;
+    if (!onlineOpened) {
+      for (const pt of ["0.70,0.28", "0.70,0.30", "0.68,0.28"]) {
+        const tapped = allow("tap", pt, "--session", session, "--force");
+        if (!tapped.ok) continue;
+        waitStable(500);
+        if (hasText("Choisir la mise") || hasText("500 Ar")) {
+          onlineOpened = true;
           break;
         }
       }
     }
-  }
-  if (!signupOpened) throw new Error("Registration dialog was not exposed from Login");
-  console.log("LOGIN→REGISTER PASS");
-  allow("press","BACK","--session",session);
-  waitStable(500);
+    if (!onlineOpened) throw new Error("Online lobby was not reached from the game mode dialog");
 
-  // The Login screen has a real "Jouer hors-ligne" card. Activating it intentionally
-  // enters the existing offline-mode selector; do not route back through Home/JOUER.
-  const offlineFromLogin=allow("snapshot","--session",session,"--find","Jouer hors-ligne");
-  if (!offlineFromLogin.ok || !offlineFromLogin.value?.elements?.length) {
-    throw new Error("Login offline fallback was not exposed");
-  }
-  run("tap", offlineFromLogin.value.elements[0].ref, "--gen", String(offlineFromLogin.value.gen), "--session", session);
-  waitStable(800);
+    const feeTree = allow("snapshot", "--session", session, "--find", "500 Ar");
+    if (!feeTree.ok || !feeTree.value?.elements?.length) throw new Error("Online stake selector did not expose 500 Ar");
+    const feeTapTree = allow("snapshot", "--session", session, "--find", "500 Ar");
+    if (!feeTapTree.ok || !feeTapTree.value?.elements?.length) throw new Error("500 Ar target disappeared before tap");
+    const feeTap = allow("tap", feeTapTree.value.elements[0].ref, "--gen", String(feeTapTree.value.gen), "--session", session);
+    if (!feeTap.ok) throw new Error("500 Ar tap failed: " + JSON.stringify(feeTap.value));
+    waitStable(700);
+    if (!hasText("Nom, email ou mobile") && !hasText("CONNEXION")) {
+      throw new Error("Login screen was not reached after selecting the 500 Ar online stake");
+    }
+    console.log("HOME→ONLINE→STAKE→LOGIN PASS");
 
-  const offlineMenu = allow("snapshot","--session",session,"--find","OFFLINE_4_PLAYERS");
-  if (!offlineMenu.ok || !offlineMenu.value?.elements?.length) {
-    throw new Error("Offline mode selector was not reached from Login offline fallback");
+    let signupOpened = false;
+    const signupTree = allow("snapshot", "--session", session, "--find", "Créer un compte");
+    if (signupTree.ok && signupTree.value?.elements?.length) {
+      const target = signupTree.value.elements[0];
+      const tapped = allow("tap", target.ref, "--gen", String(signupTree.value.gen), "--session", session);
+      if (tapped.ok) {
+        waitStable(500);
+        const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
+        const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
+        signupOpened = elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"));
+      }
+    }
+    if (!signupOpened) {
+      const signupTap = allow("tap", "0.95,0.275", "--session", session, "--force");
+      if (signupTap.ok) {
+        for (let attempt = 0; attempt < 5; attempt++) {
+          waitStable(450);
+          const signupSnap = allow("snapshot", "--session", session, "--include-offscreen");
+          const elements = signupSnap.ok ? (signupSnap.value?.elements || []) : [];
+          if (elements.some(el => String(el.text || el.contentDesc || "").includes("S'INSCRIRE"))) {
+            signupOpened = true;
+            break;
+          }
+        }
+      }
+    }
+    if (!signupOpened) throw new Error("Registration dialog was not exposed from Login");
+    console.log("LOGIN→REGISTER PASS");
+    allow("press","BACK","--session",session);
+    waitStable(500);
+
+    const offlineFromLogin=allow("snapshot","--session",session,"--find","Jouer hors-ligne");
+    if (!offlineFromLogin.ok || !offlineFromLogin.value?.elements?.length) throw new Error("Login offline fallback was not exposed");
+    const offlineTap=allow("tap",offlineFromLogin.value.elements[0].ref,"--gen",String(offlineFromLogin.value.gen),"--session",session);
+    if(!offlineTap.ok) throw new Error("Login offline fallback tap failed: "+JSON.stringify(offlineTap.value));
+    waitStable(800);
+    offlineMenu=allow("snapshot","--session",session,"--find","OFFLINE_4_PLAYERS");
+    if(!offlineMenu.ok || !offlineMenu.value?.elements?.length) throw new Error("Offline mode selector was not reached from Login offline fallback");
+    console.log("LOGIN→OFFLINE MENU PASS");
+  } else {
+    console.log("ONLINE AUTH FLOW DEFERRED: unauthenticated Ramus trial");
+    const offlineMode=allow("snapshot","--session",session,"--find","MODE_OFFLINE");
+    if(!offlineMode.ok || !offlineMode.value?.elements?.length) {
+      throw new Error("Offline mode selector was not exposed from Home game mode dialog");
+    }
+    const offlineModeTap=allow("tap",offlineMode.value.elements[0].ref,"--gen",String(offlineMode.value.gen),"--session",session);
+    if(!offlineModeTap.ok) throw new Error("Home offline mode tap failed: "+JSON.stringify(offlineModeTap.value));
+    waitStable(700);
+    offlineMenu=allow("snapshot","--session",session,"--find","OFFLINE_4_PLAYERS");
+    if(!offlineMenu.ok || !offlineMenu.value?.elements?.length) throw new Error("Offline 4-player selector was not exposed from Home offline mode");
+    console.log("TRIAL→OFFLINE MENU PASS");
   }
-  console.log("LOGIN→OFFLINE MENU PASS");
 
   const offlineFour = offlineMenu.value.elements[0];
   const offlineFourTap = allow("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);
