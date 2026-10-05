@@ -14,7 +14,8 @@ object LudoMaterialCalibration {
         val clearCoat: Float = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT,
         val clearCoatRoughness: Float = PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS,
         val metallic: Float = PremiumMaterialLighting.Calibration.CHROME_METALLIC,
-        val roughness: Float = PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS
+        val roughness: Float = PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
+        val normalStrength: Float = PremiumMaterialLighting.Calibration.CHROME_NORMAL_STRENGTH
     )
 
     data class Lights(
