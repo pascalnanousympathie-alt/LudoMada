@@ -15,7 +15,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 35
     concurrency:
-      group: ludomada-self-hosted-arm64
+      group: ramus-${{ github.ref }}
       cancel-in-progress: false
     env:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
@@ -28,9 +28,10 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 1
           clean: true
+          path: _runs/${{ github.run_id }}
 
       - name: Verify and repair checked-out sources
-        working-directory: .
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
           git reset --hard "$GITHUB_SHA"
@@ -52,7 +53,7 @@ jobs:
           EOF
 
       - name: Configure Android SDK
-        working-directory: android-app
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
         run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
       - name: Use Termux Node
         run: |
@@ -76,19 +77,19 @@ jobs:
           chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
           echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
       - name: Configure ARM64 AAPT2
-        working-directory: .
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
           printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
       - name: Build debug APK for Ramus
-        working-directory: android-app
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
         run: |
           set -eu
           chmod +x gradlew
           bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Install Ramus CLI
-        working-directory: .
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
           rm -rf "$RUNNER_TEMP/ramus-cli"
@@ -99,7 +100,7 @@ jobs:
           echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
       - name: Run cloud Android smoke test with Ramus
         env:
-          RAMUS_APK: ${{ github.workspace }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+          RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
           RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
           RAMUS_CAPTURE: "1"
         run: |
@@ -121,7 +122,7 @@ jobs:
         continue-on-error: true
         with:
           name: ludomada-ramus-visual-${{ github.run_id }}
-          path: ludomada-ramus-visual-${{ github.run_id }}.tgz
+          path: _runs/${{ github.run_id }}/ludomada-ramus-visual-${{ github.run_id }}.tgz
           if-no-files-found: error
           retention-days: 7
       - name: Save verified debug APK locally
