@@ -1,0 +1,35 @@
+{
+  "schema": "ludomada-mobile-3d-budget-v1",
+  "glbBytes": {
+    "heroMax": 8388608,
+    "propMax": 2097152
+  },
+  "currentScene": {
+    "projectId": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 2,
+    "glbBytes": 846100
+  },
+  "geometry": {
+    "preferMeshopt": true,
+    "preferDraco": true,
+    "sharedMeshes": true
+  },
+  "textures": {
+    "preferKtx2": true,
+    "maxGameplayTextureDimension": 2048
+  },
+  "tiers": {
+    "MOBILE_SAFE": {
+      "shadowMap": 256,
+      "maxParticles": 32
+    },
+    "BALANCED": {
+      "shadowMap": 512,
+      "maxParticles": 64
+    },
+    "PREMIUM": {
+      "shadowMap": 1024,
+      "maxParticles": 128
+    }
+  }
+}
