@@ -33,6 +33,7 @@ jobs:
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
     steps:
       - name: Checkout source from GitHub
+        working-directory: ${{ github.workspace }}
         env:
           GIT_AUTH_TOKEN: ${{ github.token }}
         run: |
