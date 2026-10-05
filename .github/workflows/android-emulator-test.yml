@@ -29,6 +29,15 @@ jobs:
           fetch-depth: 1
           clean: true
 
+      - name: Verify and repair checked-out sources
+        working-directory: .
+        run: |
+          set -eu
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
+          test -f android-app/settings.gradle.kts
+          test -f android-app/gradlew
+
       - name: Accept Android SDK licenses
         run: |
           mkdir -p "$ANDROID_HOME/licenses"
