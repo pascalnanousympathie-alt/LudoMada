@@ -1,0 +1,43 @@
+{
+  "schema": "ludomada-premium-3d-v1",
+  "units": "meters",
+  "format": "glb/gltf2",
+  "target": "android-realtime",
+  "source_scene": "https://higgsfield.ai/3d-jutsu/083cab86-9817-4ddc-8d12-92d9212d008b",
+  "assets": {
+    "pawn": {
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head"
+      ],
+      "pivot": "bottom-center",
+      "material": "lacquer-pbr"
+    },
+    "die": {
+      "parts": [
+        "body",
+        "pips"
+      ],
+      "pivot": "center",
+      "material": "hydro-chrome",
+      "metallic": 0.95,
+      "roughness": 0.08
+    },
+    "table": {
+      "parts": [
+        "deep-base",
+        "recessed-board",
+        "gold-frame"
+      ],
+      "pivot": "center"
+    }
+  },
+  "mobile_budgets": {
+    "prefer_shared_meshes": true,
+    "prefer_compressed_textures": true,
+    "prefer_lod_for_large_assets": true,
+    "avoid_external_texture_paths": true
+  }
+}
