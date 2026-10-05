@@ -70,6 +70,6 @@
     "avoid_external_texture_paths": true
   },
   "asset_bundled_in_source_tree": true,
-  "runtime_loader": "not-integrated",
-  "active_renderer": "native-gles3-premium"
+  "runtime_loader": "GlbRuntimeLoader",
+  "active_renderer": "native-gles3-premium+glb-hero"
 }
