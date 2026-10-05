@@ -247,8 +247,15 @@ internal class GlbRuntimeLoader(private val context: Context) {
     }
 
     private fun nodeTransform(node: JSONObject): FloatArray {
-        // Hero-part translation/scale are structural. Dynamic gameplay rotation
-        // is applied by SceneRenderer so the die pips and pawn motion remain coherent.
+        // glTF nodes may encode transforms either as a full 4x4 matrix or as
+        // TRS. Preserve the authored orientation so non-zero asset rotations
+        // (notably the hydro-chrome die) are not silently discarded at runtime.
+        node.optJSONArray("matrix")?.let { matrix ->
+            if (matrix.length() == 16) {
+                return FloatArray(16) { i -> matrix.optDouble(i, if (i % 5 == 0) 1.0 else 0.0).toFloat() }
+            }
+        }
+
         val out = FloatArray(16)
         Matrix.setIdentityM(out, 0)
 
@@ -260,6 +267,50 @@ internal class GlbRuntimeLoader(private val context: Context) {
                     t.optDouble(1).toFloat(),
                     t.optDouble(2).toFloat()
                 )
+            }
+        }
+
+        node.optJSONArray("rotation")?.let { q ->
+            if (q.length() == 4) {
+                var x = q.optDouble(0).toFloat()
+                var y = q.optDouble(1).toFloat()
+                var z = q.optDouble(2).toFloat()
+                var w = q.optDouble(3).toFloat()
+                val len = kotlin.math.sqrt(x * x + y * y + z * z + w * w)
+                if (len > 0.000001f) {
+                    x /= len
+                    y /= len
+                    z /= len
+                    w /= len
+
+                    // glTF quaternion order is [x, y, z, w]. Android Matrix
+                    // uses column-major storage, so construct the equivalent
+                    // rotation matrix before applying node scale.
+                    val r = FloatArray(16)
+                    val xx = x * x
+                    val yy = y * y
+                    val zz = z * z
+                    val xy = x * y
+                    val xz = x * z
+                    val yz = y * z
+                    val wx = w * x
+                    val wy = w * y
+                    val wz = w * z
+                    Matrix.setIdentityM(r, 0)
+                    r[0] = 1f - 2f * (yy + zz)
+                    r[1] = 2f * (xy + wz)
+                    r[2] = 2f * (xz - wy)
+                    r[4] = 2f * (xy - wz)
+                    r[5] = 1f - 2f * (xx + zz)
+                    r[6] = 2f * (yz + wx)
+                    r[8] = 2f * (xz + wy)
+                    r[9] = 2f * (yz - wx)
+                    r[10] = 1f - 2f * (xx + yy)
+
+                    val rotated = FloatArray(16)
+                    Matrix.multiplyMM(rotated, 0, out, 0, r, 0)
+                    System.arraycopy(rotated, 0, out, 0, 16)
+                }
             }
         }
 
