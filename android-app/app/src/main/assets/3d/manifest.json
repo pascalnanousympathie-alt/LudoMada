@@ -3,7 +3,7 @@
   "units": "meters",
   "format": "glb/gltf2",
   "target": "android-realtime",
-  "runtime_packaged": false,
+  "runtime_packaged": true,
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
