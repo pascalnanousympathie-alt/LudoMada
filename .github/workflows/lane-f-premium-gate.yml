@@ -59,6 +59,7 @@ jobs:
           set -eu
           node scripts/audit-material-calibration.mjs --strict
           node scripts/check-3d-assets.mjs
+          node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
 
       - name: Configure Android SDK
