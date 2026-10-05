@@ -68,5 +68,8 @@
     "vfx_ids": ["classic", "spark", "flame", "ice"],
     "licensed_glb_root": "cosmetics/",
     "max_asset_bytes": 12582912
-  }
+  },
+  "asset_bundled_in_source_tree": true,
+  "runtime_loader": "GlbRuntimeLoader",
+  "active_renderer": "native-gles3-premium+glb-hero"
 }
