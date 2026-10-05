@@ -43,6 +43,33 @@ test -f "$BUILD_TOOLS/source.properties"
 mkdir -p "$WRAPPER_DIR" "$STATE_DIR"
 
 AAPT2=""
+HOST_ARCH="$(uname -m)"
+NATIVE_AAPT2_URL="https://github.com/Commit451/android-arm-build-tools/releases/download/platform-tools-36.0.0/aapt2"
+NATIVE_AAPT2_SHA256="7512ff7e381bea6fd310b6f6e347422c8fda21e07c6e3f0162742e95eb9d7f98"
+NATIVE_AAPT2="$STATE_DIR/aapt2-arm64-36.0.0"
+
+# Prefer a native ARM64/glibc AAPT2 on the Debian ARM64 runner.
+# Keep the QEMU wrapper below for plain Termux/non-glibc shells.
+if [ "$HOST_ARCH" = "aarch64" ] && [ -e "/lib/ld-linux-aarch64.so.1" ]; then
+  if [ ! -x "$NATIVE_AAPT2" ] || [ "$(sha256sum "$NATIVE_AAPT2" 2>/dev/null | awk '{print $1}')" != "$NATIVE_AAPT2_SHA256" ]; then
+    mkdir -p "$STATE_DIR"
+    curl -L --fail --retry 3 --retry-delay 2 -o "$NATIVE_AAPT2.tmp" "$NATIVE_AAPT2_URL"
+    test "$(sha256sum "$NATIVE_AAPT2.tmp" | awk '{print $1}')" = "$NATIVE_AAPT2_SHA256"
+    chmod +x "$NATIVE_AAPT2.tmp"
+    mv "$NATIVE_AAPT2.tmp" "$NATIVE_AAPT2"
+  fi
+  chmod +x "$NATIVE_AAPT2"
+  AAPT2="$NATIVE_AAPT2"
+  cp -f "$AAPT2" "$LAUNCHER"
+  chmod +x "$LAUNCHER"
+  "$LAUNCHER" version
+  printf '%s\n' "$AAPT2" > "$AAPT2_PATH_FILE"
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    printf 'AAPT2_WRAPPER=%s\n' "$LAUNCHER" >> "$GITHUB_ENV"
+  fi
+  exit 0
+fi
+
 if [ -s "$AAPT2_PATH_FILE" ]; then
   CACHED_AAPT2="$(head -n 1 "$AAPT2_PATH_FILE")"
   if [ -x "$CACHED_AAPT2" ]; then
