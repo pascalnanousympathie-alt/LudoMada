@@ -15,6 +15,8 @@ const renderer = fs.readFileSync(rendererFile, "utf8");
 const material = fs.readFileSync(materialFile, "utf8");
 
 const checks = [
+  ["chrome metallic source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_METALLIC")],
+  ["chrome roughness source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS")],
   ["chrome clearcoat source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT")],
   ["chrome clearcoat roughness source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS")],
   ["chrome normal source", renderer.includes("PremiumMaterialLighting.die().normalStrength")],
