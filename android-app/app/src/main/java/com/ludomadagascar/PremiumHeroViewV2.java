@@ -12,6 +12,7 @@ import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
+  private final LudoBoardView liveBoard;
   private final Button walletHit;
   private final Runnable homeBgFlip=new Runnable(){
     @Override public void run(){
@@ -29,6 +30,13 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
+    // Live GLES3/PBR board used as the Home visual preview. It has no authoritative game state.
+    liveBoard=new LudoBoardView(c);
+    liveBoard.player=0;
+    liveBoard.renderMode=android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY;
+    liveBoard.contentDescription="LudoMada Home • Real 3D Board Preview";
+    addView(liveBoard,new FrameLayout.LayoutParams(1,1));
+    liveBoard.animateState();
     final Button playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
@@ -92,6 +100,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();
+    positionLiveBoard();
     if(getContext() instanceof Activity){
       ((Activity)getContext()).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
@@ -172,6 +181,17 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Keep the auxiliary JOUER target in a small neutral corner; it stays transparent and off the visible CTA.
     setHit(playHitAlt,2,96,48,48);
   }
+  private void positionLiveBoard(){
+    if(liveBoard==null)return;
+    final float W=getWidth(),H=getHeight();
+    if(W<=0||H<=0)return;
+    int left=Math.round(W*0.255f), top=Math.round(H*0.165f);
+    int width=Math.max(1,Math.round(W*0.495f)), height=Math.max(1,Math.round(H*0.775f));
+    FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);
+    lp.leftMargin=Math.max(0,Math.min(left,(int)W-width));
+    lp.topMargin=Math.max(0,Math.min(top,(int)H-height));
+    liveBoard.setLayoutParams(lp);
+  }
   private void positionWalletHit(View wallet){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
@@ -206,6 +226,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   @Override protected void onSizeChanged(int w,int h,int ow,int oh){
     super.onSizeChanged(w,h,ow,oh);
+    positionLiveBoard();
     positionWalletHit(walletHit);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
@@ -511,8 +532,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
       menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
       box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
-      // Large central board with 3D perspective frame
-      c.save(); c.translate(150,-420); c.scale(2.75f,2.75f); board(c); c.restore();
+      // Central board is the live GLES3/PBR LudoBoardView child; no static Canvas board is drawn here.
       // Right information / CTA panel
       box(c,982,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
       t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);
