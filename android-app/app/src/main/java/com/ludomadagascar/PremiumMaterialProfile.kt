@@ -101,6 +101,27 @@ object PremiumMaterialProfiles {
         clearCoat = 0.16f, clearCoatRoughness = 0.13f,
         environmentIntensity = 0.72f
     )
+\n    /** Stable runtime mapping used by the gameplay renderer. */
+    fun pawn(playerIndex: Int): PremiumMaterialProfile = when (playerIndex and 3) {
+        0 -> RED_PAWN
+        1 -> GREEN_PAWN
+        2 -> GOLD_PAWN
+        else -> BLUE_PAWN
+    }
+
+    fun surface(kind: Surface): PremiumMaterialProfile = when (kind) {
+        Surface.PAWN -> RED_PAWN
+        Surface.HYDRO_CHROME_DIE -> HYDRO_CHROME_DIE
+        Surface.DARK_CHROME -> DARK_CHROME
+        Surface.BOARD -> BOARD_SATIN
+        Surface.PATH -> PATH_IVORY
+        Surface.TABLE -> TABLE_CLOTH
+        Surface.TRIM -> DARK_TRIM
+    }
+
+    enum class Surface {
+        PAWN, HYDRO_CHROME_DIE, DARK_CHROME, BOARD, PATH, TABLE, TRIM
+    }
 }
 
 /**
