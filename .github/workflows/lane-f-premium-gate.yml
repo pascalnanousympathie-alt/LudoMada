@@ -2,6 +2,15 @@ name: Lane F Premium Visual Gate
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/google-signin-real
+    paths:
+      - "android-app/**"
+      - "scripts/audit-material-calibration.mjs"
+      - "scripts/check-3d-assets.mjs"
+      - "scripts/ramus-smoke.mjs"
+      - ".github/workflows/lane-f-premium-gate.yml"
   pull_request:
     paths:
       - "android-app/**"
