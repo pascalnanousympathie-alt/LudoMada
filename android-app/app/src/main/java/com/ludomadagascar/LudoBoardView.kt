@@ -1055,10 +1055,9 @@ class LudoBoardView(
             return out
         }
         // The reference gameplay composition uses one active die in the near foreground,
-        // centered below the board. Keep a single physical die visible so the board, pawns,
-        // and die read as one premium 3D tabletop rather than four HUD-like corner dice.
+        // centered below the board but still safely inside the landscape camera frustum.
         private fun dieCenterWorld(pi:Int):FloatArray =
-            floatArrayOf(0f,boardTop+0.10f,4.95f)
+            floatArrayOf(0f,boardTop+0.10f,2.80f)
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
                 drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
