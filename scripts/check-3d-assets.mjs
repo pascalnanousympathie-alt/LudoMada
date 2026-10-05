@@ -37,8 +37,9 @@ const packagedSha256 = fs.existsSync(expectedAsset)
   ? createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
   : "";
 checks.push(["source tree bundle flag", manifest.asset_bundled_in_source_tree === true]);
-checks.push(["runtime loader explicit", manifest.runtime_loader === "not-integrated"]);
-checks.push(["runtime packaged remains unclaimed", manifest.runtime_packaged === false]);
+checks.push(["runtime loader explicit", manifest.runtime_loader === "GlbRuntimeLoader"]);
+checks.push(["runtime packaged", manifest.runtime_packaged === true]);
+checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) && manifest.runtime_hero_parts.includes("LM_Pawn_Tapered_Body") && manifest.runtime_hero_parts.includes("LM_Pawn_Spherical_Head") && manifest.runtime_hero_parts.includes("LM_Die_HydroChrome_Body")]);
 checks.push(["rev3 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["rev3 asset size", packagedBytes === 846104]);
 checks.push(["rev3 asset sha256", packagedSha256 === "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027"]);
