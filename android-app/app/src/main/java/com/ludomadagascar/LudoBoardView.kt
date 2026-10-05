@@ -40,6 +40,17 @@ class LudoBoardView(
     var player: Int = -1
         set(value) { field = value; renderer.player = value; requestRender() }
 
+    /** Home hero mode: render the same real GPU board used by gameplay, without game-state interaction. */
+    var homePreview: Boolean = false
+        set(value) { field = value; renderer.homePreview = value; requestRender() }
+
+    fun configureHomePreview() {
+        homePreview = true
+        player = -1
+        renderMode = RENDERMODE_CONTINUOUSLY
+        requestRender()
+    }
+
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
     private lateinit var renderer: GameplayRenderer
@@ -244,7 +255,9 @@ class LudoBoardView(
     )
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
+        if (e.actionMasked != MotionEvent.ACTION_UP) return true
+        if (homePreview) return true
+        if (player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
         if (BuildConfig.DEBUG) {
             contentDescription = "LudoBoard3D|touch=" + e.x + "," + e.y + "|size=" + width + "x" + height + "|die0=" + projectedDice[0][0] + "," + projectedDice[0][1]
@@ -332,6 +345,7 @@ class LudoBoardView(
     private interface GameplayRenderer : GLSurfaceView.Renderer {
         var state: JSONObject?
         var player: Int
+        var homePreview: Boolean
         var diceAnim: Float
         val lift: Array<FloatArray>
         val bounce: Array<FloatArray>
@@ -347,6 +361,7 @@ class LudoBoardView(
     internal class SafeSceneRenderer(private val host:LudoBoardView) : GameplayRenderer {
         override var state:JSONObject?=null
         override var player:Int=-1
+        override var homePreview=false
         override var diceAnim=1f
         override val lift=Array(4){FloatArray(4)}
         override val bounce=Array(4){FloatArray(4)}
@@ -542,10 +557,56 @@ class LudoBoardView(
             // layered separately above it in ivory, so the wood remains visible between lanes.
             drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(154,86,30,1f),0.34f,0.14f,0.02f)
 
+            if (homePreview) drawHomePreview() else {
+                drawPath()
+                drawZones()
+                drawPawns()
+                drawDice()
+            }
+        }
+
+        private fun drawHomePreview(){
             drawPath()
             drawZones()
-            drawPawns()
-            drawDice()
+            val homes = arrayOf(
+                floatArrayOf(-2.58f, 2.58f),
+                floatArrayOf(-2.58f, -2.58f),
+                floatArrayOf(2.58f, -2.58f),
+                floatArrayOf(2.58f, 2.58f)
+            )
+            val slots = arrayOf(
+                floatArrayOf(-0.40f, 0.40f),
+                floatArrayOf(0.40f, 0.40f),
+                floatArrayOf(-0.40f, -0.40f),
+                floatArrayOf(0.40f, -0.40f)
+            )
+            for (pi in 0..3) {
+                val h = homes[pi]
+                for (ti in 0..3) {
+                    val x = h[0] + slots[ti][0]
+                    val z = h[1] + slots[ti][1]
+                    drawMesh(disk,model(x,0.295f,z,0.30f,0.018f,0.30f,0f),color(26,22,20,0.32f),0.86f,0.02f,0f)
+                    val y = 0.46f
+                    drawMesh(pawn,model(x,y,z,0.36f,0.88f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.0f,0.16f)
+                    drawMesh(sphere,model(x,y+0.70f,z,0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
+                    drawMesh(sphere,model(x-0.05f,y+0.84f,z-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.88f),0.10f,0.35f,0.12f)
+                }
+            }
+            // One large foreground hydro-chrome die, matching the hero reference rather than four corner dice.
+            val dz = 3.02f
+            drawMesh(die,model(0f,0.24f,dz,0.82f,0.11f,0.82f,0f),color(58,63,70,1f),0.12f,1.0f,0.015f,0.92f)
+            drawMesh(die,model(0f,0.35f,dz,0.67f,0.055f,0.67f,0f),color(175,181,188,1f),0.08f,1.0f,0.0f,0.96f)
+            val rot = -6f + sin(System.nanoTime()/320_000_000.0).toFloat()*9f
+            val dieModel = model(0f,0.76f,dz,0.44f,0.44f,0.44f,rot)
+            drawMesh(die,dieModel,color(232,236,240,1f),0.045f,1.0f,0.018f,0.98f)
+            val pip = 0.19f
+            val positions = arrayOf(
+                -pip to -pip, pip to -pip, 0f to 0f, -pip to pip, pip to pip
+            )
+            for ((px,pz) in positions) {
+                val pm = localModel(dieModel,px,1.020f,pz,0.073f,0.020f,0.073f)
+                drawMesh(disk,pm,color(14,18,23,1f),0.08f,0.35f,0.0f)
+            }
         }
 
         private fun drawPath(){
@@ -859,6 +920,7 @@ class LudoBoardView(
     internal class SceneRenderer(private val host: LudoBoardView) : GameplayRenderer {
         override var state: JSONObject? = null
         override var player: Int = -1
+        override var homePreview = false
         override var diceAnim = 1f
         override val lift = Array(4) { FloatArray(4) }
         override val bounce = Array(4) { FloatArray(4) }
@@ -971,7 +1033,9 @@ class LudoBoardView(
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if(land)11.8f else 8.2f;val camZ=if(land)8.8f else 8.8f;val fov=if(land)31f else 34f
+            val camY=if(homePreview)9.4f else if(land)11.8f else 8.2f
+            val camZ=if(homePreview)9.8f else 8.8f
+            val fov=if(homePreview)34f else if(land)31f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,0f,camY,camZ,0f,0.12f,0f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
@@ -994,7 +1058,7 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();if(!homePreview)drawParticles();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
         private fun renderDirectFrame(){
@@ -1019,7 +1083,52 @@ class LudoBoardView(
             2 -> floatArrayOf(4.15f,boardTop+0.10f,-4.15f)
             else -> floatArrayOf(4.15f,boardTop+0.10f,4.15f)
         }
+        private fun drawHomePreviewWorld(shadowPass:Boolean){
+            if(shadowPass){
+                drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
+                drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f))
+                drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f))
+                drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f))
+                drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
+                drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f))
+                for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f))
+                for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
+                val homes=arrayOf(
+                    floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),
+                    floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f)
+                )
+                val slots=arrayOf(
+                    floatArrayOf(-0.43f,0.43f),floatArrayOf(0.43f,0.43f),
+                    floatArrayOf(-0.43f,-0.43f),floatArrayOf(0.43f,-0.43f)
+                )
+                for(pi in 0..3)for(ti in 0..3){
+                    val xz=floatArrayOf(homes[pi][0]+slots[ti][0],homes[pi][1]+slots[ti][1])
+                    drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f,xz[1],pi,ti))
+                    drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f,xz[1],pi,ti))
+                }
+                val hz=3.02f
+                drawShadowMesh(cube,identityAt(0f,boardTop+0.035f,hz,0.92f,0.06f,0.92f))
+                drawShadowMesh(roundedBox,identityAt(0f,boardTop+0.38f,hz,0.52f,0.52f,0.52f))
+                return
+            }
+            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(Color.rgb(71,36,14)),0.58f,0.08f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),floatArrayOf(0.47f,0.18f,0.05f,1f),0.42f,0.12f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),floatArrayOf(0.78f,0.48f,0.16f,1f),0.46f,0.10f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),floatArrayOf(0.88f,0.84f,0.73f,1f),0.58f,0.04f,1f,0f,2,false)
+            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
+            for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
+            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.28f,0.05f,1f,0.012f,3,false)
+            val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(i in 0..3){val hc=homes[i];drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(zoneColorInt(i)),0.34f,0.06f,1f,0.01f,3,false);drawMesh(roundedBox,identityAt(hc[0],boardTop+0.22f,hc[1],1.16f,0.075f,1.16f),colorFromInt(zoneColorInt(i),0.96f),0.22f,0.10f,1f,0.012f,3,false);for(sx in arrayOf(-0.43f,0.43f))for(sz in arrayOf(-0.43f,0.43f))drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)}
+            for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
+            for(pi in 0..3)drawDie(pi)
+        }
+
         private fun drawWorld(shadowPass:Boolean){
+            if(homePreview){
+                drawHomePreviewWorld(shadowPass)
+                return
+            }
             if(shadowPass){
                 drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
                 drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
