@@ -32,9 +32,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home=new HomeView(c);
     // Live GLES3/PBR board used as the Home visual preview. It has no authoritative game state.
     liveBoard=new LudoBoardView(c);
-    liveBoard.player=0;
-    liveBoard.renderMode=android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY;
-    liveBoard.contentDescription="LudoMada Home • Real 3D Board Preview";
+    liveBoard.setPlayer(0);
+    liveBoard.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY);
+    liveBoard.setContentDescription("LudoMada Home • Real 3D Board Preview");
     addView(liveBoard,new FrameLayout.LayoutParams(1,1));
     liveBoard.animateState();
     final Button playHit=new Button(c);
