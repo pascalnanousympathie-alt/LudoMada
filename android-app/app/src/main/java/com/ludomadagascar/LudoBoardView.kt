@@ -1066,12 +1066,13 @@ class LudoBoardView(
         }
         private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=(elastic-b)
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val sx=pawnScale*(1f-0.055f*overshoot)
-            val sy=pawnScale*(1f+0.115f*overshoot)
-            val m=identityAt(x,y,z,sx,sy,sx)
+            val squash=PremiumVisualMotion.squash(b)
+            val stretch=PremiumVisualMotion.stretch(b)
+            val sx=pawnScale*squash*(1f-0.055f*overshoot)
+            val sy=pawnScale*stretch*(1f+0.115f*overshoot)
+            val m=identityAt(x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,sx)
             val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
@@ -1079,12 +1080,13 @@ class LudoBoardView(
         }
         private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=elastic-b
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val s=pawnScale*0.37f*(1f-0.035f*overshoot)
-            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)
-            val m=identityAt(x,y+pawnScale*0.74f,z,s,sy,s)
+            val headSquash=PremiumVisualMotion.squash(b)
+            val headStretch=PremiumVisualMotion.stretch(b)
+            val s=pawnScale*0.37f*headSquash*(1f-0.035f*overshoot)
+            val sy=pawnScale*0.37f*headStretch*(1f+0.065f*overshoot)
+            val m=identityAt(x,y+pawnScale*0.74f+PremiumVisualMotion.landingBounce(b)*0.65f,z,s,sy,s)
             val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
             return m
@@ -1097,8 +1099,9 @@ class LudoBoardView(
             val p=dieCenterWorld(pi)
             val value=dieValue(pi)
             val t=if(pi==player)diceAnim else 1f
-            val sx=(1f-t)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-t)*(430f+pi*37f)+17f+pi*11f
+            val spin=PremiumVisualMotion.dieSpin(t)
+            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
             val m=identityAt(p[0],p[1]+0.38f,p[2],0.52f,0.52f,0.52f)
             Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f)
             return m
@@ -1437,7 +1440,7 @@ class LudoBoardView(
         fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean){
             val albedo=when(material){1->wood;2->board;3->neutral;4->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,metallic);GLES30.glUniform1f(uRoughness,rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)0.08f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->0.22f;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->0.075f;3->0.12f;else->0.18f})
+            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,metallic);GLES30.glUniform1f(uRoughness,rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)0.08f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->LudoMaterialCalibration.chrome.clearCoat;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->0.075f;3->0.12f;else->0.18f})
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normal);GLES30.glUniform1i(uNormalTex,1)
             GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glVertexAttribPointer(1,3,GLES30.GL_FLOAT,false,0,mesh.n);GLES30.glVertexAttribPointer(2,2,GLES30.GL_FLOAT,false,0,mesh.uv);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
         }
