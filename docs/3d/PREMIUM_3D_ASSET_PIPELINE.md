@@ -2,9 +2,9 @@
 
 ## Current source scene
 
-The authoritative visual source is Higgsfield 3D Jutsu project `083cab86-9817-4ddc-8d12-92d9212d008b`, revision 2.
+The authoritative visual source is Higgsfield 3D Jutsu project `083cab86-9817-4ddc-8d12-92d9212d008b`, revision 3.
 
-Revision 2 contains real gameplay geometry:
+Revision 3 contains the calibrated real gameplay geometry and materials:
 - 52 path cells
 - 24 finish-lane cells
 - 4 home plinths
@@ -13,17 +13,17 @@ Revision 2 contains real gameplay geometry:
 - physical pawn geometry
 - hydro-chrome die with 3D pips
 
-The exported GLB for revision 2 is 846,100 bytes (~0.81 MiB), below the 8 MiB hero-asset budget.
+The exported GLB for revision 2 is 846,104 bytes (~0.81 MiB), below the 8 MiB hero-asset budget.
 
 ## Runtime status
 
 `runtime_packaged=false` is intentional at this handoff. The binary GLB is not claimed to be embedded in the Android APK yet. The Android renderer currently recreates the gameplay board with native GLES2/GLES3 geometry.
 
-The GLB is the source-of-truth asset handoff for the next runtime asset-import lane. Do not replace it with a screenshot/background image.
+Revision 3 is now the source-of-truth GLB handoff, including portable Principled PBR material values. Do not replace it with a screenshot/background image.
 
 ## Material handoff
 
-Runtime Lane C/Lane A calibration:
+Runtime Lane C/Lane A and source-asset calibration:
 - hydro chrome: metallic 1.00
 - hydro chrome: roughness 0.055
 - clear coat: 0.72
@@ -33,7 +33,7 @@ Runtime Lane C/Lane A calibration:
 - rim: 0.34
 - IBL: 0.82
 
-Those runtime values are renderer calibration and may differ from the source authoring defaults.
+The rev3 source GLB now carries matching Principled material values for hydro-chrome, pawn lacquer, gold, board and path materials.
 
 ## Integration boundary
 
