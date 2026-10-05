@@ -479,3 +479,5 @@ try {
     process.exitCode = 1;
   }
 }
+
+// Lane F proof trigger: keep QA PR open until the evidence workflow completes.\n
