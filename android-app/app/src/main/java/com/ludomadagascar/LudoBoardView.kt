@@ -629,9 +629,10 @@ class LudoBoardView(
                     else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)
                 }
                 for((px,pz) in positions){
-                    // Flat dark pips make every face legible on small mobile screenshots.
-                    val pipModel=localModel(dieModel,px,1.020f,pz,0.073f,0.020f,0.073f)
-                    drawMesh(disk,pipModel,color(14,18,23,1f),0.08f,0.35f,0.0f)
+                    // Volumetric pip: the dark sphere is embedded into the rounded die face,
+                    // leaving a shallow physical cavity instead of a flat painted dot.
+                    val pipModel=localModel(dieModel,px,0.988f,pz,0.073f,0.038f,0.073f)
+                    drawMesh(pips,pipModel,color(10,13,18,1f),0.105f,0.50f,0.0f)
                 }
             }
         }
