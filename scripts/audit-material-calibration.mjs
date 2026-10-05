@@ -1,62 +1,88 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 
-const file = "android-app/app/src/main/java/com/ludomadagascar/LudoBoardView.kt";
-if (!fs.existsSync(file)) {
-  console.error("MATERIAL_CALIBRATION_AUDIT_FAIL missing", file);
-  process.exit(1);
-}
-const src = fs.readFileSync(file, "utf8");
+const rendererFile = "android-app/app/src/main/java/com/ludomadagascar/LudoBoardView.kt";
+const contractFile = "android-app/app/src/main/java/com/ludomadagascar/PremiumMaterialLighting.kt";
 
-function readNumber(label, re) {
-  const m = src.match(re);
+for (const file of [rendererFile, contractFile]) {
+  if (!fs.existsSync(file)) {
+    console.error("MATERIAL_CALIBRATION_AUDIT_FAIL missing", file);
+    process.exit(1);
+  }
+}
+
+const renderer = fs.readFileSync(rendererFile, "utf8");
+const contract = fs.readFileSync(contractFile, "utf8");
+
+function num(source, re) {
+  const m = source.match(re);
   return m ? Number(m[1]) : null;
 }
 
-const actual = {
-  chromeClearcoat: readNumber("chromeClearcoat", /uClearCoat,when\(material\)\{4->([0-9.]+)f/),
-  chromeClearcoatRoughness: readNumber("chromeClearcoatRoughness", /uClearCoatRoughness,when\(material\)\{4->([0-9.]+)f/),
-  key: readNumber("key", /vec3\(([0-9.]+),0\.98,0\.84\)/),
-  fill: readNumber("fill", /nl2\*([0-9.]+)/),
-  shadowBias: readNumber("shadowBias", /p\.z-([0-9.]+)/),
-  bloom: readNumber("bloom", /postShader\.draw\(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,([0-9.]+),([0-9.]+)\)/),
-};
-
 const target = {
-  chromeClearcoat: 0.72,
-  chromeClearcoatRoughness: 0.055,
-  key: 1.08,
-  fill: 0.22,
-  shadowBias: 0.00135,
-  bloom: 0.10,
-  ssao: 0.28,
-  ambientIbl: 0.82,
-  rim: 0.34
+  chromeMetallic: num(contract, /CHROME_METALLIC\s*=\s*([0-9.]+)f/),
+  chromeRoughness: num(contract, /CHROME_ROUGHNESS\s*=\s*([0-9.]+)f/),
+  chromeClearcoat: num(contract, /CHROME_CLEAR_COAT\s*=\s*([0-9.]+)f/),
+  chromeClearcoatRoughness: num(contract, /CHROME_CLEAR_COAT_ROUGHNESS\s*=\s*([0-9.]+)f/),
+  chromeNormalStrength: num(contract, /HYDRO_CHROME.*?normalStrength\s*=\s*([0-9.]+)f/s),
+  key: num(contract, /KEY_INTENSITY\s*=\s*([0-9.]+)f/),
+  fill: num(contract, /FILL_INTENSITY\s*=\s*([0-9.]+)f/),
+  rim: num(contract, /RIM_INTENSITY\s*=\s*([0-9.]+)f/),
+  ibl: num(contract, /AMBIENT_IBL_INTENSITY\s*=\s*([0-9.]+)f/),
+  shadowBias: num(contract, /SHADOW_BIAS\s*=\s*([0-9.]+)f/),
+  bloom: num(contract, /BLOOM\s*=\s*([0-9.]+)f/),
+  ssao: num(contract, /SSAO\s*=\s*([0-9.]+)f/)
 };
 
-const tolerance = 0.00001;
-const compare = (name) => actual[name] !== null && Math.abs(actual[name] - target[name]) <= tolerance;
+const dieCall = renderer.match(
+  /drawMesh\(roundedBox,die,floatArrayOf\(0\.98f,0\.99f,1\.0f,1f\),([0-9.]+)f,([0-9.]+)f/
+);
+
+const actual = {
+  chromeRoughness: dieCall ? Number(dieCall[1]) : null,
+  chromeMetallic: dieCall ? Number(dieCall[2]) : null,
+  chromeClearcoat: num(renderer, /uClearCoat,when\(material\)\{4->([0-9.]+)f/),
+  chromeClearcoatRoughness: num(renderer, /uClearCoatRoughness,when\(material\)\{4->([0-9.]+)f/),
+  chromeNormalStrength: num(renderer, /uNormalStrength,if\(material==4\)([0-9.]+)f/),
+  lightingProfileBound: /private val premiumLighting = PremiumMaterialLighting\.lighting/.test(renderer),
+  keyBound: /glUniform1f\(uKeyIntensity,renderer\.premiumLighting\.keyIntensity\)/.test(renderer),
+  fillBound: /glUniform1f\(uFillIntensity,renderer\.premiumLighting\.fillIntensity\)/.test(renderer),
+  rimBound: /glUniform1f\(uRimIntensity,renderer\.premiumLighting\.rimIntensity\)/.test(renderer),
+  iblBound: /glUniform1f\(uIBLIntensity,renderer\.premiumLighting\.iblIntensity\)/.test(renderer),
+  shadowBound: /glUniform1f\(uShadowBias,renderer\.premiumLighting\.shadowBias\)/.test(renderer),
+  postBound: /premiumPost\.ssao,premiumPost\.bloom/.test(renderer),
+  clearcoatUniformsBound: /glUniform1f\(uClearCoat,/.test(renderer) && /glUniform1f\(uClearCoatRoughness,/.test(renderer),
+  gles2FallbackPresent: /class SafeSceneRenderer/.test(renderer)
+};
+
+const close = (a, b) => a !== null && b !== null && Math.abs(a - b) <= 0.00001;
 
 const results = {
-  chromeClearcoat: compare("chromeClearcoat"),
-  chromeClearcoatRoughness: compare("chromeClearcoatRoughness"),
-  key: compare("key"),
-  fill: compare("fill"),
-  shadowBias: compare("shadowBias"),
-  bloom: compare("bloom")
+  chromeMetallic: close(actual.chromeMetallic, target.chromeMetallic),
+  chromeRoughness: close(actual.chromeRoughness, target.chromeRoughness),
+  chromeClearcoat: close(actual.chromeClearcoat, target.chromeClearcoat),
+  chromeClearcoatRoughness: close(actual.chromeClearcoatRoughness, target.chromeClearcoatRoughness),
+  chromeNormalStrength: close(actual.chromeNormalStrength, target.chromeNormalStrength),
+  lightingProfileBound: actual.lightingProfileBound,
+  keyBound: actual.keyBound,
+  fillBound: actual.fillBound,
+  rimBound: actual.rimBound,
+  iblBound: actual.iblBound,
+  shadowBound: actual.shadowBound,
+  postBound: actual.postBound,
+  clearcoatUniformsBound: actual.clearcoatUniformsBound,
+  gles2FallbackPresent: actual.gles2FallbackPresent
 };
 
-console.log(JSON.stringify({
+const report = {
   mode: process.argv.includes("--strict") ? "strict" : "audit",
-  actual,
+  sourceOfTruth: "PremiumMaterialLighting.Calibration + PremiumMaterialLighting.hydroChrome()",
   target,
-  expectedManualIntegration: {
-    ambientIbl: target.ambientIbl,
-    rim: target.rim,
-    ssao: target.ssao
-  },
+  actual,
   results
-}, null, 2));
+};
+
+console.log(JSON.stringify(report, null, 2));
 
 if (process.argv.includes("--strict") && Object.values(results).some((v) => !v)) {
   process.exit(2);
