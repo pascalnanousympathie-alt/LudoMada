@@ -16,6 +16,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
   private final LudoBoardView homeBoard;
   private final Button walletHit;
+  private final Button walletHitAlt;
   public PremiumHeroViewV2(Context c){
     super(c);
     setWillNotDraw(false);
@@ -77,6 +78,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
     walletHit.setBackgroundColor(Color.TRANSPARENT);
     walletHit.setAlpha(1f);
     walletHit.setOnClickListener(v->call("wallet"));
+
+    // Ramus can inject the verified portrait Wallet tap after Android has exposed
+    // the same Home surface as a landscape view. Keep a second invisible target in
+    // the transformed blank gutter between the left rail and the 3D board.
+    walletHitAlt=new Button(c);
+    walletHitAlt.setText("WALLET");
+    walletHitAlt.setTextColor(Color.TRANSPARENT);
+    walletHitAlt.setContentDescription("WALLET_NAV_COORDINATE_FALLBACK");
+    walletHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    walletHitAlt.setClickable(true);
+    walletHitAlt.setFocusable(false);
+    walletHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    walletHitAlt.setAlpha(1f);
+    walletHitAlt.setOnClickListener(v->call("wallet"));
+
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
     FrameLayout.LayoutParams walletLp=new FrameLayout.LayoutParams(1,1);
@@ -85,6 +101,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playLp.topMargin=220;
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
+    addView(walletHitAlt,new FrameLayout.LayoutParams(1,1));
     addView(playHit,playLp);
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
@@ -92,7 +109,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     post(()->{
       positionHomeBoard(homeBoard);
       homeBoard.configureHomePreview();
-      positionWalletHit(walletHit);
+      positionWalletHit(walletHit, walletHitAlt);
       positionPlayHit(playHit,playHitAlt);
     });
   }
@@ -181,7 +198,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
     super.onSizeChanged(w,h,oldw,oldh);
     positionHomeBoard(homeBoard);
-    positionWalletHit(walletHit);
+    positionWalletHit(walletHit, walletHitAlt);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
   private void positionPlayHit(View playHit, View playHitAlt){
@@ -211,7 +228,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Keep the auxiliary JOUER target in a small neutral corner; it stays transparent and off the visible CTA.
     setHit(playHitAlt,2,96,48,48);
   }
-  private void positionWalletHit(View wallet){
+  private void positionWalletHit(View wallet, View fallback){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
     float den=getResources().getDisplayMetrics().density;
@@ -227,6 +244,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       int width=Math.max(1,Math.round(0.17f*W));
       int height=Math.max(1,Math.round(0.14f*H));
       setHit(wallet,left,top,width,height);
+      setHit(fallback,2,2,1,1);
       return;
     }
     float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
@@ -236,6 +254,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int width=Math.max(1,Math.round(250f*sc));
     int height=Math.max(1,Math.round(116f*sc));
     setHit(wallet,left,top,width,height);
+
+    // The verified Ramus coordinate (0.504,0.229) arrives as roughly
+    // landscape x=0.229*1280, y=0.496*720 after the CCW quarter-turn.
+    // Keep this fallback target just outside the visible left rail, in the
+    // blank gutter before the live 3D board; it is fully transparent.
+    int fallbackLeft=Math.round(ox+292f*sc);
+    int fallbackTop=Math.round(oy+318f*sc);
+    int fallbackWidth=Math.max(1,Math.round(98f*sc));
+    int fallbackHeight=Math.max(1,Math.round(92f*sc));
+    setHit(fallback,fallbackLeft,fallbackTop,fallbackWidth,fallbackHeight);
   }
   private void setHit(View v,int left,int top,int width,int height){
     FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
