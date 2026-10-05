@@ -1064,6 +1064,14 @@ class LudoBoardView(
                 drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
                 drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
                 val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
+                // Small environmental props keep the tabletop grounded like the supplied reference.
+                drawShadowMesh(roundedBox,identityAt(-4.55f,0.24f,2.95f,0.34f,0.30f,0.34f))
+                drawShadowMesh(roundedBox,identityAt(4.55f,0.24f,2.70f,0.42f,0.20f,0.42f))
+                drawShadowMesh(sphere,identityAt(4.55f,0.63f,2.70f,0.11f,0.34f,0.11f))
+                drawShadowMesh(sphere,identityAt(4.40f,0.86f,2.70f,0.26f,0.07f,0.14f))
+                drawShadowMesh(sphere,identityAt(4.70f,0.82f,2.66f,0.24f,0.065f,0.13f))
+                drawShadowMesh(cube,identityAt(4.55f,0.24f,4.40f,0.72f,0.055f,0.42f))
+                drawShadowMesh(cube,identityAt(4.55f,0.31f,4.40f,0.66f,0.025f,0.37f))
                 for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti));drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))}
                 if(player in 0..3){
                     val p=dieCenterWorld(player)
@@ -1083,6 +1091,20 @@ class LudoBoardView(
             drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
             for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
             for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.28f,0.05f,1f,0.012f,3,false)
+            // Peripheral tabletop dressing: a small mug at left, a ceramic planter with leaves at right,
+            // and a dark book stack in the near-right foreground, matching the reference environment.
+            drawMesh(roundedBox,identityAt(-4.55f,0.24f,2.95f,0.34f,0.30f,0.34f),floatArrayOf(0.055f,0.062f,0.072f,1f),0.26f,0.30f,1f,0f,4,false)
+            drawMesh(disk,identityAt(-4.55f,0.55f,2.95f,0.39f,0.028f,0.39f),floatArrayOf(0.73f,0.70f,0.66f,1f),0.38f,0.08f,1f,0f,2,false)
+            drawMesh(disk,identityAt(-4.55f,0.58f,2.95f,0.28f,0.018f,0.28f),floatArrayOf(0.16f,0.12f,0.09f,1f),0.18f,0.03f,1f,0f,1,false)
+
+            drawMesh(roundedBox,identityAt(4.55f,0.24f,2.70f,0.42f,0.20f,0.42f),floatArrayOf(0.93f,0.94f,0.92f,1f),0.32f,0.02f,1f,0f,2,false)
+            drawMesh(sphere,identityAt(4.55f,0.63f,2.70f,0.11f,0.34f,0.11f),floatArrayOf(0.12f,0.35f,0.16f,1f),0.38f,0.04f,1f,0f,3,false)
+            drawMesh(sphere,identityAt(4.40f,0.86f,2.70f,0.26f,0.07f,0.14f),floatArrayOf(0.18f,0.50f,0.22f,1f),0.40f,0.02f,1f,0.01f,3,false)
+            drawMesh(sphere,identityAt(4.70f,0.82f,2.66f,0.24f,0.065f,0.13f),floatArrayOf(0.14f,0.44f,0.19f,1f),0.40f,0.02f,1f,0.01f,3,false)
+
+            drawMesh(cube,identityAt(4.55f,0.24f,4.40f,0.72f,0.055f,0.42f),floatArrayOf(0.025f,0.035f,0.048f,1f),0.58f,0.18f,1f,0f,1,false)
+            drawMesh(cube,identityAt(4.55f,0.31f,4.40f,0.66f,0.025f,0.37f),floatArrayOf(0.72f,0.69f,0.61f,1f),0.68f,0.02f,1f,0f,2,false)
+
             val homes=arrayOf(floatArrayOf(0f,-2.58f),floatArrayOf(2.58f,0f),floatArrayOf(0f,2.58f),floatArrayOf(-2.58f,0f))
             for(i in 0..3){
                 val hc=homes[i]
