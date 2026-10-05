@@ -18,11 +18,12 @@ const checks = [
   ["chrome clearcoat source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT")],
   ["chrome clearcoat roughness source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS")],
   ["chrome normal source", renderer.includes("PremiumMaterialLighting.die().normalStrength")],
-  ["key intensity source", renderer.includes("premiumLighting.keyIntensity") || renderer.includes("PremiumMaterialLighting.Calibration.KEY_INTENSITY")],
-  ["fill intensity source", renderer.includes("premiumLighting.fillIntensity") || renderer.includes("PremiumMaterialLighting.Calibration.FILL_INTENSITY")],
-  ["rim intensity source", renderer.includes("premiumLighting.rimIntensity") || renderer.includes("PremiumMaterialLighting.Calibration.RIM_INTENSITY")],
-  ["IBL intensity source", renderer.includes("premiumLighting.iblIntensity") || renderer.includes("PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY")],
-  ["shadow bias source", renderer.includes("premiumLighting.shadowBias") || renderer.includes("PremiumMaterialLighting.Calibration.SHADOW_BIAS")],
+  ["chrome metallic/roughness source", renderer.includes("PremiumMaterialLighting.Calibration.CHROME_METALLIC") && renderer.includes("PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS")],
+  ["key intensity source", renderer.includes("PremiumMaterialLighting.Calibration.KEY_INTENSITY") || renderer.includes("premiumLighting.keyIntensity")],
+  ["fill intensity source", renderer.includes("PremiumMaterialLighting.Calibration.FILL_INTENSITY") || renderer.includes("premiumLighting.fillIntensity")],
+  ["rim intensity source", renderer.includes("PremiumMaterialLighting.Calibration.RIM_INTENSITY") || renderer.includes("premiumLighting.rimIntensity")],
+  ["IBL intensity source", renderer.includes("PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY") || renderer.includes("premiumLighting.iblIntensity")],
+  ["shadow bias source", renderer.includes("PremiumMaterialLighting.Calibration.SHADOW_BIAS") || renderer.includes("premiumLighting.shadowBias")],
   ["post SSAO source", renderer.includes("premiumPost.ssao")],
   ["post bloom source", renderer.includes("premiumPost.bloom")],
   ["shadow size source", renderer.includes("premiumLighting.shadowMapResolution")],
@@ -37,26 +38,17 @@ const checks = [
   ["canonical IBL value", /AMBIENT_IBL_INTENSITY\s*=\s*0\.82f/.test(material)],
   ["canonical shadow value", /SHADOW_BIAS\s*=\s*0\.00135f/.test(material)],
   ["canonical bloom value", /BLOOM\s*=\s*0\.10f/.test(material)],
-  ["canonical SSAO value", /SSAO\s*=\s*0\.28f/.test(material)]
+  ["canonical SSAO value", /SSAO\s*=\s*0\.28f/.test(material)],
+  ["legacy clearcoat removed", !/uClearCoat,when\(material\)\{4->0\.22f/.test(renderer)],
+  ["legacy coat roughness removed", !/uClearCoatRoughness,when\(material\)\{4->0\.075f/.test(renderer)],
+  ["legacy normal removed", !/uNormalStrength,if\(material==4\)0\.08f/.test(renderer)],
+  ["legacy key removed", !/vec3\(1\.05,0\.98,0\.84\)\*nl/.test(renderer)],
+  ["legacy fill removed", !/nl2\*0\.42/.test(renderer)],
+  ["legacy shadow removed", !/p\.z-0\.0018/.test(renderer)],
+  ["GLES2 fallback present", renderer.includes("class SafeSceneRenderer")]
 ];
-
-const legacy = [
-  ["legacy chrome clearcoat", /uClearCoat,when\(material\)\{4->0\.22f/],
-  ["legacy chrome clearcoat roughness", /uClearCoatRoughness,when\(material\)\{4->0\.075f/],
-  ["legacy chrome normal", /uNormalStrength,if\(material==4\)0\.08f/],
-  ["legacy key literal", /vec3\(1\.05,0\.98,0\.84\)\*nl/],
-  ["legacy fill literal", /nl2\*0\.42/],
-  ["legacy shadow literal", /p\.z-0\.0018/]
-];
-
-for (const [name, re] of legacy) checks.push([name + " removed", !re.test(renderer)]);
 
 const failed = checks.filter(([, pass]) => !pass);
-console.log(JSON.stringify({
-  mode: process.argv.includes("--strict") ? "strict" : "audit",
-  passed: checks.length - failed.length,
-  total: checks.length,
-  failures: failed.map(([name]) => name)
-}, null, 2));
-
+const report = { mode: process.argv.includes("--strict") ? "strict" : "audit", passed: checks.length - failed.length, total: checks.length, failures: failed.map(([name]) => name) };
+console.log(JSON.stringify(report, null, 2));
 if (process.argv.includes("--strict") && failed.length) process.exit(2);
