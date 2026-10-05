@@ -131,3 +131,5 @@ jobs:
           set -eu
           cp android-app/app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/LudoMada-Ramus-verified-debug.apk
           sha256sum android-app/app/build/outputs/apk/debug/app-debug.apk | tee /sdcard/Download/LudoMada-Ramus-verified-debug.sha256
+
+# Exact-head visual proof branch trigger: source is anchored to 87dc526.
