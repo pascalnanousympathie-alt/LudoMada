@@ -112,7 +112,8 @@ jobs:
         if: always()
         run: |
           set -eu
-          tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence ramus-smoke.log
+          mkdir -p ramus-evidence
+          tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence ramus-smoke.log 2>/dev/null || tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence
           test -s "ludomada-ramus-visual-${{ github.run_id }}.tgz"
       - name: Upload Ramus visual evidence
         if: always()
