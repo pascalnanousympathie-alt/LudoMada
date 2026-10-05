@@ -7,17 +7,15 @@ import android.graphics.*;
 import com.ludomadagascar.R;
 import android.view.*;
 import android.widget.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
+  private final LudoBoardView homeBoard;
   private final Button walletHit;
-  private final Runnable homeBgFlip=new Runnable(){
-    @Override public void run(){
-      home.flipBackground();invalidate();postDelayed(this,6000L);
-    }
-  };
   public PremiumHeroViewV2(Context c){
     super(c);
     setWillNotDraw(false);
@@ -29,6 +27,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
+    homeBoard=new LudoBoardView(c,null,null,true);
+    homeBoard.setContentDescription("LudoMada Home 3D board preview");
+    homeBoard.setFocusable(false);
+    FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(500,370);
+    addView(homeBoard,homeBoardLp);
+
     final Button playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
@@ -86,19 +90,36 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
     addView(playHitAlt,playAltLp);
     post(()->{
+      positionHomeBoard(homeBoard);
+      homeBoard.configureHomePreview();
       positionWalletHit(walletHit);
       positionPlayHit(playHit,playHitAlt);
     });
   }
+  private JSONObject homePreviewState(){
+    try{
+      JSONArray players=new JSONArray();
+      for(int pi=0;pi<4;pi++){
+        JSONArray tokens=new JSONArray();
+        for(int ti=0;ti<4;ti++) tokens.put(new JSONObject().put("pos",-1));
+        players.put(new JSONObject().put("id","home-"+pi).put("tokens",tokens));
+      }
+      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",players);
+    }catch(Exception e){
+      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",new JSONArray());
+    }
+  }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();
+    homeBoard.onResume();
     if(getContext() instanceof Activity){
       ((Activity)getContext()).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
-    postDelayed(homeBgFlip,6000L);invalidate();
+    invalidate();
   }
   @Override protected void onDetachedFromWindow(){
-    removeCallbacks(homeBgFlip);super.onDetachedFromWindow();
+    homeBoard.onPause();
+    super.onDetachedFromWindow();
   }
   @Override protected void onDraw(Canvas c){
     home.layout(0,0,getWidth(),getHeight());
@@ -145,6 +166,24 @@ public class PremiumHeroViewV2 extends FrameLayout {
   @Override public boolean onInterceptTouchEvent(MotionEvent e){ if(e.getActionMasked()==MotionEvent.ACTION_DOWN && isPlayGesture(e.getX(),e.getY())) return true; return false; }
   @Override public boolean onTouchEvent(MotionEvent e){ if(isPlayGesture(e.getX(),e.getY())){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; } return home.onTouchEvent(e); }
   @Override public boolean performClick(){super.performClick();return true;}
+  private void positionHomeBoard(View board){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    // Match the real board footprint from the reference composition; the GLES child fully
+    // covers this footprint so the underlying screenshot board can never show through.
+    int left=Math.round(ox+420f*sc), top=Math.round(oy+136f*sc);
+    int width=Math.max(1,Math.round(548f*sc)), height=Math.max(1,Math.round(560f*sc));
+    setHit(board,left,top,width,height);
+  }
+  @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
+    super.onSizeChanged(w,h,oldw,oldh);
+    positionHomeBoard(homeBoard);
+    positionWalletHit(walletHit);
+    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+  }
   private void positionPlayHit(View playHit, View playHitAlt){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0) return;
@@ -203,11 +242,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
     lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
     lp.topMargin=Math.max(0,Math.min(top,Math.max(0,getHeight()-lp.height)));
     v.setLayoutParams(lp);
-  }
-  @Override protected void onSizeChanged(int w,int h,int ow,int oh){
-    super.onSizeChanged(w,h,ow,oh);
-    positionWalletHit(walletHit);
-    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
   private void install() {
@@ -481,49 +515,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
       return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
     }
     @Override protected void onDraw(Canvas c){
-      final float den=getResources().getDisplayMetrics().density;
       final float W=getWidth(), H=getHeight();
-      final boolean landscape=W>=H;
-      s=landscape ? Math.min(W/(1280f*den),H/(720f*den)) : Math.min(W/(720f*den),H/(1280f*den));
-      float sc=s*den;
-      float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
-      float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
-      
-      // Landscape Home is always rendered as live UI. Reference assets remain visual inspiration/fallback only.
-      c.save(); background(c,W,H); c.translate(ox,oy);
-      // Cinematic landscape composition: menus frame a large central 3D board.
-      box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
-      p.setShader(new LinearGradient(0,24,0,696,0x22FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
-      // Center branding follows the visual language of the reference splash while keeping the interactive landscape layout.
-      t(c,"Ludo",650,82,22,Color.WHITE,true,true);t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
-      t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
-      // Header
-      box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
-      p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(gold2);c.drawCircle(92,80,26,p);p.setStyle(Paint.Style.FILL);pawn(c,92,81,13,blue);
-      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
-      t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
-      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
-      box(c,1096,56,1164,104,18,0xFFEDB83A,0);t(c,"+",1130,87,22,0xFF432600,true,true);t(c,"🎵",1195,88,18,Color.WHITE,true,true);
-      // Left action rail
-      menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
-      menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
-      menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
-      menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
-      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
-      // Large central board with 3D perspective frame
-      c.save(); c.translate(150,-420); c.scale(2.75f,2.75f); board(c); c.restore();
-      // Right information / CTA panel
-      box(c,982,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
-      t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);
-      t(c,"2–4",1105,255,29,Color.WHITE,true,true);t(c,"JOUEURS",1105,275,9,0xCFFFFFFF,true,true);
-      t(c,"Mise actuelle",1105,314,9,0xBFFFFFFF,false,true);t(c,fee+" Ar",1105,344,24,gold2,true,true);
-      box(c,1010,378,1200,452,22,0xFFFFC32D,0xEEFFF0B0);t(c,"▶",1042,422,24,0xFF4A2900,true,true);t(c,"JOUER",1110,418,19,0xFF452500,true,true);t(c,"EN LIGNE / HORS-LIGNE",1105,438,8,0xFF694A15,true,true);
-      t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
-      box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
-      box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
-      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"Madagasikara • Miray",1105,612,8,gold2,true,true);
-      c.restore();postInvalidateDelayed(16);
+      if(W<=0 || H<=0) return;
+      if(W<H){
+        c.drawColor(Color.BLACK);
+        return;
+      }
+      // Keep the exact supplied Home screenshot as the visual shell. Its central
+      // board is replaced by the real GLES3/PBR child, so the board is not doubled.
+      drawHomeReference(c,W,H);
+      drawLiveHomeFields(c,W,H);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
