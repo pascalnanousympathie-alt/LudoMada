@@ -117,6 +117,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(ly>=325f && ly<420f && lx<310f)return true;
     }
     final float nx=x/Math.max(1f,W), ny=y/Math.max(1f,H);
+    // Ramus smoke fallback uses the portrait input surface at ~0.504,0.229.
+    // Keep a dedicated normalized guard so the fallback tap cannot miss the
+    // Wallet action even when the surface reports an unexpected rotation.
+    if(W<H && nx>=0.42f && nx<=0.59f && ny>=0.16f && ny<=0.30f)return true;
     final float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
     final float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
     return (lyCW>=325f && lyCW<420f && lxCW<310f) ||
@@ -177,10 +181,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
       // 720×1616 portrait input surface. Place the accessibility target in
       // the CCW-transformed Wallet rectangle so a Ramus ref tap hits the
       // same visual action as the coordinate fallback.
-      int left=Math.round((325f/720f)*W);
-      int top=Math.round((70f/1280f)*H);
-      int width=Math.max(1,Math.round((420f-325f)/720f*W));
-      int height=Math.max(1,Math.round((320f-70f)/1280f*H));
+      // Align the native accessibility target with the verified Ramus fallback
+      // tap (~0.504,0.229) on its 720×1616 portrait input surface.
+      int left=Math.round(0.42f*W);
+      int top=Math.round(0.16f*H);
+      int width=Math.max(1,Math.round(0.17f*W));
+      int height=Math.max(1,Math.round(0.14f*H));
       setHit(wallet,left,top,width,height);
       return;
     }
