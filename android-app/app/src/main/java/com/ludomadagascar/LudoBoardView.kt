@@ -632,7 +632,7 @@ class LudoBoardView(
                     // Volumetric pip: embedded dark sphere leaves a shallow physical cavity
                     // on the hydro-plated die instead of a flat painted disc.
                     val pipModel=localModel(dieModel,px,0.988f,pz,0.073f,0.038f,0.073f)
-                    drawMesh(pips,pipModel,color(10,13,18,1f),0.105f,0.50f,0.0f)
+                    drawMesh(sphere,pipModel,color(10,13,18,1f),0.105f,0.50f,0.0f)
                 }
             }
         }
@@ -891,8 +891,8 @@ class LudoBoardView(
         private var sceneColorTex=0
         private var sceneDepthTex=0
         private var fallbackShadowTex=0
-        private val premiumLighting = PremiumMaterialLighting.lighting
-        private val premiumPost = PremiumMaterialLighting.post
+        internal val premiumLighting = PremiumMaterialLighting.lighting
+        internal val premiumPost = PremiumMaterialLighting.post
         private val shadowSize=premiumLighting.shadowMapResolution
         private var sceneWidth=1
         private var sceneHeight=1
