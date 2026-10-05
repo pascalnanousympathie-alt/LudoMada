@@ -92,6 +92,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
         val nodes = root.optJSONArray("nodes") ?: JSONArray()
 
         val parts = linkedMapOf<String, Part>()
+        var diePivot = floatArrayOf(0f, 0f, 0f)
         for (i in 0 until nodes.length()) {
             val node = nodes.optJSONObject(i) ?: continue
             val meshIndex = node.optInt("mesh", -1)
@@ -128,6 +129,15 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 "UV count mismatch for \${nodeName}"
             }
 
+            val translation = node.optJSONArray("translation")?.let { t ->
+                if (t.length() == 3) floatArrayOf(
+                    t.optDouble(0).toFloat() - (subtractTranslation?.getOrNull(0) ?: 0f),
+                    t.optDouble(1).toFloat() - (subtractTranslation?.getOrNull(1) ?: 0f),
+                    t.optDouble(2).toFloat() - (subtractTranslation?.getOrNull(2) ?: 0f)
+                ) else floatArrayOf(0f, 0f, 0f)
+            } ?: floatArrayOf(0f, 0f, 0f)
+            if (nodeName == "LM_Die_HydroChrome_Body") diePivot = translation.copyOf()
+
             val materialIndex = primitive.optInt("material", -1)
             val material = if (materialIndex in 0 until materials.length()) {
                 materials.optJSONObject(materialIndex)
@@ -144,7 +154,10 @@ internal class GlbRuntimeLoader(private val context: Context) {
             parts[nodeName] = Part(
                 name = nodeName,
                 mesh = LudoBoardView.Mesh(positions, normals, indices),
-                transform = nodeTransform(node),
+                transform = nodeTransform(
+                    node,
+                    if (nodeName == "LM_Die_HydroChrome_Body") diePivot else null
+                ),
                 baseColor = baseColor,
                 metallic = metallic,
                 roughness = roughness
@@ -246,13 +259,21 @@ internal class GlbRuntimeLoader(private val context: Context) {
         return out
     }
 
-    private fun nodeTransform(node: JSONObject): FloatArray {
+    private fun nodeTransform(node: JSONObject, subtractTranslation: FloatArray? = null): FloatArray {
         // glTF nodes may encode transforms either as a full 4x4 matrix or as
         // TRS. Preserve the authored orientation so non-zero asset rotations
         // (notably the hydro-chrome die) are not silently discarded at runtime.
         node.optJSONArray("matrix")?.let { matrix ->
             if (matrix.length() == 16) {
-                return FloatArray(16) { i -> matrix.optDouble(i, if (i % 5 == 0) 1.0 else 0.0).toFloat() }
+                val out = FloatArray(16) { i ->
+                    matrix.optDouble(i, if (i % 5 == 0) 1.0 else 0.0).toFloat()
+                }
+                if (subtractTranslation != null) {
+                    out[12] -= subtractTranslation[0]
+                    out[13] -= subtractTranslation[1]
+                    out[14] -= subtractTranslation[2]
+                }
+                return out
             }
         }
 
