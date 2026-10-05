@@ -86,8 +86,9 @@ class LudoBoardView(
         smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + emulator)
         setEGLContextClientVersion(if (gles3) 3 else 2)
         if (homePreview) {
-            setZOrderOnTop(true)
-            holder.setFormat(PixelFormat.TRANSLUCENT)
+            setZOrderOnTop(false)
+            setZOrderMediaOverlay(false)
+            holder.setFormat(PixelFormat.RGBA_8888)
             setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         }
         smokeMarker("BOARD_EGL_VERSION_SET:" + if (gles3) 3 else 2)
@@ -275,8 +276,7 @@ class LudoBoardView(
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (homePreview) {
-            if (e.actionMasked == MotionEvent.ACTION_UP) startDiceAnimation()
-            return true
+            return false
         }
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
@@ -942,6 +942,13 @@ class LudoBoardView(
         private lateinit var roundedBox:Mesh
         private lateinit var disk:Mesh
         private lateinit var pips:Mesh
+        private lateinit var envSkyUpper:Mesh
+        private lateinit var envSkyMid:Mesh
+        private lateinit var envSkyLower:Mesh
+        private lateinit var envGround:Mesh
+        private lateinit var envHill:Mesh
+        private lateinit var envBranch:Mesh
+        private lateinit var envSun:Mesh
         private var shadowFbo=0
         private var shadowTex=0
         private var sceneFbo=0
@@ -1007,6 +1014,7 @@ class LudoBoardView(
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6)
+            envSkyUpper=cubeMesh();envSkyMid=cubeMesh();envSkyLower=cubeMesh();envGround=cubeMesh();envHill=sphereMesh(12,8);envBranch=cubeMesh();envSun=sphereMesh(16,10)
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
             glbParts=runCatching{
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
@@ -1042,9 +1050,9 @@ class LudoBoardView(
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if (host.homePreview) 8.4f else if(land)11.8f else 8.2f
-            val camZ=if (host.homePreview) 8.6f else 8.8f
-            val fov=if (host.homePreview) 28f else if(land)31f else 34f
+            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 8.2f
+            val camZ=if (host.homePreview) 13.2f else 8.8f
+            val fov=if (host.homePreview) 38f else if(land)31f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,0f,camY,camZ,0f,0.12f,0f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
@@ -1110,14 +1118,20 @@ class LudoBoardView(
         }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
-                drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
+                if(homePreview){
+                    drawHomeEnvironmentShadows()
+                } else {
+                    drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
                 drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
                 val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
                 for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti));drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))}
                 for(pi in 0..3){val p=dieCenterWorld(pi);drawShadowMesh(cube,identityAt(p[0],boardTop+0.035f,p[2],0.92f,0.06f,0.92f));drawShadowMesh(roundedBox,dieModel(pi))}
+                }
                 return
             }
-            if (!homePreview) {
+            if (homePreview) {
+                drawHomeEnvironment()
+            } else {
                 drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(Color.rgb(71,36,14)),0.58f,0.08f,1f,0f,1,false)
                 drawMesh(cube,identityAt(0f,2.85f,-6.1f,7.8f,2.9f,0.10f),rgba(Color.rgb(43,29,22)),0.72f,0.02f,1f,0f,3,false)
                 drawMesh(sphere,identityAt(-5.35f,3.25f,-5.85f,0.30f,0.30f,0.30f),rgba(Color.rgb(244,188,78)),0.18f,0.02f,1f,0.95f,3,false)
@@ -1141,6 +1155,31 @@ class LudoBoardView(
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
             if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
         }
+        private fun drawHomeEnvironmentShadows(){
+            drawShadowMesh(envGround,envModel(0f,-1.08f,-1.5f,15f,0.16f,15f))
+            val ts=arrayOf(floatArrayOf(-7.8f,0f,-6.2f,1.25f),floatArrayOf(-5.8f,0f,-8.8f,0.95f),floatArrayOf(-1.8f,0f,-10.5f,0.75f),floatArrayOf(4.6f,0f,-9.0f,1.0f),floatArrayOf(8.3f,0f,-6.6f,1.25f),floatArrayOf(10.2f,0f,-10.2f,0.70f))
+            for(ti in ts){val x=ti[0];val z=ti[2];val sc=ti[3];drawShadowMesh(envBranch,envModel(x,1.35f,z,0.30f*sc,2.2f*sc,0.30f*sc));drawShadowMesh(envBranch,envModel(x-0.95f*sc,2.75f*sc,z,0.12f*sc,1.45f*sc,0.12f*sc,0f,0f,-38f));drawShadowMesh(envBranch,envModel(x+0.95f*sc,2.75f*sc,z,0.12f*sc,1.45f*sc,0.12f*sc,0f,0f,38f))}
+        }
+        private fun drawHomeEnvironment(){
+            drawMesh(envSkyLower,envModel(0f,3.7f,-13.5f,15f,4.8f,0.12f),floatArrayOf(0.78f,0.22f,0.045f,1f),0.98f,0f,0.96f,0.02f,3,false)
+            drawMesh(envSkyMid,envModel(0f,8.5f,-13.5f,15f,3.2f,0.12f),floatArrayOf(0.30f,0.07f,0.05f,1f),0.98f,0f,0.96f,0.015f,3,false)
+            drawMesh(envSkyUpper,envModel(0f,13.0f,-13.5f,15f,4.0f,0.12f),floatArrayOf(0.045f,0.045f,0.13f,1f),0.98f,0f,0.98f,0.01f,3,false)
+            drawMesh(envGround,envModel(0f,-1.08f,-1.8f,15f,0.16f,15f),floatArrayOf(0.12f,0.045f,0.018f,1f),0.88f,0f,0.90f,0f,1,false)
+            val hills=arrayOf(floatArrayOf(-7.6f,0f,-7.5f,4.2f,1.6f,1.2f),floatArrayOf(-2.4f,0.1f,-8.5f,4.8f,1.9f,1.4f),floatArrayOf(3.4f,0f,-8.8f,5.2f,1.8f,1.6f),floatArrayOf(8.2f,0f,-7.4f,4.2f,1.5f,1.2f))
+            for(h in hills)drawMesh(envHill,envModel(h[0],h[1],h[2],h[3],h[4],h[5]),floatArrayOf(0.075f,0.042f,0.028f,1f),0.94f,0f,0.84f,0f,3,false)
+            val trees=arrayOf(floatArrayOf(-8.4f,1.0f,-6.4f,1.35f),floatArrayOf(-6.0f,0.8f,-9.0f,1.0f),floatArrayOf(-2.0f,0.7f,-10.2f,0.76f),floatArrayOf(4.5f,0.9f,-9.2f,1.0f),floatArrayOf(8.2f,1.0f,-6.8f,1.30f),floatArrayOf(10.0f,0.7f,-10.4f,0.70f))
+            for(t in trees){
+                val x=t[0];val y=t[1];val z=t[2];val sc=t[3]
+                drawMesh(envBranch,envModel(x,y+1.55f*sc,z,0.42f*sc,2.15f*sc,0.42f*sc),floatArrayOf(0.055f,0.028f,0.018f,1f),0.93f,0f,0.88f,0f,3,false)
+                drawMesh(envBranch,envModel(x-0.92f*sc,y+3.0f*sc,z,0.15f*sc,1.35f*sc,0.15f*sc,0f,0f,-36f),floatArrayOf(0.16f,0.052f,0.018f,1f),0.90f,0f,0.92f,0.005f,3,false)
+                drawMesh(envBranch,envModel(x+0.96f*sc,y+3.05f*sc,z,0.15f*sc,1.40f*sc,0.15f*sc,0f,0f,38f),floatArrayOf(0.13f,0.044f,0.017f,1f),0.90f,0f,0.92f,0.006f,3,false)
+                drawMesh(envBranch,envModel(x-0.20f*sc,y+3.35f*sc,z,0.10f*sc,1.0f*sc,0.10f*sc,0f,0f,-8f),floatArrayOf(0.20f,0.06f,0.020f,1f),0.88f,0f,0.95f,0.008f,3,false)
+                drawMesh(envBranch,envModel(x+0.18f*sc,y+3.3f*sc,z,0.10f*sc,0.95f*sc,0.10f*sc,0f,0f,9f),floatArrayOf(0.17f,0.052f,0.018f,1f),0.88f,0f,0.95f,0.008f,3,false)
+            }
+            val sunY=5.1f+0.18f*sin((System.nanoTime()/1000000000.0)*0.04).toFloat()
+            drawMesh(envSun,envModel(6.2f,sunY,-10.6f,0.92f,0.92f,0.92f),floatArrayOf(1f,0.25f,0.025f,1f),0.18f,0.02f,1f,2.8f,3,true)
+        }
+
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
             if(active && isLegalPawn(pi,ti)){
                 val pulse=(0.42f+0.06f*sin(System.nanoTime()/180_000_000.0).toFloat()).coerceIn(0.34f,0.50f)
@@ -1367,6 +1406,13 @@ class LudoBoardView(
 
         private fun uploadTexture(size:Int,data:ByteBuffer):Int{val ids=IntArray(1);GLES30.glGenTextures(1,ids,0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,ids[0]);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_REPEAT);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_REPEAT);GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,size,size,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,data);GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0);return ids[0]}
         private fun identityAt(x:Float,y:Float,z:Float,sx:Float=1f,sy:Float=1f,sz:Float=1f):FloatArray{Matrix.setIdentityM(modelScratch,0);Matrix.translateM(modelScratch,0,x,y,z);Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()}
+        private fun envModel(x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float,rx:Float=0f,ry:Float=0f,rz:Float=0f):FloatArray{
+            Matrix.setIdentityM(modelScratch,0);Matrix.translateM(modelScratch,0,x,y,z)
+            if(rx!=0f)Matrix.rotateM(modelScratch,0,rx,1f,0f,0f)
+            if(ry!=0f)Matrix.rotateM(modelScratch,0,ry,0f,1f,0f)
+            if(rz!=0f)Matrix.rotateM(modelScratch,0,rz,0f,0f,1f)
+            Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()
+        }
         private fun rgba(c:Int)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,1f)
         private fun colorFromInt(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
         private fun zoneColorInt(i:Int)=when(i){0->Color.rgb(219,59,66);1->Color.rgb(48,165,92);2->Color.rgb(239,186,46);else->Color.rgb(59,112,219)}

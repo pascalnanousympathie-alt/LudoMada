@@ -29,9 +29,13 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
     home=new HomeView(c);
     homeBoard=new LudoBoardView(c,null,null,true);
-    homeBoard.setContentDescription("LudoMada Home 3D board preview");
+    // Home preview is a real full-screen 3D scene surface; keep it behind the
+    // vector UI overlay so the environment itself is never a bitmap/screenshot.
+    homeBoard.setZOrderOnTop(false);
+    homeBoard.setZOrderMediaOverlay(false);
+    homeBoard.setContentDescription("LudoMada Home full 3D environment and live board");
     homeBoard.setFocusable(false);
-    FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(500,370);
+    FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(-1,-1);
     addView(homeBoard,homeBoardLp);
 
     final Button playHit=new Button(c);
@@ -139,6 +143,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     super.onDetachedFromWindow();
   }
   @Override protected void onDraw(Canvas c){
+    // Home visuals are composited after the SurfaceView in dispatchDraw().
+  }
+  @Override protected void dispatchDraw(Canvas c){
+    super.dispatchDraw(c);
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
@@ -186,14 +194,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private void positionHomeBoard(View board){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
-    float den=getResources().getDisplayMetrics().density;
-    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
-    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
-    // Match the real board footprint from the reference composition; the GLES child fully
-    // covers this footprint so the underlying screenshot board can never show through.
-    int left=Math.round(ox+420f*sc), top=Math.round(oy+136f*sc);
-    int width=Math.max(1,Math.round(548f*sc)), height=Math.max(1,Math.round(560f*sc));
-    setHit(board,left,top,width,height);
+    // The live GLES3 scene owns the entire Home canvas. UI is a vector overlay.
+    setHit(board,0,0,Math.max(1,Math.round(W)),Math.max(1,Math.round(H)));
   }
   @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
     super.onSizeChanged(w,h,oldw,oldh);
@@ -461,21 +463,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
     }
     void background(Canvas c,float W,float H){
-      // Real rotating landscape backgrounds. The board/menu are rendered as live UI on top;
-      // no screenshot/mockup is used as the Home surface.
-      Bitmap bm;
-      switch(bgIndex){
-        case 1: bm=bgAlt; break;
-        case 2: bm=bgMatory; break;
-        case 3: bm=bg322; break;
-        case 4: bm=bg7cc; break;
-        default: bm=bgBaobab; break;
-      }
-      if(bm==null) bm=bgBaobab!=null?bgBaobab:lobbyRef;
-      drawCover(c,bm,1f,W,H);
-      p.setShader(new LinearGradient(0,0,0,H,0x33030C24,0xB5030C24,Shader.TileMode.CLAMP));
-      c.drawRect(0,0,W,H,p);
-      p.setShader(null);
+      // Intentionally empty: the Home environment is now rendered entirely by the
+      // full-screen GLES3 scene. No bitmap/screenshot is painted behind the live scene.
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
@@ -558,7 +547,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
 
       c.save();
-      background(c,W,H);
+      // No bitmap/background layer here. The GLES3 SurfaceView below already renders
+      // the complete real 3D Madagascar sunset environment + live board.
       c.translate(ox,oy);
 
       // Premium outer glass frame.
@@ -606,14 +596,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
         t(c,label,l+17,588,7.2f,a?0xFF4A2800:Color.WHITE,true,true);
       }
 
-      // Framing only: the board itself is the live GLES3/PBR child.
-      // This intentionally leaves no second 2D board underneath it.
-      box(c,390,108,1000,706,30,0x6A081526,0x668FBFFF);
-      p.setShader(new LinearGradient(d(400),d(118),d(990),d(700),0x3AFFFFFF,0x00000000,Shader.TileMode.CLAMP));
-      c.drawRoundRect(d(401),d(119),d(989),d(699),d(27),d(27),p);
-      p.setShader(null);
-      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(0x99FFFFFF);
-      c.drawRoundRect(d(406),d(124),d(984),d(694),d(24),d(24),p); p.setStyle(Paint.Style.FILL);
+      // The board/environment itself is the full-screen live GLES3 scene.
+      // Keep only a small vector title over the scene; never paint a second board.
       t(c,"TABLE PREMIUM • LIVE 3D",695,130,8.5f,gold2,true,true);
 
       // Live right information / CTA panel.
