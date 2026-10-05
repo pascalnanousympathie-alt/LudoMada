@@ -38,7 +38,7 @@ jobs:
           git clean -fdx
           # Rehydrate the exact tracked tree from Git's object database. This protects the
           # single self-hosted runner from a previously interrupted job leaving a partial tree.
-          git archive "$GITHUB_SHA" | tar -xf - -C "$GITHUB_WORKSPACE"
+          git archive "$GITHUB_SHA" | tar -xf - -C "${{ github.workspace }}/_runs/${{ github.run_id }}"
           test -f android-app/settings.gradle.kts
           test -f android-app/gradlew
           test -f android-app/build.gradle.kts
