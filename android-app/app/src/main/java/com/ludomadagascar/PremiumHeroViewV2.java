@@ -172,6 +172,18 @@ public class PremiumHeroViewV2 extends FrameLayout {
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
     float den=getResources().getDisplayMetrics().density;
+    if(W<H){
+      // Ramus/Android can expose the rendered 1280×720 landscape Home as a
+      // 720×1616 portrait input surface. Place the accessibility target in
+      // the CCW-transformed Wallet rectangle so a Ramus ref tap hits the
+      // same visual action as the coordinate fallback.
+      int left=Math.round((325f/720f)*W);
+      int top=Math.round((70f/1280f)*H);
+      int width=Math.max(1,Math.round((420f-325f)/720f*W));
+      int height=Math.max(1,Math.round((320f-70f)/1280f*H));
+      setHit(wallet,left,top,width,height);
+      return;
+    }
     float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
     float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
     int left=Math.round(ox+70f*sc);
