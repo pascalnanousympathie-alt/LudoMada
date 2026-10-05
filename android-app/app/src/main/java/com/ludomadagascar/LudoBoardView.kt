@@ -75,8 +75,12 @@ class LudoBoardView(
     init {
         smokeMarker("BOARD_INIT_START:" + android.os.Build.MODEL + "|" + android.os.Build.FINGERPRINT)
         val gles3Available = deviceSupportsGles3()
-        val gles3 = gles3Available && !isLikelyEmulator()
-        smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + isLikelyEmulator())
+        // Emulator status must never be used as a quality downgrade switch. Ramus is the
+        // visual validation environment for the same GLES3/PBR path we ship to capable devices.
+        // Only the actual reported GLES capability decides whether the premium renderer is selected.
+        val emulator = isLikelyEmulator()
+        val gles3 = gles3Available
+        smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + emulator)
         setEGLContextClientVersion(if (gles3) 3 else 2)
         smokeMarker("BOARD_EGL_VERSION_SET:" + if (gles3) 3 else 2)
         renderer = if (gles3) SceneRenderer(this) else SafeSceneRenderer(this)
