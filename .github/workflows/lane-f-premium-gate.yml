@@ -80,6 +80,12 @@ jobs:
           bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Verify calibrated 3D asset is packaged in APK
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          set -eu
+          node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Install Ramus CLI
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
