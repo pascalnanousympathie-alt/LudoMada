@@ -24,7 +24,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 45
     concurrency:
-      group: ludomada-lane-f-${{ github.repository }}
+      group: ludomada-lane-f-${{ github.repository }}-${{ github.run_id }}
       cancel-in-progress: false
     env:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
