@@ -34,9 +34,13 @@ jobs:
         run: |
           set -eu
           git reset --hard "$GITHUB_SHA"
-          git clean -fd
+          git clean -fdx
+          # Rehydrate the exact tracked tree from Git's object database. This protects the
+          # single self-hosted runner from a previously interrupted job leaving a partial tree.
+          git archive "$GITHUB_SHA" | tar -xf - -C "$GITHUB_WORKSPACE"
           test -f android-app/settings.gradle.kts
           test -f android-app/gradlew
+          test -f android-app/build.gradle.kts
 
       - name: Accept Android SDK licenses
         run: |
