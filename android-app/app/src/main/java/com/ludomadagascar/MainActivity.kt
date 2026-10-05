@@ -328,7 +328,7 @@ class MainActivity : Activity() {
             elevation = dp(6f).toFloat()
             if (action != null) setOnClickListener { action() }
         }
-        controls.addView(control("🔊", "SON") { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("🔊", "SON", gold) { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         controls.addView(control("⚙", "PARAMETRES", gold), LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         controls.addView(control("☰", "MENU_JEU", gold) { offlineMenu() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         frame.addView(controls, FrameLayout.LayoutParams(dp(170), dp(54)).apply {
