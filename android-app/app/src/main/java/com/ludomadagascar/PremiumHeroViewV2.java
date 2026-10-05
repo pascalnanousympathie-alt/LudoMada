@@ -127,7 +127,14 @@ public class PremiumHeroViewV2 extends FrameLayout {
       }
       return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",players);
     }catch(Exception e){
-      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",new JSONArray());
+      JSONObject fallback=new JSONObject();
+      try{
+        fallback.put("phase","PLAYING");
+        fallback.put("dice",5);
+        fallback.put("players",new JSONArray());
+      }catch(Exception ignored){
+      }
+      return fallback;
     }
   }
   @Override protected void onAttachedToWindow(){
