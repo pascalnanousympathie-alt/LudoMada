@@ -2,6 +2,8 @@ name: Import calibrated LudoMada GLB
 
 on:
   push:
+    branches:
+      - feat/google-signin-real
     paths:
       - ".github/workflows/import-calibrated-glb.yml"
   workflow_dispatch:
@@ -10,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ludomada-3d-asset-import
+  group: ludomada-3d-asset-import-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,13 +22,16 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
 
     steps:
-      - name: Checkout integration branch
+      - name: Checkout current integration branch
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.ref_name }}
           fetch-depth: 1
           persist-credentials: true
+          path: _runs/${{ github.run_id }}
 
       - name: Download and verify calibrated rev3 GLB
         env:
@@ -37,24 +42,31 @@ jobs:
           set -eu
           asset="android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb"
           mkdir -p "$(dirname "$asset")"
+          tmp_asset="${RUNNER_TEMP}/ludomada-premium-3d-rev3.glb"
 
           if [ -f "$asset" ]; then
-            actual_bytes="$(wc -c < "$asset")"
-            actual_sha="$(sha256sum "$asset" | awk '{print $1}')"
-            test "$actual_bytes" = "$EXPECTED_BYTES"
-            test "$actual_sha" = "$EXPECTED_SHA256"
-            echo "CALIBRATED_GLB_ALREADY_PRESENT"
-            exit 0
+            cp "$asset" "$tmp_asset"
+          else
+            curl -fsSL "$GLB_URL" -o "$tmp_asset"
           fi
 
-          curl -fsSL "$GLB_URL" -o "$asset"
-          test "$(wc -c < "$asset")" = "$EXPECTED_BYTES"
-          test "$(head -c 4 "$asset")" = "glTF"
-          test "$(sha256sum "$asset" | awk '{print $1}')" = "$EXPECTED_SHA256"
+          test "$(wc -c < "$tmp_asset")" = "$EXPECTED_BYTES"
+          test "$(head -c 4 "$tmp_asset")" = "glTF"
+          test "$(sha256sum "$tmp_asset" | awk '{print $1}')" = "$EXPECTED_SHA256"
+          cp "$tmp_asset" "$asset"
 
-      - name: Record bundle availability without claiming runtime loader integration
+      - name: Commit asset and manifest onto latest branch tip
         run: |
           set -eu
+          branch="${GITHUB_REF_NAME}"
+          asset="android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb"
+          verified="${RUNNER_TEMP}/ludomada-premium-3d-rev3.glb"
+          test -s "$verified"
+
+          git fetch --depth=1 origin "$branch"
+          git reset --hard "origin/$branch"
+          cp "$verified" "$asset"
+
           node <<'NODE'
           const fs = require('fs');
           const file = 'android-app/app/src/main/assets/3d/manifest.json';
@@ -74,15 +86,12 @@ jobs:
           fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
           NODE
 
-      - name: Commit asset and manifest once
-        run: |
-          set -eu
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb android-app/app/src/main/assets/3d/manifest.json
+          git add "$asset" android-app/app/src/main/assets/3d/manifest.json
           if git diff --cached --quiet; then
-            echo "NO_ASSET_IMPORT_CHANGES"
+            echo "CALIBRATED_GLB_ALREADY_AT_LATEST_TIP"
             exit 0
           fi
           git commit -m "feat(assets): bundle calibrated rev3 GLB"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin "HEAD:$branch"
