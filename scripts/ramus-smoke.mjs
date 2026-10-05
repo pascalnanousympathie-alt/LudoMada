@@ -291,7 +291,18 @@ try {
       allow("press", "ENTER", "--session", session);
     }
   } else {
-    tapRef({ref:playNode.ref,gen:playTree.value.gen});
+    // Refresh the accessibility generation immediately before using the JOUER reference.
+    // Wallet/background transitions can invalidate a previously captured ref without
+    // changing the visible control.
+    const freshPlay = allow("snapshot", "--session", session, "--include-offscreen");
+    const freshPlayNode = freshPlay.ok
+      ? (freshPlay.value?.elements || []).find(el =>
+          el.clickable && String(el.contentDesc || el.text || "") === "JOUER"
+        )
+      : null;
+    if (!freshPlayNode) throw new Error("Fresh Home JOUER control was not exposed");
+    const freshTap = allow("tap", freshPlayNode.ref, "--gen", String(freshPlay.value.gen), "--session", session);
+    if (!freshTap.ok) throw new Error("Fresh Home JOUER tap failed: " + JSON.stringify(freshTap.value));
   }
   waitStable(500);
   if (!hasText("Choisissez le mode") && !hasText("MODE_OFFLINE") && !hasText("MODE_ONLINE")) throw new Error("Game mode dialog was not exposed from Home JOUER");
