@@ -106,7 +106,9 @@ class MainActivity : Activity() {
             scroll.addView(content); setContentView(scroll)
         }
         content.requestApplyInsets()
-        addTopBar(title)
+        // Gameplay must use the full landscape viewport: the supplied reference has no bulky
+        // application header covering the 3D tabletop. Non-game screens keep the premium top bar.
+        if (!gameSurface) addTopBar(title)
         return content
     }
 
