@@ -33,6 +33,17 @@ object LudoMaterialLighting {
         val ssaoStrength: Float
     )
 
+    /**
+     * Current renderer material slots are preserved so Lane A can consume this
+     * library without changing draw-call semantics.
+     */
+    enum class Slot(val rendererId: Int) {
+        WOOD(1),
+        BOARD(2),
+        NEUTRAL(3),
+        METAL(4)
+    }
+
     val lacquerPawn = MaterialPreset("pawn-lacquer", 0.18f, 0.22f, 0.98f, 0f, 0.12f, 0.34f)
     val hydroChromeDie = MaterialPreset("hydro-plated-chrome-die", 1.0f, 0.055f, 1.0f, 0f, 0.045f, 0.72f)
     val chromeTray = MaterialPreset("chrome-tray", 0.94f, 0.085f, 1.0f, 0f, 0.04f, 0.55f)
@@ -78,6 +89,13 @@ object LudoMaterialLighting {
         ceramicCell.name -> ceramicCell
         pip.name -> pip
         else -> ceramicCell
+    }
+
+    fun presetForSlot(slot: Slot): MaterialPreset = when (slot) {
+        Slot.WOOD -> woodTrim
+        Slot.BOARD -> boardLacquer
+        Slot.NEUTRAL -> ceramicCell
+        Slot.METAL -> chromeTray
     }
 
     fun lightingFor(qualityTier: Int): LightingProfile =
