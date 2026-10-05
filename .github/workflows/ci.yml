@@ -14,8 +14,8 @@ on:
       - ".github/workflows/ci.yml"
 
 concurrency:
-  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ludomada-self-hosted-arm64
+  cancel-in-progress: false
 
 jobs:
   test:
