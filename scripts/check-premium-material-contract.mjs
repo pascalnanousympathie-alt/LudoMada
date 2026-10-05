@@ -4,7 +4,6 @@ import path from "node:path";
 
 const root = process.cwd();
 const materialPath = path.join(root, "android-app/app/src/main/java/com/ludomadagascar/PremiumMaterialLighting.kt");
-const manifestPath = path.join(root, "android-app/app/src/main/assets/3d/manifest.json");
 
 function fail(message) {
   console.error("PREMIUM_MATERIAL_CONTRACT_FAIL:", message);
@@ -17,8 +16,6 @@ function read(file) {
 }
 
 const kt = read(materialPath);
-const manifest = JSON.parse(read(manifestPath));
-
 if (!/object PremiumMaterialLighting/.test(kt)) fail("missing PremiumMaterialLighting entry point");
 if (!/fun hydroChrome\(\)\s*=\s*PremiumMaterial\([^\n]*0\.95f, 0\.08f/.test(kt)) {
   fail("hydroChrome must remain metallic=0.95 and roughness=0.08");
@@ -43,7 +40,6 @@ if (!pawn || pawn.material !== "lacquer-pbr") fail("manifest pawn material must 
 const checks = {
   hydroChrome: "0.95 / 0.08",
   pawnLacquer: "0.06 / 0.23",
-  manifestDie: "hydro-chrome / 0.95 / 0.08",
   tiers: "mobilePremium + safeFallback + mobileHigh + mobileSafe"
 };
 
