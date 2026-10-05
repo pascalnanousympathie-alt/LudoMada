@@ -29,7 +29,6 @@ const checks = [
   ["center wedges", manifest.board_geometry?.center_wedges === 4],
   ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
-const failed = checks.filter(([, ok]) => !ok);
 const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
 const expectedAsset = path.join(root, "ludomada-premium-3d-rev3.glb");
 const packagedBytes = fs.existsSync(expectedAsset) ? fs.statSync(expectedAsset).size : 0;
@@ -43,6 +42,7 @@ checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) &&
 checks.push(["rev3 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["rev3 asset size", packagedBytes === 846104]);
 checks.push(["rev3 asset sha256", packagedSha256 === "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027"]);
+const failed = checks.filter(([, ok]) => !ok);
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
 );
