@@ -1,70 +1,40 @@
 # LudoMada Premium 3D Asset Pipeline
 
-This directory defines the runtime-neutral contract for physically convincing gameplay assets.
+## Current source scene
 
-## Runtime target
+The authoritative visual source is Higgsfield 3D Jutsu project `083cab86-9817-4ddc-8d12-92d9212d008b`, revision 2.
 
-Primary target: Android real-time rendering on the existing LudoMada gameplay renderer.
+Revision 2 contains real gameplay geometry:
+- 52 path cells
+- 24 finish-lane cells
+- 4 home plinths
+- 4 center wedges
+- recessed board and deep table
+- physical pawn geometry
+- hydro-chrome die with 3D pips
 
-Authoring:
-- Blender / Higgsfield 3D Jutsu
-- Meshy when AI-assisted modelling or texturing is useful
+The exported GLB for revision 2 is 846,100 bytes (~0.81 MiB), below the 8 MiB hero-asset budget.
 
-Delivery:
-- glTF 2.0 / GLB
-- metre scale
-- descriptive semantic object names
-- Principled PBR materials
-- no required external texture paths
+## Runtime status
 
-## Asset classes
+`runtime_packaged=false` is intentional at this handoff. The binary GLB is not claimed to be embedded in the Android APK yet. The Android renderer currently recreates the gameplay board with native GLES2/GLES3 geometry.
 
-### Pawn
-Required semantic parts:
-- weighted base
-- tapered body
-- collar/neck transition
-- spherical head
+The GLB is the source-of-truth asset handoff for the next runtime asset-import lane. Do not replace it with a screenshot/background image.
 
-Target properties:
-- real geometry; no baked pawn silhouette
-- smooth shading
-- bevelled highlights
-- lacquer material
-- visible contact shadow
-- pivot at the base/contact plane
+## Material handoff
 
-### Die
-Required:
-- bevelled six-sided cube
-- physically rounded edges
-- embedded/inset pips
-- hydro-plated chrome/silver material
+Runtime Lane C/Lane A calibration:
+- hydro chrome: metallic 1.00
+- hydro chrome: roughness 0.055
+- clear coat: 0.72
+- clear-coat roughness: 0.055
+- key: 1.08
+- fill: 0.22
+- rim: 0.34
+- IBL: 0.82
 
-Target material:
-- metallic: 0.90–1.00
-- roughness: 0.05–0.16
-- strong but controlled Fresnel/specular response
+Those runtime values are renderer calibration and may differ from the source authoring defaults.
 
-### Table/board
-Required:
-- actual thickness/depth
-- recessed play surface
-- separate frame
-- material separation between table, board and trim
-- stable contact plane
+## Integration boundary
 
-## Mobile budget
-
-Prefer:
-- shared meshes/materials
-- moderate polygon density
-- normal maps instead of unnecessary geometry detail
-- compressed textures when textures are introduced
-- LOD tiers when an asset becomes expensive
-
-Do not add an asset to runtime until its geometry, material, pivot and scale are documented.
-
-## Integration rule
-
-This pipeline must not modify authoritative game state, turn logic, sortie/capture/arrival/exact-finish, reconciliation, wallet/ledger, auth, or payment-provider logic.
+This pipeline is renderer/asset-only. It must not modify authoritative game state, turn logic, sortie, capture, arrival/exact finish, reconciliation, wallet/ledger, auth, or payment providers.

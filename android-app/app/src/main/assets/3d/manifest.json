@@ -1,12 +1,27 @@
 {
-  "schema": "ludomada-premium-3d-v1",
+  "schema": "ludomada-premium-3d-v2",
   "units": "meters",
   "format": "glb/gltf2",
   "target": "android-realtime",
-  "source_scene": "https://higgsfield.ai/3d-jutsu/083cab86-9817-4ddc-8d12-92d9212d008b",
+  "runtime_packaged": false,
+  "source_scene": {
+    "provider": "Higgsfield 3D Jutsu",
+    "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 2,
+    "glb_bytes": 846100
+  },
+  "board_geometry": {
+    "square_board_m": 5.05,
+    "table_m": 5.60,
+    "path_cells": 52,
+    "finish_cells": 24,
+    "home_plinths": 4,
+    "center_wedges": 4,
+    "topology": "matches current Android visualPath ordering"
+  },
   "assets": {
     "pawn": {
-      "parts": ["base","body","collar","head"],
+      "parts": ["base","body","collar","head","underside"],
       "pivot": "bottom-center",
       "material": "lacquer-pbr"
     },
@@ -14,8 +29,8 @@
       "parts": ["body","pips"],
       "pivot": "center",
       "material": "hydro-chrome",
-      "metallic": 0.95,
-      "roughness": 0.08
+      "authoring_metallic": 0.95,
+      "authoring_roughness": 0.08
     },
     "table": {
       "parts": ["deep-base","recessed-board","gold-frame"],
@@ -23,6 +38,7 @@
     }
   },
   "mobile_budgets": {
+    "hero_glb_max_bytes": 8388608,
     "prefer_shared_meshes": true,
     "prefer_compressed_textures": true,
     "prefer_lod_for_large_assets": true,
