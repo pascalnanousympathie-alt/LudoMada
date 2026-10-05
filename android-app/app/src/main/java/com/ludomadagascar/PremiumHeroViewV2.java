@@ -7,18 +7,16 @@ import android.graphics.*;
 import com.ludomadagascar.R;
 import android.view.*;
 import android.widget.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
-  private final LudoBoardView liveBoard;
+  private final LudoBoardView homeBoard;
   private final Button walletHit;
-  private final Runnable homeBgFlip=new Runnable(){
-    @Override public void run(){
-      home.flipBackground();invalidate();postDelayed(this,6000L);
-    }
-  };
+  private final Button walletHitAlt;
   public PremiumHeroViewV2(Context c){
     super(c);
     setWillNotDraw(false);
@@ -30,13 +28,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
-    // Live GLES3/PBR board used as the Home visual preview. It has no authoritative game state.
-    liveBoard=new LudoBoardView(c);
-    liveBoard.setPlayer(0);
-    liveBoard.setRenderMode(android.opengl.GLSurfaceView.RENDERMODE_CONTINUOUSLY);
-    liveBoard.setContentDescription("LudoMada Home • Real 3D Board Preview");
-    addView(liveBoard,new FrameLayout.LayoutParams(1,1));
-    liveBoard.animateState();
+    homeBoard=new LudoBoardView(c,null,null,true);
+    homeBoard.setContentDescription("LudoMada Home 3D board preview");
+    homeBoard.setFocusable(false);
+    FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(500,370);
+    addView(homeBoard,homeBoardLp);
+
     final Button playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
@@ -81,6 +78,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
     walletHit.setBackgroundColor(Color.TRANSPARENT);
     walletHit.setAlpha(1f);
     walletHit.setOnClickListener(v->call("wallet"));
+
+    // Ramus can inject the verified portrait Wallet tap after Android has exposed
+    // the same Home surface as a landscape view. Keep a second invisible target in
+    // the transformed blank gutter between the left rail and the 3D board.
+    walletHitAlt=new Button(c);
+    walletHitAlt.setText("WALLET");
+    walletHitAlt.setTextColor(Color.TRANSPARENT);
+    walletHitAlt.setContentDescription("WALLET_NAV_COORDINATE_FALLBACK");
+    walletHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    walletHitAlt.setClickable(true);
+    walletHitAlt.setFocusable(false);
+    walletHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    walletHitAlt.setAlpha(1f);
+    walletHitAlt.setOnClickListener(v->call("wallet"));
+
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
     FrameLayout.LayoutParams walletLp=new FrameLayout.LayoutParams(1,1);
@@ -89,25 +101,42 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playLp.topMargin=220;
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
+    addView(walletHitAlt,new FrameLayout.LayoutParams(1,1));
     addView(playHit,playLp);
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
     addView(playHitAlt,playAltLp);
     post(()->{
-      positionWalletHit(walletHit);
+      positionHomeBoard(homeBoard);
+      homeBoard.configureHomePreview();
+      positionWalletHit(walletHit, walletHitAlt);
       positionPlayHit(playHit,playHitAlt);
     });
   }
+  private JSONObject homePreviewState(){
+    try{
+      JSONArray players=new JSONArray();
+      for(int pi=0;pi<4;pi++){
+        JSONArray tokens=new JSONArray();
+        for(int ti=0;ti<4;ti++) tokens.put(new JSONObject().put("pos",-1));
+        players.put(new JSONObject().put("id","home-"+pi).put("tokens",tokens));
+      }
+      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",players);
+    }catch(Exception e){
+      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",new JSONArray());
+    }
+  }
   @Override protected void onAttachedToWindow(){
     super.onAttachedToWindow();
-    positionLiveBoard();
+    homeBoard.onResume();
     if(getContext() instanceof Activity){
       ((Activity)getContext()).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
-    postDelayed(homeBgFlip,6000L);invalidate();
+    invalidate();
   }
   @Override protected void onDetachedFromWindow(){
-    removeCallbacks(homeBgFlip);super.onDetachedFromWindow();
+    homeBoard.onPause();
+    super.onDetachedFromWindow();
   }
   @Override protected void onDraw(Canvas c){
     home.layout(0,0,getWidth(),getHeight());
@@ -154,6 +183,24 @@ public class PremiumHeroViewV2 extends FrameLayout {
   @Override public boolean onInterceptTouchEvent(MotionEvent e){ if(e.getActionMasked()==MotionEvent.ACTION_DOWN && isPlayGesture(e.getX(),e.getY())) return true; return false; }
   @Override public boolean onTouchEvent(MotionEvent e){ if(isPlayGesture(e.getX(),e.getY())){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; } return home.onTouchEvent(e); }
   @Override public boolean performClick(){super.performClick();return true;}
+  private void positionHomeBoard(View board){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    // Match the real board footprint from the reference composition; the GLES child fully
+    // covers this footprint so the underlying screenshot board can never show through.
+    int left=Math.round(ox+420f*sc), top=Math.round(oy+136f*sc);
+    int width=Math.max(1,Math.round(548f*sc)), height=Math.max(1,Math.round(560f*sc));
+    setHit(board,left,top,width,height);
+  }
+  @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
+    super.onSizeChanged(w,h,oldw,oldh);
+    positionHomeBoard(homeBoard);
+    positionWalletHit(walletHit, walletHitAlt);
+    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+  }
   private void positionPlayHit(View playHit, View playHitAlt){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0) return;
@@ -181,18 +228,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Keep the auxiliary JOUER target in a small neutral corner; it stays transparent and off the visible CTA.
     setHit(playHitAlt,2,96,48,48);
   }
-  private void positionLiveBoard(){
-    if(liveBoard==null)return;
-    final float W=getWidth(),H=getHeight();
-    if(W<=0||H<=0)return;
-    int left=Math.round(W*0.255f), top=Math.round(H*0.165f);
-    int width=Math.max(1,Math.round(W*0.495f)), height=Math.max(1,Math.round(H*0.775f));
-    FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(width,height);
-    lp.leftMargin=Math.max(0,Math.min(left,(int)W-width));
-    lp.topMargin=Math.max(0,Math.min(top,(int)H-height));
-    liveBoard.setLayoutParams(lp);
-  }
-  private void positionWalletHit(View wallet){
+  private void positionWalletHit(View wallet, View fallback){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
     float den=getResources().getDisplayMetrics().density;
@@ -208,6 +244,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       int width=Math.max(1,Math.round(0.17f*W));
       int height=Math.max(1,Math.round(0.14f*H));
       setHit(wallet,left,top,width,height);
+      setHit(fallback,2,2,1,1);
       return;
     }
     float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
@@ -217,18 +254,22 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int width=Math.max(1,Math.round(250f*sc));
     int height=Math.max(1,Math.round(116f*sc));
     setHit(wallet,left,top,width,height);
+
+    // The verified Ramus coordinate (0.504,0.229) arrives as roughly
+    // landscape x=0.229*1280, y=0.496*720 after the CCW quarter-turn.
+    // Keep this fallback target just outside the visible left rail, in the
+    // blank gutter before the live 3D board; it is fully transparent.
+    int fallbackLeft=Math.round(ox+292f*sc);
+    int fallbackTop=Math.round(oy+318f*sc);
+    int fallbackWidth=Math.max(1,Math.round(98f*sc));
+    int fallbackHeight=Math.max(1,Math.round(92f*sc));
+    setHit(fallback,fallbackLeft,fallbackTop,fallbackWidth,fallbackHeight);
   }
   private void setHit(View v,int left,int top,int width,int height){
     FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
     lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
     lp.topMargin=Math.max(0,Math.min(top,Math.max(0,getHeight()-lp.height)));
     v.setLayoutParams(lp);
-  }
-  @Override protected void onSizeChanged(int w,int h,int ow,int oh){
-    super.onSizeChanged(w,h,ow,oh);
-    positionLiveBoard();
-    positionWalletHit(walletHit);
-    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
   private void install() {
@@ -504,46 +545,103 @@ public class PremiumHeroViewV2 extends FrameLayout {
     @Override protected void onDraw(Canvas c){
       final float den=getResources().getDisplayMetrics().density;
       final float W=getWidth(), H=getHeight();
-      final boolean landscape=W>=H;
-      s=landscape ? Math.min(W/(1280f*den),H/(720f*den)) : Math.min(W/(720f*den),H/(1280f*den));
+      if(W<=0 || H<=0) return;
+      if(W<H){
+        c.drawColor(Color.BLACK);
+        return;
+      }
+
+      // Rebuild the supplied Home reference as live Android rendering.
+      // The reference image is no longer painted on screen; it is only a design guide.
+      s=Math.min(W/(1280f*den),H/(720f*den));
       float sc=s*den;
-      float baseW=landscape?1280f:720f, baseH=landscape?720f:1280f;
-      float ox=(W-baseW*sc)/2f, oy=(H-baseH*sc)/2f;
-      
-      // Landscape Home is always rendered as live UI. Reference assets remain visual inspiration/fallback only.
-      c.save(); background(c,W,H); c.translate(ox,oy);
-      // Cinematic landscape composition: menus frame a large central 3D board.
+      float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+
+      c.save();
+      background(c,W,H);
+      c.translate(ox,oy);
+
+      // Premium outer glass frame.
       box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
-      p.setShader(new LinearGradient(0,24,0,696,0x22FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(25,25,1255,695,31,31,p);p.setShader(null);
-      // Center branding follows the visual language of the reference splash while keeping the interactive landscape layout.
-      t(c,"Ludo",650,82,22,Color.WHITE,true,true);t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
+      p.setShader(new LinearGradient(0,24*sc,0,696*sc,0x28FFFFFF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(25),d(25),d(1255),d(695),d(31),d(31),p);
+      p.setShader(null);
+
+      // Header / identity.
+      t(c,"Ludo",650,82,22,Color.WHITE,true,true);
+      t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
       t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
-      // Header
       box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
-      p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(gold2);c.drawCircle(92,80,26,p);p.setStyle(Paint.Style.FILL);pawn(c,92,81,13,blue);
-      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
-      t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
-      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
-      box(c,1096,56,1164,104,18,0xFFEDB83A,0);t(c,"+",1130,87,22,0xFF432600,true,true);t(c,"🎵",1195,88,18,Color.WHITE,true,true);
-      // Left action rail
+      p.setShader(new RadialGradient(d(92),d(80),d(38),0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawCircle(d(92),d(80),d(38),p); p.setShader(null);
+      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(gold2);
+      c.drawCircle(d(92),d(80),d(26),p); p.setStyle(Paint.Style.FILL);
+      pawn(c,92,81,13,blue);
+
+      String u=str("username");
+      long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      t(c,dn,132,75,18,Color.WHITE,true,false);
+      t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);
+      t(c,"SOLDE",935,77,9,gold2,true,false);
+      t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
+      box(c,1096,56,1164,104,18,0xFFEDB83A,0);
+      t(c,"+",1130,87,22,0xFF432600,true,true);
+      t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+
+      // Live left navigation rail.
       menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
       menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
       menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
       menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
-      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);t(c,"MISE",171,556,11,gold2,true,true);int[] fs={500,1000,2000,5000};for(int i=0;i<4;i++){float l=66+i*53;boolean a=fs[i]==fee;box(c,l,570,l+45,598,10,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);t(c,fs[i]<1000?fs[i]+"":(fs[i]/1000)+"K",l+22.5f,589,8,a?0xFF4A2800:Color.WHITE,true,true);}t(c,"10K   20K",171,625,9,0xD8FFFFFF,true,true);
-      // Central board is the live GLES3/PBR LudoBoardView child; no static Canvas board is drawn here.
-      // Right information / CTA panel
-      box(c,982,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
-      t(c,"LUDOMADA",1105,185,16,gold2,true,true);t(c,"TABLE PREMIUM",1105,208,10,0xD9FFFFFF,true,true);
-      t(c,"2–4",1105,255,29,Color.WHITE,true,true);t(c,"JOUEURS",1105,275,9,0xCFFFFFFF,true,true);
-      t(c,"Mise actuelle",1105,314,9,0xBFFFFFFF,false,true);t(c,fee+" Ar",1105,344,24,gold2,true,true);
-      box(c,1010,378,1200,452,22,0xFFFFC32D,0xEEFFF0B0);t(c,"▶",1042,422,24,0xFF4A2900,true,true);t(c,"JOUER",1110,418,19,0xFF452500,true,true);t(c,"EN LIGNE / HORS-LIGNE",1105,438,8,0xFF694A15,true,true);
-      t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
-      box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
-      box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
-      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"Madagasikara • Miray",1105,612,8,gold2,true,true);
-      c.restore();postInvalidateDelayed(16);
+      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);
+      t(c,"MISE",171,556,11,gold2,true,true);
+      int[] fs={500,1000,2000,5000,10000,20000};
+      for(int i=0;i<6;i++){
+        float l=60+i*37;
+        boolean a=fs[i]==fee;
+        box(c,l,570,l+34,598,9,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);
+        String label=fs[i]<1000?String.valueOf(fs[i]):(fs[i]/1000)+"K";
+        t(c,label,l+17,588,7.2f,a?0xFF4A2800:Color.WHITE,true,true);
+      }
+
+      // Framing only: the board itself is the live GLES3/PBR child.
+      // This intentionally leaves no second 2D board underneath it.
+      box(c,390,108,1000,706,30,0x6A081526,0x668FBFFF);
+      p.setShader(new LinearGradient(d(400),d(118),d(990),d(700),0x3AFFFFFF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(401),d(119),d(989),d(699),d(27),d(27),p);
+      p.setShader(null);
+      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(0x99FFFFFF);
+      c.drawRoundRect(d(406),d(124),d(984),d(694),d(24),d(24),p); p.setStyle(Paint.Style.FILL);
+      t(c,"TABLE PREMIUM • LIVE 3D",695,130,8.5f,gold2,true,true);
+
+      // Live right information / CTA panel.
+      box(c,1010,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
+      t(c,"LUDOMADA",1119,185,16,gold2,true,true);
+      t(c,"TABLE PREMIUM",1119,208,10,0xD9FFFFFF,true,true);
+      t(c,"2–4",1119,255,29,Color.WHITE,true,true);
+      t(c,"JOUEURS",1119,275,9,0xCFFFFFFF,true,true);
+      t(c,"Mise actuelle",1119,314,9,0xBFFFFFFF,false,true);
+      t(c,fee+" Ar",1119,344,24,gold2,true,true);
+      box(c,1028,378,1210,452,22,0xFFFFC32D,0xEEFFF0B0);
+      t(c,"▶",1060,422,24,0xFF4A2900,true,true);
+      t(c,"JOUER",1123,418,19,0xFF452500,true,true);
+      t(c,"EN LIGNE / HORS-LIGNE",1119,438,8,0xFF694A15,true,true);
+      t(c,"RAPIDE • FLUIDE • RÉALISTE",1119,490,8.5f,gold2,true,true);
+      box(c,1028,470,1210,520,18,0xB316315A,0x557EB8FF);
+      t(c,"♛",1060,500,18,Color.WHITE,true,true);
+      t(c,"TOURNOIS",1123,496,10,Color.WHITE,true,true);
+      t(c,"Classement & défis",1123,511,8,0xD0FFFFFF,false,false);
+      box(c,1028,528,1210,578,18,0xB316315A,0x557EB8FF);
+      t(c,"?",1060,558,18,gold2,true,true);
+      t(c,"TUTORIELS",1123,554,10,Color.WHITE,true,true);
+      t(c,"Apprendre le Ludo",1123,569,8,0xD0FFFFFF,false,false);
+      box(c,1028,586,1210,628,14,0x88111F38,0x447EB8FF);
+      t(c,"Madagasikara • Miray",1119,612,8,gold2,true,true);
+
+      c.restore();
+      postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
