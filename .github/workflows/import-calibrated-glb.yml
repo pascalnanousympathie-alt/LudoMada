@@ -1,0 +1,88 @@
+name: Import calibrated LudoMada GLB
+
+on:
+  push:
+    paths:
+      - ".github/workflows/import-calibrated-glb.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ludomada-3d-asset-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Download and verify calibrated rev3 GLB
+        env:
+          GLB_URL: https://d2ol7oe51mr4n9.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb
+          EXPECTED_BYTES: "846104"
+          EXPECTED_SHA256: "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027"
+        run: |
+          set -eu
+          asset="android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb"
+          mkdir -p "$(dirname "$asset")"
+
+          if [ -f "$asset" ]; then
+            actual_bytes="$(wc -c < "$asset")"
+            actual_sha="$(sha256sum "$asset" | awk '{print $1}')"
+            test "$actual_bytes" = "$EXPECTED_BYTES"
+            test "$actual_sha" = "$EXPECTED_SHA256"
+            echo "CALIBRATED_GLB_ALREADY_PRESENT"
+            exit 0
+          fi
+
+          curl -fsSL "$GLB_URL" -o "$asset"
+          test "$(wc -c < "$asset")" = "$EXPECTED_BYTES"
+          test "$(head -c 4 "$asset")" = "glTF"
+          test "$(sha256sum "$asset" | awk '{print $1}')" = "$EXPECTED_SHA256"
+
+      - name: Record bundle availability without claiming runtime loader integration
+        run: |
+          set -eu
+          node <<'NODE'
+          const fs = require('fs');
+          const file = 'android-app/app/src/main/assets/3d/manifest.json';
+          const manifest = JSON.parse(fs.readFileSync(file, 'utf8'));
+          manifest.source_scene = manifest.source_scene || {};
+          manifest.source_scene.revision = 3;
+          manifest.source_scene.glb_bytes = 846104;
+          manifest.source_scene.sha256 = '765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027';
+          manifest.source_scene.delivery = {
+            type: 'higgsfield-media',
+            media_id: 'f77cf216-1a71-4b86-84b9-26339b96c4df',
+            url: 'https://d2ol7oe51mr4n9.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb',
+            verified_size_bytes: 846104
+          };
+          manifest.asset_available_in_apk = true;
+          manifest.runtime_packaged = false;
+          fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+          NODE
+
+      - name: Commit asset and manifest once
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb android-app/app/src/main/assets/3d/manifest.json
+          if git diff --cached --quiet; then
+            echo "NO_ASSET_IMPORT_CHANGES"
+            exit 0
+          fi
+          git commit -m "feat(assets): bundle calibrated rev3 GLB"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
