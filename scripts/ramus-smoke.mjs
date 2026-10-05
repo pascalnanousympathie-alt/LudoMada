@@ -327,7 +327,12 @@ try {
   if (!feeTree.ok || !feeTree.value?.elements?.length) {
     throw new Error("Online stake selector did not expose 500 Ar");
   }
-  tapRef({ref:feeTree.value.elements[0].ref,gen:feeTree.value.gen});
+  // Refresh immediately before the interaction; Ramus generations can reset after a
+  // delayed accessibility attach even though the matching text is still present.
+  const feeTapTree = allow("snapshot", "--session", session, "--find", "500 Ar");
+  if (!feeTapTree.ok || !feeTapTree.value?.elements?.length) throw new Error("500 Ar target disappeared before tap");
+  const feeTap = allow("tap", feeTapTree.value.elements[0].ref, "--gen", String(feeTapTree.value.gen), "--session", session);
+  if (!feeTap.ok) throw new Error("500 Ar tap failed: " + JSON.stringify(feeTap.value));
   waitStable(700);
   if (!hasText("Nom, email ou mobile") && !hasText("CONNEXION")) {
     throw new Error("Login screen was not reached after selecting the 500 Ar online stake");
