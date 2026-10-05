@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 
 const root = process.argv[2] || "android-app/app/src/main/assets/3d";
 const manifestPath = path.join(root, "manifest.json");
