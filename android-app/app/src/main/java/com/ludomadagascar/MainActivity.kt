@@ -282,7 +282,7 @@ class MainActivity : Activity() {
         card.addView(info, LinearLayout.LayoutParams(dp(112), -2))
         val lp = FrameLayout.LayoutParams(dp(176), dp(56))
         lp.gravity = (if (leftSide) Gravity.START else Gravity.END) or (if (topSide) Gravity.TOP else Gravity.BOTTOM)
-        lp.setMargins(dp(18), if (topSide) dp(84) else dp(14), dp(18), if (topSide) dp(14) else dp(16))
+        lp.setMargins(dp(18), if (topSide) dp(84) else dp(14), dp(18), if (topSide) dp(14) else dp(92))
         frame.addView(card, lp)
     }
 
