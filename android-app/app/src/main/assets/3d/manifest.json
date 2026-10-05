@@ -1,0 +1,55 @@
+{
+  "schema": "ludomada-premium-3d-v2",
+  "units": "meters",
+  "source": {
+    "provider": "Higgsfield 3D Jutsu",
+    "projectId": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 2,
+    "committedGlbBytes": 846100
+  },
+  "board": {
+    "squareMeters": 5.05,
+    "tableMeters": 5.6,
+    "pathCells": 52,
+    "finishCells": 24,
+    "homePlinths": 4,
+    "centerWedges": 4,
+    "pathTopology": "matches current Android LudoBoardView visualPath order"
+  },
+  "assets": {
+    "pawn": {
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head",
+        "underside"
+      ],
+      "pivot": "bottom-center",
+      "material": "lacquer"
+    },
+    "die": {
+      "parts": [
+        "hydro-chrome-body",
+        "pips"
+      ],
+      "pivot": "center",
+      "material": "hydro-chrome"
+    },
+    "board": {
+      "parts": [
+        "52-path-cells",
+        "24-finish-cells",
+        "4-homes",
+        "4-center-wedges",
+        "gold-frame"
+      ],
+      "pivot": "center"
+    }
+  },
+  "runtime": {
+    "target": "Android GLES3/Filament",
+    "fallback": "existing GLES2 SafeSceneRenderer",
+    "backgroundImageIsNotGameplayGeometry": true
+  }
+}
