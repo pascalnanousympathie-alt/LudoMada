@@ -85,14 +85,14 @@ data class PremiumMaterial(
         /** Hydro-plated silver/chrome target from the asset contract. */
         fun hydroChrome() = PremiumMaterial(
             rgba(Color.rgb(244, 247, 250)),
-            metallic = 0.95f,
-            roughness = 0.08f,
+            metallic = 1.00f,
+            roughness = 0.055f,
             ao = 0.99f,
             emission = 0.012f,
-            normalStrength = 0.06f,
+            normalStrength = 0.045f,
             environmentStrength = 1.00f,
-            clearCoat = 0.34f,
-            clearCoatRoughness = 0.060f
+            clearCoat = 0.72f,
+            clearCoatRoughness = 0.055f
         )
 
         fun chromeTray() = PremiumMaterial(
@@ -180,16 +180,16 @@ data class PremiumLightRig(
         fun mobilePremium() = PremiumLightRig(
             keyDirection = floatArrayOf(-0.42f, 0.92f, 0.36f),
             keyColor = floatArrayOf(1.00f, 0.94f, 0.82f),
-            keyIntensity = 1.05f,
+            keyIntensity = 1.08f,
             fillDirection = floatArrayOf(0.62f, 0.54f, -0.55f),
             fillColor = floatArrayOf(0.32f, 0.42f, 0.58f),
-            fillIntensity = 0.42f,
+            fillIntensity = 0.22f,
             rimDirection = floatArrayOf(0.0f, 0.75f, -0.66f),
             rimColor = floatArrayOf(1.00f, 0.84f, 0.60f),
-            rimIntensity = 0.44f,
+            rimIntensity = 0.34f,
             ambientColor = floatArrayOf(0.12f, 0.15f, 0.22f),
-            ambientIntensity = 0.72f,
-            shadowBias = 0.0018f,
+            ambientIntensity = 0.82f,
+            shadowBias = 0.00135f
             shadowNormalBias = 0.0035f,
             shadowMapResolution = 512,
             iblIntensity = 0.88f
@@ -248,6 +248,20 @@ data class PremiumPostProcess(
 }
 
 object PremiumMaterialLighting {
+    /** Single source of truth for Lane-C numerical calibration. */
+    object Calibration {
+        const val CHROME_CLEAR_COAT = 0.72f
+        const val CHROME_CLEAR_COAT_ROUGHNESS = 0.055f
+        const val CHROME_METALLIC = 1.00f
+        const val CHROME_ROUGHNESS = 0.055f
+        const val KEY_INTENSITY = 1.08f
+        const val FILL_INTENSITY = 0.22f
+        const val RIM_INTENSITY = 0.34f
+        const val AMBIENT_IBL_INTENSITY = 0.82f
+        const val SHADOW_BIAS = 0.00135f
+        const val BLOOM = 0.10f
+        const val SSAO = 0.28f
+    }
     val lighting = PremiumLightRig.mobilePremium()
     val post = PremiumPostProcess.mobileHigh()
 
