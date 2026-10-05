@@ -89,7 +89,7 @@ data class PremiumMaterial(
             roughness = 0.055f,
             ao = 0.99f,
             emission = 0.012f,
-            normalStrength = 0.045f,
+            normalStrength = Calibration.CHROME_NORMAL_STRENGTH,
             environmentStrength = 1.00f,
             clearCoat = 0.72f,
             clearCoatRoughness = 0.055f
@@ -192,7 +192,7 @@ data class PremiumLightRig(
             shadowBias = 0.00135f,
             shadowNormalBias = 0.0035f,
             shadowMapResolution = 512,
-            iblIntensity = 0.88f
+            iblIntensity = 0.82f
         )
 
         fun safeFallback() = PremiumLightRig(
@@ -250,6 +250,7 @@ data class PremiumPostProcess(
 object PremiumMaterialLighting {
     /** Single source of truth for calibrated Lane-C renderer targets. */
     object Calibration {
+        const val CHROME_NORMAL_STRENGTH = 0.045f
         const val CHROME_CLEAR_COAT = 0.72f
         const val CHROME_CLEAR_COAT_ROUGHNESS = 0.055f
         const val CHROME_METALLIC = 1.00f
