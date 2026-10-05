@@ -254,6 +254,7 @@ object PremiumMaterialLighting {
         const val CHROME_CLEAR_COAT_ROUGHNESS = 0.055f
         const val CHROME_METALLIC = 1.00f
         const val CHROME_ROUGHNESS = 0.055f
+        const val CHROME_NORMAL_STRENGTH = 0.045f
         const val KEY_INTENSITY = 1.08f
         const val FILL_INTENSITY = 0.22f
         const val RIM_INTENSITY = 0.34f
