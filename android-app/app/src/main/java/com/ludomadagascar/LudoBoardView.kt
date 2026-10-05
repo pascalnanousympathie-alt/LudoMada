@@ -902,6 +902,7 @@ class LudoBoardView(
         private var metalTex=0
         private var normalTex=0
         private var envCube=0
+        private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         internal val lightVp=FloatArray(16)
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
@@ -950,6 +951,16 @@ class LudoBoardView(
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6)
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
+            glbParts=runCatching{
+                GlbRuntimeLoader(host.context).loadHeroParts().also{
+                    android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
+                    runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
+                }
+            }.getOrElse{
+                android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
+                runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
+                emptyMap()
+            }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
@@ -1056,7 +1067,45 @@ class LudoBoardView(
                 val pulse=(0.42f+0.06f*sin(System.nanoTime()/180_000_000.0).toFloat()).coerceIn(0.34f,0.50f)
                 drawMesh(disk,identityAt(x,boardTop+0.022f,z,pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.16f,0.88f),0.08f,0.52f,1f,0.035f,4,true)
             }
-            drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(color),0.22f,0.04f,1f,0.015f,3,false);drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(color),0.18f,0.05f,1f,0.018f,3,false)
+            val body=glbParts["LM_Pawn_Tapered_Body"]
+            val head=glbParts["LM_Pawn_Spherical_Head"]
+            if(body!=null && head!=null){
+                val b=bounce[pi][ti].coerceIn(0f,1f)
+                val elastic=LudoMotionPhysics.elasticOut(b)
+                val overshoot=elastic-b
+                val backOvershoot=LudoMotionPhysics.backOut(b)-b
+                val sx=0.72f*(1f-0.055f*overshoot)
+                val sy=0.72f*(1f+0.115f*overshoot)
+                val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
+                val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
+                val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                listOf(
+                    "LM_Pawn_Underside_Insert",
+                    "LM_Pawn_Base_Weighted",
+                    "LM_Pawn_Tapered_Body",
+                    "LM_Pawn_Collar",
+                    "LM_Pawn_Spherical_Head"
+                ).forEach { name ->
+                    glbParts[name]?.let { part ->
+                        val model=heroPawnModel(part.transform,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
+                        val pm=PremiumMaterialLighting.pawn(color)
+                        drawMesh(part.mesh,model,rgba(color),pm.roughness,pm.metallic,pm.ao,pm.emission,5,false)
+                    }
+                }
+            }else{
+                drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(color),0.22f,0.04f,1f,0.015f,3,false)
+                drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(color),0.18f,0.05f,1f,0.018f,3,false)
+            }
+        }
+
+        private fun heroPawnModel(partTransform:FloatArray,x:Float,y:Float,z:Float,sx:Float,sy:Float,rotZ:Float,rotX:Float):FloatArray{
+            val root=identityAt(x,y,z,1f,1f,1f)
+            Matrix.rotateM(root,0,rotZ,0f,0f,1f)
+            Matrix.rotateM(root,0,rotX,1f,0f,0f)
+            Matrix.scaleM(root,0,sx,sy,sx)
+            val out=FloatArray(16)
+            Matrix.multiplyMM(out,0,root,0,partTransform,0)
+            return out
         }
         private fun isLegalPawn(pi:Int,ti:Int):Boolean{
             if(pi!=player)return false
@@ -1116,10 +1165,42 @@ class LudoBoardView(
                 val pulse=(0.77f+0.05f*sin(System.nanoTime()/170_000_000.0).toFloat()).coerceIn(0.70f,0.84f)
                 drawMesh(disk,identityAt(p[0],boardTop+0.11f,p[2],pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.15f,0.46f),0.10f,0.66f,1f,0.025f,4,true)
             }
-            drawMesh(roundedBox,die,floatArrayOf(0.98f,0.99f,1.0f,1f),0.055f,1.0f,1f,0.045f,4,false)
+            val glbDie=glbParts["LM_Die_HydroChrome_Body"]
+            if(glbDie!=null){
+                drawMesh(
+                    glbDie.mesh,
+                    heroDieModel(glbDie.transform,pi,p[0],p[1]+0.38f,p[2],0.52f),
+                    floatArrayOf(0.98f,0.99f,1.0f,1f),
+                    PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
+                    PremiumMaterialLighting.Calibration.CHROME_METALLIC,
+                    0.99f,
+                    0.012f,
+                    4,
+                    false
+                )
+            }else{
+                drawMesh(roundedBox,die,floatArrayOf(0.98f,0.99f,1.0f,1f),0.055f,1.0f,1f,0.045f,4,false)
+            }
             val pip=0.20f
             val positions=when(dieValue(pi)){1->arrayOf(0f to 0f);2->arrayOf(-pip to -pip,pip to pip);3->arrayOf(-pip to -pip,0f to 0f,pip to pip);4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip);5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip);else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)}
             for((px,pz)in positions){val pm=identityAt(px,0.51f,pz,0.065f,0.028f,0.065f);val c=FloatArray(16);Matrix.multiplyMM(c,0,die,0,pm,0);drawMesh(pips,c,floatArrayOf(0.045f,0.052f,0.06f,1f),0.16f,0.74f,1f,0f,4,false)}
+        }
+        private fun heroDieModel(partTransform:FloatArray,pi:Int,x:Float,y:Float,z:Float,scale:Float):FloatArray{
+            val t=if(pi==player)diceAnim else 1f
+            val spin=PremiumVisualMotion.dieSpin(t)
+            val value=dieValue(pi)
+            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
+            val anchor=identityAt(x,y,z,1f,1f,1f)
+            Matrix.rotateM(anchor,0,sx,1f,0f,0f)
+            Matrix.rotateM(anchor,0,sy,0f,1f,0f)
+            Matrix.scaleM(anchor,0,scale,scale,scale)
+            val centered=identityAt(-1.55f,-0.58f,0f,1f,1f,1f)
+            val local=FloatArray(16)
+            Matrix.multiplyMM(local,0,centered,0,partTransform,0)
+            val out=FloatArray(16)
+            Matrix.multiplyMM(out,0,anchor,0,local,0)
+            return out
         }
         private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean)=shader.draw(mesh,mat,color,rough,metallic,ao,emission,material,unlit)
         private fun drawShadowMesh(mesh:Mesh,mat:FloatArray)=shadowShader.draw(mesh,mat)
@@ -1394,10 +1475,23 @@ class LudoBoardView(
         }
     }
 
-    private class Mesh(
-        val positions:FloatArray,val normals:FloatArray,val indices:ShortArray
+    internal class Mesh(
+        val positions:FloatArray,
+        val normals:FloatArray,
+        val indices:ShortArray,
+        uvsOverride:FloatArray?=null
     ){
-        private val uvData:FloatArray=FloatArray(positions.size/3*2).also{out->for(i in positions.indices step 3){val j=(i/3)*2;out[j]=positions[i]*0.12f-floor(positions[i]*0.12f);out[j+1]=positions[i+2]*0.12f-floor(positions[i+2]*0.12f)}}
+        private val uvData:FloatArray=uvsOverride ?: FloatArray(positions.size/3*2).also{out->
+            for(i in positions.indices step 3){
+                val j=(i/3)*2
+                out[j]=positions[i]*0.12f-floor(positions[i]*0.12f)
+                out[j+1]=positions[i+2]*0.12f-floor(positions[i+2]*0.12f)
+            }
+        }
+        init{
+            require(normals.size==positions.size){"Mesh normal count mismatch"}
+            require(uvData.size==positions.size/3*2){"Mesh UV count mismatch"}
+        }
         val p:FloatBuffer=ByteBuffer.allocateDirect(positions.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(positions);position(0)}
         val n:FloatBuffer=ByteBuffer.allocateDirect(normals.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(normals);position(0)}
         val uv:FloatBuffer=ByteBuffer.allocateDirect(uvData.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(uvData);position(0)}
