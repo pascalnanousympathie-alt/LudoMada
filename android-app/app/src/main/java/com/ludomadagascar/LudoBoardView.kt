@@ -919,9 +919,23 @@ class LudoBoardView(
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
+            android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
+                " fill=" + premiumLighting.fillIntensity +
+                " rim=" + premiumLighting.rimIntensity +
+                " ibl=" + premiumLighting.iblIntensity +
+                " shadow=" + premiumLighting.shadowMapResolution +
+                " ssao=" + premiumPost.ssao +
+                " bloom=" + premiumPost.bloom)
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
-                    .edit().putString("last_marker", "PBR_SURFACE_CREATED").apply()
+                    .edit().putString("last_marker", "PBR_CONTRACT_BOUND:" +
+                        premiumLighting.keyIntensity + ":" +
+                        premiumLighting.fillIntensity + ":" +
+                        premiumLighting.rimIntensity + ":" +
+                        premiumLighting.iblIntensity + ":" +
+                        premiumLighting.shadowMapResolution + ":" +
+                        premiumPost.ssao + ":" +
+                        premiumPost.bloom).apply()
             }
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
