@@ -3,11 +3,11 @@
 const W = 720;
 const H = 1616;
 
-// Same transformed Wallet accessibility target used by PremiumHeroViewV2
-const left = (325 / 720) * W;
-const top = (70 / 1280) * H;
-const width = ((420 - 325) / 720) * W;
-const height = ((320 - 70) / 1280) * H;
+// Same portrait Wallet accessibility target used by PremiumHeroViewV2 (e7d411c)
+const left = 0.42 * W;
+const top = 0.16 * H;
+const width = 0.17 * W;
+const height = 0.14 * H;
 const x = left + width / 2;
 const y = top + height / 2;
 
