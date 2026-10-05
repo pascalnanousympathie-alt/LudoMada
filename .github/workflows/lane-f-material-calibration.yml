@@ -1,0 +1,47 @@
+name: Lane F Material Calibration Audit
+
+on:
+  pull_request:
+    paths:
+      - "android-app/app/src/main/java/com/ludomadagascar/LudoBoardView.kt"
+      - "android-app/app/src/main/java/com/ludomadagascar/PremiumMaterialLighting.kt"
+      - "scripts/audit-material-calibration.mjs"
+      - ".github/workflows/lane-f-material-calibration.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lane-f-material-calibration
+  cancel-in-progress: false
+
+jobs:
+  strict-audit:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Use Termux Node when available
+        run: |
+          set -eu
+          if [ -x /data/data/com.termux/files/usr/bin/node ]; then
+            mkdir -p "$HOME/.ci-node-bin"
+            cat > "$HOME/.ci-node-bin/node" <<'EOF'
+#!/data/data/com.termux/files/usr/bin/sh
+export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+exec /data/data/com.termux/files/usr/bin/node "$@"
+EOF
+            chmod +x "$HOME/.ci-node-bin/node"
+            echo "PATH=$HOME/.ci-node-bin:$PATH" >> "$GITHUB_ENV"
+          fi
+
+      - name: Node version
+        run: node -v
+
+      - name: Strict material calibration audit
+        run: node scripts/audit-material-calibration.mjs --strict
