@@ -26,7 +26,7 @@ for (const [field, expected] of required) {
     process.exit(3);
   }
 }
-const files = fs.readdirSync(root).filter((name) => /.(glb|gltf)$/i.test(name));
+const files = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
 for (const file of files) {
   const size = fs.statSync(path.join(root, file)).size;
   if (size > 12 * 1024 * 1024) {
