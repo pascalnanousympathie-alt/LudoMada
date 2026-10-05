@@ -1050,12 +1050,13 @@ class LudoBoardView(
         }
         private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=(elastic-b)
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val sx=pawnScale*(1f-0.055f*overshoot)
-            val sy=pawnScale*(1f+0.115f*overshoot)
-            val m=identityAt(x,y,z,sx,sy,sx)
+            val squash=PremiumVisualMotion.squash(b)
+            val stretch=PremiumVisualMotion.stretch(b)
+            val sx=pawnScale*squash*(1f-0.055f*overshoot)
+            val sy=pawnScale*stretch*(1f+0.115f*overshoot)
+            val m=identityAt(x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,sx)
             val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
@@ -1063,12 +1064,13 @@ class LudoBoardView(
         }
         private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=elastic-b
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val s=pawnScale*0.37f*(1f-0.035f*overshoot)
-            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)
-            val m=identityAt(x,y+pawnScale*0.74f,z,s,sy,s)
+            val headSquash=PremiumVisualMotion.squash(b)
+            val headStretch=PremiumVisualMotion.stretch(b)
+            val s=pawnScale*0.37f*headSquash*(1f-0.035f*overshoot)
+            val sy=pawnScale*0.37f*headStretch*(1f+0.065f*overshoot)
+            val m=identityAt(x,y+pawnScale*0.74f+PremiumVisualMotion.landingBounce(b)*0.65f,z,s,sy,s)
             val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
             return m
@@ -1081,8 +1083,9 @@ class LudoBoardView(
             val p=dieCenterWorld(pi)
             val value=dieValue(pi)
             val t=if(pi==player)diceAnim else 1f
-            val sx=(1f-t)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-t)*(430f+pi*37f)+17f+pi*11f
+            val spin=PremiumVisualMotion.dieSpin(t)
+            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
             val m=identityAt(p[0],p[1]+0.38f,p[2],0.52f,0.52f,0.52f)
             Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f)
             return m
@@ -1135,7 +1138,7 @@ class LudoBoardView(
         }
         private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
         private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
-        private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,0.28f,0.10f);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
+        private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,LudoMaterialCalibration.post.ssaoStrength,LudoMaterialCalibration.post.bloomIntensity);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createEnvironmentCubemap():Int{
@@ -1398,20 +1401,21 @@ class LudoBoardView(
                 uniform mat4 uMvp,uMv,uModel,uLightVp;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*w;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
+            val calibration=LudoMaterialCalibration
             val fs="""#version 300 es
                 precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness;uniform sampler2D uAlbedoTex,uNormalTex,uShadowMap;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
                 float G(float nv,float r){float k=((r+1.0)*(r+1.0))/8.0;return nv/max(nv*(1.0-k)+k,0.0001);}
                 vec3 F(float c,vec3 f0){return f0+(1.0-f0)*pow(clamp(1.0-c,0.0,1.0),5.0);}
-                float shadowV(){vec3 p=vShadow.xyz/max(vShadow.w,0.0001);p=p*0.5+0.5;if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;float cur=p.z-0.0018,s=0.0;vec2 t=1.0/vec2(512.0);for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++){float d=texture(uShadowMap,p.xy+vec2(float(x),float(y))*t).r;s+=cur<=d?1.0:0.0;}return s/9.0;}
+                float shadowV(){vec3 p=vShadow.xyz/max(vShadow.w,0.0001);p=p*0.5+0.5;if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;float cur=p.z-${calibration.lights.shadowBias},s=0.0;vec2 t=1.0/vec2(512.0);for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++){float d=texture(uShadowMap,p.xy+vec2(float(x),float(y))*t).r;s+=cur<=d?1.0:0.0;}return s/9.0;}
                 void main(){
                     vec3 N0=normalize(vN),nm=texture(uNormalTex,vUv*3.5).xyz*2.0-1.0;vec3 T=normalize(vec3(1,0,0)-N0*dot(N0,vec3(1,0,0)));if(length(T)<0.10)T=normalize(vec3(0,0,1)-N0*dot(N0,vec3(0,0,1)));vec3 B=normalize(cross(N0,T));
                     vec3 N=normalize(mix(N0,T*nm.x+B*nm.y+N0*max(nm.z,0.15),uNormalStrength));vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;vec3 albedo=mix(uColor.rgb*tex,uColor.rgb,0.52);
                     float m=clamp(uMetallic,0.0,1.0),r=clamp(uRoughness,0.045,1.0);vec3 V=normalize(-vP),L=normalize(vec3(-0.42,0.92,0.36)),H=normalize(V+L);float nv=max(dot(N,V),0.0),nl=max(dot(N,L),0.0);
                     vec3 f0=mix(vec3(0.04),albedo,m),f=F(max(dot(H,V),0.0),f0);float d=DGGX(N,H,r),g=G(nv,r)*G(nl,r);vec3 spec=(d*g*f)/max(4.0*nv*nl,0.001);vec3 kd=(vec3(1)-f)*(1-m);float sh=shadowV();
-                    vec3 direct=(kd*albedo/PI+spec)*vec3(1.05,0.98,0.84)*nl*sh;vec3 L2=normalize(vec3(0.62,0.54,-0.55));vec3 H2=normalize(V+L2);float nl2=max(dot(N,L2),0.0);float r2=max(0.06,uRoughness*0.82);float d2=DGGX(N,H2,r2);float g2=G(nv,r2)*G(nl2,r2);vec3 f2=F(max(dot(H2,V),0.0),f0);vec3 spec2=(d2*g2*f2)/max(4.0*nv*nl2,0.001);direct+=(kd*albedo/PI+spec2)*vec3(0.32,0.42,0.58)*nl2*0.42;float coat=clamp(uClearCoat,0.0,1.0);float cr=max(0.035,uClearCoatRoughness);float cd=DGGX(N,H,cr);float cg=G(nv,cr)*G(nl,cr);vec3 cf=F(max(dot(H,V),0.0),vec3(0.04));float cs=(cd*cg*cf)/max(4.0*nv*nl,0.001);direct+=cs*vec3(1.0,0.96,0.90)*coat*nl*0.85;vec3 R=reflect(-V,N);vec3 envS=textureLod(uEnvCube,R,r*5.0).rgb;vec3 envD=textureLod(uEnvCube,N,4.0).rgb;
-                    float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*0.72+envS*f*(0.26+0.74*fres))*uAO+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0)),uColor.a);
+                    vec3 direct=(kd*albedo/PI+spec)*vec3(${calibration.lights.keyIntensity},0.98,0.84)*nl*sh;vec3 L2=normalize(vec3(0.62,0.54,-0.55));vec3 H2=normalize(V+L2);float nl2=max(dot(N,L2),0.0);float r2=max(0.06,uRoughness*0.82);float d2=DGGX(N,H2,r2);float g2=G(nv,r2)*G(nl2,r2);vec3 f2=F(max(dot(H2,V),0.0),f0);vec3 spec2=(d2*g2*f2)/max(4.0*nv*nl2,0.001);direct+=(kd*albedo/PI+spec2)*vec3(0.32,0.42,0.58)*nl2*${calibration.lights.fillIntensity};float coat=clamp(uClearCoat,0.0,1.0);float cr=max(0.035,uClearCoatRoughness);float cd=DGGX(N,H,cr);float cg=G(nv,cr)*G(nl,cr);vec3 cf=F(max(dot(H,V),0.0),vec3(0.04));float cs=(cd*cg*cf)/max(4.0*nv*nl,0.001);direct+=cs*vec3(1.0,0.96,0.90)*coat*nl*0.85;float rim=pow(1.0-nv,2.0)*${calibration.lights.rimIntensity};vec3 R=reflect(-V,N);vec3 envS=textureLod(uEnvCube,R,r*5.0).rgb;vec3 envD=textureLod(uEnvCube,N,4.0).rgb;
+                    float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*${calibration.lights.ambientIblIntensity}+envS*f*(0.26+0.74*fres))*uAO+direct+albedo*uEmission+vec3(1.0,0.84,0.60)*rim;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0)),uColor.a);
                 }
             """.trimIndent()
             program=buildProgram(vs,fs)
@@ -1421,7 +1425,7 @@ class LudoBoardView(
         fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean){
             val albedo=when(material){1->wood;2->board;3->neutral;4->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,metallic);GLES30.glUniform1f(uRoughness,rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)0.08f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->0.22f;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->0.075f;3->0.12f;else->0.18f})
+            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,metallic);GLES30.glUniform1f(uRoughness,rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)0.08f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->LudoMaterialCalibration.chrome.clearCoat;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->LudoMaterialCalibration.chrome.clearCoatRoughness;3->0.12f;else->0.18f})
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normal);GLES30.glUniform1i(uNormalTex,1)
             GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glVertexAttribPointer(1,3,GLES30.GL_FLOAT,false,0,mesh.n);GLES30.glVertexAttribPointer(2,2,GLES30.GL_FLOAT,false,0,mesh.uv);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
         }
