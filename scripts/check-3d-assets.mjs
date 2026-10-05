@@ -1,37 +1,42 @@
 #!/usr/bin/env node
-/**
- * LudoMada 3D asset contract checker.
- * Intentionally dependency-light: validates file naming and metadata contract.
- * Geometry/material validation is performed in Blender/3D Jutsu before import.
- */
-import fs from 'node:fs';
-import path from 'node:path';
+import fs from "node:fs";
+import path from "node:path";
 
-const root = process.argv[2] || 'android-app/app/src/main/assets/3d';
-const manifestPath = path.join(root, 'manifest.json');
+const root = process.argv[2] || "android-app/app/src/main/assets/3d";
+const manifestPath = path.join(root, "manifest.json");
 if (!fs.existsSync(manifestPath)) {
-  console.error('3D_ASSET_MANIFEST_MISSING', manifestPath);
+  console.error("3D_ASSET_MANIFEST_MISSING", manifestPath);
   process.exit(2);
 }
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-const required = [
-  ['schema', 'ludomada-premium-3d-v1'],
-  ['units', 'meters'],
-  ['format', 'glb/gltf2'],
-  ['target', 'android-realtime']
+const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+const checks = [
+  ["schema", manifest.schema === "ludomada-premium-3d-v2"],
+  ["units", manifest.units === "meters"],
+  ["format", manifest.format === "glb/gltf2"],
+  ["target", manifest.target === "android-realtime"],
+  ["source provider", manifest.source_scene?.provider === "Higgsfield 3D Jutsu"],
+  ["source revision", manifest.source_scene?.revision === 2],
+  ["source GLB size recorded", manifest.source_scene?.glb_bytes === 846100],
+  ["board path cells", manifest.board_geometry?.path_cells === 52],
+  ["finish cells", manifest.board_geometry?.finish_cells === 24],
+  ["homes", manifest.board_geometry?.home_plinths === 4],
+  ["center wedges", manifest.board_geometry?.center_wedges === 4],
+  ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
-for (const [field, expected] of required) {
-  if (manifest[field] !== expected) {
-    console.error('3D_ASSET_CONTRACT_INVALID ' + field + ': expected ' + expected + ', got ' + manifest[field]);
-    process.exit(3);
-  }
-}
-const files = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
-for (const file of files) {
-  const size = fs.statSync(path.join(root, file)).size;
-  if (size > 12 * 1024 * 1024) {
-    console.error('3D_ASSET_TOO_LARGE ' + file + ': ' + size + ' bytes');
-    process.exit(4);
-  }
-}
-console.log('3D_ASSET_CONTRACT_OK assets=' + files.length);
+const failed = checks.filter(([, ok]) => !ok);
+const packagedFiles = fs.readdirSync(root).filter((name) => /.(glb|gltf)$/i.test(name));
+const oversized = packagedFiles.filter((name) =>
+  fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
+);
+console.log(JSON.stringify({
+  schema: manifest.schema,
+  runtimePackaged: manifest.runtime_packaged,
+  sourceScene: manifest.source_scene,
+  board: manifest.board_geometry,
+  packagedAssets: packagedFiles,
+  oversizedAssets: oversized,
+  passed: checks.length - failed.length,
+  total: checks.length,
+  failures: failed.map(([name]) => name)
+}, null, 2));
+if (failed.length || oversized.length) process.exit(3);
