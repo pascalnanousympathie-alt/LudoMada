@@ -1002,7 +1002,7 @@ class LudoBoardView(
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if(land)11.8f else 8.2f;val camZ=if(land)8.8f else 8.8f;val fov=if(land)31f else 34f
+            val camY=if(land)11.8f else 8.2f;val camZ=if(land)8.8f else 8.8f;val fov=if(land)34f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,0f,camY,camZ,0f,0.12f,0f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
@@ -1069,8 +1069,8 @@ class LudoBoardView(
                 drawShadowMesh(sphere,identityAt(4.55f,0.63f,2.70f,0.11f,0.34f,0.11f))
                 drawShadowMesh(sphere,identityAt(4.40f,0.86f,2.70f,0.26f,0.07f,0.14f))
                 drawShadowMesh(sphere,identityAt(4.70f,0.82f,2.66f,0.24f,0.065f,0.13f))
-                drawShadowMesh(cube,identityAt(4.55f,0.24f,4.40f,0.72f,0.055f,0.42f))
-                drawShadowMesh(cube,identityAt(4.55f,0.31f,4.40f,0.66f,0.025f,0.37f))
+                drawShadowMesh(cube,identityAt(4.35f,0.24f,2.20f,0.72f,0.055f,0.42f))
+                drawShadowMesh(cube,identityAt(4.35f,0.31f,2.20f,0.66f,0.025f,0.37f))
                 for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti));drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))}
                 if(player in 0..3){
                     val p=dieCenterWorld(player)
@@ -1225,11 +1225,11 @@ class LudoBoardView(
                     glbDie.mesh,
                     heroDieModel(glbDie.transform,pi,p[0],p[1]+0.38f,p[2],0.52f),
                     floatArrayOf(0.98f,0.99f,1.0f,1f),
-                    PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
-                    PremiumMaterialLighting.Calibration.CHROME_METALLIC,
+                    0.115f,
+                    0.72f,
                     0.99f,
-                    0.012f,
-                    4,
+                    0.016f,
+                    5,
                     false
                 )
             }else{
@@ -1586,8 +1586,8 @@ class LudoBoardView(
         fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0);GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0);GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY);GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0);GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0);GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY);GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0);GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0);GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY);GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY);GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS);GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
         fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean){
-            val albedo=when(material){1->wood;2->board;3->neutral;4->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            val albedo=when(material){1->wood;2->board;3->neutral;4->metal;5->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
+            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,when(material){4->0.90f;5->0.72f;else->metallic});GLES30.glUniform1f(uRoughness,when(material){4->0.105f;5->0.115f;else->rough});GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4 || material==5)PremiumMaterialLighting.die().normalStrength else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->0.58f;5->0.48f;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->0.075f;5->0.08f;3->0.12f;else->0.18f})
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normal);GLES30.glUniform1i(uNormalTex,1)
             GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glVertexAttribPointer(1,3,GLES30.GL_FLOAT,false,0,mesh.n);GLES30.glVertexAttribPointer(2,2,GLES30.GL_FLOAT,false,0,mesh.uv);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
         }
