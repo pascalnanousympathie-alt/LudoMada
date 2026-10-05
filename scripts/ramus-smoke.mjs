@@ -445,6 +445,14 @@ try {
     console.log("AFTER_4P_SNAPSHOT_ERROR=" + JSON.stringify(afterFour.value));
   }
   if (!hasText("Joueur 1/4") && !hasText("GAMEPLAY_3D_OFFLINE_4P")) throw new Error("4-player gameplay screen did not open");
+  let glbRuntimeOk=false;
+  for(let attempt=0;attempt<8;attempt++){
+    const glbSnap=allow("snapshot","--session",session,"--find","GLB_RUNTIME_LOAD_OK");
+    if(glbSnap.ok && glbSnap.value?.elements?.length){glbRuntimeOk=true;break;}
+    waitStable(350);
+  }
+  if(!glbRuntimeOk) throw new Error("Runtime GLB did not report GLB_RUNTIME_LOAD_OK on gameplay SurfaceView");
+  console.log("GLB_RUNTIME_LOAD PASS");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
   shot("board-4p");
