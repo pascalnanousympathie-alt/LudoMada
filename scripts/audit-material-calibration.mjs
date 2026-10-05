@@ -1,62 +1,84 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 
-const file = "android-app/app/src/main/java/com/ludomadagascar/LudoBoardView.kt";
-if (!fs.existsSync(file)) {
-  console.error("MATERIAL_CALIBRATION_AUDIT_FAIL missing", file);
-  process.exit(1);
-}
-const src = fs.readFileSync(file, "utf8");
+const rendererFile = "android-app/app/src/main/java/com/ludomadagascar/LudoBoardView.kt";
+const materialFile = "android-app/app/src/main/java/com/ludomadagascar/PremiumMaterialLighting.kt";
 
-function readNumber(label, re) {
-  const m = src.match(re);
+for (const file of [rendererFile, materialFile]) {
+  if (!fs.existsSync(file)) {
+    console.error("MATERIAL_CALIBRATION_AUDIT_FAIL missing", file);
+    process.exit(1);
+  }
+}
+
+const renderer = fs.readFileSync(rendererFile, "utf8");
+const material = fs.readFileSync(materialFile, "utf8");
+
+function num(source, re) {
+  const m = source.match(re);
   return m ? Number(m[1]) : null;
 }
 
-const actual = {
-  chromeClearcoat: readNumber("chromeClearcoat", /uClearCoat,when\(material\)\{4->([0-9.]+)f/),
-  chromeClearcoatRoughness: readNumber("chromeClearcoatRoughness", /uClearCoatRoughness,when\(material\)\{4->([0-9.]+)f/),
-  key: readNumber("key", /vec3\(([0-9.]+),0\.98,0\.84\)/),
-  fill: readNumber("fill", /nl2\*([0-9.]+)/),
-  shadowBias: readNumber("shadowBias", /p\.z-([0-9.]+)/),
-  bloom: readNumber("bloom", /postShader\.draw\(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,([0-9.]+),([0-9.]+)\)/),
-};
-
 const target = {
-  chromeClearcoat: 0.72,
-  chromeClearcoatRoughness: 0.055,
-  key: 1.08,
-  fill: 0.22,
-  shadowBias: 0.00135,
-  bloom: 0.10,
-  ssao: 0.28,
-  ambientIbl: 0.82,
-  rim: 0.34
+  chromeClearcoat: num(material, /CHROME_CLEAR_COAT\s*=\s*([0-9.]+)f/),
+  chromeClearcoatRoughness: num(material, /CHROME_CLEAR_COAT_ROUGHNESS\s*=\s*([0-9.]+)f/),
+  chromeMetallic: num(material, /CHROME_METALLIC\s*=\s*([0-9.]+)f/),
+  chromeRoughness: num(material, /CHROME_ROUGHNESS\s*=\s*([0-9.]+)f/),
+  key: num(material, /KEY_INTENSITY\s*=\s*([0-9.]+)f/),
+  fill: num(material, /FILL_INTENSITY\s*=\s*([0-9.]+)f/),
+  rim: num(material, /RIM_INTENSITY\s*=\s*([0-9.]+)f/),
+  ambientIbl: num(material, /AMBIENT_IBL_INTENSITY\s*=\s*([0-9.]+)f/),
+  shadowBias: num(material, /SHADOW_BIAS\s*=\s*([0-9.]+)f/),
+  bloom: num(material, /BLOOM\s*=\s*([0-9.]+)f/),
+  ssao: num(material, /SSAO\s*=\s*([0-9.]+)f/)
 };
 
-const tolerance = 0.00001;
-const compare = (name) => actual[name] !== null && Math.abs(actual[name] - target[name]) <= tolerance;
+const actual = {
+  chromeClearcoat: num(renderer, /uClearCoat,when\(material\)\{4->([0-9.]+)f/),
+  chromeClearcoatRoughness: num(renderer, /uClearCoatRoughness,when\(material\)\{4->([0-9.]+)f/),
+  chromeMetallic: num(renderer, /drawMesh\(roundedBox,die,floatArrayOf\([^;]+?\),0\.055f,1\.0f/),
+  key: num(renderer, /direct=\(kd\*albedo\/PI\+spec\)\*vec3\(([0-9.]+),0\.98,0\.84\)/),
+  fill: num(renderer, /\*nl2\*([0-9.]+)f/),
+  shadowBias: num(renderer, /p\.z-([0-9.]+),s=0\.0/),
+  bloom: num(renderer, /postShader\.draw\(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,([0-9.]+)f,([0-9.]+)f\)/),
+  ssao: num(renderer, /postShader\.draw\(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,([0-9.]+)f,([0-9.]+)f\)/),
+  ambientIblShaderScalar: num(renderer, /envD\*albedo\*kd\*([0-9.]+)\+/),
+  rimPresent: /rimIntensity|RIM_INTENSITY|rim contribution|Rim/.test(renderer)
+};
+
+const post = renderer.match(/postShader\.draw\(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,([0-9.]+)f,([0-9.]+)f\)/);
+if (post) {
+  actual.ssao = Number(post[1]);
+  actual.bloom = Number(post[2]);
+}
+
+function equal(a, b) {
+  return a !== null && b !== null && Math.abs(a - b) <= 0.00001;
+}
 
 const results = {
-  chromeClearcoat: compare("chromeClearcoat"),
-  chromeClearcoatRoughness: compare("chromeClearcoatRoughness"),
-  key: compare("key"),
-  fill: compare("fill"),
-  shadowBias: compare("shadowBias"),
-  bloom: compare("bloom")
+  chromeClearcoat: equal(actual.chromeClearcoat, target.chromeClearcoat),
+  chromeClearcoatRoughness: equal(actual.chromeClearcoatRoughness, target.chromeClearcoatRoughness),
+  chromeMetallic: renderer.includes("0.055f,1.0f,1f,0.045f,4,false"),
+  key: equal(actual.key, target.key),
+  fill: equal(actual.fill, target.fill),
+  shadowBias: equal(actual.shadowBias, target.shadowBias),
+  bloom: equal(actual.bloom, target.bloom),
+  ssao: equal(actual.ssao, target.ssao),
+  ambientIbl: actual.ambientIblShaderScalar !== null &&
+    Math.abs(actual.ambientIblShaderScalar - target.ambientIbl) <= 0.00001,
+  rim: actual.rimPresent
 };
 
-console.log(JSON.stringify({
+const report = {
   mode: process.argv.includes("--strict") ? "strict" : "audit",
-  actual,
+  sourceOfTruth: "PremiumMaterialLighting.Calibration",
   target,
-  expectedManualIntegration: {
-    ambientIbl: target.ambientIbl,
-    rim: target.rim,
-    ssao: target.ssao
-  },
+  actual,
   results
-}, null, 2));
+};
+
+console.log(JSON.stringify(report, null, 2));
 
 if (process.argv.includes("--strict") && Object.values(results).some((v) => !v)) {
   process.exit(2);
