@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "android-app/**"
+      - "scripts/**"
       - ".github/workflows/android-apk.yml"
 
 jobs:
