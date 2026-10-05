@@ -973,7 +973,7 @@ class LudoBoardView(
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
-                host.post { host.contentDescription = "GLB_RUNTIME_LOAD_FALLBACK" }
+                host.post { host.contentDescription = "GLB_RUNTIME_LOAD_FALLBACK|" + it.javaClass.simpleName + ":" + (it.message ?: "no-message").take(180) }
                 emptyMap()
             }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
