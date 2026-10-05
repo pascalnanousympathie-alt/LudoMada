@@ -50,6 +50,10 @@ dependencies {
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     // Reown transitively requests coroutines-reactive 1.9.0; 1.11.0 is cached on the ARM64 runner.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactive:1.11.0")
+    // Premium PBR runtime foundation. Existing GameplayRenderer remains active until verified.
+    implementation("com.google.android.filament:filament-android:1.77.2")
+    implementation("com.google.android.filament:gltfio-android:1.77.2")
+    implementation("com.google.android.filament:filament-utils-android:1.77.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
