@@ -73,7 +73,13 @@ function findRef(text) {
   return { ref: r.elements[0].ref, gen: r.gen };
 }
 function tapRef(target) {
-  return run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const r = allow("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  // Ramus can invalidate a reference between snapshot and tap when Android lazily
+  // reattaches accessibility nodes. Return control to the caller so its coordinate
+  // fallback can run instead of aborting the whole visual smoke gate.
+  if (!r.ok && r.value?.error === "stale_ref") return r;
+  if (!r.ok) throw new Error(JSON.stringify(r.value));
+  return r;
 }
 function tapAnyRef(text) {
   const target = findRef(text);
