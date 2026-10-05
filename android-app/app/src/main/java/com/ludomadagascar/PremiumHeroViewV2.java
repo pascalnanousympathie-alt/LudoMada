@@ -515,16 +515,105 @@ public class PremiumHeroViewV2 extends FrameLayout {
       return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
     }
     @Override protected void onDraw(Canvas c){
+      final float den=getResources().getDisplayMetrics().density;
       final float W=getWidth(), H=getHeight();
       if(W<=0 || H<=0) return;
       if(W<H){
         c.drawColor(Color.BLACK);
         return;
       }
-      // Keep the exact supplied Home screenshot as the visual shell. Its central
-      // board is replaced by the real GLES3/PBR child, so the board is not doubled.
-      drawHomeReference(c,W,H);
-      drawLiveHomeFields(c,W,H);
+
+      // Rebuild the supplied Home reference as live Android rendering.
+      // The reference image is no longer painted on screen; it is only a design guide.
+      s=Math.min(W/(1280f*den),H/(720f*den));
+      float sc=s*den;
+      float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+
+      c.save();
+      background(c,W,H);
+      c.translate(ox,oy);
+
+      // Premium outer glass frame.
+      box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
+      p.setShader(new LinearGradient(0,24*sc,0,696*sc,0x28FFFFFF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(25),d(25),d(1255),d(695),d(31),d(31),p);
+      p.setShader(null);
+
+      // Header / identity.
+      t(c,"Ludo",650,82,22,Color.WHITE,true,true);
+      t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
+      t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
+      box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
+      p.setShader(new RadialGradient(d(92),d(80),d(38),0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawCircle(d(92),d(80),d(38),p); p.setShader(null);
+      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(gold2);
+      c.drawCircle(d(92),d(80),d(26),p); p.setStyle(Paint.Style.FILL);
+      pawn(c,92,81,13,blue);
+
+      String u=str("username");
+      long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      t(c,dn,132,75,18,Color.WHITE,true,false);
+      t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);
+      t(c,"SOLDE",935,77,9,gold2,true,false);
+      t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
+      box(c,1096,56,1164,104,18,0xFFEDB83A,0);
+      t(c,"+",1130,87,22,0xFF432600,true,true);
+      t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+
+      // Live left navigation rail.
+      menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
+      menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
+      menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
+      menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
+      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);
+      t(c,"MISE",171,556,11,gold2,true,true);
+      int[] fs={500,1000,2000,5000,10000,20000};
+      for(int i=0;i<6;i++){
+        float l=60+i*37;
+        boolean a=fs[i]==fee;
+        box(c,l,570,l+34,598,9,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);
+        String label=fs[i]<1000?String.valueOf(fs[i]):(fs[i]/1000)+"K";
+        t(c,label,l+17,588,7.2f,a?0xFF4A2800:Color.WHITE,true,true);
+      }
+
+      // Framing only: the board itself is the live GLES3/PBR child.
+      // This intentionally leaves no second 2D board underneath it.
+      box(c,390,108,1000,706,30,0x6A081526,0x668FBFFF);
+      p.setShader(new LinearGradient(d(400),d(118),d(990),d(700),0x3AFFFFFF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(401),d(119),d(989),d(699),d(27),d(27),p);
+      p.setShader(null);
+      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(0x99FFFFFF);
+      c.drawRoundRect(d(406),d(124),d(984),d(694),d(24),d(24),p); p.setStyle(Paint.Style.FILL);
+      t(c,"TABLE PREMIUM • LIVE 3D",695,130,8.5f,gold2,true,true);
+
+      // Live right information / CTA panel.
+      box(c,1010,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
+      t(c,"LUDOMADA",1119,185,16,gold2,true,true);
+      t(c,"TABLE PREMIUM",1119,208,10,0xD9FFFFFF,true,true);
+      t(c,"2–4",1119,255,29,Color.WHITE,true,true);
+      t(c,"JOUEURS",1119,275,9,0xCFFFFFFF,true,true);
+      t(c,"Mise actuelle",1119,314,9,0xBFFFFFFF,false,true);
+      t(c,fee+" Ar",1119,344,24,gold2,true,true);
+      box(c,1028,378,1210,452,22,0xFFFFC32D,0xEEFFF0B0);
+      t(c,"▶",1060,422,24,0xFF4A2900,true,true);
+      t(c,"JOUER",1123,418,19,0xFF452500,true,true);
+      t(c,"EN LIGNE / HORS-LIGNE",1119,438,8,0xFF694A15,true,true);
+      t(c,"RAPIDE • FLUIDE • RÉALISTE",1119,490,8.5f,gold2,true,true);
+      box(c,1028,470,1210,520,18,0xB316315A,0x557EB8FF);
+      t(c,"♛",1060,500,18,Color.WHITE,true,true);
+      t(c,"TOURNOIS",1123,496,10,Color.WHITE,true,true);
+      t(c,"Classement & défis",1123,511,8,0xD0FFFFFF,false,false);
+      box(c,1028,528,1210,578,18,0xB316315A,0x557EB8FF);
+      t(c,"?",1060,558,18,gold2,true,true);
+      t(c,"TUTORIELS",1123,554,10,Color.WHITE,true,true);
+      t(c,"Apprendre le Ludo",1123,569,8,0xD0FFFFFF,false,false);
+      box(c,1028,586,1210,628,14,0x88111F38,0x447EB8FF);
+      t(c,"Madagasikara • Miray",1119,612,8,gold2,true,true);
+
+      c.restore();
+      postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
