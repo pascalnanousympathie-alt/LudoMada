@@ -509,10 +509,10 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            Matrix.perspectiveM(proj,0,31f,aspect,0.1f,60f)
+            Matrix.perspectiveM(proj,0,30f,aspect,0.1f,60f)
             Matrix.setLookAtM(
-                view,0,0f,10.6f,11.6f,
-                0f,0.18f,0f,
+                view,0,0f,6.4f,7.0f,
+                0f,0.16f,0f,
                 0f,1f,0f
             )
             Matrix.multiplyMM(vp,0,proj,0,view,0)
@@ -523,17 +523,17 @@ class LudoBoardView(
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             GLES20.glUseProgram(program)
-            GLES20.glUniform3f(uCamera,0f,10.6f,11.6f)
-            GLES20.glUniform3f(uLight,-6.0f,13f,8f)
+            GLES20.glUniform3f(uCamera,0f,6.4f,7.0f)
+            GLES20.glUniform3f(uLight,-5.0f,11f,7f)
 
             // Blue woven cloth + deep wood substrate + lacquered wood frame + cream playing surface.
-            drawMesh(cube,model(0f,-1.0f,0f,13f,0.08f,13f,0f),color(20,65,118,1f),0.74f,0.02f,0f)
+            drawMesh(cube,model(0f,-1.0f,0f,32f,0.08f,32f,0f),color(20,78,138,1f),0.70f,0.02f,0f)
             drawMesh(cube,model(0f,-0.48f,0f,5.45f,0.34f,5.45f,0f),color(66,26,8,1f),0.54f,0.10f,0f)
             drawMesh(cube,model(0f,-0.04f,0f,5.12f,0.12f,5.12f,0f),color(112,55,18,1f),0.42f,0.16f,0f)
             drawMesh(cube,model(0f,0.095f,0f,4.82f,0.075f,4.82f,0f),color(182,112,42,1f),0.34f,0.18f,0f)
             // Warm wood top matches the physical board in the reference; playable cells are
             // layered separately above it in ivory, so the wood remains visible between lanes.
-            drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(142,78,27,1f),0.36f,0.16f,0.01f)
+            drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(154,86,30,1f),0.34f,0.14f,0.02f)
 
             drawPath()
             drawZones()
@@ -596,9 +596,9 @@ class LudoBoardView(
                 drawMesh(disk,model(p[0],0.300f,p[1],0.30f,0.020f,0.30f,0f),color(32,24,20,0.30f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
                 // Bright lacquered 3D pawn silhouette, closer to the supplied reference.
-                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.52f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.20f,0.0f,0.09f)
-                drawMesh(sphere,model(p[0],ly+0.36f,p[1],0.20f,0.20f,0.20f,0f),colorFromInt(pawnColors[pi],1f),0.16f,0.0f,0.08f)
-                drawMesh(sphere,model(p[0]-0.05f,ly+0.48f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.86f),0.10f,0.45f,0.10f)
+                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.88f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.0f,0.16f)
+                drawMesh(sphere,model(p[0],ly+0.70f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
+                drawMesh(sphere,model(p[0]-0.05f,ly+0.84f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.90f),0.10f,0.35f,0.12f)
             }
         }
 
@@ -653,10 +653,10 @@ class LudoBoardView(
         }
 
         private fun dieCenter(pi:Int):FloatArray=when(pi){
-            0->floatArrayOf(-3.35f,-3.35f)
-            1->floatArrayOf(3.35f,-3.35f)
-            2->floatArrayOf(3.35f,3.35f)
-            else->floatArrayOf(-3.35f,3.35f)
+            0->floatArrayOf(-4.90f,-4.90f)
+            1->floatArrayOf(4.90f,-4.90f)
+            2->floatArrayOf(4.90f,4.90f)
+            else->floatArrayOf(-4.90f,4.90f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
