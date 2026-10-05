@@ -3,8 +3,9 @@
   "sourceScene": {
     "provider": "Higgsfield 3D Jutsu",
     "projectId": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 2,
-    "sourceGlbBytes": 846100
+    "revision": 3,
+    "sourceGlbBytes": 846104,
+    "materialCalibration": "PBR rev3 calibrated in 3D Jutsu"
   },
   "glbBytes": {
     "heroMax": 8388608,
