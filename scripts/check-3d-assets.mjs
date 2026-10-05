@@ -24,7 +24,7 @@ const checks = [
   ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
 const failed = checks.filter(([, ok]) => !ok);
-const packagedFiles = fs.readdirSync(root).filter((name) => /.(glb|gltf)$/i.test(name));
+const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
 );
