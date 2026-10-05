@@ -479,3 +479,5 @@ try {
     process.exitCode = 1;
   }
 }
+
+// Current-base Lane F evidence trigger; keep this QA PR open through completion.\n
