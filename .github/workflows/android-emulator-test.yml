@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 35
     concurrency:
       group: ramus-${{ github.ref }}
-      cancel-in-progress: false
+      cancel-in-progress: true
     env:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
