@@ -14,7 +14,7 @@ on:
       - ".github/workflows/ci.yml"
 
 concurrency:
-  group: ludomada-self-hosted-arm64
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,24 +30,19 @@ jobs:
     defaults:
       run:
         shell: bash
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
     steps:
       - name: Checkout source from GitHub
-        working-directory: .
         env:
           GIT_AUTH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          if [ -d "$GITHUB_WORKSPACE/.git" ]; then
-            git -C "$GITHUB_WORKSPACE" remote remove origin 2>/dev/null || true
-          else
-            rm -rf "$GITHUB_WORKSPACE"
-            mkdir -p "$GITHUB_WORKSPACE"
-            git -C "$GITHUB_WORKSPACE" init
-          fi
-          git -C "$GITHUB_WORKSPACE" remote add origin "https://github.com/$GITHUB_REPOSITORY.git" 2>/dev/null || true
-          git -C "$GITHUB_WORKSPACE" remote set-url origin "https://github.com/$GITHUB_REPOSITORY.git"
-          git -c credential.helper= -C "$GITHUB_WORKSPACE" fetch --depth=1 "https://x-access-token:$GIT_AUTH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
-          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+          rm -rf "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          mkdir -p "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" init
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -c credential.helper= -C "${{ github.workspace }}/_runs/${{ github.run_id }}" fetch --depth=1 "https://x-access-token:$GIT_AUTH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" checkout --detach "$GITHUB_SHA"
 
       - name: Use Termux Node
         run: |
