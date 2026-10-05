@@ -3,7 +3,7 @@
   "units": "meters",
   "format": "glb/gltf2",
   "target": "android-realtime",
-  "runtime_packaged": true,
+  "runtime_packaged": false,
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
@@ -68,5 +68,8 @@
     "prefer_compressed_textures": true,
     "prefer_lod_for_large_assets": true,
     "avoid_external_texture_paths": true
-  }
+  },
+  "asset_bundled_in_source_tree": true,
+  "runtime_loader": "not-integrated",
+  "active_renderer": "native-gles3-premium"
 }
