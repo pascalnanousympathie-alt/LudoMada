@@ -479,3 +479,4 @@ try {
     process.exitCode = 1;
   }
 }
+// Lane F evidence trigger: source unchanged; this PR exists only to run the current-base validation gate.
