@@ -198,9 +198,9 @@ class LudoBoardView(
     private fun homeGrid(pi: Int, ti: Int): FloatArray {
         val xy = arrayOf(
             // Reference layout: four compact pawns inside each outer home plinth.
-            floatArrayOf(-2.92f, 2.92f), floatArrayOf(-2.24f, 2.92f), floatArrayOf(-2.92f, 2.24f), floatArrayOf(-2.24f, 2.24f),
             floatArrayOf(-2.92f, -2.92f), floatArrayOf(-2.24f, -2.92f), floatArrayOf(-2.92f, -2.24f), floatArrayOf(-2.24f, -2.24f),
             floatArrayOf(2.24f, -2.92f), floatArrayOf(2.92f, -2.92f), floatArrayOf(2.24f, -2.24f), floatArrayOf(2.92f, -2.24f),
+            floatArrayOf(-2.92f, 2.92f), floatArrayOf(-2.24f, 2.92f), floatArrayOf(-2.92f, 2.24f), floatArrayOf(-2.24f, 2.24f),
             floatArrayOf(2.24f, 2.24f), floatArrayOf(2.92f, 2.24f), floatArrayOf(2.24f, 2.92f), floatArrayOf(2.92f, 2.92f)
         )
         return xy[pi * 4 + ti].clone()
@@ -233,10 +233,10 @@ class LudoBoardView(
     private fun finishGrid(pi: Int, step: Int): FloatArray {
         val d = 0.30f * step
         return when (pi) {
-            0 -> floatArrayOf(-d, 0f)
-            1 -> floatArrayOf(0f, -d)
-            2 -> floatArrayOf(d, 0f)
-            else -> floatArrayOf(0f, d)
+            0 -> floatArrayOf(-d, 0f)   // green from left
+            1 -> floatArrayOf(0f, -d)    // yellow from top
+            2 -> floatArrayOf(0f, d)     // red from bottom
+            else -> floatArrayOf(d, 0f)  // blue from right
         }
     }
 
@@ -382,8 +382,8 @@ class LudoBoardView(
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
 
         private val pawnColors=intArrayOf(
-            Color.rgb(219,59,66),Color.rgb(48,165,92),
-            Color.rgb(239,186,46),Color.rgb(59,112,219)
+            Color.rgb(48,165,92),Color.rgb(239,186,46),
+            Color.rgb(219,59,66),Color.rgb(59,112,219)
         )
 
         override fun onSurfaceCreated(
@@ -886,7 +886,7 @@ class LudoBoardView(
         private val projectionSnapshot=FloatArray(16)
         private val modelScratch=FloatArray(16)
         private val pawnColors=intArrayOf(
-            Color.rgb(219,59,66),Color.rgb(48,165,92),Color.rgb(239,186,46),Color.rgb(59,112,219)
+            Color.rgb(48,165,92),Color.rgb(239,186,46),Color.rgb(219,59,66),Color.rgb(59,112,219)
         )
         private var rayTracingHardware=false
         private lateinit var shader:PbrShader
@@ -1062,7 +1062,7 @@ class LudoBoardView(
             if(shadowPass){
                 drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
                 drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
-                val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
+                val homes=arrayOf(floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(-2.58f,2.58f),floatArrayOf(2.58f,2.58f));for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
                 // Small environmental props keep the tabletop grounded like the supplied reference.
                 drawShadowMesh(roundedBox,identityAt(-4.55f,0.24f,2.95f,0.34f,0.30f,0.34f))
                 drawShadowMesh(roundedBox,identityAt(4.55f,0.24f,2.70f,0.42f,0.20f,0.42f))
@@ -1104,7 +1104,7 @@ class LudoBoardView(
             drawMesh(cube,identityAt(4.55f,0.24f,4.40f,0.72f,0.055f,0.42f),floatArrayOf(0.025f,0.035f,0.048f,1f),0.58f,0.18f,1f,0f,1,false)
             drawMesh(cube,identityAt(4.55f,0.31f,4.40f,0.66f,0.025f,0.37f),floatArrayOf(0.72f,0.69f,0.61f,1f),0.68f,0.02f,1f,0f,2,false)
 
-            val homes=arrayOf(floatArrayOf(0f,-2.58f),floatArrayOf(2.58f,0f),floatArrayOf(0f,2.58f),floatArrayOf(-2.58f,0f))
+            val homes=arrayOf(floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(-2.58f,2.58f),floatArrayOf(2.58f,2.58f))
             for(i in 0..3){
                 val hc=homes[i]
                 drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(zoneColorInt(i)),0.34f,0.06f,1f,0.01f,3,false)
@@ -1344,7 +1344,7 @@ class LudoBoardView(
         private fun identityAt(x:Float,y:Float,z:Float,sx:Float=1f,sy:Float=1f,sz:Float=1f):FloatArray{Matrix.setIdentityM(modelScratch,0);Matrix.translateM(modelScratch,0,x,y,z);Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()}
         private fun rgba(c:Int)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,1f)
         private fun colorFromInt(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
-        private fun zoneColorInt(i:Int)=when(i){0->Color.rgb(219,59,66);1->Color.rgb(48,165,92);2->Color.rgb(239,186,46);else->Color.rgb(59,112,219)}
+        private fun zoneColorInt(i:Int)=when(i){0->Color.rgb(48,165,92);1->Color.rgb(239,186,46);2->Color.rgb(219,59,66);else->Color.rgb(59,112,219)}
         private fun cubeMesh(): Mesh {
             val positions = floatArrayOf(
                 -1f,-1f,1f, 1f,-1f,1f, 1f,1f,1f, -1f,1f,1f,
@@ -1398,8 +1398,8 @@ class LudoBoardView(
 
         private fun zoneMesh(pi: Int): Mesh {
             val v = ArrayList<Float>(); val n = ArrayList<Float>(); val i = ArrayList<Short>()
-            val x = when (pi) { 0, 1 -> -2.58f; else -> 2.58f }
-            val z = when (pi) { 0, 3 -> 2.58f; else -> -2.58f }
+            val x = when (pi) { 0, 2 -> -2.58f; else -> 2.58f }
+            val z = when (pi) { 0, 1 -> -2.58f; else -> 2.58f }
             addBox(v, n, i, 0, x, boardTop + 0.04f, z, 1.42f, 0.055f, 1.42f)
             addBox(v, n, i, 24, x, boardTop + 0.095f, z, 1.14f, 0.04f, 1.14f)
             return Mesh(v.toFloatArray(), n.toFloatArray(), i.toShortArray())
@@ -1408,10 +1408,10 @@ class LudoBoardView(
         private fun laneMesh(pi:Int):Mesh{
             val v=ArrayList<Float>();val n=ArrayList<Float>();val i=ArrayList<Short>();var base=0
             val cells=when(pi){
-                0 -> (1..6).map{it to 7}
-                1 -> listOf(7 to 8,7 to 9,7 to 10,7 to 11,7 to 12,7 to 13)
-                2 -> (8..13).map{it to 7}
-                else -> listOf(7 to 1,7 to 2,7 to 3,7 to 4,7 to 5,7 to 6)
+                0 -> listOf(7 to 1,7 to 2,7 to 3,7 to 4,7 to 5,7 to 6) // green left
+                1 -> (1..6).map{it to 7} // yellow top
+                2 -> (8..13).map{it to 7} // red bottom
+                else -> listOf(7 to 8,7 to 9,7 to 10,7 to 11,7 to 12,7 to 13) // blue right
             }
             for((r,c) in cells){
                 val x=(c-7.0f)*0.50f;val z=(r-7.0f)*0.50f
