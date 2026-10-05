@@ -252,9 +252,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
         // (notably the hydro-chrome die) are not silently discarded at runtime.
         node.optJSONArray("matrix")?.let { matrix ->
             if (matrix.length() == 16) {
-                return FloatArray(16) { i ->
-                    matrix.optDouble(i, if (i % 5 == 0) 1.0 else 0.0).toFloat()
-                }
+                return FloatArray(16) { i -> matrix.optDouble(i, if (i % 5 == 0) 1.0 else 0.0).toFloat() }
             }
         }
 
