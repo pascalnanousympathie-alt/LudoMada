@@ -30,6 +30,7 @@ const checks = [
   ["shadow size source", renderer.includes("premiumLighting.shadowMapResolution")],
   ["pawn landing source", renderer.includes("PremiumVisualMotion.landingBounce")],
   ["die spin source", renderer.includes("PremiumVisualMotion.dieSpin")],
+  ["volumetric die pip source", renderer.includes("drawMesh(pips,pipModel") && renderer.includes("Volumetric pip")],
   ["canonical chrome clearcoat value", /CHROME_CLEAR_COAT\s*=\s*0\.72f/.test(material)],
   ["canonical chrome roughness value", /CHROME_ROUGHNESS\s*=\s*0\.055f/.test(material)],
   ["canonical chrome normal value", /CHROME_NORMAL_STRENGTH\s*=\s*0\.045f/.test(material)],
