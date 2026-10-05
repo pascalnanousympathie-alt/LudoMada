@@ -10,7 +10,14 @@
     "revision": 3,
     "glb_bytes": 846104,
     "material_revision": 3,
-    "material_calibration": "PremiumMaterialLighting.Calibration"
+    "material_calibration": "PremiumMaterialLighting.Calibration",
+    "sha256": "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027",
+    "delivery": {
+      "type": "higgsfield-media",
+      "media_id": "f77cf216-1a71-4b86-84b9-26339b96c4df",
+      "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb",
+      "verified_size_bytes": 846104
+    }
   },
   "board_geometry": {
     "square_board_m": 5.05,
