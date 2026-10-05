@@ -3,7 +3,7 @@
   "units": "meters",
   "format": "glb/gltf2",
   "target": "android-realtime",
-  "runtime_packaged": false,
+  "runtime_packaged": true,
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
@@ -70,6 +70,14 @@
     "avoid_external_texture_paths": true
   },
   "asset_bundled_in_source_tree": true,
-  "runtime_loader": "not-integrated",
+  "runtime_loader": "GlbRuntimeLoader",
+  "runtime_hero_parts": [
+    "LM_Pawn_Base_Weighted",
+    "LM_Pawn_Tapered_Body",
+    "LM_Pawn_Collar",
+    "LM_Pawn_Spherical_Head",
+    "LM_Pawn_Underside_Insert",
+    "LM_Die_HydroChrome_Body"
+  ],
   "active_renderer": "native-gles3-premium"
 }
