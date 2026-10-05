@@ -10,6 +10,7 @@ on:
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
       - "scripts/ramus-smoke.mjs"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
       - "scripts/ramus-smoke.mjs"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
 
 jobs:
