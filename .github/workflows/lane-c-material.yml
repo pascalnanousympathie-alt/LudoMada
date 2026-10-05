@@ -1,0 +1,47 @@
+name: Lane C Material Contract
+
+on:
+  pull_request:
+    paths:
+      - "android-app/app/src/main/java/com/ludomadagascar/PremiumMaterialLighting.kt"
+      - "docs/3d/PREMIUM_MATERIAL_LIGHTING_CURRENT.md"
+      - "scripts/check-premium-material-contract-current.mjs"
+      - ".github/workflows/lane-c-material.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: lane-c-material-contract
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout exact PR revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Use Termux Node when present
+        run: |
+          set -eu
+          if [ -x /data/data/com.termux/files/usr/bin/node ]; then
+            mkdir -p "$HOME/.ci-node-bin"
+            cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+            chmod +x "$HOME/.ci-node-bin/node"
+            echo "PATH=$HOME/.ci-node-bin:$PATH" >> "$GITHUB_ENV"
+          fi
+
+      - name: Node toolchain
+        run: node -v
+
+      - name: Premium material contract
+        run: node scripts/check-premium-material-contract-current.mjs
