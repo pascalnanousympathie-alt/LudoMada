@@ -7,12 +7,14 @@
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 2,
-    "glb_bytes": 846100
+    "revision": 3,
+    "glb_bytes": 846104,
+    "material_revision": 3,
+    "material_calibration": "PremiumMaterialLighting.Calibration"
   },
   "board_geometry": {
     "square_board_m": 5.05,
-    "table_m": 5.60,
+    "table_m": 5.6,
     "path_cells": 52,
     "finish_cells": 24,
     "home_plinths": 4,
@@ -21,19 +23,35 @@
   },
   "assets": {
     "pawn": {
-      "parts": ["base","body","collar","head","underside"],
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head",
+        "underside"
+      ],
       "pivot": "bottom-center",
       "material": "lacquer-pbr"
     },
     "die": {
-      "parts": ["body","pips"],
+      "parts": [
+        "body",
+        "pips"
+      ],
       "pivot": "center",
       "material": "hydro-chrome",
-      "authoring_metallic": 0.95,
-      "authoring_roughness": 0.08
+      "authoring_metallic": 1,
+      "authoring_roughness": 0.055,
+      "clear_coat": 0.72,
+      "clear_coat_roughness": 0.055,
+      "pip_material": "LM_Die_Pip_Dark"
     },
     "table": {
-      "parts": ["deep-base","recessed-board","gold-frame"],
+      "parts": [
+        "deep-base",
+        "recessed-board",
+        "gold-frame"
+      ],
       "pivot": "center"
     }
   },
