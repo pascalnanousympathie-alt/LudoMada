@@ -3,10 +3,12 @@ package com.ludomadagascar
 import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.opengl.GLES20
 import android.opengl.GLES30
+import android.opengl.GLUtils
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.HapticFeedbackConstants
@@ -942,13 +944,6 @@ class LudoBoardView(
         private lateinit var roundedBox:Mesh
         private lateinit var disk:Mesh
         private lateinit var pips:Mesh
-        private lateinit var envSkyUpper:Mesh
-        private lateinit var envSkyMid:Mesh
-        private lateinit var envSkyLower:Mesh
-        private lateinit var envGround:Mesh
-        private lateinit var envHill:Mesh
-        private lateinit var envBranch:Mesh
-        private lateinit var envSun:Mesh
         private var shadowFbo=0
         private var shadowTex=0
         private var sceneFbo=0
@@ -967,6 +962,18 @@ class LudoBoardView(
         private var normalTex=0
         private var envCube=0
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private var envParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private var envBarkTex=0
+        private var envBarkNormalTex=0
+        private var envBarkRoughTex=0
+        private var envDirtTex=0
+        private var envDirtNormalTex=0
+        private var envDirtRoughTex=0
+        private var envSkyTex=0
+        private var envGrassTex=0
+        private var envGrassNormalTex=0
+        private var envGrassRoughTex=0
+        private var baobabParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         internal val lightVp=FloatArray(16)
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
@@ -1014,8 +1021,8 @@ class LudoBoardView(
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6)
-            envSkyUpper=cubeMesh();envSkyMid=cubeMesh();envSkyLower=cubeMesh();envGround=cubeMesh();envHill=sphereMesh(12,8);envBranch=cubeMesh();envSun=sphereMesh(16,10)
-            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
+
+            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture();envBarkTex=loadAssetTexture("environment/textures/bark_diff_2k.jpg");envBarkNormalTex=loadAssetTexture("environment/textures/bark_nor_gl_2k.jpg");envBarkRoughTex=loadAssetTexture("environment/textures/bark_rough_2k.jpg");envDirtTex=loadAssetTexture("environment/textures/dirt_diff_2k.jpg");envDirtNormalTex=loadAssetTexture("environment/textures/dirt_nor_gl_2k.jpg");envDirtRoughTex=loadAssetTexture("environment/textures/dirt_rough_2k.jpg");envSkyTex=loadAssetTexture("environment/textures/safari_sunset_2k.jpg");envGrassTex=loadAssetTexture("environment/textures/grass_diff_2k.jpg");envGrassNormalTex=loadAssetTexture("environment/textures/grass_nor_gl_2k.jpg");envGrassRoughTex=loadAssetTexture("environment/textures/grass_rough_2k.jpg")
             glbParts=runCatching{
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
@@ -1026,6 +1033,22 @@ class LudoBoardView(
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
                 host.post { host.contentDescription = "GLB_RUNTIME_LOAD_FALLBACK|" + it.javaClass.simpleName + ":" + (it.message ?: "no-message").take(180) }
+                emptyMap()
+            }
+            envParts=runCatching{
+                GlbRuntimeLoader(host.context).loadEnvironmentParts().also{
+                    android.util.Log.i("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_OK parts="+it.size)
+                }
+            }.getOrElse{
+                android.util.Log.e("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_FAILED",it)
+                emptyMap()
+            }
+            baobabParts=runCatching{
+                GlbRuntimeLoader(host.context).loadBaobabParts().also{
+                    android.util.Log.i("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_OK parts="+it.size)
+                }
+            }.getOrElse{
+                android.util.Log.e("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_FAILED",it)
                 emptyMap()
             }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
@@ -1118,14 +1141,27 @@ class LudoBoardView(
         }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
-                if(homePreview){
-                    drawHomeEnvironmentShadows()
-                } else {
-                    drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f));drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f));drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f));drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f));drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
-                drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f));for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f));for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
-                val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
-                for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti));drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))}
-                for(pi in 0..3){val p=dieCenterWorld(pi);drawShadowMesh(cube,identityAt(p[0],boardTop+0.035f,p[2],0.92f,0.06f,0.92f));drawShadowMesh(roundedBox,dieModel(pi))}
+                if(homePreview) drawHomeEnvironmentShadows()
+                drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
+                drawShadowMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f))
+                drawShadowMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f))
+                drawShadowMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f))
+                drawShadowMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f))
+                drawShadowMesh(pathMesh,identityAt(0f,boardTop+0.025f,0f))
+                for(i in 0..3)drawShadowMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f))
+                for(i in 0..3)drawShadowMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f))
+                val homes=arrayOf(floatArrayOf(0f,-2.58f),floatArrayOf(2.58f,0f),floatArrayOf(0f,2.58f),floatArrayOf(-2.58f,0f))
+                for(hc in homes)drawShadowMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f))
+                for(pi in 0..3)for(ti in 0..3){
+                    val xz=host.display[pi][ti]
+                    if(xz[0].isNaN())continue
+                    drawShadowMesh(pawnBody,pawnModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))
+                    drawShadowMesh(sphere,pawnHeadModel(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pi,ti))
+                }
+                for(pi in 0..3){
+                    val dp=dieCenterWorld(pi)
+                    drawShadowMesh(roundedBox,dieModel(pi))
+                    drawShadowMesh(cube,identityAt(dp[0],boardTop+0.035f,dp[2],0.92f,0.06f,0.92f))
                 }
                 return
             }
@@ -1156,28 +1192,93 @@ class LudoBoardView(
             if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
         }
         private fun drawHomeEnvironmentShadows(){
-            drawShadowMesh(envGround,envModel(0f,-1.08f,-1.5f,15f,0.16f,15f))
-            val ts=arrayOf(floatArrayOf(-7.8f,0f,-6.2f,1.25f),floatArrayOf(-5.8f,0f,-8.8f,0.95f),floatArrayOf(-1.8f,0f,-10.5f,0.75f),floatArrayOf(4.6f,0f,-9.0f,1.0f),floatArrayOf(8.3f,0f,-6.6f,1.25f),floatArrayOf(10.2f,0f,-10.2f,0.70f))
-            for(ti in ts){val x=ti[0];val z=ti[2];val sc=ti[3];drawShadowMesh(envBranch,envModel(x,1.35f,z,0.30f*sc,2.2f*sc,0.30f*sc));drawShadowMesh(envBranch,envModel(x-0.95f*sc,2.75f*sc,z,0.12f*sc,1.45f*sc,0.12f*sc,0f,0f,-38f));drawShadowMesh(envBranch,envModel(x+0.95f*sc,2.75f*sc,z,0.12f*sc,1.45f*sc,0.12f*sc,0f,0f,38f))}
+            drawEnvironmentGlb(true)
         }
-        private fun drawHomeEnvironment(){
-            drawMesh(envSkyLower,envModel(0f,3.7f,-13.5f,15f,4.8f,0.12f),floatArrayOf(0.78f,0.22f,0.045f,1f),0.98f,0f,0.96f,0.02f,3,false)
-            drawMesh(envSkyMid,envModel(0f,8.5f,-13.5f,15f,3.2f,0.12f),floatArrayOf(0.30f,0.07f,0.05f,1f),0.98f,0f,0.96f,0.015f,3,false)
-            drawMesh(envSkyUpper,envModel(0f,13.0f,-13.5f,15f,4.0f,0.12f),floatArrayOf(0.045f,0.045f,0.13f,1f),0.98f,0f,0.98f,0.01f,3,false)
-            drawMesh(envGround,envModel(0f,-1.08f,-1.8f,15f,0.16f,15f),floatArrayOf(0.12f,0.045f,0.018f,1f),0.88f,0f,0.90f,0f,1,false)
-            val hills=arrayOf(floatArrayOf(-7.6f,0f,-7.5f,4.2f,1.6f,1.2f),floatArrayOf(-2.4f,0.1f,-8.5f,4.8f,1.9f,1.4f),floatArrayOf(3.4f,0f,-8.8f,5.2f,1.8f,1.6f),floatArrayOf(8.2f,0f,-7.4f,4.2f,1.5f,1.2f))
-            for(h in hills)drawMesh(envHill,envModel(h[0],h[1],h[2],h[3],h[4],h[5]),floatArrayOf(0.075f,0.042f,0.028f,1f),0.94f,0f,0.84f,0f,3,false)
-            val trees=arrayOf(floatArrayOf(-8.4f,1.0f,-6.4f,1.35f),floatArrayOf(-6.0f,0.8f,-9.0f,1.0f),floatArrayOf(-2.0f,0.7f,-10.2f,0.76f),floatArrayOf(4.5f,0.9f,-9.2f,1.0f),floatArrayOf(8.2f,1.0f,-6.8f,1.30f),floatArrayOf(10.0f,0.7f,-10.4f,0.70f))
-            for(t in trees){
-                val x=t[0];val y=t[1];val z=t[2];val sc=t[3]
-                drawMesh(envBranch,envModel(x,y+1.55f*sc,z,0.42f*sc,2.15f*sc,0.42f*sc),floatArrayOf(0.055f,0.028f,0.018f,1f),0.93f,0f,0.88f,0f,3,false)
-                drawMesh(envBranch,envModel(x-0.92f*sc,y+3.0f*sc,z,0.15f*sc,1.35f*sc,0.15f*sc,0f,0f,-36f),floatArrayOf(0.16f,0.052f,0.018f,1f),0.90f,0f,0.92f,0.005f,3,false)
-                drawMesh(envBranch,envModel(x+0.96f*sc,y+3.05f*sc,z,0.15f*sc,1.40f*sc,0.15f*sc,0f,0f,38f),floatArrayOf(0.13f,0.044f,0.017f,1f),0.90f,0f,0.92f,0.006f,3,false)
-                drawMesh(envBranch,envModel(x-0.20f*sc,y+3.35f*sc,z,0.10f*sc,1.0f*sc,0.10f*sc,0f,0f,-8f),floatArrayOf(0.20f,0.06f,0.020f,1f),0.88f,0f,0.95f,0.008f,3,false)
-                drawMesh(envBranch,envModel(x+0.18f*sc,y+3.3f*sc,z,0.10f*sc,0.95f*sc,0.10f*sc,0f,0f,9f),floatArrayOf(0.17f,0.052f,0.018f,1f),0.88f,0f,0.95f,0.008f,3,false)
+
+        private fun drawEnvironmentGlb(shadowPass:Boolean){
+            if(envParts.isEmpty())return
+            val parts=envParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
+            if(shadowPass){
+                for(part in parts){
+                    if(part.materialName=="ENV_Sky_HDRI")continue
+                    drawShadowMesh(part.mesh,part.transform)
+                }
+                drawRealBaobabs(true)
+                return
             }
-            val sunY=5.1f+0.18f*sin((System.nanoTime()/1000000000.0)*0.04).toFloat()
-            drawMesh(envSun,envModel(6.2f,sunY,-10.6f,0.92f,0.92f,0.92f),floatArrayOf(1f,0.25f,0.025f,1f),0.18f,0.02f,1f,2.8f,3,true)
+            for(part in parts){
+                val mn=part.materialName
+                val skyPart=mn=="ENV_Sky_HDRI"
+                val barkPart=mn=="ENV_Bark_PBR"
+                val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
+                val grassPart=mn=="ENV_Grass_PBR"
+                val albedo=when{
+                    skyPart->envSkyTex
+                    barkPart->envBarkTex
+                    dirtPart->envDirtTex
+                    grassPart->envGrassTex
+                    else->neutralTex
+                }
+                val ntex=when{
+                    barkPart->envBarkNormalTex
+                    dirtPart->envDirtNormalTex
+                    grassPart->envGrassNormalTex
+                    else->normalTex
+                }
+                val rtex=when{
+                    barkPart->envBarkRoughTex
+                    dirtPart->envDirtRoughTex
+                    grassPart->envGrassRoughTex
+                    dirtPart->envDirtRoughTex
+                    else->0
+                }
+                val rough=when{
+                    skyPart->1.0f
+                    barkPart->0.74f
+                    dirtPart->0.86f
+                    grassPart->0.92f
+                    else->0.82f
+                }
+                val metallic=if(skyPart)0f else part.metallic
+                val unlit=skyPart
+                drawMesh(part.mesh,part.transform,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
+            }
+            drawRealBaobabs(false)
+        }
+
+        private fun drawRealBaobabs(shadowPass:Boolean){
+            if(baobabParts.isEmpty())return
+            val instances=arrayOf(
+                floatArrayOf(0f,-1.05f,-5.55f,0.88f),
+                floatArrayOf(-7.6f,-1.02f,-7.35f,0.62f),
+                floatArrayOf(7.5f,-1.02f,-7.0f,0.66f),
+                floatArrayOf(-2.7f,-1.02f,-10.0f,0.48f),
+                floatArrayOf(4.2f,-1.02f,-10.1f,0.54f)
+            )
+            val ordered=baobabParts.values.sortedBy{if(it.materialName=="scrub")1 else 0}
+            for(inst in instances){
+                val im=identityAt(inst[0],inst[1],inst[2],inst[3],inst[3],inst[3])
+                for(part in ordered){
+                    val m=FloatArray(16)
+                    Matrix.multiplyMM(m,0,im,0,part.transform,0)
+                    if(shadowPass){
+                        drawShadowMesh(part.mesh,m)
+                    }else{
+                        val barkPart=part.materialName=="timber"
+                        val scrubPart=part.materialName=="scrub"
+                        val albedo=when{barkPart->envBarkTex;scrubPart->envGrassTex;else->neutralTex}
+                        val ntex=when{barkPart->envBarkNormalTex;scrubPart->envGrassNormalTex;else->normalTex}
+                        val rtex=when{barkPart->envBarkRoughTex;scrubPart->envGrassRoughTex;else->0}
+                        val rough=when{barkPart->0.76f;scrubPart->0.92f;else->0.82f}
+                        val base=part.baseColor
+                        drawMesh(part.mesh,m,base,rough,part.metallic,0.96f,0f,6,false,albedo,ntex,rtex)
+                    }
+                }
+            }
+        }
+
+        private fun drawHomeEnvironment(){
+            drawEnvironmentGlb(false)
         }
 
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
@@ -1320,7 +1421,7 @@ class LudoBoardView(
             Matrix.multiplyMM(out,0,anchor,0,local,0)
             return out
         }
-        private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean)=shader.draw(mesh,mat,color,rough,metallic,ao,emission,material,unlit)
+        private fun drawMesh(mesh:Mesh,mat:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean,albedoOverride:Int=0,normalOverride:Int=0,roughOverride:Int=0)=shader.draw(mesh,mat,color,rough,metallic,ao,emission,material,unlit,albedoOverride,normalOverride,roughOverride)
         private fun drawShadowMesh(mesh:Mesh,mat:FloatArray)=shadowShader.draw(mesh,mat)
         private fun maybeSpawnDust(now:Long){for(pi in 0..3)for(ti in 0..3){if(lift[pi][ti]<=0.035f||now-lastDust[pi][ti]<90_000_000L)continue;val xz=host.display[pi][ti];if(xz[0].isNaN())continue;lastDust[pi][ti]=now;spawnDust(xz[0],xz[1],pawnColors[pi])}}
         private var victoryKey=""
@@ -1404,6 +1505,24 @@ class LudoBoardView(
             return uploadTexture(1,data)
         }
 
+        private fun loadAssetTexture(assetPath:String):Int{
+            val opts=BitmapFactory.Options().apply{inScaled=false;inPreferredConfig=android.graphics.Bitmap.Config.ARGB_8888;inSampleSize=2}
+            val bitmap=host.context.assets.open(assetPath).use{BitmapFactory.decodeStream(it,null,opts)}
+                ?:error("Unable to decode asset texture: $assetPath")
+            val ids=IntArray(1)
+            GLES30.glGenTextures(1,ids,0)
+            val tex=ids[0]
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,tex)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_REPEAT)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_REPEAT)
+            GLUtils.texImage2D(GLES30.GL_TEXTURE_2D,0,bitmap,0)
+            GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)
+            bitmap.recycle()
+            return tex
+        }
         private fun uploadTexture(size:Int,data:ByteBuffer):Int{val ids=IntArray(1);GLES30.glGenTextures(1,ids,0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,ids[0]);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MIN_FILTER,GLES30.GL_LINEAR_MIPMAP_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_MAG_FILTER,GLES30.GL_LINEAR);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_S,GLES30.GL_REPEAT);GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D,GLES30.GL_TEXTURE_WRAP_T,GLES30.GL_REPEAT);GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D,0,GLES30.GL_RGBA,size,size,0,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,data);GLES30.glGenerateMipmap(GLES30.GL_TEXTURE_2D);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0);return ids[0]}
         private fun identityAt(x:Float,y:Float,z:Float,sx:Float=1f,sy:Float=1f,sz:Float=1f):FloatArray{Matrix.setIdentityM(modelScratch,0);Matrix.translateM(modelScratch,0,x,y,z);Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()}
         private fun envModel(x:Float,y:Float,z:Float,sx:Float,sy:Float,sz:Float,rx:Float=0f,ry:Float=0f,rz:Float=0f):FloatArray{
@@ -1625,7 +1744,7 @@ class LudoBoardView(
 
     private class PbrShader(private val renderer:SceneRenderer){
         private val program:Int
-        private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uClearCoat:Int;private val uClearCoatRoughness:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uShadowMap:Int;private val uEnvCube:Int;private val uKeyDirection:Int;private val uKeyColor:Int;private val uKeyIntensity:Int;private val uFillDirection:Int;private val uFillColor:Int;private val uFillIntensity:Int;private val uRimDirection:Int;private val uRimColor:Int;private val uRimIntensity:Int;private val uIBLIntensity:Int;private val uShadowBias:Int;private val uShadowInvSize:Int
+        private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uClearCoat:Int;private val uClearCoatRoughness:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uRoughTex:Int;private val uRoughTexEnabled:Int;private val uShadowMap:Int;private val uEnvCube:Int;private val uKeyDirection:Int;private val uKeyColor:Int;private val uKeyIntensity:Int;private val uFillDirection:Int;private val uFillColor:Int;private val uFillIntensity:Int;private val uRimDirection:Int;private val uRimColor:Int;private val uRimIntensity:Int;private val uIBLIntensity:Int;private val uShadowBias:Int;private val uShadowInvSize:Int
         private val mv=FloatArray(16);private val mvp=FloatArray(16);private val light=FloatArray(16)
         private var wood=0;private var board=0;private var neutral=0;private var metal=0;private var normal=0
         init{
@@ -1636,7 +1755,7 @@ class LudoBoardView(
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*w;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
             val fs="""#version 300 es
-                precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uShadowMap;uniform samplerCube uEnvCube;
+                precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uRoughTex,uShadowMap;uniform float uRoughTexEnabled;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
                 float G(float nv,float r){float k=((r+1.0)*(r+1.0))/8.0;return nv/max(nv*(1.0-k)+k,0.0001);}
@@ -1645,21 +1764,24 @@ class LudoBoardView(
                 void main(){
                     vec3 N0=normalize(vN),nm=texture(uNormalTex,vUv*3.5).xyz*2.0-1.0;vec3 T=normalize(vec3(1,0,0)-N0*dot(N0,vec3(1,0,0)));if(length(T)<0.10)T=normalize(vec3(0,0,1)-N0*dot(N0,vec3(0,0,1)));vec3 B=normalize(cross(N0,T));
                     vec3 N=normalize(mix(N0,T*nm.x+B*nm.y+N0*max(nm.z,0.15),uNormalStrength));vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;vec3 albedo=mix(uColor.rgb*tex,uColor.rgb,0.52);
-                    float m=clamp(uMetallic,0.0,1.0),r=clamp(uRoughness,0.045,1.0);vec3 V=normalize(-vP),L=normalize(uKeyDirection),H=normalize(V+L);float nv=max(dot(N,V),0.0),nl=max(dot(N,L),0.0);
+                    float m=clamp(uMetallic,0.0,1.0),r0=clamp(uRoughness,0.045,1.0);float mapR=texture(uRoughTex,vUv*2.0).r;r0=mix(r0,mapR,uRoughTexEnabled);float r=r0;vec3 V=normalize(-vP),L=normalize(uKeyDirection),H=normalize(V+L);float nv=max(dot(N,V),0.0),nl=max(dot(N,L),0.0);
                     vec3 f0=mix(vec3(0.04),albedo,m),f=F(max(dot(H,V),0.0),f0);float d=DGGX(N,H,r),g=G(nv,r)*G(nl,r);vec3 spec=(d*g*f)/max(4.0*nv*nl,0.001);vec3 kd=(vec3(1)-f)*(1-m);float sh=shadowV();
                     vec3 direct=(kd*albedo/PI+spec)*uKeyColor*nl*sh*uKeyIntensity;vec3 L2=normalize(uFillDirection);vec3 H2=normalize(V+L2);float nl2=max(dot(N,L2),0.0);float r2=max(0.06,uRoughness*0.82);float d2=DGGX(N,H2,r2);float g2=G(nv,r2)*G(nl2,r2);vec3 f2=F(max(dot(H2,V),0.0),f0);vec3 spec2=(d2*g2*f2)/max(4.0*nv*nl2,0.001);direct+=(kd*albedo/PI+spec2)*uFillColor*nl2*uFillIntensity;vec3 L3=normalize(uRimDirection);vec3 H3=normalize(V+L3);float nl3=max(dot(N,L3),0.0);float r3=max(0.06,uRoughness*0.78);float d3=DGGX(N,H3,r3);float g3=G(nv,r3)*G(nl3,r3);vec3 f3=F(max(dot(H3,V),0.0),f0);vec3 spec3=(d3*g3*f3)/max(4.0*nv*nl3,0.001);direct+=spec3*uRimColor*nl3*uRimIntensity;float coat=clamp(uClearCoat,0.0,1.0);float cr=max(0.035,uClearCoatRoughness);float cd=DGGX(N,H,cr);float cg=G(nv,cr)*G(nl,cr);vec3 cf=F(max(dot(H,V),0.0),vec3(0.04));float cs=(cd*cg*cf)/max(4.0*nv*nl,0.001);direct+=cs*vec3(1.0,0.96,0.90)*coat*nl*0.85;vec3 R=reflect(-V,N);vec3 envS=textureLod(uEnvCube,R,r*5.0).rgb;vec3 envD=textureLod(uEnvCube,N,4.0).rgb;
                     float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*0.72+envS*f*(0.26+0.74*fres))*uAO*uIBLIntensity+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0)),uColor.a);
                 }
             """.trimIndent()
             program=buildProgram(vs,fs)
-            uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize")
+            uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uRoughTex=GLES30.glGetUniformLocation(program,"uRoughTex");uRoughTexEnabled=GLES30.glGetUniformLocation(program,"uRoughTexEnabled");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize")
         }
         fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0);GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0);GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY);GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0);GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0);GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY);GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0);GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0);GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY);GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY);GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS);GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
         fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
-        fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean){
-            val albedo=when(material){1->wood;2->board;3->neutral;4->metal;else->neutral};Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normal);GLES30.glUniform1i(uNormalTex,1)
+        fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean,albedoOverride:Int=0,normalOverride:Int=0,roughOverride:Int=0){
+            val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
+            val normalId=if(normalOverride!=0)normalOverride else normal
+            val roughId=if(roughOverride!=0)roughOverride else neutral
+            Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
+            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId);GLES30.glUniform1i(uNormalTex,1);GLES30.glActiveTexture(GLES30.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId);GLES30.glUniform1i(uRoughTex,4);GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
             GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glVertexAttribPointer(1,3,GLES30.GL_FLOAT,false,0,mesh.n);GLES30.glVertexAttribPointer(2,2,GLES30.GL_FLOAT,false,0,mesh.uv);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
         }
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException("GL shader: "+GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException("GL link: "+GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
