@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 const root = process.argv[2] || "android-app/app/src/main/assets/3d";
 const manifestPath = path.join(root, "manifest.json");
@@ -33,7 +34,7 @@ const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.tes
 const expectedAsset = path.join(root, "ludomada-premium-3d-rev3.glb");
 const packagedBytes = fs.existsSync(expectedAsset) ? fs.statSync(expectedAsset).size : 0;
 const packagedSha256 = fs.existsSync(expectedAsset)
-  ? require("node:crypto").createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
+  ? createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
   : "";
 checks.push(["source tree bundle flag", manifest.asset_bundled_in_source_tree === true]);
 checks.push(["runtime loader explicit", manifest.runtime_loader === "not-integrated"]);
