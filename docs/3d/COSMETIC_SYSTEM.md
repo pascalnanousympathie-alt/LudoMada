@@ -30,3 +30,15 @@ Do not move authoritative logic into this layer. Turn validation, dice outcome, 
 ## UI
 
 The Home screen exposes a visible Personalisation button. Profile also links to the same menu. Each catalog entry updates local selection immediately and refreshes the active board renderer when one is present.
+
+
+## Free score and level unlocks
+
+Completed online games award free progression score on the authoritative server:
+- +100 score to every participant who completes the game.
+- +300 winner bonus, for +400 total to the winner.
+- Entry fee does not affect score, and score has no monetary value.
+
+Level thresholds use a predictable progression: level 2 at 250 score, level 3 at 750, level 4 at 1,500, then continuing upward by the same increasing step.
+
+Cosmetics can expose both a market price and an unlock level. Reaching the required level marks the cosmetic as owned for free; buying it early is an optional wallet purchase. Starter cosmetics are always free.
