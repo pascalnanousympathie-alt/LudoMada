@@ -1398,11 +1398,12 @@ class LudoBoardView(
         }
         private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=(elastic-b)
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val sx=pawnScale*(1f-0.055f*overshoot)
-            val sy=pawnScale*(1f+0.115f*overshoot)
+            val squash=PremiumVisualMotion.squash(b)
+            val stretch=PremiumVisualMotion.stretch(b)
+            val sx=pawnScale*squash*(1f-0.055f*overshoot)
+            val sy=pawnScale*stretch*(1f+0.115f*overshoot)
             val m=identityAt(x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,sx)
             val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
@@ -1411,11 +1412,12 @@ class LudoBoardView(
         }
         private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=elastic-b
+            val overshoot=PremiumVisualMotion.controlledOvershoot(b)-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val s=pawnScale*0.37f*(1f-0.035f*overshoot)
-            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)
+            val headSquash=PremiumVisualMotion.squash(b)
+            val headStretch=PremiumVisualMotion.stretch(b)
+            val s=pawnScale*0.37f*headSquash*(1f-0.035f*overshoot)
+            val sy=pawnScale*0.37f*headStretch*(1f+0.065f*overshoot)
             val m=identityAt(x,y+pawnScale*0.74f+PremiumVisualMotion.landingBounce(b)*0.65f,z,s,sy,s)
             val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
