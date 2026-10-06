@@ -29,7 +29,7 @@ Do not move authoritative logic into this layer. Turn validation, dice outcome, 
 
 ## UI
 
-The Home screen exposes a visible Personalisation button. Profile also links to the same menu. Each catalog entry updates local selection immediately and refreshes the active board renderer when one is present.
+The Home screen exposes a compact Market icon and a unified navigation menu. Profile also links to Personalisation. Profile also links to the same menu. Each catalog entry updates local selection immediately and refreshes the active board renderer when one is present.
 
 
 ## Free score and level unlocks
@@ -39,6 +39,6 @@ Completed online games award free progression score on the authoritative server:
 - +300 winner bonus, for +400 total to the winner.
 - Entry fee does not affect score, and score has no monetary value.
 
-Level thresholds use a predictable progression: level 2 at 250 score, level 3 at 750, level 4 at 1,500, then continuing upward by the same increasing step.
+Level thresholds are intentionally demanding: level 2 at 1,250 score, level 3 at 3,750, level 4 at 7,500, level 5 at 12,500, then continuing upward by an increasing triangular step.
 
-Cosmetics can expose both a market price and an unlock level. Reaching the required level marks the cosmetic as owned for free; buying it early is an optional wallet purchase. Starter cosmetics are always free.
+Cosmetics can expose both a market price and an unlock level. Reaching the required level marks the cosmetic as owned for free; buying it early is an optional wallet purchase. Starter cosmetics are always free. The market remains a compact secondary utility in the Home hierarchy.
