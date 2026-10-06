@@ -373,10 +373,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(a instanceof MainActivity){
         MainActivity m=(MainActivity)a;
         if("gameModeDialog".equals(n)){
-          // Defer overlay creation until the current accessibility/touch dispatch
-          // has fully returned. This avoids re-entrant view-hierarchy mutation
-          // after returning from Wallet on Ramus/rotated Android surfaces.
-          a.getWindow().getDecorView().post(m::gameModeDialog);
+          // Execute on the UI thread directly. The previous deferred post could be
+          // lost on some Android 8/Ramus SurfaceView dispatch paths.
+          a.runOnUiThread(() -> {
+            try {
+              m.gameModeDialog();
+              android.util.Log.i("LudoMada","GAME_MODE_DIALOG_DISPATCHED");
+            } catch(Throwable t) {
+              android.util.Log.e("LudoMada","GAME_MODE_DIALOG_ERROR",t);
+            }
+          });
           return;
         }
         if("wallet".equals(n)){
