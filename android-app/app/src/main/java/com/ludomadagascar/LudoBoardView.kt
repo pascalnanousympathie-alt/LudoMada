@@ -1615,7 +1615,7 @@ class LudoBoardView(
             val energy=(1f-diceAnim).coerceIn(0f,1f)
             for(n in 0 until 4){
                 val a=(now/20_000_000L+n*37L+pi*11L)*0.37f
-                val r=0.52f+0.28f*(0.5f+0.5f*sin(now/38_000_000.0+n))
+                val r=0.52f+0.28f*(0.5f+0.5f*sin(now/38_000_000.0+n).toFloat())
                 spawnDiceSpark(p[0]+cos(a).toFloat()*r,p[2]+sin(a).toFloat()*r,energy,n)
             }
         }
