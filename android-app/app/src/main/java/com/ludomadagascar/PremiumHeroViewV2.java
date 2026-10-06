@@ -181,8 +181,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Ramus may inject coordinates normalized to its portrait 720×1616 surface
     // while the Android view is physically laid out in landscape 1280×720.
     // Accept both the native landscape CTA and that verified portrait CTA mapping.
-    boolean portraitInput=nx>=0.50f && nx<=0.66f && ny>=0.045f && ny<=0.235f;
-    boolean landscapeHit=nx>=0.76f && nx<=0.96f && ny>=0.50f && ny<=0.78f;
+    // Visual Home JOUER is x=1028..1210, y=378..452 in the 1280×720
+    // landscape canvas. Ramus may report the same landscape surface through its
+    // 720×1616 portrait-normalized plane: x_p = 1-y_l, y_p = x_l.
+    boolean portraitInput=nx>=0.34f && nx<=0.49f && ny>=0.78f && ny<=0.96f;
+    boolean landscapeHit=nx>=0.80f && nx<=0.96f && ny>=0.50f && ny<=0.64f;
     return portraitInput || landscapeHit;
   }
   private boolean walletGesture;
@@ -255,9 +258,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     float W=getWidth(),H=getHeight();
     if(W<=0||H<=0)return;
     if(W<H){
-      setHit(v,Math.round((378f/720f)*W),Math.round((80f/1280f)*H),
-          Math.max(1,Math.round((452f-378f)/720f*W)),
-          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
+      // Correct inverse-rotation mapping of the visible 1280×720 JOUER CTA.
+      setHit(v,Math.round(0.34f*W),Math.round(0.78f*H),
+          Math.max(1,Math.round(0.15f*W)),
+          Math.max(1,Math.round(0.18f*H)));
       return;
     }
     float den=getResources().getDisplayMetrics().density;
@@ -270,13 +274,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
     if(W<=0 || H<=0) return;
     if(W<H){
       // Ramus reports the rendered landscape canvas as a portrait input surface.
-      // Provide both inverse quarter-turn hitboxes; both invoke the same game-mode dialog.
-      setHit(playHit,Math.round((378f/720f)*W),Math.round((80f/1280f)*H),
-          Math.max(1,Math.round((452f-378f)/720f*W)),
-          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
-      setHit(playHitAlt,Math.round((1f-452f/720f)*W),Math.round((1010f/1280f)*H),
-          Math.max(1,Math.round((452f-378f)/720f*W)),
-          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
+      // Place both transparent accessibility targets over the inverse-rotated
+      // visual JOUER rectangle.
+      setHit(playHit,Math.round(0.34f*W),Math.round(0.78f*H),
+          Math.max(1,Math.round(0.15f*W)),Math.max(1,Math.round(0.18f*H)));
+      setHit(playHitAlt,Math.round(0.37f*W),Math.round(0.80f*H),
+          Math.max(1,Math.round(0.11f*W)),Math.max(1,Math.round(0.14f*H)));
       return;
     }
     float den=getResources().getDisplayMetrics().density;
