@@ -35,8 +35,10 @@ class MainActivity : Activity() {
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
     private var playerScore: Long = 0L; private var playerLevel: Int = 1
-    private var playerCurrentLevelScore: Long = 0L; private var playerNextLevelScore: Long = 250L
-    private var playerProgressInLevel: Long = 0L; private var playerPointsToNextLevel: Long = 250L
+    private var playerTierTitle: String = "Novice"; private var playerTierBadge: String = "N"
+    private var playerGameplayAdvantage: Boolean = false
+    private var playerCurrentLevelScore: Long = 0L; private var playerNextLevelScore: Long = 1250L
+    private var playerProgressInLevel: Long = 0L; private var playerPointsToNextLevel: Long = 1250L
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
@@ -494,16 +496,22 @@ class MainActivity : Activity() {
         if(token.isBlank()){
             playerScore=0L
             playerLevel=1
+            playerTierTitle="Novice"
+            playerTierBadge="N"
+            playerGameplayAdvantage=false
             playerCurrentLevelScore=0L
             playerNextLevelScore=1250L
             playerProgressInLevel=0L
-            playerPointsToNextLevel=250L
+            playerPointsToNextLevel=1250L
             window.decorView.invalidate()
             return
         }
         get("/api/profile/progression"){j->
             playerScore=j.optLong("score",0L)
             playerLevel=j.optInt("level",1)
+            playerTierTitle=j.optString("tierTitle","Novice")
+            playerTierBadge=j.optString("tierBadge","N")
+            playerGameplayAdvantage=j.optBoolean("gameplayAdvantage",false)
             playerCurrentLevelScore=j.optLong("currentLevelScore",0L)
             playerNextLevelScore=j.optLong("nextLevelScore",250L)
             playerProgressInLevel=j.optLong("progressInLevel",0L)
@@ -604,7 +612,8 @@ class MainActivity : Activity() {
             playerPointsToNextLevel=progress.optLong("pointsToNextLevel",playerPointsToNextLevel)
         }
         topBalanceView?.text="${formatMGA(balance)} Ar"
-        add(card("Progression","Niveau $playerLevel • Score $playerScore • ${if(playerPointsToNextLevel>0) "${playerPointsToNextLevel} pts avant le niveau suivant" else "Niveau max"}",Color.rgb(126,82,188)),84,3,8)
+        val prestigeLabel="${playerTierBadge} • ${playerTierTitle}"
+        add(card("Progression","$prestigeLabel\nNiveau $playerLevel • Score $playerScore • ${if(playerPointsToNextLevel>0) "${playerPointsToNextLevel} pts avant le niveau suivant" else "Niveau max"}\nGameplay identique pour tous",Color.rgb(126,82,188)),96,3,8)
         add(card("Solde disponible","${formatMGA(balance)} Ar",gold),76,3,8)
 
         val items=data.optJSONArray("items")?:org.json.JSONArray()
@@ -658,6 +667,7 @@ class MainActivity : Activity() {
             row.addView(box)
             add(row,82,2,6)
         }
+        add(card("Prestige sans pay-to-win","${playerTierBadge} ${playerTierTitle} : badges, titres et cosmétiques évoluent avec le niveau. Aucun bonus de dé, mouvement, capture ou victoire n’est accordé par le niveau.",Color.rgb(126,82,188)),102,3,8)
         add(card("Déverrouillage","Les cosmétiques peuvent devenir gratuits via ton niveau, ou être achetés plus tôt au prix affiché.",Color.rgb(126,82,188)),82,3,8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
     }
@@ -708,7 +718,8 @@ class MainActivity : Activity() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
         val levelPct=if(playerNextLevelScore>playerCurrentLevelScore) ((playerScore-playerCurrentLevelScore).coerceAtLeast(0L)*100/(playerNextLevelScore-playerCurrentLevelScore)).coerceIn(0L,100L) else 100L
-        add(card("Progression","Niveau $playerLevel • Score $playerScore\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants",gold))
+        val prestigeLabel="${playerTierBadge} • ${playerTierTitle}"
+        add(card("Progression","$prestigeLabel\nNiveau $playerLevel • Score $playerScore\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants\nGameplay identique pour tous",gold))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
         add(button("🎨 Personnalisation",Color.rgb(126,82,188)){cosmetics()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
