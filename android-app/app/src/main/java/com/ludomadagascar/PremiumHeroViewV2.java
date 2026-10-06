@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
 import com.ludomadagascar.R;
 import android.view.*;
 import android.widget.*;
@@ -33,7 +34,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
     home=new HomeView(c);
     home.setLive3DBoard(true);
-    home3d=new LudoBoardView(c);
+    home3d=new LudoBoardView(c,null,null);
     home3d.setContentDescription("LudoMada Home 3D Board");
     home3d.configureHomePreview();
     home3d.setClickable(false);
