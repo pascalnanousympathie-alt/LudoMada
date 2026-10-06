@@ -17,6 +17,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final LudoBoardView homeBoard;
   private final Button walletHit;
   private final Button walletHitAlt;
+  private final TextView playA11y;
   public PremiumHeroViewV2(Context c){
     super(c);
     setWillNotDraw(false);
@@ -35,6 +36,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     homeBoard.setZOrderMediaOverlay(false);
     homeBoard.setContentDescription("LudoMada Home full 3D environment and live board");
     homeBoard.setFocusable(false);
+    homeBoard.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    homeBoard.setClickable(false);
     FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(-1,-1);
     addView(homeBoard,homeBoardLp);
 
@@ -50,6 +53,16 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playHit.setPadding(0,0,0,0);
     playHit.setMinWidth(0); playHit.setMinHeight(0);
     playHit.setOnClickListener(v->call("gameModeDialog"));
+
+    playA11y=new TextView(c);
+    playA11y.setText("JOUER");
+    playA11y.setTextColor(Color.TRANSPARENT);
+    playA11y.setContentDescription("JOUER");
+    playA11y.setBackgroundColor(Color.TRANSPARENT);
+    playA11y.setClickable(true);
+    playA11y.setFocusable(true);
+    playA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playA11y.setOnClickListener(v->call("gameModeDialog"));
 
     final Button playHitAlt=new Button(c);
     playHitAlt.setText("JOUER");
@@ -106,6 +119,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
     addView(walletHitAlt,new FrameLayout.LayoutParams(1,1));
+    addView(playA11y,playLp);
     addView(playHit,playLp);
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
@@ -115,6 +129,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       homeBoard.configureHomePreview();
       positionWalletHit(walletHit, walletHitAlt);
       positionPlayHit(playHit,playHitAlt);
+      positionPlayHit(playA11y,playHitAlt);
     });
   }
   private JSONObject homePreviewState(){
@@ -208,6 +223,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     super.onSizeChanged(w,h,oldw,oldh);
     positionHomeBoard(homeBoard);
     positionWalletHit(walletHit, walletHitAlt);
+    positionPlayHit(playA11y,playHitAlt);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
   private void positionPlayHit(View playHit, View playHitAlt){
