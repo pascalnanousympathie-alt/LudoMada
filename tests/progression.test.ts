@@ -30,7 +30,7 @@ describe("player progression", () => {
     expect(progressionTierForLevel(20).id).toBe("heroique");
     expect(progressionTierForLevel(25).id).toBe("legendaire");
 
-    const progression = progressionForScore(25000);
+    const progression = progressionForScore(237500);
     expect(progression.tierTitle).toBe("Héroïque");
     expect(progression.gameplayAdvantage).toBe(false);
     expect(progression.gameplayModifier).toBe("NONE");
