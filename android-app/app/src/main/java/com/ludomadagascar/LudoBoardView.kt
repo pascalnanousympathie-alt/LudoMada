@@ -400,12 +400,7 @@ class LudoBoardView(
         private lateinit var sphere:Mesh
         private lateinit var pawn:Mesh
 
-        private val pawnColors=intArrayOf(
-            Color.rgb(219,59,66),Color.rgb(48,165,92),
-            Color.rgb(239,186,46),Color.rgb(59,112,219)
-        )
-
-        override fun onSurfaceCreated(
+                override fun onSurfaceCreated(
             gl:javax.microedition.khronos.opengles.GL10?,
             cfg:javax.microedition.khronos.egl.EGLConfig?
         ){
@@ -597,7 +592,7 @@ class LudoBoardView(
                     drawMesh(disk,model(x,0.295f,z,0.30f,0.018f,0.30f,0f),color(26,22,20,0.32f),0.86f,0.02f,0f)
                     val y = 0.46f
                     drawMesh(pawn,model(x,y,z,0.36f,0.88f,0.36f,0f),colorFromInt(cosmetics.pawn.colors[pi],1f),0.18f,0.0f,0.16f)
-                    drawMesh(sphere,model(x,y+0.70f,z,0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
+                    drawMesh(sphere,model(x,y+0.70f,z,0.19f,0.19f,0.19f,0f),colorFromInt(cosmetics.pawn.colors[pi],1f),0.14f,0.0f,0.15f)
                     drawMesh(sphere,model(x-0.05f,y+0.84f,z-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.88f),0.10f,0.35f,0.12f)
                 }
             }
@@ -676,8 +671,8 @@ class LudoBoardView(
                 drawMesh(disk,model(p[0],0.300f,p[1],0.30f,0.020f,0.30f,0f),color(32,24,20,0.30f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
                 // Bright lacquered 3D pawn silhouette, closer to the supplied reference.
-                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.88f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.0f,0.16f)
-                drawMesh(sphere,model(p[0],ly+0.70f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
+                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.88f,0.36f,0f),colorFromInt(cosmetics.pawn.colors[pi],1f),0.18f,0.0f,0.16f)
+                drawMesh(sphere,model(p[0],ly+0.70f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(cosmetics.pawn.colors[pi],1f),0.14f,0.0f,0.15f)
                 drawMesh(sphere,model(p[0]-0.05f,ly+0.84f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.90f),0.10f,0.35f,0.12f)
             }
         }
@@ -943,10 +938,7 @@ class LudoBoardView(
         internal val view=FloatArray(16)
         private val projectionSnapshot=FloatArray(16)
         private val modelScratch=FloatArray(16)
-        private val pawnColors=intArrayOf(
-            Color.rgb(219,59,66),Color.rgb(48,165,92),Color.rgb(239,186,46),Color.rgb(59,112,219)
-        )
-        private var rayTracingHardware=false
+                private var rayTracingHardware=false
         private lateinit var shader:PbrShader
         private lateinit var shadowShader:ShadowShader
         private lateinit var postShader:PostShader
@@ -1170,7 +1162,7 @@ class LudoBoardView(
                 for(sx in arrayOf(-0.43f,0.43f)) for(sz in arrayOf(-0.43f,0.43f))
                     drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)
             }
-            for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
+            for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],cosmetics.pawn.colors[pi],pi==player,pi,ti)}
             for(pi in 0..3)drawDie(pi)
         }
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
