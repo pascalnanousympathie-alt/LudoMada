@@ -15,7 +15,8 @@ function runCli(...args) {
   const timeoutMs = isSnapshot ? 15000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
   const timeoutBin = process.env.RAMUS_TIMEOUT_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/timeout" : "timeout");
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  const maxAttempts = isSessionStart ? 8 : 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const r = spawnSync(timeoutBin, ["-k", "2s", `${timeoutSec}s`, process.execPath, cli, ...args], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
@@ -23,14 +24,16 @@ function runCli(...args) {
     const out = (r.stdout || "").trim();
     const err = (r.stderr || "").trim();
     const transient = /fetch failed|unreachable|stream_closed|session stream closed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(out + "\n" + err);
+    const capacityBusy = /trial_capacity|session_cap|all trial emulator slots are busy|session cap reached/i.test(out + "\n" + err);
     if (out) {
       let value;
       try { value = JSON.parse(out); }
       catch { value = { error: "non_json", message: out.slice(0, 1200) }; }
       if (r.status === 0 && !value.error) return { ok: true, value };
-      if (transient && attempt < 3) {
+      if ((transient || capacityBusy) && attempt < maxAttempts) {
         const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
-        spawnSync(sleepBin, ["2"], { stdio: "ignore" });
+        const delay = capacityBusy ? "15" : (isSessionStart ? "5" : "2");
+        spawnSync(sleepBin, [delay], { stdio: "ignore" });
         continue;
       }
       if (/no[_ ]api[_ ]key|api key.*expired|trial.*expired/i.test(out + "\n" + err) && !trialEnsured && !process.env.RAMUS_API_KEY && args[0] !== "trial" && attempt === 1) {
@@ -146,6 +149,17 @@ try {
   if (!process.env.RAMUS_API_KEY) {
     run("trial", "--force");
     trialEnsured = true;
+  }
+
+  // Session slots can stay occupied briefly after an earlier session enters "ending".
+  // Poll until the capacity slot is actually released before starting the fresh session.
+  for (let cleanupAttempt = 1; cleanupAttempt <= 6; cleanupAttempt++) {
+    const live = allow("session", "list");
+    const busy = live.ok && Array.isArray(live.value?.sessions) &&
+      live.value.sessions.some(s => ["active", "assigned", "requested", "ending"].includes(s?.status || s?.state));
+    if (!busy) break;
+    const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
+    spawnSync(sleepBin, ["5"], { stdio: "ignore" });
   }
 
   let started = allow("session", "start", "--apk", apk, "--wait");
