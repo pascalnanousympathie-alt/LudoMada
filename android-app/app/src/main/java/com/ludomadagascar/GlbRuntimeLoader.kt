@@ -142,7 +142,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
 
             out[name] = Part(
                 name = name,
-                mesh = LudoBoardView.Mesh(positions, normals, indices, uvs),
+                mesh = LudoBoardView.Mesh(positions, normals, indices),
                 transform = nodeTransform(node),
                 baseColor = baseColor,
                 metallic = pbr?.optDouble("metallicFactor", 0.0)?.toFloat() ?: 0f,
