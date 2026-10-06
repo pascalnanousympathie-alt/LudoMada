@@ -34,6 +34,9 @@ class MainActivity : Activity() {
     private var entryFee = 500
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
+    private var playerScore: Long = 0L; private var playerLevel: Int = 1
+    private var playerCurrentLevelScore: Long = 0L; private var playerNextLevelScore: Long = 250L
+    private var playerProgressInLevel: Long = 0L; private var playerPointsToNextLevel: Long = 250L
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
@@ -484,6 +487,27 @@ class MainActivity : Activity() {
             runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar";window.decorView.invalidate()}
         }
     }
+    private fun refreshProgression() {
+        if(token.isBlank()){
+            playerScore=0L
+            playerLevel=1
+            playerCurrentLevelScore=0L
+            playerNextLevelScore=250L
+            playerProgressInLevel=0L
+            playerPointsToNextLevel=250L
+            window.decorView.invalidate()
+            return
+        }
+        get("/api/profile/progression"){j->
+            playerScore=j.optLong("score",0L)
+            playerLevel=j.optInt("level",1)
+            playerCurrentLevelScore=j.optLong("currentLevelScore",0L)
+            playerNextLevelScore=j.optLong("nextLevelScore",250L)
+            playerProgressInLevel=j.optLong("progressInLevel",0L)
+            playerPointsToNextLevel=j.optLong("pointsToNextLevel",0L)
+            runOnUiThread{window.decorView.invalidate()}
+        }
+    }
 
     override fun onBackPressed() {
         if(modeOverlay!=null){
@@ -533,6 +557,7 @@ class MainActivity : Activity() {
         if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
         setContentView(hero)
         refreshAccountBalance()
+        refreshProgression()
     }
 
     private fun cosmetics() {
@@ -563,6 +588,7 @@ class MainActivity : Activity() {
         val balance=data.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
         accountBalanceMGA=balance
         topBalanceView?.text="${formatMGA(balance)} Ar"
+        add(card("Progression","Niveau $playerLevel • Score $playerScore • ${if(playerPointsToNextLevel>0) "${playerPointsToNextLevel} pts avant le niveau suivant" else "Niveau max"}",Color.rgb(126,82,188)),84,3,8)
         add(card("Solde disponible","${formatMGA(balance)} Ar",gold),76,3,8)
 
         val items=data.optJSONArray("items")?:org.json.JSONArray()
@@ -589,9 +615,13 @@ class MainActivity : Activity() {
                 val price=item.optString("priceMGA").toLongOrNull()?:0L
                 val owned=item.optBoolean("owned",false)
                 val selected=isCosmeticSelected(category,id)
+                val unlockLevel=if(item.has("unlockLevel")&&!item.isNull("unlockLevel")) item.optInt("unlockLevel",0) else 0
+                val levelUnlocked=item.optBoolean("levelUnlocked",false)
                 val label=when{
                     selected && owned->"✓ ${titleText}\\nÉquipé"
                     owned->"${titleText}\\nÉquiper"
+                    unlockLevel>0 && !levelUnlocked && price>0L->"${titleText}\\nNiv. ${unlockLevel} ou ${formatMGA(price)} Ar"
+                    unlockLevel>0 && !levelUnlocked->"${titleText}\\nNiv. ${unlockLevel}"
                     price<=0L->"${titleText}\\nGratuit"
                     else->"${titleText}\\n${formatMGA(price)} Ar"
                 }
@@ -661,6 +691,8 @@ class MainActivity : Activity() {
     private fun profile() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
+        val levelPct=if(playerNextLevelScore>playerCurrentLevelScore) ((playerScore-playerCurrentLevelScore).coerceAtLeast(0L)*100/(playerNextLevelScore-playerCurrentLevelScore)).coerceIn(0L,100L) else 100L
+        add(card("Progression","Niveau $playerLevel • Score $playerScore\\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants",gold))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
         add(button("🎨 Personnalisation",Color.rgb(126,82,188)){cosmetics()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
@@ -1258,6 +1290,11 @@ class MainActivity : Activity() {
             }
             if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
             else if(currentScreen=="board") board()
+            if(serverStatus=="FINISHED"){
+                refreshProgression()
+                val won=j.optString("winnerId")==userId
+                if(::status.isInitialized) status.text="🏆 Partie terminée • Score +${if(won)400 else 100}${if(won)" (bonus victoire)" else ""}"
+            }
         }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
