@@ -3,10 +3,10 @@ import { COSMETIC_CATALOG, catalogForClient, findCosmetic } from "../src/cosmeti
 describe("cosmetic market catalog", () => {
   test("has four sellable categories with canonical prices", () => {
     expect(COSMETIC_CATALOG).toHaveLength(16);
-    expect(findCosmetic("board", "royal_gold")).toMatchObject({ priceMGA: 15000n });
-    expect(findCosmetic("dice", "heroic")).toMatchObject({ priceMGA: 8000n });
-    expect(findCosmetic("pawn", "gold")).toMatchObject({ priceMGA: 10000n });
-    expect(findCosmetic("vfx", "spark")).toMatchObject({ priceMGA: 7000n });
+    expect(findCosmetic("board", "royal_gold")).toMatchObject({ priceMGA: 15000n, unlockLevel: 5 });
+    expect(findCosmetic("dice", "heroic")).toMatchObject({ priceMGA: 8000n, unlockLevel: 2 });
+    expect(findCosmetic("pawn", "gold")).toMatchObject({ priceMGA: 10000n, unlockLevel: 2 });
+    expect(findCosmetic("vfx", "spark")).toMatchObject({ priceMGA: 7000n, unlockLevel: 2 });
   });
 
   test("starter cosmetics are owned without a purchase", () => {
@@ -22,10 +22,23 @@ describe("cosmetic market catalog", () => {
   });
 
   test("purchased cosmetics are exposed as owned", () => {
-    const items = catalogForClient(new Set(["board:royal_gold", "vfx:ice"]));
+    const items = catalogForClient(new Set(["board:royal_gold", "vfx:ice"]), 1);
     expect(items.find(x => x.category==="board" && x.id==="royal_gold")?.owned).toBe(true);
     expect(items.find(x => x.category==="vfx" && x.id==="ice")?.owned).toBe(true);
     expect(items.find(x => x.category==="dice" && x.id==="heroic")?.owned).toBe(false);
+  });
+
+  test("level unlocks become owned without a purchase", () => {
+    const level2 = catalogForClient(new Set(), 2);
+    expect(level2.find(x => x.category==="dice" && x.id==="heroic")).toMatchObject({
+      owned:true, levelUnlocked:true, unlockLevel:2
+    });
+    expect(level2.find(x => x.category==="pawn" && x.id==="gold")?.owned).toBe(true);
+    expect(level2.find(x => x.category==="board" && x.id==="ocean_night")?.owned).toBe(false);
+
+    const level4 = catalogForClient(new Set(), 4);
+    expect(level4.find(x => x.category==="board" && x.id==="ocean_night")?.owned).toBe(true);
+    expect(level4.find(x => x.category==="dice" && x.id==="crystal")?.owned).toBe(true);
   });
 
   test("unknown cosmetics are rejected from server catalog lookup", () => {
