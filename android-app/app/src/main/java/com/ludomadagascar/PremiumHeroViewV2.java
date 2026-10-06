@@ -22,8 +22,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
-    setContentDescription("LudoMada Premium Home");
-    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    // Keep the hero as an accessibility container, not a leaf. A contentDescription
+    // on an IMPORTANT_FOR_ACCESSIBILITY_YES ViewGroup can suppress its child nodes
+    // from the accessibility tree (including Ramus JOUER/WALLET targets).
+    setContentDescription(null);
+    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
     if(c instanceof Activity){
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
@@ -79,7 +82,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     homeA11y.setText("");
     homeA11y.setContentDescription("LudoMada Premium Home");
     homeA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
-    homeA11y.setFocusable(false);
+    homeA11y.setFocusable(true);
     homeA11y.setClickable(false);
     homeA11y.setBackgroundColor(Color.TRANSPARENT);
     homeA11y.setFocusable(true);
