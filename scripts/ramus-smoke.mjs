@@ -15,7 +15,8 @@ function runCli(...args) {
   const timeoutMs = isSnapshot ? 15000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
   const timeoutBin = process.env.RAMUS_TIMEOUT_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/timeout" : "timeout");
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
-  const maxAttempts = isSessionStart ? 8 : 3;
+  const isCapacitySensitive = isSessionStart || args[0] === "trial";
+  const maxAttempts = isCapacitySensitive ? 20 : 3;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const r = spawnSync(timeoutBin, ["-k", "2s", `${timeoutSec}s`, process.execPath, cli, ...args], {
       encoding: "utf8",
@@ -32,7 +33,7 @@ function runCli(...args) {
       if (r.status === 0 && !value.error) return { ok: true, value };
       if ((transient || capacityBusy) && attempt < maxAttempts) {
         const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
-        const delay = capacityBusy ? "15" : (isSessionStart ? "5" : "2");
+        const delay = capacityBusy ? "15" : (isSessionStart ? "5" : (args[0] === "trial" ? "5" : "2"));
         spawnSync(sleepBin, [delay], { stdio: "ignore" });
         continue;
       }
@@ -147,13 +148,16 @@ try {
     }
   }
   if (!process.env.RAMUS_API_KEY) {
-    run("trial", "--force");
+    const trialResult = runCli("trial");
+    if (!trialResult.ok) {
+      throw new Error(JSON.stringify(trialResult.value));
+    }
     trialEnsured = true;
   }
 
   // Session slots can stay occupied briefly after an earlier session enters "ending".
   // Poll until the capacity slot is actually released before starting the fresh session.
-  for (let cleanupAttempt = 1; cleanupAttempt <= 6; cleanupAttempt++) {
+  for (let cleanupAttempt = 1; cleanupAttempt <= 12; cleanupAttempt++) {
     const live = allow("session", "list");
     const busy = live.ok && Array.isArray(live.value?.sessions) &&
       live.value.sessions.some(s => ["active", "assigned", "requested", "ending"].includes(s?.status || s?.state));
