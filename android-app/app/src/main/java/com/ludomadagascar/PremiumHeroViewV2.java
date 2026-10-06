@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.graphics.*;
-import com.ludomadagascar.R;
 import android.view.*;
 import android.widget.*;
 import org.json.JSONArray;
@@ -375,21 +374,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
-    Bitmap lobbyRef;
-    Bitmap bgBaobab;
-    Bitmap bgAlt;
-    Bitmap bgMatory;
-    Bitmap bg322;
-    Bitmap bg7cc;
-    int bgIndex=0;
     HomeView(Context c){
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
-      lobbyRef=BitmapFactory.decodeResource(getResources(),R.drawable.ludomada_lobby_reference_4k);
-      bgBaobab=BitmapFactory.decodeResource(getResources(),R.drawable.bg_baobab_landscape);
-      bgAlt=BitmapFactory.decodeResource(getResources(),R.drawable.bg_alt_landscape);
-      bgMatory=BitmapFactory.decodeResource(getResources(),R.drawable.bg_matory_landscape);
-      bg322=BitmapFactory.decodeResource(getResources(),R.drawable.bg_322517a0_landscape);
-      bg7cc=BitmapFactory.decodeResource(getResources(),R.drawable.bg_7cc058_landscape);
       p.setFilterBitmap(true);
     }
     void flipBackground(){ bgIndex=(bgIndex+1)%backgroundCount(); invalidate(); }
@@ -444,23 +430,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
       p.setShadowLayer(d(4),0,d(2),0x66000000);p.setShader(new LinearGradient(d(l+3),d(y+3),d(l+30),d(b-3),Color.WHITE,fill,Shader.TileMode.CLAMP));c.drawCircle(d(l+17),d((y+b)/2f),d(12.5f),p);p.setShader(null);p.clearShadowLayer();
       t(c,icon,l+17,(y+b)/2f+2,15,gold2,true,true);t(c,title,l+34,y+20,10.2f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.1f,0xE4FFFFFF,false,false);
     }
-    void drawCover(Canvas c,Bitmap bm,float alpha,float W,float H){
-      if(bm==null)return;
-      p.setShader(null);p.setAlpha((int)(255*alpha));
-      float bw=bm.getWidth(),bh=bm.getHeight(),scale=Math.max(W/bw,H/bh);
-      float dw=bw*scale,dh=bh*scale,left=(W-dw)/2f,top=(H-dh)/2f;
-      c.drawBitmap(bm,null,new RectF(left,top,left+dw,top+dh),p);p.setAlpha(255);
-    }
-    void drawHomeReference(Canvas c,float W,float H){
-      // Reference 1 is a complete 16:9-ish landscape Home composition. Crop the small
-      // phone system chrome embedded in the supplied mockup to avoid a double status/nav bar.
-      float sw=lobbyRef.getWidth(), sh=lobbyRef.getHeight();
-      Rect src=new Rect(Math.round(sw*.005f),Math.round(sh*.040f),Math.round(sw*.982f),Math.round(sh*.975f));
-      float bw=src.width(), bh=src.height();
-      float scale=Math.max(W/bw,H/bh);
-      float dw=bw*scale, dh=bh*scale, left=(W-dw)/2f, top=(H-dh)/2f;
-      p.setShader(null);p.setAlpha(255);c.drawBitmap(lobbyRef,src,new RectF(left,top,left+dw,top+dh),p);
-    }
     void drawLiveHomeFields(Canvas c,float W,float H){
       // Only fields whose values can differ at runtime are redrawn; all decorative/layout
       // elements remain exactly those from Screenshot 1.
@@ -484,10 +453,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(size);
       p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);p.setTextAlign(center?Paint.Align.CENTER:Paint.Align.LEFT);
       c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
-    }
-    void background(Canvas c,float W,float H){
-      // Intentionally empty: the Home environment is now rendered entirely by the
-      // full-screen GLES3 scene. No bitmap/screenshot is painted behind the live scene.
     }
     void board(Canvas c){
       float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
