@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var externalWalletView: TextView? = null
+    private var roomPlayersView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
@@ -1205,7 +1206,10 @@ class MainActivity : Activity() {
         page("room","Room")
         sectionTitle("Room de jeu","Prépare ta partie avant le lancement")
         add(card("MISE","$entryFee Ar",Color.rgb(37,93,196)),78,3,5)
-        add(card("JOUEURS","En attente • 2 à 4 joueurs",Color.rgb(126,82,188)),78,3,5)
+        add(card("JOUEURS","En attente • 2 à 4 joueurs • tous niveaux",Color.rgb(126,82,188)),78,3,5)
+        roomPlayersView=label("Chargement des joueurs…",12.5f,false,Color.rgb(88,99,116))
+        roomPlayersView?.setPadding(dp(4),dp(2),dp(4),dp(2))
+        add(roomPlayersView!!,42,0,5)
         add(label("CODE DE ROOM",12f,true,Color.rgb(88,99,116)),28,3,2)
         add(card("$gameId","Partage ce code avec tes joueurs",Color.rgb(12,147,87)),74,3,6)
         status=label("Connexion au lobby…",14f,true,Color.rgb(37,93,196));add(status,42,3,4)
@@ -1231,7 +1235,29 @@ class MainActivity : Activity() {
     }
 
     private fun scheduleLobbyRefresh(){root.postDelayed({if(currentScreen=="room"&&gameId.isNotBlank())refreshLobby()},3000)}
-    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->retryCount=0;val n=j.optJSONArray("participants")?.length()?:0;val prize=n*entryFee;runOnUiThread{if(currentScreen=="room"){status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar";if(n>=2){if(j.optString("creatorId")==userId && j.optString("status")=="WAITING" && !startingGame)startGame();else refreshState()} else scheduleLobbyRefresh()}}}}
+    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->
+        retryCount=0
+        val participants=j.optJSONArray("participants")?:org.json.JSONArray()
+        val n=participants.length()
+        val prize=n*entryFee
+        val playerLines=(0 until participants.length()).mapNotNull { i->
+            val p=participants.optJSONObject(i)?:return@mapNotNull null
+            val badge=p.optString("tierBadge","N")
+            val title=p.optString("tierTitle","Novice")
+            val name=p.optString("username","Joueur").ifBlank{"Joueur"}
+            val lvl=p.optInt("level",1)
+            "$badge $name • Niv. $lvl • $title"
+        }
+        runOnUiThread{
+            if(currentScreen=="room"){
+                roomPlayersView?.text=if(playerLines.isEmpty()) "Aucun joueur pour le moment" else playerLines.joinToString("\n")
+                status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar   •   Tous niveaux acceptés"
+                if(n>=2){
+                    if(j.optString("creatorId")==userId && j.optString("status")=="WAITING" && !startingGame)startGame() else refreshState()
+                } else scheduleLobbyRefresh()
+            }
+        }
+    }}
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
