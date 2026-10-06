@@ -513,13 +513,6 @@ app.get("/api/cosmetics",auth,async(req:any,res)=>{
   });
 });
 
-app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
-  const key=String(req.headers["idempotency-key"]||"").trim();
-  const parsed=z.object({
-    category:CosmeticCategorySchema,
-    itemId:z.string().trim().min(1).max(64)
-  }).safeParse(req.body);
-
   if(!parsed.success || !key || key.length>128){
     return res.status(400).json({error:"Invalid request or Idempotency-Key"});
   }
@@ -535,15 +528,6 @@ app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
       });
       if(!user) throw new Error("USER_NOT_FOUND");
 
-      // Starter items and level-unlocked items are earned for free through play.
-      // Paid items can still be purchased before reaching their unlock level.
-      const levelUnlocked =
-        item.unlockLevel !== undefined &&
-        user.level >= item.unlockLevel;
-
-      if(item.starter || levelUnlocked){
-        throw new Error("COSMETIC_ALREADY_OWNED");
-      }
       const duplicate=await tx.cosmeticPurchase.findUnique({
         where:{userId_idempotencyKey:{userId:req.userId,idempotencyKey:key}}
       });
@@ -555,71 +539,19 @@ app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
         return {purchase:duplicate,balance:wallet?.balance??0n};
       }
 
-      const existing=await tx.cosmeticPurchase.findUnique({
-        where:{userId_category_itemId:{
-          userId:req.userId,category:item.category,itemId:item.id
-        }}
-      });
-      if(existing){
+      // Starter items and level-unlocked items are earned for free through play.
+      // Paid items can still be purchased before reaching their unlock level.
+      const levelUnlocked =
+        item.unlockLevel !== undefined &&
+        user.level >= item.unlockLevel;
+
+      if(item.starter || levelUnlocked){
         throw new Error("COSMETIC_ALREADY_OWNED");
       }
 
-      if(item.priceMGA>0n){
-        const debited=await tx.wallet.updateMany({
-          where:{userId:req.userId,balance:{gte:item.priceMGA}},
-          data:{balance:{decrement:item.priceMGA}}
-        });
-        if(debited.count!==1) throw new Error("INSUFFICIENT_FUNDS");
-      } else {
-        const wallet=await tx.wallet.findUnique({where:{userId:req.userId},select:{id:true}});
-        if(!wallet){
-          await tx.wallet.create({data:{userId:req.userId}});
-        }
-      }
-
-      const purchase=await tx.cosmeticPurchase.create({
-        data:{
-          userId:req.userId,
-          category:item.category,
-          itemId:item.id,
-          priceMGA:item.priceMGA,
-          idempotencyKey:key
-        }
-      });
-      const wallet=await tx.wallet.findUnique({where:{userId:req.userId},select:{balance:true}});
-      return {purchase,balance:wallet?.balance??0n};
-    });
-
-    await audit(prisma,req,"COSMETIC_PURCHASE",{
-      purchaseId:result.purchase.id,
-      category:item.category,
-      itemId:item.id,
-      priceMGA:item.priceMGA.toString()
-    });
-
-    return res.status(201).json({
-      ok:true,
-      category:item.category,
-      itemId:item.id,
-      priceMGA:item.priceMGA.toString(),
-      balanceMGA:result.balance.toString(),
-      owned:true
-    });
-  }catch(e:any){
-    if(e?.message==="IDEMPOTENCY_KEY_CONFLICT") return res.status(409).json({error:"IDEMPOTENCY_KEY_CONFLICT"});
-    if(e?.message==="COSMETIC_ALREADY_OWNED") return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
-    if(e?.message==="USER_NOT_FOUND") return res.status(404).json({error:"User not found"});
-    if(e?.message==="INSUFFICIENT_FUNDS") return res.status(409).json({error:"INSUFFICIENT_FUNDS"});
-    if(e?.code==="P2002"){
-      return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
-    }
-    console.error("COSMETIC PURCHASE ERROR:",{
-      name:e?.name,code:e?.code,message:e?.message,requestId:req.requestId
-    });
-    return res.status(500).json({error:"Internal server error"});
-  }
-});
-
+      const existing=await tx.cosmeticPurchase.findUnique({
+        where:{userId_category_itemId:{
+          userId:req.userId,category:item.category,itemId:item.id
 app.get("/api/wallet",auth,async(req:any,res)=>{
   const w=await prisma.wallet.findUnique({where:{userId:req.userId}});
   res.json({balanceMGA:(w?.balance??0n).toString()});
