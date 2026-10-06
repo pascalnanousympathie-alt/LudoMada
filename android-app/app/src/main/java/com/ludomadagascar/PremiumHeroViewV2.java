@@ -189,6 +189,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     return portraitInput || landscapeHit;
   }
   private boolean walletGesture;
+  private boolean playGesture;
   private boolean isWalletGesture(float x,float y){
     final float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return false;
@@ -213,6 +214,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
     final int action=e.getActionMasked();
     if(action==MotionEvent.ACTION_DOWN){
       walletGesture=isWalletGesture(e.getX(),e.getY());
+      playGesture=isPlayGesture(e.getX(),e.getY());
+      if(BuildConfig.DEBUG){
+        android.util.Log.i("LudoMada","HOME_DISPATCH down x="+e.getX()+" y="+e.getY()+" wallet="+walletGesture+" play="+playGesture);
+      }
     }
     if(walletGesture){
       if(action==MotionEvent.ACTION_UP){
@@ -220,6 +225,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
         call("wallet");
       }else if(action==MotionEvent.ACTION_CANCEL){
         walletGesture=false;
+      }
+      return true;
+    }
+    if(playGesture){
+      if(action==MotionEvent.ACTION_UP){
+        playGesture=false;
+        call("gameModeDialog");
+      }else if(action==MotionEvent.ACTION_CANCEL){
+        playGesture=false;
       }
       return true;
     }
