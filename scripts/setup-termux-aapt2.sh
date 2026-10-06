@@ -68,10 +68,10 @@ cat > "$STATE_DIR/aapt2_launcher.c" <<'EOF'
 #include <unistd.h>
 
 static int read_path(char *out, size_t n) {
-    const char *home = getenv("HOME");
-    if (!home) return 0;
-    char file[4096];
-    snprintf(file, sizeof(file), "%s/.local/share/ludomada/aapt2.path", home);
+    // Android/AGP may launch this wrapper with a sanitized or temporary HOME.
+    // Keep the launcher independent from process environment so AAPT2 daemon startup
+    // remains stable on the Termux ARM64 self-hosted runner.
+    const char *file = "/data/data/com.termux/files/home/.local/share/ludomada/aapt2.path";
     FILE *f = fopen(file, "r");
     if (!f) return 0;
     if (!fgets(out, n, f)) { fclose(f); return 0; }    fclose(f);
