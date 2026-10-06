@@ -14,6 +14,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
   private final LudoBoardView home3d;
   private final Button walletHit;
+  private final Button cosmeticHit;
   private final Runnable homeBgFlip=new Runnable(){
     @Override public void run(){
       home.flipBackground();invalidate();postDelayed(this,6000L);
@@ -80,6 +81,22 @@ public class PremiumHeroViewV2 extends FrameLayout {
     walletHit.setBackgroundColor(Color.TRANSPARENT);
     walletHit.setAlpha(1f);
     walletHit.setOnClickListener(v->call("wallet"));
+
+    cosmeticHit=new Button(c);
+    cosmeticHit.setText("⚙");
+    cosmeticHit.setTextSize(18f);
+    cosmeticHit.setTextColor(Color.WHITE);
+    cosmeticHit.setAllCaps(false);
+    cosmeticHit.setContentDescription("PERSONNALISATION");
+    cosmeticHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    cosmeticHit.setFocusable(true);
+    cosmeticHit.setClickable(true);
+    cosmeticHit.setPadding(0,0,0,0);
+    cosmeticHit.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+        new int[]{0xE82970B8,0xF414396B}));
+    cosmeticHit.getBackground().setAlpha(235);
+    cosmeticHit.setOnClickListener(v->call("cosmetics"));
+
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
     FrameLayout.LayoutParams walletLp=new FrameLayout.LayoutParams(1,1);
@@ -88,6 +105,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playLp.topMargin=220;
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
+    addView(cosmeticHit,new FrameLayout.LayoutParams(64,64));
     addView(playHit,playLp);
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
@@ -95,6 +113,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     post(()->{
       positionHome3d();
       positionWalletHit(walletHit);
+      positionCosmeticsHit(cosmeticHit);
       positionPlayHit(playHit,playHitAlt);
     });
   }
@@ -188,6 +207,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
     int height=Math.max(1,Math.round(116f*sc));
     setHit(wallet,left,top,width,height);
   }
+  private void positionCosmeticsHit(View v){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    int size=Math.max(54,Math.min(72,Math.round(Math.min(W,H)*0.085f)));
+    int left=Math.max(8,Math.round(W-size-22f));
+    int top=Math.max(8,Math.round(H*0.035f));
+    setHit(v,left,top,size,size);
+  }
+
   private void positionHome3d(){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
@@ -207,6 +235,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     super.onSizeChanged(w,h,ow,oh);
     positionHome3d();
     positionWalletHit(walletHit);
+    positionCosmeticsHit(cosmeticHit);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
@@ -265,6 +294,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
         }
         if("wallet".equals(n)){
           m.wallet();
+          return;
+        }
+        if("cosmetics".equals(n)){
+          m.cosmetics();
           return;
         }
       }
