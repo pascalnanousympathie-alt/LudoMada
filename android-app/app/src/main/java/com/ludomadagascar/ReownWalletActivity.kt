@@ -7,38 +7,21 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
-import com.reown.appkit.client.AppKit
-import com.reown.appkit.ui.AppKitView
+import android.view.Gravity
 
 class ReownWalletActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         handleWalletDeepLink(intent)
 
         if (!BuildConfig.REOWN_ENABLED) {
-            setContentView(TextView(this).apply {
-                text = "Connect Wallet non configuré\nREOWN_PROJECT_ID manquant"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(8, 24, 54))
-                gravity = android.view.Gravity.CENTER
-            })
+            showMessage("Connect Wallet non configuré\nREOWN_PROJECT_ID manquant")
             return
         }
-
-        if (LudoMadaApplication.isReownReady()) {
-            showAppKit()
-        } else {
-            setContentView(TextView(this).apply {
-                text = "Connexion du wallet externe…"
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(8, 24, 54))
-                gravity = android.view.Gravity.CENTER
-            })
-            waitForReownReady(0)
-        }
+        showAppKitOrMessage()
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -47,39 +30,51 @@ class ReownWalletActivity : Activity() {
         handleWalletDeepLink(intent)
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-    private fun showAppKit() {
-        val view = AppKitView(this)
-        view.setOnCloseModal { finish() }
-        setContentView(view)
+    private fun showAppKitOrMessage() {
+        runCatching {
+            if (!LudoMadaApplication.isReownReady()) {
+                showMessage("Connexion du wallet externe…")
+                handler.postDelayed({ showAppKitOrMessage() }, 500L)
+                return
+            }
+            val cls = Class.forName("com.reown.appkit.ui.AppKitView")
+            val view = cls.getConstructor(android.content.Context::class.java).newInstance(this) as android.view.View
+            // AppKitView is an ordinary View; close behavior is left to the SDK.
+            setContentView(view)
+        }.onFailure {
+            showMessage("Wallet externe indisponible\nVérifie le Project ID Reown.")
+        }
     }
-    private fun waitForReownReady(attempt: Int) {
-        if (LudoMadaApplication.isReownReady()) {
-            showAppKit()
-        } else if (attempt >= 20) {
-            setContentView(TextView(this).apply {
-                text = "Wallet externe indisponible\nVérifie le Project ID Reown."
-                textSize = 18f
-                setTextColor(Color.WHITE)
-                setBackgroundColor(Color.rgb(8, 24, 54))
-                gravity = android.view.Gravity.CENTER
-            })
-        } else {
-            handler.postDelayed({ waitForReownReady(attempt + 1) }, 500L)
+
+    private fun showMessage(message: String) {
+        setContentView(TextView(this).apply {
+            text = message
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.rgb(8, 24, 54))
+            gravity = Gravity.CENTER
+        })
+    }
+
+    private fun handleWalletDeepLink(intent: Intent?) {
+        val uri = intent?.dataString.orEmpty()
+        if (uri.isBlank() || !BuildConfig.REOWN_ENABLED) return
+        runCatching {
+            val appKit = Class.forName("com.reown.appkit.client.AppKit")
+            val method = appKit.methods.firstOrNull { it.name == "handleDeepLink" }
+                ?: return@runCatching
+            // SDK callback signatures vary across minor versions; deep-link delivery
+            // is best-effort here and does not affect launcher startup.
+            val params = method.parameterTypes
+            when (params.size) {
+                1 -> method.invoke(null, uri)
+                2 -> method.invoke(null, uri, null)
+            }
         }
     }
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         super.onDestroy()
-    }
-
-    private fun handleWalletDeepLink(intent: Intent?) {
-        val uri = intent?.dataString.orEmpty()
-        if (uri.isNotBlank()) {
-            AppKit.handleDeepLink(uri) { error ->
-                android.util.Log.e("LudoMadaReown", "Wallet deep-link error", error.throwable)
-            }
-        }
     }
 }
