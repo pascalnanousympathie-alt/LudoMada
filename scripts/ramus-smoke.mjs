@@ -280,7 +280,7 @@ try {
     // Some Android 8 accessibility providers do not expose transparent overlay
     // controls even though the Home view is fully interactive. Use the verified
     // portrait-normalized JOUER touch fallback instead of failing solely on tree shape.
-    const playFallback = allow("tap", "0.576,0.132", "--session", session, "--force");
+    const playFallback = allow("tap", "0.42,0.86", "--session", session, "--force");
     if (!playFallback.ok) throw new Error("Home JOUER coordinate fallback failed");
     waitStable(500);
     playNode = null;
@@ -305,7 +305,7 @@ try {
       // Ramus may not expose the canvas-backed JOUER control as focusable after
       // returning from the Wallet. Use the verified portrait touch point for the
       // real JOUER visual hitbox instead of failing on accessibility focus alone.
-      const playFallback = allow("tap", "0.576,0.132", "--session", session, "--force");
+      const playFallback = allow("tap", "0.42,0.86", "--session", session, "--force");
       if (!playFallback.ok) throw new Error("Home JOUER control could not be focused or tapped");
     } else {
       allow("press", "ENTER", "--session", session);
@@ -339,7 +339,7 @@ try {
     }
   }
   if (!modeOpened) {
-    for (const pt of ["0.576,0.132","0.576,0.160","0.62,0.15","0.66,0.15"]) {
+    for (const pt of ["0.42,0.86","0.42,0.88","0.46,0.86","0.47,0.90"]) {
       const rt = allow("tap", pt, "--session", session, "--force");
       if (rt.ok) { waitStable(450); if (hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE")) { modeOpened = true; break; } }
     }
