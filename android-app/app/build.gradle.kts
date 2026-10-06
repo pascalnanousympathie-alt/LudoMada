@@ -39,13 +39,14 @@ android { namespace="com.ludomadagascar"; compileSdk=35; buildToolsVersion="36.0
 }
 
 dependencies {
-    // Reown AppKit classes are referenced by the Application and wallet Activity.
-    // Package them in the APK even when the Project ID is intentionally blank so
-    // Android never crashes during class loading; BuildConfig.REOWN_ENABLED gates
-    // actual connector initialization/UX.
-    implementation(platform("com.reown:android-bom:1.6.17"))
-    implementation("com.reown:android-core")
-    implementation("com.reown:appkit")
+    // Reown is optional in the standard APK. The launcher/bootstrap code does not
+    // reference Reown classes directly; the real-enabled build packages them when
+    // a Project ID is supplied.
+    val reownRuntimeEnabled = providers.gradleProperty("REOWN_PROJECT_ID").orElse("").get().trim().isNotBlank()
+    val reownScope = if (reownRuntimeEnabled) configurations.implementation else configurations.compileOnly
+    add(reownScope.name, platform("com.reown:android-bom:1.6.17"))
+    add(reownScope.name, "com.reown:android-core")
+    add(reownScope.name, "com.reown:appkit")
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
