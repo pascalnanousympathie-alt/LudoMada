@@ -184,9 +184,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // Visual Home JOUER is x=1028..1210, y=378..452 in the 1280×720
     // landscape canvas. Ramus may report the same landscape surface through its
     // 720×1616 portrait-normalized plane: x_p = 1-y_l, y_p = x_l.
-    boolean portraitInput=nx>=0.34f && nx<=0.49f && ny>=0.78f && ny<=0.96f;
-    boolean landscapeHit=nx>=0.80f && nx<=0.96f && ny>=0.50f && ny<=0.64f;
-    return portraitInput || landscapeHit;
+    boolean landscapeHit=nx>=0.79f && nx<=0.97f && ny>=0.48f && ny<=0.66f;
+    boolean cw=nx>=0.34f && nx<=0.52f && ny>=0.76f && ny<=0.98f;
+    boolean ccw=nx>=0.50f && nx<=0.70f && ny>=0.02f && ny<=0.24f;
+    boolean rot180=nx>=0.03f && nx<=0.25f && ny>=0.34f && ny<=0.52f;
+    return landscapeHit || cw || ccw || rot180;
   }
   private boolean walletGesture;
   private boolean playGesture;
