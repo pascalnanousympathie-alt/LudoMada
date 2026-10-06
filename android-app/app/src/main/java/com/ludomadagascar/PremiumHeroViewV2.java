@@ -84,7 +84,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     walletHit.setOnClickListener(v->call("wallet"));
 
     cosmeticHit=new Button(c);
-    cosmeticHit.setText("◈");
+    cosmeticHit.setText("🛍");
     cosmeticHit.setTextSize(17f);
     cosmeticHit.setTextColor(Color.WHITE);
     cosmeticHit.setAllCaps(false);
@@ -563,7 +563,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"NIV "+level+"  •  SCORE "+formatBal(score),132,98,10,0xD7FFFFFF,true,false);
       box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
       // Compact utility icons: Market and Menu remain secondary to the main play actions.
-      box(c,1088,58,1122,92,12,0xB316315A,0x557EB8FF);t(c,"◈",1105,82,13,gold2,true,true);
+      box(c,1088,58,1122,92,12,0xB316315A,0x557EB8FF);t(c,"🛍",1105,82,14,gold2,true,true);
       box(c,1130,58,1164,92,12,0xB316315A,0x557EB8FF);t(c,"≡",1147,82,17,Color.WHITE,true,true);
       t(c,"🎵",1195,88,18,Color.WHITE,true,true);
       // Left action rail
@@ -584,8 +584,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
       box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
       box(c,1010,586,1200,628,14,0x44111F38,0x337EB8FF);
-      t(c,"MENU",1054,612,8.5f,0xD7FFFFFF,true,true);
-      t(c,"◈ MARCHÉ",1165,612,8.5f,gold2,true,true);
+      t(c,"≡  MENU • Navigation complète",1105,612,8.5f,0xD7FFFFFF,true,true);
       c.restore();postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
