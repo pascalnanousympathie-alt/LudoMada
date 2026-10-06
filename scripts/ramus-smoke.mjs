@@ -365,7 +365,14 @@ try {
     }
   }
   if (!modeOpened) {
-    for (const pt of ["0.42,0.86","0.42,0.88","0.46,0.86","0.47,0.90"]) {
+    // Probe all four orientation transforms of the visible JOUER CTA.
+    // This removes dependence on Ramus/Android rotation normalization.
+    for (const pt of [
+      "0.42,0.86","0.42,0.88","0.46,0.86","0.47,0.90",
+      "0.58,0.12","0.60,0.14","0.54,0.12","0.52,0.16",
+      "0.12,0.42","0.14,0.46","0.16,0.50",
+      "0.86,0.42","0.88,0.46","0.90,0.47"
+    ]) {
       const rt = allow("tap", pt, "--session", session, "--force");
       if (rt.ok) { waitStable(450); if (hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE")) { modeOpened = true; break; } }
     }
