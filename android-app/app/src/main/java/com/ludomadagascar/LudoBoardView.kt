@@ -278,7 +278,44 @@ class LudoBoardView(
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (homePreview) {
-            return false
+            // GLSurfaceView can own the touch stream even when the parent FrameLayout
+            // cannot intercept it on some Android/Ramus rotation paths. Handle Home
+            // navigation directly here while keeping gameplay input untouched.
+            if (e.actionMasked == MotionEvent.ACTION_UP) {
+                val w = max(1f, width.toFloat())
+                val h = max(1f, height.toFloat())
+                val nx = e.x / w
+                val ny = e.y / h
+                val playHit = if (w < h) {
+                    nx >= 0.32f && nx <= 0.50f && ny >= 0.76f && ny <= 0.98f
+                } else {
+                    nx >= 0.79f && nx <= 0.97f && ny >= 0.48f && ny <= 0.66f
+                }
+                if (playHit) {
+                    (context as? MainActivity)?.runOnUiThread {
+                        it.gameModeDialog()
+                    }
+                    return true
+                }
+                val walletHit = if (w < h) {
+                    nx >= 0.40f && nx <= 0.62f && ny >= 0.14f && ny <= 0.34f
+                } else {
+                    nx <= 0.25f && ny >= 0.42f && ny <= 0.62f
+                }
+                if (walletHit) {
+                    (context as? MainActivity)?.runOnUiThread {
+                        it.wallet()
+                    }
+                    return true
+                }
+                // The center die is part of the live Home scene; a tap rotates it
+                // just like the gameplay renderer without changing authoritative state.
+                if (nx >= 0.37f && nx <= 0.66f && ny >= 0.28f && ny <= 0.72f) {
+                    startDiceAnimation()
+                    return true
+                }
+            }
+            return true
         }
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
