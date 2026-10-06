@@ -222,8 +222,22 @@ public class PremiumHeroViewV2 extends FrameLayout {
     super.onSizeChanged(w,h,oldw,oldh);
     positionHomeBoard(homeBoard);
     positionWalletHit(walletHit, walletHitAlt);
-    positionPlayHit(playA11y,playHitAlt);
+    positionPlayA11y(playA11y);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+  }
+  private void positionPlayA11y(View v){
+    float W=getWidth(),H=getHeight();
+    if(W<=0||H<=0)return;
+    if(W<H){
+      setHit(v,Math.round((378f/720f)*W),Math.round((80f/1280f)*H),
+          Math.max(1,Math.round((452f-378f)/720f*W)),
+          Math.max(1,Math.round((1200f-1010f)/1280f*H)));
+      return;
+    }
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    setHit(v,Math.round(ox+1010f*sc),Math.round(oy+378f*sc),Math.max(1,Math.round(190f*sc)),Math.max(1,Math.round(74f*sc)));
   }
   private void positionPlayHit(View playHit, View playHitAlt){
     float W=getWidth(),H=getHeight();
