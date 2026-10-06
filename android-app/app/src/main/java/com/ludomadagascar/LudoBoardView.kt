@@ -286,11 +286,15 @@ class LudoBoardView(
                 val h = max(1f, height.toFloat())
                 val nx = e.x / w
                 val ny = e.y / h
-                val playHit = if (w < h) {
-                    nx >= 0.32f && nx <= 0.50f && ny >= 0.76f && ny <= 0.98f
-                } else {
-                    nx >= 0.79f && nx <= 0.97f && ny >= 0.48f && ny <= 0.66f
-                }
+                // Accept the JOUER rectangle in every orientation mapping used
+                // by Android/Ramus. The visual CTA is x≈1010..1210,y≈360..470 on
+                // the 1280×720 Home canvas, while Ramus may feed normalized portrait
+                // or clockwise/counter-clockwise transformed coordinates.
+                val landscape = nx >= 0.79f && nx <= 0.97f && ny >= 0.48f && ny <= 0.66f
+                val cw = nx >= 0.34f && nx <= 0.52f && ny >= 0.76f && ny <= 0.98f
+                val ccw = nx >= 0.50f && nx <= 0.70f && ny >= 0.02f && ny <= 0.24f
+                val rot180 = nx >= 0.03f && nx <= 0.25f && ny >= 0.34f && ny <= 0.52f
+                val playHit = landscape || cw || ccw || rot180
                 if (playHit) {
                     val activity = context as? MainActivity
                     activity?.runOnUiThread {
