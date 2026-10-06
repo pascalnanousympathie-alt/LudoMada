@@ -94,6 +94,10 @@ jobs:
           node -e "require('@prisma/client'); require('jest'); require('typescript'); require('fs').accessSync('node_modules/prisma/build/index.js'); console.log('DEPS_CORE_OK')"
       - name: Generate Prisma client
         run: node node_modules/prisma/build/index.js generate
+      - name: Check 3D and cosmetic asset contracts
+        run: |
+          node scripts/check-3d-assets.mjs
+          node scripts/check-cosmetic-assets.mjs
       - name: Run backend tests
         run: npm test -- --maxWorkers=2
       - name: Build backend
