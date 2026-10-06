@@ -1117,15 +1117,15 @@ class LudoBoardView(
                 drawShadowMesh(roundedBox,identityAt(0f,boardTop+0.38f,hz,0.52f,0.52f,0.52f))
                 return
             }
-            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(Color.rgb(71,36,14)),0.58f,0.08f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),floatArrayOf(0.47f,0.18f,0.05f,1f),0.42f,0.12f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),floatArrayOf(0.78f,0.48f,0.16f,1f),0.46f,0.10f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),floatArrayOf(0.88f,0.84f,0.73f,1f),0.58f,0.04f,1f,0f,2,false)
-            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
-            for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
-            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.28f,0.05f,1f,0.012f,3,false)
-            val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(i in 0..3){val hc=homes[i];drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(zoneColorInt(i)),0.34f,0.06f,1f,0.01f,3,false);drawMesh(roundedBox,identityAt(hc[0],boardTop+0.22f,hc[1],1.16f,0.075f,1.16f),colorFromInt(zoneColorInt(i),0.96f),0.22f,0.10f,1f,0.012f,3,false);for(sx in arrayOf(-0.43f,0.43f))for(sz in arrayOf(-0.43f,0.43f))drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)}
+            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(cosmetics.board.tableColor),0.58f,0.08f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),rgba(cosmetics.board.frameColor),0.34f,0.18f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),rgba(cosmetics.board.frameColor),0.42f,0.12f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),rgba(cosmetics.board.trimColor),0.46f,0.10f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),rgba(cosmetics.board.surfaceColor),0.58f,0.04f,1f,0f,2,false)
+            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),rgba(cosmetics.board.pathColor),0.42f,0.06f,0.98f,0f,2,false)
+            for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(cosmetics.board.zoneColors[i]),0.24f,0.05f,1f,0.01f,3,false)
+            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(cosmetics.board.zoneColors[i]),0.28f,0.05f,1f,0.012f,3,false)
+            val homes=arrayOf(floatArrayOf(-2.58f,2.58f),floatArrayOf(-2.58f,-2.58f),floatArrayOf(2.58f,-2.58f),floatArrayOf(2.58f,2.58f));for(i in 0..3){val hc=homes[i];drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(cosmetics.board.zoneColors[i]),0.34f,0.06f,1f,0.01f,3,false);drawMesh(roundedBox,identityAt(hc[0],boardTop+0.22f,hc[1],1.16f,0.075f,1.16f),colorFromInt(cosmetics.board.zoneColors[i],0.96f),0.22f,0.10f,1f,0.012f,3,false);for(sx in arrayOf(-0.43f,0.43f))for(sz in arrayOf(-0.43f,0.43f))drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(cosmetics.board.zoneColors[i],0.56f),0.20f,0.18f,1f,0f,3,false)}
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],cosmetics.pawn.colors[pi],pi==player,pi,ti)}
             for(pi in 0..3)drawDie(pi)
         }
@@ -1143,24 +1143,24 @@ class LudoBoardView(
                 for(pi in 0..3){val p=dieCenterWorld(pi);drawShadowMesh(cube,identityAt(p[0],boardTop+0.035f,p[2],0.92f,0.06f,0.92f));drawShadowMesh(roundedBox,dieModel(pi))}
                 return
             }
-            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(Color.rgb(71,36,14)),0.58f,0.08f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),rgba(cosmetics.board.tableColor),0.58f,0.08f,1f,0f,1,false)
             drawMesh(cube,identityAt(0f,2.85f,-6.1f,7.8f,2.9f,0.10f),rgba(Color.rgb(43,29,22)),0.72f,0.02f,1f,0f,3,false)
             drawMesh(sphere,identityAt(-5.35f,3.25f,-5.85f,0.30f,0.30f,0.30f),rgba(Color.rgb(244,188,78)),0.18f,0.02f,1f,0.95f,3,false)
             drawMesh(sphere,identityAt(5.35f,3.25f,-5.85f,0.30f,0.30f,0.30f),rgba(Color.rgb(244,188,78)),0.18f,0.02f,1f,0.95f,3,false)
-            drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),floatArrayOf(0.47f,0.18f,0.05f,1f),0.42f,0.12f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),floatArrayOf(0.78f,0.48f,0.16f,1f),0.46f,0.10f,1f,0f,1,false)
-            drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),floatArrayOf(0.88f,0.84f,0.73f,1f),0.58f,0.04f,1f,0f,2,false)
-            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),floatArrayOf(0.93f,0.88f,0.75f,1f),0.42f,0.06f,0.98f,0f,2,false)
-            for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.24f,0.05f,1f,0.01f,3,false)
-            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(zoneColorInt(i)),0.28f,0.05f,1f,0.012f,3,false)
+            drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),rgba(cosmetics.board.frameColor),0.34f,0.18f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,-0.03f,0f,4.28f,0.12f,4.28f),rgba(cosmetics.board.frameColor),0.42f,0.12f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.095f,0f,4.05f,0.08f,4.05f),rgba(cosmetics.board.trimColor),0.46f,0.10f,1f,0f,1,false)
+            drawMesh(cube,identityAt(0f,0.165f,0f,3.86f,0.07f,3.86f),rgba(cosmetics.board.surfaceColor),0.58f,0.04f,1f,0f,2,false)
+            drawMesh(pathMesh,identityAt(0f,boardTop+0.008f,0f),rgba(cosmetics.board.pathColor),0.42f,0.06f,0.98f,0f,2,false)
+            for(i in 0..3)drawMesh(coloredZones[i],identityAt(0f,boardTop+0.035f,0f),rgba(cosmetics.board.zoneColors[i]),0.24f,0.05f,1f,0.01f,3,false)
+            for(i in 0..3)drawMesh(coloredLanes[i],identityAt(0f,boardTop+0.035f,0f),rgba(cosmetics.board.zoneColors[i]),0.28f,0.05f,1f,0.012f,3,false)
             val homes=arrayOf(floatArrayOf(0f,-2.58f),floatArrayOf(2.58f,0f),floatArrayOf(0f,2.58f),floatArrayOf(-2.58f,0f))
             for(i in 0..3){
                 val hc=homes[i]
-                drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(zoneColorInt(i)),0.34f,0.06f,1f,0.01f,3,false)
-                drawMesh(roundedBox,identityAt(hc[0],boardTop+0.22f,hc[1],1.16f,0.075f,1.16f),colorFromInt(zoneColorInt(i),0.96f),0.22f,0.10f,1f,0.012f,3,false)
+                drawMesh(roundedBox,identityAt(hc[0],boardTop+0.13f,hc[1],1.34f,0.10f,1.34f),rgba(cosmetics.board.zoneColors[i]),0.34f,0.06f,1f,0.01f,3,false)
+                drawMesh(roundedBox,identityAt(hc[0],boardTop+0.22f,hc[1],1.16f,0.075f,1.16f),colorFromInt(cosmetics.board.zoneColors[i],0.96f),0.22f,0.10f,1f,0.012f,3,false)
                 for(sx in arrayOf(-0.43f,0.43f)) for(sz in arrayOf(-0.43f,0.43f))
-                    drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)
+                    drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(cosmetics.board.zoneColors[i],0.56f),0.20f,0.18f,1f,0f,3,false)
             }
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],cosmetics.pawn.colors[pi],pi==player,pi,ti)}
             for(pi in 0..3)drawDie(pi)
