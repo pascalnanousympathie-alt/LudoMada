@@ -22,6 +22,7 @@ import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
 import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
 import { catalogForClient, findCosmetic, CosmeticCategorySchema } from "./cosmetics";
+import { progressionForScore } from "./progression";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -480,7 +481,25 @@ app.post("/api/auth/refresh",authRateLimit,async(req,res)=>{
   }
 });
 
+app.get("/api/profile/progression",auth,async(req:any,res)=>{
+  const user=await prisma.user.findUnique({
+    where:{id:req.userId},
+    select:{username:true,score:true,level:true}
+  });
+  if(!user) return res.status(404).json({error:"User not found"});
+  const progression=progressionForScore(user.score);
+  return res.json({
+    username:user.username,
+    ...progression
+  });
+});
+
 app.get("/api/cosmetics",auth,async(req:any,res)=>{
+  const user=await prisma.user.findUnique({
+    where:{id:req.userId},
+    select:{score:true,level:true}
+  });
+  if(!user) return res.status(404).json({error:"User not found"});
   const ownedRows=await prisma.cosmeticPurchase.findMany({
     where:{userId:req.userId},
     select:{category:true,itemId:true}
@@ -488,8 +507,9 @@ app.get("/api/cosmetics",auth,async(req:any,res)=>{
   const owned=new Set(ownedRows.map((row)=>row.category+":"+row.itemId));
   const wallet=await prisma.wallet.findUnique({where:{userId:req.userId},select:{balance:true}});
   return res.json({
-    items:catalogForClient(owned),
-    balanceMGA:(wallet?.balance??0n).toString()
+    items:catalogForClient(owned,user.level),
+    balanceMGA:(wallet?.balance??0n).toString(),
+    progression:progressionForScore(user.score)
   });
 });
 
@@ -509,6 +529,21 @@ app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
 
   try{
     const result=await prisma.$transaction(async(tx)=>{
+      const user=await tx.user.findUnique({
+        where:{id:req.userId},
+        select:{score:true,level:true}
+      });
+      if(!user) throw new Error("USER_NOT_FOUND");
+
+      // Starter items and level-unlocked items are earned for free through play.
+      // Paid items can still be purchased before reaching their unlock level.
+      const levelUnlocked =
+        item.unlockLevel !== undefined &&
+        user.level >= item.unlockLevel;
+
+      if(item.starter || levelUnlocked){
+        throw new Error("COSMETIC_ALREADY_OWNED");
+      }
       const duplicate=await tx.cosmeticPurchase.findUnique({
         where:{userId_idempotencyKey:{userId:req.userId,idempotencyKey:key}}
       });
@@ -573,6 +608,7 @@ app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
   }catch(e:any){
     if(e?.message==="IDEMPOTENCY_KEY_CONFLICT") return res.status(409).json({error:"IDEMPOTENCY_KEY_CONFLICT"});
     if(e?.message==="COSMETIC_ALREADY_OWNED") return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
+    if(e?.message==="USER_NOT_FOUND") return res.status(404).json({error:"User not found"});
     if(e?.message==="INSUFFICIENT_FUNDS") return res.status(409).json({error:"INSUFFICIENT_FUNDS"});
     if(e?.code==="P2002"){
       return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
