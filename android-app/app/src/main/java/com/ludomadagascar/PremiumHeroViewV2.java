@@ -296,10 +296,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
           m.wallet();
           return;
         }
-        if("cosmetics".equals(n)){
-          m.cosmetics();
-          return;
-        }
       }
       if(a==null)return;
       Method m=a.getClass().getDeclaredMethod(n);
