@@ -907,8 +907,10 @@ class MainActivity : Activity() {
         val overlay=FrameLayout(this).apply{
             setBackgroundColor(Color.argb(150,0,0,0))
             isClickable=true
-            isFocusable=false
-            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            isFocusable=true
+            contentDescription="GAME_MODE_DIALOG"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            descendantFocusability=ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val panel=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
