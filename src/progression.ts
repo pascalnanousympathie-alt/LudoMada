@@ -7,8 +7,8 @@
 export const SCORE_FOR_COMPLETED_GAME = 100;
 export const SCORE_WIN_BONUS = 300;
 
-/** Level 1 starts at 0; each next level needs 250 more points than the previous one. */
-export const LEVEL_BASE_STEP = 250;
+/** Level 1 starts at 0. Each next level gets substantially more expensive in score. */
+export const LEVEL_BASE_STEP = 1250;
 
 export function levelThreshold(level: number): number {
   const safeLevel = Math.max(1, Math.floor(level));
