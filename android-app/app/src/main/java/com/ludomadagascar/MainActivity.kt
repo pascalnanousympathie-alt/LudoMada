@@ -1289,7 +1289,7 @@ class MainActivity : Activity() {
     private fun updateBoard(host:LudoBoardView){
         host.state=state;host.player=playerIndex();host.animateState();
         val i=state?.optInt("currentPlayerIndex",0)?:0;val d=state?.optInt("dice",0)?:0
-        status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"
+        status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d  •  Niv. $playerLevel  •  Score $playerScore"
     }
 
     private fun refreshState(){get("/api/games/$gameId/state"){j->
