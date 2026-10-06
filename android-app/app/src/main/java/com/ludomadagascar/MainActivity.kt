@@ -638,18 +638,27 @@ class MainActivity : Activity() {
                 if(item.optString("category")!=category)continue
                 val id=item.optString("id")
                 val titleText=item.optString("title",id)
+                val rarity=item.optString("rarity","standard").lowercase()
+                val rarityText=when(rarity){
+                    "rare"->"RARE"
+                    "epic"->"EPIC"
+                    "heroic"->"HÉROÏQUE"
+                    "legendary"->"LÉGENDAIRE"
+                    "mythic"->"MYTHIC"
+                    else->"STANDARD"
+                }
                 val price=item.optString("priceMGA").toLongOrNull()?:0L
                 val owned=item.optBoolean("owned",false)
                 val selected=isCosmeticSelected(category,id)
                 val unlockLevel=if(item.has("unlockLevel")&&!item.isNull("unlockLevel")) item.optInt("unlockLevel",0) else 0
                 val levelUnlocked=item.optBoolean("levelUnlocked",false)
                 val label=when{
-                    selected && owned->"✓ ${titleText}\nÉquipé"
-                    owned->"${titleText}\nÉquiper"
-                    unlockLevel>0 && !levelUnlocked && price>0L->"${titleText}\nNiv. ${unlockLevel} ou ${formatMGA(price)} Ar"
-                    unlockLevel>0 && !levelUnlocked->"${titleText}\nNiv. ${unlockLevel}"
-                    price<=0L->"${titleText}\nGratuit"
-                    else->"${titleText}\n${formatMGA(price)} Ar"
+                    selected && owned->"✓ \${rarityText} • \${titleText}\nÉquipé"
+                    owned->"\${rarityText} • \${titleText}\nÉquiper"
+                    unlockLevel>0 && !levelUnlocked && price>0L->"\${rarityText} • \${titleText}\nNiv. \${unlockLevel} ou \${formatMGA(price)} Ar"
+                    unlockLevel>0 && !levelUnlocked->"\${rarityText} • \${titleText}\nNiv. \${unlockLevel}"
+                    price<=0L->"\${rarityText} • \${titleText}\nGratuit"
+                    else->"\${rarityText} • \${titleText}\n\${formatMGA(price)} Ar"
                 }
                 val accent=when{selected&&owned->gold;owned->emerald;else->royal}
                 val b=button(label,accent){
