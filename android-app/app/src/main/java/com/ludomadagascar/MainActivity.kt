@@ -495,7 +495,7 @@ class MainActivity : Activity() {
             "offline" -> offlineMenu()
             "room" -> home()
             "lobby" -> home()
-            "profile", "wallet", "history", "social", "events", "tutorials", "settings" -> home()
+            "profile", "wallet", "history", "social", "events", "tutorials", "settings", "cosmetics" -> home()
             else -> super.onBackPressed()
         }
     }
@@ -535,10 +535,73 @@ class MainActivity : Activity() {
         refreshAccountBalance()
     }
 
+    private fun cosmetics() {
+        page("cosmetics","Personnalisation")
+        val current=CosmeticAssetSystem.snapshot(this)
+
+        sectionTitle("Plateaux","Le même plateau 3D, avec une apparence interchangeable.")
+        val boardRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+        val boardBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        for(style in CosmeticAssetSystem.boards){
+            val selected=style.id==current.board.id
+            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
+                CosmeticAssetSystem.setBoard(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
+            }.apply{contentDescription="PLATEAU_"+style.title; minWidth=dp(150)}
+            boardBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        }
+        boardRow.addView(boardBox)
+        add(boardRow,68,3,7)
+
+        sectionTitle("Dés","Choisissez le modèle et le comportement visuel du dé.")
+        val diceRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+        val diceBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        for(style in CosmeticAssetSystem.dice){
+            val selected=style.id==current.dice.id
+            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
+                CosmeticAssetSystem.setDice(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
+            }.apply{contentDescription="DE_"+style.title; minWidth=dp(150)}
+            diceBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        }
+        diceRow.addView(diceBox)
+        add(diceRow,68,3,7)
+
+        sectionTitle("Pions","La géométrie 3D reste réelle; seule l’apparence est remplacée.")
+        val pawnRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+        val pawnBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        for(style in CosmeticAssetSystem.pawns){
+            val selected=style.id==current.pawn.id
+            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
+                CosmeticAssetSystem.setPawn(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
+            }.apply{contentDescription="PION_"+style.title; minWidth=dp(150)}
+            pawnBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        }
+        pawnRow.addView(pawnBox)
+        add(pawnRow,68,3,7)
+
+        sectionTitle("Effets","Étincelles, burst et poussière; aucun effet ne modifie les règles.")
+        val vfxRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+        val vfxBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        for(style in CosmeticAssetSystem.vfx){
+            val selected=style.id==current.vfx.id
+            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
+                CosmeticAssetSystem.setVfx(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
+            }.apply{contentDescription="EFFET_"+style.title; minWidth=dp(150)}
+            vfxBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        }
+        vfxRow.addView(vfxBox)
+        add(vfxRow,68,3,9)
+
+        add(card("Configuration active",current.board.title+" • "+current.dice.title+" • "+current.pawn.title+" • "+current.vfx.title,gold),76,2,8)
+        add(button("Réinitialiser les cosmétiques",Color.rgb(100,112,128)){
+            CosmeticAssetSystem.reset(this); boardHost?.refreshCosmetics(); cosmetics()
+        },52,2,6)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
+    }
     private fun profile() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
+        add(button("🎨 Personnalisation",Color.rgb(126,82,188)){cosmetics()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
     }
