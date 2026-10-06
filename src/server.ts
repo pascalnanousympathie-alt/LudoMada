@@ -21,6 +21,7 @@ import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
 import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
+import { catalogForClient, findCosmetic, CosmeticCategorySchema } from "./cosmetics";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -475,6 +476,110 @@ app.post("/api/auth/refresh",authRateLimit,async(req,res)=>{
       requestId:req.get("X-Request-ID")
     });
 
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.get("/api/cosmetics",auth,async(req:any,res)=>{
+  const ownedRows=await prisma.cosmeticPurchase.findMany({
+    where:{userId:req.userId},
+    select:{category:true,itemId:true}
+  });
+  const owned=new Set(ownedRows.map((row)=>row.category+":"+row.itemId));
+  const wallet=await prisma.wallet.findUnique({where:{userId:req.userId},select:{balance:true}});
+  return res.json({
+    items:catalogForClient(owned),
+    balanceMGA:(wallet?.balance??0n).toString()
+  });
+});
+
+app.post("/api/cosmetics/purchase",auth,async(req:any,res)=>{
+  const key=String(req.headers["idempotency-key"]||"").trim();
+  const parsed=z.object({
+    category:CosmeticCategorySchema,
+    itemId:z.string().trim().min(1).max(64)
+  }).safeParse(req.body);
+
+  if(!parsed.success || !key || key.length>128){
+    return res.status(400).json({error:"Invalid request or Idempotency-Key"});
+  }
+
+  const item=findCosmetic(parsed.data.category,parsed.data.itemId);
+  if(!item) return res.status(404).json({error:"COSMETIC_NOT_FOUND"});
+
+  try{
+    const result=await prisma.$transaction(async(tx)=>{
+      const duplicate=await tx.cosmeticPurchase.findUnique({
+        where:{userId_idempotencyKey:{userId:req.userId,idempotencyKey:key}}
+      });
+      if(duplicate){
+        if(duplicate.category!==item.category || duplicate.itemId!==item.id || duplicate.priceMGA!==item.priceMGA){
+          throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+        }
+        const wallet=await tx.wallet.findUnique({where:{userId:req.userId},select:{balance:true}});
+        return {purchase:duplicate,balance:wallet?.balance??0n};
+      }
+
+      const existing=await tx.cosmeticPurchase.findUnique({
+        where:{userId_category_itemId:{
+          userId:req.userId,category:item.category,itemId:item.id
+        }}
+      });
+      if(existing){
+        throw new Error("COSMETIC_ALREADY_OWNED");
+      }
+
+      if(item.priceMGA>0n){
+        const debited=await tx.wallet.updateMany({
+          where:{userId:req.userId,balance:{gte:item.priceMGA}},
+          data:{balance:{decrement:item.priceMGA}}
+        });
+        if(debited.count!==1) throw new Error("INSUFFICIENT_FUNDS");
+      } else {
+        const wallet=await tx.wallet.findUnique({where:{userId:req.userId},select:{id:true}});
+        if(!wallet){
+          await tx.wallet.create({data:{userId:req.userId}});
+        }
+      }
+
+      const purchase=await tx.cosmeticPurchase.create({
+        data:{
+          userId:req.userId,
+          category:item.category,
+          itemId:item.id,
+          priceMGA:item.priceMGA,
+          idempotencyKey:key
+        }
+      });
+      const wallet=await tx.wallet.findUnique({where:{userId:req.userId},select:{balance:true}});
+      return {purchase,balance:wallet?.balance??0n};
+    });
+
+    await audit(prisma,req,"COSMETIC_PURCHASE",{
+      purchaseId:result.purchase.id,
+      category:item.category,
+      itemId:item.id,
+      priceMGA:item.priceMGA.toString()
+    });
+
+    return res.status(201).json({
+      ok:true,
+      category:item.category,
+      itemId:item.id,
+      priceMGA:item.priceMGA.toString(),
+      balanceMGA:result.balance.toString(),
+      owned:true
+    });
+  }catch(e:any){
+    if(e?.message==="IDEMPOTENCY_KEY_CONFLICT") return res.status(409).json({error:"IDEMPOTENCY_KEY_CONFLICT"});
+    if(e?.message==="COSMETIC_ALREADY_OWNED") return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
+    if(e?.message==="INSUFFICIENT_FUNDS") return res.status(409).json({error:"INSUFFICIENT_FUNDS"});
+    if(e?.code==="P2002"){
+      return res.status(409).json({error:"COSMETIC_ALREADY_OWNED"});
+    }
+    console.error("COSMETIC PURCHASE ERROR:",{
+      name:e?.name,code:e?.code,message:e?.message,requestId:req.requestId
+    });
     return res.status(500).json({error:"Internal server error"});
   }
 });
