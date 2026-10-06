@@ -351,33 +351,32 @@ try {
     }
   }
   waitStable(500);
-  let modeOpened = hasText("GAME_MODE_DIALOG") || hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE");
-  if (!modeOpened) {
-    // Canvas-backed Home can miss the first tap after returning from Wallet. Refresh the
-    // actual JOUER node once, then fall back through several portrait-normalized points.
-    const retryTree = allow("snapshot", "--session", session, "--include-offscreen");
-    const retryNode = retryTree.ok
-      ? (retryTree.value?.elements || []).find(el => el.clickable && String(el.contentDesc || el.text || "") === "JOUER")
-      : null;
-    if (retryNode) {
-      const rt = tapRef({ref: retryNode.ref, gen: retryTree.value.gen});
-      if (rt.ok) { waitStable(500); modeOpened = hasText("GAME_MODE_DIALOG") || hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE"); }
+  // Verify the post-JOUER overlay with one bounded accessibility snapshot.
+  // Repeating four independent --find RPCs can each wait on Ramus' Android
+  // accessibility stream and previously stretched a real failure into >10 minutes.
+  let modeOpened = false;
+  for (let attempt = 1; attempt <= 3 && !modeOpened; attempt++) {
+    const modeTree = allow("snapshot", "--session", session, "--include-offscreen");
+    if (modeTree.ok) {
+      const elements = modeTree.value?.elements || [];
+      modeOpened = elements.some(el => {
+        const v = String(el.contentDesc || el.text || "");
+        return v.includes("GAME_MODE_DIALOG") ||
+          v.includes("Choisissez le mode") ||
+          v.includes("MODE_OFFLINE") ||
+          v.includes("MODE_ONLINE");
+      });
+      if (process.env.RAMUS_CAPTURE === "1") shot("mode-dialog");
+      console.log("MODE_DIALOG_PROBE_" + attempt + "=" + (modeOpened ? "FOUND" : "NOT_FOUND"));
+    } else {
+      console.log("MODE_DIALOG_PROBE_" + attempt + "_ERROR=" + JSON.stringify(modeTree.value));
     }
+    if (!modeOpened) waitStable(700);
   }
   if (!modeOpened) {
-    // Probe all four orientation transforms of the visible JOUER CTA.
-    // This removes dependence on Ramus/Android rotation normalization.
-    for (const pt of [
-      "0.42,0.86","0.42,0.88","0.46,0.86","0.47,0.90",
-      "0.58,0.12","0.60,0.14","0.54,0.12","0.52,0.16",
-      "0.12,0.42","0.14,0.46","0.16,0.50",
-      "0.86,0.42","0.88,0.46","0.90,0.47"
-    ]) {
-      const rt = allow("tap", pt, "--session", session, "--force");
-      if (rt.ok) { waitStable(450); if (hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE")) { modeOpened = true; break; } }
-    }
+    throw new Error("Game mode dialog was not exposed from Home JOUER after bounded verification");
   }
-  if (!modeOpened) throw new Error("Game mode dialog was not exposed from Home JOUER");
+
 
   // Prefer the real accessibility target for the mode overlay. Ramus coordinate
   // transforms differ across rotation paths, while MODE_ONLINE is the authoritative UI marker.
