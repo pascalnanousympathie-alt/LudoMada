@@ -466,57 +466,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
       p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);p.setTextAlign(center?Paint.Align.CENTER:Paint.Align.LEFT);
       c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
     }
-    void board(Canvas c){
-      float pulse=1f+(float)Math.sin(System.currentTimeMillis()/950.0)*.012f;
-      c.save();c.scale(pulse,pulse,d(195),d(298));
-      // Polished walnut table + stainless/chrome bezel.
-      p.setShadowLayer(d(18),0,d(11),0x99000000);
-      p.setShader(new LinearGradient(d(101),d(204),d(289),d(404),Color.rgb(168,88,31),Color.rgb(61,27,10),Shader.TileMode.CLAMP));
-      c.drawRoundRect(d(101),d(205),d(289),d(405),d(24),d(24),p);p.setShader(null);p.clearShadowLayer();
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(5));
-      p.setShader(new LinearGradient(d(105),d(207),d(285),d(402),Color.rgb(250,252,255),Color.rgb(112,123,136),Shader.TileMode.CLAMP));
-      c.drawRoundRect(d(105),d(209),d(285),d(401),d(22),d(22),p);p.setShader(null);p.setStyle(Paint.Style.FILL);
-      p.setShader(new LinearGradient(d(110),d(214),d(280),d(394),Color.rgb(255,250,237),Color.rgb(208,196,170),Shader.TileMode.CLAMP));
-      c.drawRoundRect(d(110),d(214),d(280),d(394),d(20),d(20),p);p.setShader(null);
-      final float x0=117f,y0=220f,cell=10.4f,size=156f;
-      // 15×15 Ludo surface.
-      p.setColor(Color.rgb(247,242,228));c.drawRoundRect(d(x0),d(y0),d(x0+size),d(y0+size),d(9),d(9),p);
-      // Four colored home sectors with soft depth.
-      homeSector(c,x0,y0,red);homeSector(c,x0+9*cell,y0,green);homeSector(c,x0,y0+9*cell,yellow);homeSector(c,x0+9*cell,y0+9*cell,blue);
-      // Colored finishing lanes.
-      p.setColor(red);c.drawRect(d(x0+6*cell),d(y0+6*cell),d(x0+7*cell),d(y0+9*cell),p);
-      p.setColor(green);c.drawRect(d(x0+7*cell),d(y0+6*cell),d(x0+9*cell),d(y0+7*cell),p);
-      p.setColor(yellow);c.drawRect(d(x0+7*cell),d(y0+7*cell),d(x0+9*cell),d(y0+9*cell),p);
-      p.setColor(blue);c.drawRect(d(x0+6*cell),d(y0+7*cell),d(x0+7*cell),d(y0+9*cell),p);
-      // Crisp engraved grid and path cells.
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(.65f));p.setColor(0x807B6F5C);
-      for(int i=0;i<=15;i++){float q=x0+i*cell;c.drawLine(d(q),d(y0),d(q),d(y0+size),p);float r0=y0+i*cell;c.drawLine(d(x0),d(r0),d(x0+size),d(r0),p);}p.setStyle(Paint.Style.FILL);
-      // Home inner pearl pads.
-      homePad(c,x0+10,y0+10);homePad(c,x0+9*cell+10,y0+10);homePad(c,x0+10,y0+9*cell+10);homePad(c,x0+9*cell+10,y0+9*cell+10);
-      boardPawn(c,x0+26,y0+26,8.3f,red);boardPawn(c,x0+51,y0+26,8.3f,red);boardPawn(c,x0+26,y0+51,8.3f,red);boardPawn(c,x0+51,y0+51,8.3f,red);
-      boardPawn(c,x0+105,y0+26,8.3f,green);boardPawn(c,x0+130,y0+26,8.3f,green);boardPawn(c,x0+105,y0+51,8.3f,green);boardPawn(c,x0+130,y0+51,8.3f,green);
-      boardPawn(c,x0+26,y0+105,8.3f,yellow);boardPawn(c,x0+51,y0+105,8.3f,yellow);boardPawn(c,x0+26,y0+130,8.3f,yellow);boardPawn(c,x0+51,y0+130,8.3f,yellow);
-      boardPawn(c,x0+105,y0+105,8.3f,blue);boardPawn(c,x0+130,y0+105,8.3f,blue);boardPawn(c,x0+105,y0+130,8.3f,blue);boardPawn(c,x0+130,y0+130,8.3f,blue);
-      // Four-dimensional center: metallic gold diamond with colored facets.
-      float cx=x0+7.5f*cell,cy=y0+7.5f*cell;
-      Path tri=new Path();int[] cc={red,green,blue,yellow};float[][] pts={{6,6,9,6},{9,6,9,9},{9,9,6,9},{6,9,6,6}};
-      for(int i=0;i<4;i++){tri.reset();tri.moveTo(d(x0+pts[i][0]*cell),d(y0+pts[i][1]*cell));tri.lineTo(d(x0+pts[i][2]*cell),d(y0+pts[i][3]*cell));tri.lineTo(d(cx),d(cy));tri.close();int col=cc[i];int hi=Color.rgb(Math.min(255,Color.red(col)+72),Math.min(255,Color.green(col)+72),Math.min(255,Color.blue(col)+72));int lo=Color.rgb((int)(Color.red(col)*.45f),(int)(Color.green(col)*.45f),(int)(Color.blue(col)*.45f));p.setShader(new LinearGradient(d(cx),d(cy),d(x0+pts[i][2]*cell),d(y0+pts[i][3]*cell),hi,lo,Shader.TileMode.CLAMP));p.setShadowLayer(d(2.5f),0,d(1.5f),0x55000000);c.drawPath(tri,p);p.clearShadowLayer();p.setShader(null);}
-      p.setShader(new RadialGradient(d(cx-2),d(cy-3),d(10),Color.WHITE,Color.rgb(156,166,177),Shader.TileMode.CLAMP));c.drawCircle(d(cx),d(cy),d(8.5f),p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.1f));p.setColor(0xDFFFFFFF);c.drawCircle(d(cx),d(cy),d(8.5f),p);p.setStyle(Paint.Style.FILL);
-      // Premium safe markers.
-      for(float[]v:new float[][]{{6.5f,4.5f},{10.5f,6.5f},{8.5f,10.5f},{4.5f,8.5f}}){t(c,"★",x0+v[0]*cell,y0+v[1]*cell,6.5f,0xA86F6B5A,true,true);}
-      // Reflective glass coat.
-      p.setShader(new LinearGradient(d(x0),d(y0),d(x0+size),d(y0+size),0x38FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawRoundRect(d(x0+1),d(y0+1),d(x0+size-1),d(y0+size-1),d(9),d(9),p);p.setShader(null);
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.4f));p.setColor(0xC8FFFFFF);c.drawRoundRect(d(109),d(213),d(281),d(395),d(21),d(21),p);p.setStyle(Paint.Style.FILL);
-      // Floating chrome-mercury die.
-      float spin=(System.currentTimeMillis()%3600L)/3600f*8f-4f;c.save();c.rotate(spin,d(278),d(367));
-      p.setShadowLayer(d(9),0,d(5),0xB0000000);
-      p.setShader(new RadialGradient(d(267),d(353),d(36),new int[]{Color.WHITE,Color.rgb(242,246,249),Color.rgb(184,194,203),Color.rgb(89,100,111),Color.rgb(227,233,239)},new float[]{0f,.17f,.45f,.76f,1f},Shader.TileMode.CLAMP));
-      c.drawRoundRect(d(250),d(338),d(294),d(382),d(10),d(10),p);p.setShader(null);p.clearShadowLayer();
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.2f));p.setColor(0xEFFFFFFF);c.drawRoundRect(d(250),d(338),d(294),d(382),d(10),d(10),p);p.setStyle(Paint.Style.FILL);
-      p.setShader(new LinearGradient(d(251),d(346),d(293),d(365),0xDFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawRoundRect(d(251),d(339),d(293),d(366),d(9),d(9),p);p.setShader(null);
-      p.setColor(0x8A666F79);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(272+v[0]),d(360+v[1]),d(2.4f),p);p.setColor(Color.WHITE);c.drawCircle(d(258),d(346),d(3.2f),p);c.drawCircle(d(262),d(349),d(1.1f),p);c.restore();
-      c.restore();postInvalidateDelayed(16);
-    }
     void homeSector(Canvas c,float x,float y,int col){
       p.setShader(new LinearGradient(d(x),d(y),d(x+62),d(y+62),Color.rgb(Math.min(255,Color.red(col)+32),Math.min(255,Color.green(col)+32),Math.min(255,Color.blue(col)+32)),col,Shader.TileMode.CLAMP));c.drawRoundRect(d(x),d(y),d(x+62),d(y+62),d(9),d(9),p);p.setShader(null);
     }
