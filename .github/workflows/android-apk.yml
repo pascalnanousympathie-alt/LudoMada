@@ -1,4 +1,5 @@
 name: Build Ludo Madagascar APK
+# CI stability: keep the Termux AAPT2 launcher independent of GitHub Actions HOME overrides.
 
 on:
   workflow_dispatch:
@@ -60,7 +61,7 @@ jobs:
           HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
           printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
       - run: chmod +x gradlew
-      - run: bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
+      - run: HOME=/data/data/com.termux/files/home bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
       - run: |
           set -eu
           test -s app/build/outputs/apk/debug/app-debug.apk

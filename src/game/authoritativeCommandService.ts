@@ -3,6 +3,7 @@ import { GameStateRepository } from "./gameStateRepository";
 import { appendGameEvent } from "./gameEventStore";
 import { rollDice, moveToken } from "./ludoEngine";
 import { randomInt } from "crypto";
+import { scoreAwardForCompletedGame, progressionForScore } from "../progression";
 
 export class AuthoritativeCommandService {
   constructor(private prisma:PrismaClient, private repo=new GameStateRepository(prisma)) {}
@@ -298,6 +299,45 @@ export class AuthoritativeCommandService {
             finishedAt:new Date()
           }
         });
+
+        // Free progression reward: every player who completes a game earns score.
+        // The winner gets a bonus. Score has no monetary value and is not wallet balance.
+        const participants=await tx.gameParticipant.findMany({
+          where:{gameId},
+          select:{userId:true}
+        });
+        for(const participant of participants){
+          const award=scoreAwardForCompletedGame(participant.userId===winnerId);
+          const currentUser=await tx.user.findUnique({
+            where:{id:participant.userId},
+            select:{score:true}
+          });
+          if(!currentUser) throw new Error("USER_NOT_FOUND");
+          const newScore=currentUser.score+award;
+          await tx.user.update({
+            where:{id:participant.userId},
+            data:{
+              score:newScore,
+              level:progressionForScore(newScore).level
+            }
+          });
+          if(participant.userId===userId){
+            (response as any).progression=progressionForScore(newScore);
+            (response as any).scoreAward=award;
+            (response as any).won=true;
+          }
+        }
+
+        if(!(response as any).progression){
+          const currentUser=await tx.user.findUnique({
+            where:{id:userId},
+            select:{score:true}
+          });
+          if(!currentUser) throw new Error("USER_NOT_FOUND");
+          (response as any).progression=progressionForScore(currentUser.score);
+          (response as any).scoreAward=scoreAwardForCompletedGame(userId===winnerId);
+          (response as any).won=userId===winnerId;
+        }
 
         await appendGameEvent(
           tx,

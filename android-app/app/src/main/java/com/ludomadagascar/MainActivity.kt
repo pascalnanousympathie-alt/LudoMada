@@ -34,11 +34,17 @@ class MainActivity : Activity() {
     private var entryFee = 500
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
+    private var playerScore: Long = 0L; private var playerLevel: Int = 1
+    private var playerTierTitle: String = "Novice"; private var playerTierBadge: String = "N"
+    private var playerGameplayAdvantage: Boolean = false
+    private var playerCurrentLevelScore: Long = 0L; private var playerNextLevelScore: Long = 1250L
+    private var playerProgressInLevel: Long = 0L; private var playerPointsToNextLevel: Long = 1250L
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var externalWalletView: TextView? = null
+    private var roomPlayersView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
@@ -467,7 +473,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateExternalWalletStatus()
-        if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
+        if(::music.isInitialized && token.isNotBlank()){
+            refreshAccountBalance()
+            refreshProgression()
+        }
     }
 
     private fun refreshAccountBalance() {
@@ -484,10 +493,41 @@ class MainActivity : Activity() {
             runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar";window.decorView.invalidate()}
         }
     }
+    private fun refreshProgression() {
+        if(token.isBlank()){
+            playerScore=0L
+            playerLevel=1
+            playerTierTitle="Novice"
+            playerTierBadge="N"
+            playerGameplayAdvantage=false
+            playerCurrentLevelScore=0L
+            playerNextLevelScore=1250L
+            playerProgressInLevel=0L
+            playerPointsToNextLevel=1250L
+            window.decorView.invalidate()
+            return
+        }
+        get("/api/profile/progression"){j->
+            playerScore=j.optLong("score",0L)
+            playerLevel=j.optInt("level",1)
+            playerTierTitle=j.optString("tierTitle","Novice")
+            playerTierBadge=j.optString("tierBadge","N")
+            playerGameplayAdvantage=j.optBoolean("gameplayAdvantage",false)
+            playerCurrentLevelScore=j.optLong("currentLevelScore",0L)
+            playerNextLevelScore=j.optLong("nextLevelScore",250L)
+            playerProgressInLevel=j.optLong("progressInLevel",0L)
+            playerPointsToNextLevel=j.optLong("pointsToNextLevel",0L)
+            runOnUiThread{window.decorView.invalidate()}
+        }
+    }
 
     override fun onBackPressed() {
         if(modeOverlay!=null){
             dismissGameModeOverlay()
+            return
+        }
+        if(mainMenuOverlay!=null){
+            dismissMainMenuOverlay()
             return
         }
         when (currentScreen) {
@@ -495,7 +535,7 @@ class MainActivity : Activity() {
             "offline" -> offlineMenu()
             "room" -> home()
             "lobby" -> home()
-            "profile", "wallet", "history", "social", "events", "tutorials", "settings" -> home()
+            "profile", "wallet", "history", "social", "events", "tutorials", "settings", "cosmetics" -> home()
             else -> super.onBackPressed()
         }
     }
@@ -533,12 +573,165 @@ class MainActivity : Activity() {
         if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
         setContentView(hero)
         refreshAccountBalance()
+        refreshProgression()
     }
 
+    private fun cosmetics() {
+        page("cosmetics","Marché & Personnalisation")
+        if(token.isBlank()){
+            sectionTitle("Marché LudoMada","Connecte-toi pour voir ta collection et acheter des cosmétiques.")
+            add(card("Compte requis","Les achats utilisent uniquement le solde réel du wallet.",royal),92,3,8)
+            add(button("Se connecter",royal){login()},52,3,6)
+            add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
+            return
+        }
+        sectionTitle("Marché","Cosmétiques 3D échangeables • prix affichés en Ariary")
+        add(card("Chargement du catalogue","Récupération du catalogue officiel et de ton ownership…",royal),82,3,8)
+        get("/api/cosmetics"){j->
+            runOnUiThread{
+                accountBalanceMGA=j.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
+                topBalanceView?.text="${formatMGA(accountBalanceMGA)} Ar"
+                renderCosmeticMarket(j)
+            }
+        }
+    }
+
+    private fun renderCosmeticMarket(data:JSONObject){
+        if(currentScreen!="cosmetics")return
+        root.removeAllViews()
+        addTopBar("Marché & Personnalisation")
+        sectionTitle("Marché","Cosmétiques 3D échangeables • prix officiels du serveur")
+        val balance=data.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
+        accountBalanceMGA=balance
+        val progress=data.optJSONObject("progression")
+        if(progress!=null){
+            playerScore=progress.optLong("score",playerScore)
+            playerLevel=progress.optInt("level",playerLevel)
+            playerCurrentLevelScore=progress.optLong("currentLevelScore",playerCurrentLevelScore)
+            playerNextLevelScore=progress.optLong("nextLevelScore",playerNextLevelScore)
+            playerProgressInLevel=progress.optLong("progressInLevel",playerProgressInLevel)
+            playerPointsToNextLevel=progress.optLong("pointsToNextLevel",playerPointsToNextLevel)
+        }
+        topBalanceView?.text="${formatMGA(balance)} Ar"
+        val prestigeLabel="${playerTierBadge} • ${playerTierTitle}"
+        add(card("Progression","$prestigeLabel\nNiveau $playerLevel • Score $playerScore • ${if(playerPointsToNextLevel>0) "${playerPointsToNextLevel} pts avant le niveau suivant" else "Niveau max"}\nGameplay identique pour tous",Color.rgb(126,82,188)),96,3,8)
+        add(card("Solde disponible","${formatMGA(balance)} Ar",gold),76,3,8)
+
+        val items=data.optJSONArray("items")?:org.json.JSONArray()
+        val grouped=linkedMapOf(
+            "board" to "Plateaux",
+            "dice" to "Dés",
+            "pawn" to "Pions",
+            "vfx" to "Effets"
+        )
+        for((category,title) in grouped){
+            sectionTitle(title,when(category){
+                "board"->"Plateaux 3D"
+                "dice"->"Modèles de dés"
+                "pawn"->"Styles de pions"
+                else->"Poussière, étincelles et bursts"
+            })
+            val row=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+            val box=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+            for(i in 0 until items.length()){
+                val item=items.optJSONObject(i)?:continue
+                if(item.optString("category")!=category)continue
+                val id=item.optString("id")
+                val titleText=item.optString("title",id)
+                val rarity=item.optString("rarity","standard").lowercase()
+                val rarityText=when(rarity){
+                    "rare"->"RARE"
+                    "epic"->"EPIC"
+                    "heroic"->"HÉROÏQUE"
+                    "legendary"->"LÉGENDAIRE"
+                    "mythic"->"MYTHIC"
+                    else->"STANDARD"
+                }
+                val price=item.optString("priceMGA").toLongOrNull()?:0L
+                val owned=item.optBoolean("owned",false)
+                val selected=isCosmeticSelected(category,id)
+                val unlockLevel=if(item.has("unlockLevel")&&!item.isNull("unlockLevel")) item.optInt("unlockLevel",0) else 0
+                val levelUnlocked=item.optBoolean("levelUnlocked",false)
+                val label=when{
+                    selected && owned->"✓ \${rarityText} • \${titleText}\nÉquipé"
+                    owned->"\${rarityText} • \${titleText}\nÉquiper"
+                    unlockLevel>0 && !levelUnlocked && price>0L->"\${rarityText} • \${titleText}\nNiv. \${unlockLevel} ou \${formatMGA(price)} Ar"
+                    unlockLevel>0 && !levelUnlocked->"\${rarityText} • \${titleText}\nNiv. \${unlockLevel}"
+                    price<=0L->"\${rarityText} • \${titleText}\nGratuit"
+                    else->"\${rarityText} • \${titleText}\n\${formatMGA(price)} Ar"
+                }
+                val accent=when{selected&&owned->gold;owned->emerald;else->royal}
+                val b=button(label,accent){
+                    if(owned){
+                        equipCosmetic(category,id)
+                        renderCosmeticMarket(data)
+                    }else{
+                        purchaseCosmetic(category,id,titleText,price)
+                    }
+                }.apply{
+                    minWidth=dp(170)
+                    contentDescription="${titleText} • ${if(owned)"Équiper" else "Acheter"}"
+                }
+                box.addView(b,LinearLayout.LayoutParams(dp(170),dp(72)).apply{setMargins(0,0,dp(8),0)})
+            }
+            row.addView(box)
+            add(row,82,2,6)
+        }
+        add(card("Prestige sans pay-to-win","${playerTierBadge} ${playerTierTitle} : badges, titres et cosmétiques évoluent avec le niveau. Aucun bonus de dé, mouvement, capture ou victoire n’est accordé par le niveau.",Color.rgb(126,82,188)),102,3,8)
+        add(card("Déverrouillage","Les cosmétiques peuvent devenir gratuits via ton niveau, ou être achetés plus tôt au prix affiché.",Color.rgb(126,82,188)),82,3,8)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
+    }
+
+    private fun isCosmeticSelected(category:String,id:String):Boolean{
+        val s=CosmeticAssetSystem.snapshot(this)
+        return when(category){
+            "board"->s.board.id==id
+            "dice"->s.dice.id==id
+            "pawn"->s.pawn.id==id
+            "vfx"->s.vfx.id==id
+            else->false
+        }
+    }
+
+    private fun equipCosmetic(category:String,id:String){
+        when(category){
+            "board"->CosmeticAssetSystem.setBoard(this,id)
+            "dice"->CosmeticAssetSystem.setDice(this,id)
+            "pawn"->CosmeticAssetSystem.setPawn(this,id)
+            "vfx"->CosmeticAssetSystem.setVfx(this,id)
+        }
+        boardHost?.refreshCosmetics()
+    }
+
+    private fun purchaseCosmetic(category:String,id:String,title:String,price:Long){
+        if(price<=0L){
+            equipCosmetic(category,id)
+            cosmetics()
+            return
+        }
+        val key=UUID.randomUUID().toString()
+        post(
+            "/api/cosmetics/purchase",
+            JSONObject().put("category",category).put("itemId",id),
+            key,
+            {
+                runOnUiThread{
+                    equipCosmetic(category,id)
+                    Toast.makeText(this,"${title} acheté • ${formatMGA(price)} Ar",Toast.LENGTH_SHORT).show()
+                    cosmetics()
+                }
+            },
+            {msg->runOnUiThread{Toast.makeText(this,msg,Toast.LENGTH_LONG).show()}}
+        )
+    }
     private fun profile() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
+        val levelPct=if(playerNextLevelScore>playerCurrentLevelScore) ((playerScore-playerCurrentLevelScore).coerceAtLeast(0L)*100/(playerNextLevelScore-playerCurrentLevelScore)).coerceIn(0L,100L) else 100L
+        val prestigeLabel="${playerTierBadge} • ${playerTierTitle}"
+        add(card("Progression","$prestigeLabel\nNiveau $playerLevel • Score $playerScore\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants\nGameplay identique pour tous",gold))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
+        add(button("🎨 Personnalisation",Color.rgb(126,82,188)){cosmetics()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
     }
@@ -576,13 +769,8 @@ class MainActivity : Activity() {
     }
 
     private fun shop() {
-        page("shop","Boutique")
-        sectionTitle("Boutique premium","Une identité visuelle prête pour les futurs objets")
-        add(premiumTile("✦","Thèmes de plateau","Bientôt disponible",royal){Toast.makeText(this,"Boutique en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
-        add(premiumTile("◆","Avatars","Profils et badges",Color.rgb(126,82,188)){Toast.makeText(this,"Avatars bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,5)
-        add(premiumTile("◈","Effets premium","Animations et styles",gold){Toast.makeText(this,"Effets bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,8)
-        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
-        bottomNav("shop")
+        // Boutique is now the real cosmetic market.
+        cosmetics()
     }
 
     private fun languageDialog() {
@@ -720,6 +908,7 @@ class MainActivity : Activity() {
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
     private var modeOverlay: FrameLayout? = null
+    private var mainMenuOverlay: FrameLayout? = null
 
     private fun dismissGameModeOverlay() {
         modeOverlay?.let { overlay ->
@@ -728,6 +917,69 @@ class MainActivity : Activity() {
         modeOverlay=null
     }
 
+
+    private fun dismissMainMenuOverlay() {
+        mainMenuOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        mainMenuOverlay=null
+    }
+
+    private fun mainMenuDialog() {
+        dismissMainMenuOverlay()
+        val host=findViewById<ViewGroup>(android.R.id.content) ?: return
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(Color.argb(175,2,8,22))
+            isClickable=true
+            isFocusable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(22),dp(18),dp(22),dp(20))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(8,29,58),Color.rgb(18,57,96),Color.rgb(8,21,45))
+            ).apply{
+                cornerRadius=dp(26).toFloat()
+                setStroke(dp(1),0x66EDB734)
+            }
+            elevation=dp(20).toFloat()
+        }
+        panel.addView(label("MENU LUDOMADA",20f,true,Color.WHITE).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(label("Navigation principale",11f,false,0xB8FFFFFF.toInt()).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        val grid=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        fun row(vararg entries:Triple<String,Int,()->Unit>){
+            val rowView=LinearLayout(this@MainActivity).apply{orientation=LinearLayout.HORIZONTAL}
+            entries.forEachIndexed{index,entry->
+                val titleText=entry.first.substringBefore('¦')
+                val icon=entry.first.substringAfter('¦')
+                val b=button("$icon  $titleText",entry.second){dismissMainMenuOverlay();entry.third.invoke()}.apply{
+                    contentDescription=titleText
+                    importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    isFocusable=true;isClickable=true;minWidth=0
+                }
+                rowView.addView(b,LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(if(index==0)0 else dp(5),dp(4),if(index==entries.lastIndex)0 else dp(5),dp(4))})
+            }
+            grid.addView(rowView,LinearLayout.LayoutParams(-1,dp(62)))
+        }
+        row(Triple("Jouer¦▶",gold){gameModeDialog()},Triple("Créer une room¦＋",royal){createGame()})
+        row(Triple("Rejoindre¦↗",royal){joinDialog()},Triple("Wallet¦¤",emerald){wallet()})
+        row(Triple("Tournois¦♛",gold){events()},Triple("Tutoriels¦?",royal){tutorials()})
+        row(Triple("Social¦♟",Color.rgb(126,82,188)){social()},Triple("Profil¦◉",royal){profile()})
+        row(Triple("Marché¦◈",Color.rgb(126,82,188)){cosmetics()},Triple("Accueil¦⌂",Color.rgb(70,82,100)){home()})
+        panel.addView(grid,LinearLayout.LayoutParams(-1,dp(330)))
+        val footer=if(token.isBlank()) "Mode visiteur • connecte-toi pour la progression" else "Niveau $playerLevel • Score $playerScore • ${formatMGA(accountBalanceMGA)} Ar"
+        panel.addView(label(footer,10.5f,true,0xD7FFFFFF.toInt()).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        overlay.addView(panel,FrameLayout.LayoutParams((resources.displayMetrics.widthPixels*0.66f).toInt().coerceAtLeast(dp(500)),dp(450),Gravity.CENTER))
+        overlay.setOnClickListener{dismissMainMenuOverlay()}
+        host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+        mainMenuOverlay=overlay
+        overlay.post{
+            val g=panel.getChildAt(2) as? ViewGroup
+            g?.let{if(it.childCount>0)(it.getChildAt(0) as? ViewGroup)?.getChildAt(0)?.requestFocus()}
+        }
+    }
     fun gameModeDialog() {
         android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
@@ -963,7 +1215,10 @@ class MainActivity : Activity() {
         page("room","Room")
         sectionTitle("Room de jeu","Prépare ta partie avant le lancement")
         add(card("MISE","$entryFee Ar",Color.rgb(37,93,196)),78,3,5)
-        add(card("JOUEURS","En attente • 2 à 4 joueurs",Color.rgb(126,82,188)),78,3,5)
+        add(card("JOUEURS","En attente • 2 à 4 joueurs • tous niveaux",Color.rgb(126,82,188)),78,3,5)
+        roomPlayersView=label("Chargement des joueurs…",12.5f,false,Color.rgb(88,99,116))
+        roomPlayersView?.setPadding(dp(4),dp(2),dp(4),dp(2))
+        add(roomPlayersView!!,42,0,5)
         add(label("CODE DE ROOM",12f,true,Color.rgb(88,99,116)),28,3,2)
         add(card("$gameId","Partage ce code avec tes joueurs",Color.rgb(12,147,87)),74,3,6)
         status=label("Connexion au lobby…",14f,true,Color.rgb(37,93,196));add(status,42,3,4)
@@ -989,7 +1244,29 @@ class MainActivity : Activity() {
     }
 
     private fun scheduleLobbyRefresh(){root.postDelayed({if(currentScreen=="room"&&gameId.isNotBlank())refreshLobby()},3000)}
-    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->retryCount=0;val n=j.optJSONArray("participants")?.length()?:0;val prize=n*entryFee;runOnUiThread{if(currentScreen=="room"){status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar";if(n>=2){if(j.optString("creatorId")==userId && j.optString("status")=="WAITING" && !startingGame)startGame();else refreshState()} else scheduleLobbyRefresh()}}}}
+    private fun refreshLobby(){get("/api/games/$gameId/lobby"){j->
+        retryCount=0
+        val participants=j.optJSONArray("participants")?:org.json.JSONArray()
+        val n=participants.length()
+        val prize=n*entryFee
+        val playerLines=(0 until participants.length()).mapNotNull { i->
+            val p=participants.optJSONObject(i)?:return@mapNotNull null
+            val badge=p.optString("tierBadge","N")
+            val title=p.optString("tierTitle","Novice")
+            val name=p.optString("username","Joueur").ifBlank{"Joueur"}
+            val lvl=p.optInt("level",1)
+            "$badge $name • Niv. $lvl • $title"
+        }
+        runOnUiThread{
+            if(currentScreen=="room"){
+                roomPlayersView?.text=if(playerLines.isEmpty()) "Aucun joueur pour le moment" else playerLines.joinToString("\n")
+                status.text="👥 Mpilalao: $n / 4   •   Prize pool: $prize Ar   •   Tous niveaux acceptés"
+                if(n>=2){
+                    if(j.optString("creatorId")==userId && j.optString("status")=="WAITING" && !startingGame)startGame() else refreshState()
+                } else scheduleLobbyRefresh()
+            }
+        }
+    }}
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
@@ -1126,7 +1403,7 @@ class MainActivity : Activity() {
     private fun updateBoard(host:LudoBoardView){
         host.state=state;host.player=playerIndex();host.animateState();
         val i=state?.optInt("currentPlayerIndex",0)?:0;val d=state?.optInt("dice",0)?:0
-        status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"
+        status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d  •  Niv. $playerLevel  •  Score $playerScore"
     }
 
     private fun refreshState(){get("/api/games/$gameId/state"){j->
@@ -1139,6 +1416,11 @@ class MainActivity : Activity() {
             }
             if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
             else if(currentScreen=="board") board()
+            if(serverStatus=="FINISHED"){
+                refreshProgression()
+                val won=j.optString("winnerId")==userId
+                if(::status.isInitialized) status.text="🏆 Partie terminée • Score +${if(won)400 else 100}${if(won)" (bonus victoire)" else ""}"
+            }
         }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
