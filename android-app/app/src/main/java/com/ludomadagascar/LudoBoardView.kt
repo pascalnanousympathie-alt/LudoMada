@@ -597,6 +597,7 @@ class LudoBoardView(
                 }
             }
             // One large foreground hydro-chrome die, matching the hero reference rather than four corner dice.
+            val dc = cosmetics.dice
             val dz = 3.02f
             drawMesh(die,model(0f,0.24f,dz,0.82f,0.11f,0.82f,0f),colorFromInt(dc.trayColor,1f),dc.roughness,dc.metallic,dc.emission,dc.chrome)
             drawMesh(die,model(0f,0.35f,dz,0.67f,0.055f,0.67f,0f),colorFromInt(dc.trayColor,1f),max(0.05f,dc.roughness*0.8f),dc.metallic,0.0f,dc.chrome)
@@ -958,7 +959,7 @@ class LudoBoardView(
         private var sceneColorTex=0
         private var sceneDepthTex=0
         private var fallbackShadowTex=0
-        private val premiumLighting = PremiumMaterialLighting.lighting
+        internal val premiumLighting = PremiumMaterialLighting.lighting
         private val premiumPost = PremiumMaterialLighting.post
         private val shadowSize=premiumLighting.shadowMapResolution
         private var sceneWidth=1
