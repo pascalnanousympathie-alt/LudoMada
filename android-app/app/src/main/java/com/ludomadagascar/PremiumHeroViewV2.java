@@ -553,7 +553,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
       box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
       box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
-      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"Madagasikara • Miray",1105,612,8,gold2,true,true);
+      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"MARCHÉ  •  COSMÉTIQUES 3D",1105,612,8,gold2,true,true);
       c.restore();postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
@@ -599,6 +599,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
       if(y>=465&&y<525&&x>970){call("events");return true;}
       if(y>=525&&y<585&&x>970){call("tutorials");return true;}
+      if(y>=585&&y<642&&x>970){call("cosmetics");return true;}
       if(y>=520&&y<650&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
         int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
