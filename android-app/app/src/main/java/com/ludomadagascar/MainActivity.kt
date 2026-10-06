@@ -627,12 +627,12 @@ class MainActivity : Activity() {
                 val unlockLevel=if(item.has("unlockLevel")&&!item.isNull("unlockLevel")) item.optInt("unlockLevel",0) else 0
                 val levelUnlocked=item.optBoolean("levelUnlocked",false)
                 val label=when{
-                    selected && owned->"✓ ${titleText}\\nÉquipé"
-                    owned->"${titleText}\\nÉquiper"
-                    unlockLevel>0 && !levelUnlocked && price>0L->"${titleText}\\nNiv. ${unlockLevel} ou ${formatMGA(price)} Ar"
-                    unlockLevel>0 && !levelUnlocked->"${titleText}\\nNiv. ${unlockLevel}"
-                    price<=0L->"${titleText}\\nGratuit"
-                    else->"${titleText}\\n${formatMGA(price)} Ar"
+                    selected && owned->"✓ ${titleText}\nÉquipé"
+                    owned->"${titleText}\nÉquiper"
+                    unlockLevel>0 && !levelUnlocked && price>0L->"${titleText}\nNiv. ${unlockLevel} ou ${formatMGA(price)} Ar"
+                    unlockLevel>0 && !levelUnlocked->"${titleText}\nNiv. ${unlockLevel}"
+                    price<=0L->"${titleText}\nGratuit"
+                    else->"${titleText}\n${formatMGA(price)} Ar"
                 }
                 val accent=when{selected&&owned->gold;owned->emerald;else->royal}
                 val b=button(label,accent){
@@ -701,7 +701,7 @@ class MainActivity : Activity() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
         val levelPct=if(playerNextLevelScore>playerCurrentLevelScore) ((playerScore-playerCurrentLevelScore).coerceAtLeast(0L)*100/(playerNextLevelScore-playerCurrentLevelScore)).coerceIn(0L,100L) else 100L
-        add(card("Progression","Niveau $playerLevel • Score $playerScore\\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants",gold))
+        add(card("Progression","Niveau $playerLevel • Score $playerScore\n$levelPct% vers le niveau suivant • ${playerPointsToNextLevel} pts restants",gold))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
         add(button("🎨 Personnalisation",Color.rgb(126,82,188)){cosmetics()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
