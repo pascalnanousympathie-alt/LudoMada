@@ -124,6 +124,18 @@ class LudoBoardView(
 
     fun isDiceRolling(): Boolean = diceRolling
 
+    private fun findHostActivity(ctx: Context): MainActivity? {
+        var c: Context? = ctx
+        repeat(8) {
+            when (c) {
+                is MainActivity -> return c
+                is android.content.ContextWrapper -> c = c.baseContext
+                else -> return null
+            }
+        }
+        return null
+    }
+
     fun startDiceAnimation() {
         if (diceRolling) return
         diceRolling = true
@@ -296,9 +308,15 @@ class LudoBoardView(
                 val rot180 = nx >= 0.03f && nx <= 0.25f && ny >= 0.34f && ny <= 0.52f
                 val playHit = landscape || cw || ccw || rot180
                 if (playHit) {
-                    val activity = context as? MainActivity
+                    val activity = findHostActivity(context)
+                    android.util.Log.i("LudoMadaSmoke", "HOME_PLAY_HIT activity=" + (activity?.javaClass?.name ?: "null"))
                     activity?.runOnUiThread {
-                        activity.gameModeDialog()
+                        runCatching {
+                            activity.gameModeDialog()
+                            android.util.Log.i("LudoMadaSmoke", "GAME_MODE_DIALOG_DISPATCHED_FROM_BOARD")
+                        }.onFailure {
+                            android.util.Log.e("LudoMadaSmoke", "GAME_MODE_DIALOG_FROM_BOARD_FAILED", it)
+                        }
                     }
                     return true
                 }
@@ -308,9 +326,11 @@ class LudoBoardView(
                     nx <= 0.25f && ny >= 0.42f && ny <= 0.62f
                 }
                 if (walletHit) {
-                    val activity = context as? MainActivity
+                    val activity = findHostActivity(context)
+                    android.util.Log.i("LudoMadaSmoke", "HOME_WALLET_HIT activity=" + (activity?.javaClass?.name ?: "null"))
                     activity?.runOnUiThread {
-                        activity.wallet()
+                        runCatching { activity.wallet() }
+                            .onFailure { android.util.Log.e("LudoMadaSmoke", "WALLET_FROM_BOARD_FAILED", it) }
                     }
                     return true
                 }
