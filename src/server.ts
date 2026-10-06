@@ -1876,7 +1876,13 @@ app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
   try{
     const game=await prisma.game.findUnique({
       where:{id:req.params.gameId},
-      include:{participants:{orderBy:{createdAt:"asc"},select:{userId:true}}}
+      include:{participants:{
+        orderBy:{createdAt:"asc"},
+        select:{
+          userId:true,
+          user:{select:{username:true,score:true,level:true}}
+        }
+      }}
     });
     if(!game) return res.status(404).json({error:"Game not found"});
     const isParticipant=game.participants.some((p:any)=>p.userId===req.userId);
@@ -1885,7 +1891,19 @@ app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
       gameId:game.id,
       creatorId:game.creatorId,
       status:game.status,
-      participants:game.participants.map((p:any)=>({userId:p.userId}))
+      participants:game.participants.map((p:any)=>{
+        const progression=progressionForScore(p.user?.score ?? 0);
+        return {
+          userId:p.userId,
+          username:p.user?.username ?? "Joueur",
+          score:progression.score,
+          level:progression.level,
+          tier:progression.tier,
+          tierTitle:progression.tierTitle,
+          tierBadge:progression.tierBadge,
+          gameplayAdvantage:false
+        };
+      })
     });
   }catch(e:any){
     console.error("GAME LOBBY ERROR:",e?.message);
