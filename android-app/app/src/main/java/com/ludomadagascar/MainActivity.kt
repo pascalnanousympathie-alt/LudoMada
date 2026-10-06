@@ -470,7 +470,10 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateExternalWalletStatus()
-        if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
+        if(::music.isInitialized && token.isNotBlank()){
+            refreshAccountBalance()
+            refreshProgression()
+        }
     }
 
     private fun refreshAccountBalance() {
