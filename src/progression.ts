@@ -23,12 +23,12 @@ export type ProgressionTier = {
  * They never modify dice, movement, capture, sortie, finish or any other game rule.
  */
 export const PROGRESSION_TIERS: readonly ProgressionTier[] = [
-  { id: "novice", title: "Novice", badge: "N", minLevel: 1, perks: ["Badge de profil", "Titre de niveau"] },
-  { id: "eclaireur", title: "Éclaireur", badge: "E", minLevel: 5, perks: ["Badge amélioré", "Cosmétiques rares"] },
-  { id: "expert", title: "Expert", badge: "X", minLevel: 10, perks: ["Badge Expert", "Cosmétiques épiques", "Effets de prestige"] },
-  { id: "maitre", title: "Maître", badge: "M", minLevel: 15, perks: ["Titre Maître", "Cosmétiques héroïques", "VFX de prestige"] },
-  { id: "heroique", title: "Héroïque", badge: "H", minLevel: 20, perks: ["Badge Héroïque", "Cadre de profil prestige", "Accès aux cosmétiques légendaires"] },
-  { id: "legendaire", title: "Légendaire", badge: "L", minLevel: 25, perks: ["Titre Légendaire", "Badge premium", "Accès aux cosmétiques mythiques"] },
+  { id: "novice", title: "Novice", badge: "N", minLevel: 1, perks: ["Badge de profil", "Titre Novice"] },
+  { id: "eclaireur", title: "Éclaireur", badge: "E", minLevel: 5, perks: ["Badge amélioré", "Cosmétiques rares", "Intro de lobby Éclaireur"] },
+  { id: "expert", title: "Expert", badge: "X", minLevel: 10, perks: ["Badge Expert", "Cosmétiques épiques", "Cadre de profil Expert", "Emotes de prestige"] },
+  { id: "maitre", title: "Maître", badge: "M", minLevel: 15, perks: ["Titre Maître", "Cosmétiques héroïques", "Intro de victoire Maître", "VFX de prestige"] },
+  { id: "heroique", title: "Héroïque", badge: "H", minLevel: 20, perks: ["Badge Héroïque", "Cadre Héroïque", "Intro de lobby Héroïque", "Cosmétiques légendaires"] },
+  { id: "legendaire", title: "Légendaire", badge: "L", minLevel: 25, perks: ["Titre Légendaire", "Badge premium", "Intro de victoire Légendaire", "Cosmétiques mythiques"] },
 ];
 
 export function progressionTierForLevel(level: number): ProgressionTier {
