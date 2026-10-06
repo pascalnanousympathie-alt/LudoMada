@@ -292,8 +292,9 @@ class LudoBoardView(
                     nx >= 0.79f && nx <= 0.97f && ny >= 0.48f && ny <= 0.66f
                 }
                 if (playHit) {
-                    (context as? MainActivity)?.runOnUiThread {
-                        it.gameModeDialog()
+                    val activity = context as? MainActivity
+                    activity?.runOnUiThread {
+                        activity.gameModeDialog()
                     }
                     return true
                 }
@@ -303,8 +304,9 @@ class LudoBoardView(
                     nx <= 0.25f && ny >= 0.42f && ny <= 0.62f
                 }
                 if (walletHit) {
-                    (context as? MainActivity)?.runOnUiThread {
-                        it.wallet()
+                    val activity = context as? MainActivity
+                    activity?.runOnUiThread {
+                        activity.wallet()
                     }
                     return true
                 }
