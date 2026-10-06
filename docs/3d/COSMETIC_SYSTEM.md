@@ -41,7 +41,7 @@ Completed online games award free progression score on the authoritative server:
 
 Level thresholds are intentionally demanding: level 2 at 1,250 score, level 3 at 3,750, level 4 at 7,500, level 5 at 12,500, then continuing upward by an increasing triangular step.
 
-Progression has a prestige tier layer: Novice (L1), Éclaireur (L5), Expert (L10), Maître (L15), Héroïque (L20) and Légendaire (L25). These tiers provide presentation/cosmetic prestige such as badges, titles, profile framing and access to higher-rarity cosmetics.
+Progression has a prestige tier layer: Novice (L1), Éclaireur (L5), Expert (L10), Maître (L15), Héroïque (L20) and Légendaire (L25). These tiers provide presentation/social rewards such as badges, titles, profile framing, lobby intros, emotes and victory VFX, plus access to higher-rarity cosmetics.
 
 **Fair-play invariant:** level, tier, score and cosmetics never modify dice probability, legal moves, movement distance, sortie, capture, exact finish, turn order, win condition or payout. A L1 player and a L25 player can join the same room and play the exact same ruleset. The lobby exposes each player's level/title for identity only; matchmaking is not blocked by level.
 
