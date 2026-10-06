@@ -95,7 +95,8 @@ jobs:
           set -eu
           rm -rf "$RUNNER_TEMP/ramus-cli"
           mkdir -p "$RUNNER_TEMP/ramus-cli"
-          curl -fsSL https://registry.npmjs.org/ramus-cli/-/ramus-cli-0.1.13.tgz -o "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          cp "$GITHUB_WORKSPACE/_runs/$GITHUB_RUN_ID/ci/vendor/ramus-cli-0.1.13.tgz" "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          printf '%s  %s\n' "ae8e1ae1a0f60c066802cd38a0d49d2a793db9cfc01fb2e9db0f2abaaf8d74f9" "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
           test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
           echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
