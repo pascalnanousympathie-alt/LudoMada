@@ -222,8 +222,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
     return super.dispatchTouchEvent(e);
   }
-  @Override public boolean onInterceptTouchEvent(MotionEvent e){ if(e.getActionMasked()==MotionEvent.ACTION_DOWN && isPlayGesture(e.getX(),e.getY())) return true; return false; }
-  @Override public boolean onTouchEvent(MotionEvent e){ if(isPlayGesture(e.getX(),e.getY())){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; } return home.onTouchEvent(e); }
+  @Override public boolean onInterceptTouchEvent(MotionEvent e){
+    boolean hit=isPlayGesture(e.getX(),e.getY());
+    if(BuildConfig.DEBUG && e.getActionMasked()==MotionEvent.ACTION_DOWN){
+      android.util.Log.i("LudoMada","HOME_TOUCH down x="+e.getX()+" y="+e.getY()+" W="+getWidth()+" H="+getHeight()+" hit="+hit);
+    }
+    return e.getActionMasked()==MotionEvent.ACTION_DOWN && hit;
+  }
+  @Override public boolean onTouchEvent(MotionEvent e){
+    boolean hit=isPlayGesture(e.getX(),e.getY());
+    if(BuildConfig.DEBUG && e.getActionMasked()==MotionEvent.ACTION_UP){
+      android.util.Log.i("LudoMada","HOME_TOUCH up x="+e.getX()+" y="+e.getY()+" W="+getWidth()+" H="+getHeight()+" hit="+hit);
+    }
+    if(hit){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; }
+    return home.onTouchEvent(e);
+  }
   @Override public boolean performClick(){super.performClick();return true;}
   private void positionHomeBoard(View board){
     float W=getWidth(),H=getHeight();
