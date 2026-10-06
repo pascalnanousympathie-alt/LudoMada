@@ -1195,7 +1195,7 @@ class LudoBoardView(
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
             val sx=pawnScale*(1f-0.055f*overshoot)
             val sy=pawnScale*(1f+0.115f*overshoot)
-            val m=identityAt(x,y,z,sx*pc.scale,sy*pc.scale,sx*pc.scale)
+            val m=identityAt(x,y,z,sx*cosmetics.pawn.scale,sy*cosmetics.pawn.scale,sx*cosmetics.pawn.scale)
             val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
@@ -1206,8 +1206,8 @@ class LudoBoardView(
             val elastic=LudoMotionPhysics.elasticOut(b)
             val overshoot=elastic-b
             val backOvershoot=LudoMotionPhysics.backOut(b)-b
-            val s=pawnScale*0.37f*(1f-0.035f*overshoot)*pc.scale
-            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)*pc.scale
+            val s=pawnScale*0.37f*(1f-0.035f*overshoot)*cosmetics.pawn.scale
+            val sy=pawnScale*0.37f*(1f+0.065f*overshoot)*cosmetics.pawn.scale
             val m=identityAt(x,y+pawnScale*0.74f,z,s,sy,s)
             val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
             Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
