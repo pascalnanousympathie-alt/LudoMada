@@ -360,7 +360,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(a instanceof MainActivity){
         MainActivity m=(MainActivity)a;
         if("gameModeDialog".equals(n)){
-          m.gameModeDialog();
+          // Defer overlay creation until the current accessibility/touch dispatch
+          // has fully returned. This avoids a re-entrant view-hierarchy mutation
+          // after returning from Wallet on Ramus/rotated Android surfaces.
+          a.getWindow().getDecorView().post(m::gameModeDialog);
           return;
         }
         if("wallet".equals(n)){
