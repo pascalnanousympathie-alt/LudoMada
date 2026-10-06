@@ -53,7 +53,7 @@ describe("player progression", () => {
       tier:"novice",
       tierTitle:"Novice",
       tierBadge:"N",
-      prestigePerks:["Badge de profil","Titre de niveau"],
+      prestigePerks:["Badge de profil","Titre Novice"],
       gameplayAdvantage:false,
       gameplayModifier:"NONE",
     });
