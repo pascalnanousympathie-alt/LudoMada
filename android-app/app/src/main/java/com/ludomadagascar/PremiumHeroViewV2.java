@@ -174,7 +174,17 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
-  private boolean isPlayGesture(float x,float y){ final float W=getWidth(),H=getHeight(); if(W<=0 || H<=0)return false; float nx=x/W,ny=y/H; boolean portraitHit=nx>=0.50f && nx<=0.66f && ny>=0.045f && ny<=0.235f; boolean landscapeHit=nx>=0.76f && nx<=0.96f && ny>=0.50f && ny<=0.78f; return portraitHit || landscapeHit; }
+  private boolean isPlayGesture(float x,float y){
+    final float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return false;
+    final float nx=x/W,ny=y/H;
+    // Ramus may inject coordinates normalized to its portrait 720×1616 surface
+    // while the Android view is physically laid out in landscape 1280×720.
+    // Accept both the native landscape CTA and that verified portrait CTA mapping.
+    boolean portraitInput=nx>=0.50f && nx<=0.66f && ny>=0.045f && ny<=0.235f;
+    boolean landscapeHit=nx>=0.76f && nx<=0.96f && ny>=0.50f && ny<=0.78f;
+    return portraitInput || landscapeHit;
+  }
   private boolean walletGesture;
   private boolean isWalletGesture(float x,float y){
     final float W=getWidth(),H=getHeight();
