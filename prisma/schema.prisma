@@ -55,6 +55,7 @@ model User {
   createdAt          DateTime            @default(now())
   gameParticipants   GameParticipant[]
   createdGames       Game[]              @relation("GameCreator")
+  cosmeticPurchases CosmeticPurchase[]
 }
 
 model GoogleAuthChallenge {
@@ -247,4 +248,20 @@ model GameCommand {
   createdAt       DateTime @default(now())
 
   @@index([gameId, createdAt])
+}
+
+model CosmeticPurchase {
+  id             String   @id @default(cuid())
+  userId         String
+  category       String
+  itemId         String
+  priceMGA       BigInt
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category, itemId])
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([category, itemId])
 }
