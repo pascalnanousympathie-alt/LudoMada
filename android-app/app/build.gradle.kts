@@ -39,12 +39,12 @@ android { namespace="com.ludomadagascar"; compileSdk=35; buildToolsVersion="36.0
 }
 
 dependencies {
-    // Reown stays fully compiled, but is only packaged into APKs when a real Project ID is supplied.
-    val reownRuntimeEnabled = providers.gradleProperty("REOWN_PROJECT_ID").orElse("").get().trim().isNotBlank()
-    val reownScope = if (reownRuntimeEnabled) configurations.implementation else configurations.compileOnly
-    add(reownScope.name, platform("com.reown:android-bom:1.6.17"))
-    add(reownScope.name, "com.reown:android-core")
-    add(reownScope.name, "com.reown:appkit")
+    // Package Reown runtime classes in every APK. The runtime feature itself remains
+    // gated by BuildConfig.REOWN_ENABLED, but compileOnly would leave MainActivity
+    // with missing AppKit classes and can terminate the launcher activity at startup.
+    implementation(platform("com.reown:android-bom:1.6.17"))
+    implementation("com.reown:android-core")
+    implementation("com.reown:appkit")
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
