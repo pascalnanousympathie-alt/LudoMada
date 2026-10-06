@@ -587,6 +587,15 @@ class MainActivity : Activity() {
         sectionTitle("Marché","Cosmétiques 3D échangeables • prix officiels du serveur")
         val balance=data.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
         accountBalanceMGA=balance
+        val progress=data.optJSONObject("progression")
+        if(progress!=null){
+            playerScore=progress.optLong("score",playerScore)
+            playerLevel=progress.optInt("level",playerLevel)
+            playerCurrentLevelScore=progress.optLong("currentLevelScore",playerCurrentLevelScore)
+            playerNextLevelScore=progress.optLong("nextLevelScore",playerNextLevelScore)
+            playerProgressInLevel=progress.optLong("progressInLevel",playerProgressInLevel)
+            playerPointsToNextLevel=progress.optLong("pointsToNextLevel",playerPointsToNextLevel)
+        }
         topBalanceView?.text="${formatMGA(balance)} Ar"
         add(card("Progression","Niveau $playerLevel • Score $playerScore • ${if(playerPointsToNextLevel>0) "${playerPointsToNextLevel} pts avant le niveau suivant" else "Niveau max"}",Color.rgb(126,82,188)),84,3,8)
         add(card("Solde disponible","${formatMGA(balance)} Ar",gold),76,3,8)
