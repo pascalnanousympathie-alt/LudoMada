@@ -495,7 +495,7 @@ class MainActivity : Activity() {
             playerScore=0L
             playerLevel=1
             playerCurrentLevelScore=0L
-            playerNextLevelScore=250L
+            playerNextLevelScore=1250L
             playerProgressInLevel=0L
             playerPointsToNextLevel=250L
             window.decorView.invalidate()
@@ -515,6 +515,10 @@ class MainActivity : Activity() {
     override fun onBackPressed() {
         if(modeOverlay!=null){
             dismissGameModeOverlay()
+            return
+        }
+        if(mainMenuOverlay!=null){
+            dismissMainMenuOverlay()
             return
         }
         when (currentScreen) {
@@ -654,7 +658,7 @@ class MainActivity : Activity() {
             row.addView(box)
             add(row,82,2,6)
         }
-        add(card("Paiement","Les achats sont débités uniquement du wallet réel, avec contrôle côté serveur et protection idempotente.",Color.rgb(126,82,188)),90,3,8)
+        add(card("Déverrouillage","Les cosmétiques peuvent devenir gratuits via ton niveau, ou être achetés plus tôt au prix affiché.",Color.rgb(126,82,188)),82,3,8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
     }
 
@@ -883,6 +887,7 @@ class MainActivity : Activity() {
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
     private var modeOverlay: FrameLayout? = null
+    private var mainMenuOverlay: FrameLayout? = null
 
     private fun dismissGameModeOverlay() {
         modeOverlay?.let { overlay ->
@@ -891,6 +896,69 @@ class MainActivity : Activity() {
         modeOverlay=null
     }
 
+
+    private fun dismissMainMenuOverlay() {
+        mainMenuOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        mainMenuOverlay=null
+    }
+
+    private fun mainMenuDialog() {
+        dismissMainMenuOverlay()
+        val host=findViewById<ViewGroup>(android.R.id.content) ?: return
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(Color.argb(175,2,8,22))
+            isClickable=true
+            isFocusable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(22),dp(18),dp(22),dp(20))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(8,29,58),Color.rgb(18,57,96),Color.rgb(8,21,45))
+            ).apply{
+                cornerRadius=dp(26).toFloat()
+                setStroke(dp(1),0x66EDB734)
+            }
+            elevation=dp(20).toFloat()
+        }
+        panel.addView(label("MENU LUDOMADA",20f,true,Color.WHITE).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(label("Navigation principale",11f,false,0xB8FFFFFF.toInt()).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        val grid=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        fun row(vararg entries:Triple<String,Int,()->Unit>){
+            val rowView=LinearLayout(this@MainActivity).apply{orientation=LinearLayout.HORIZONTAL}
+            entries.forEachIndexed{index,entry->
+                val titleText=entry.first.substringBefore('¦')
+                val icon=entry.first.substringAfter('¦')
+                val b=button("$icon  $titleText",entry.second){dismissMainMenuOverlay();entry.third.invoke()}.apply{
+                    contentDescription=titleText
+                    importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    isFocusable=true;isClickable=true;minWidth=0
+                }
+                rowView.addView(b,LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(if(index==0)0 else dp(5),dp(4),if(index==entries.lastIndex)0 else dp(5),dp(4))})
+            }
+            grid.addView(rowView,LinearLayout.LayoutParams(-1,dp(62)))
+        }
+        row(Triple("Jouer¦▶",gold){gameModeDialog()},Triple("Créer une room¦＋",royal){createGame()})
+        row(Triple("Rejoindre¦↗",royal){joinDialog()},Triple("Wallet¦¤",emerald){wallet()})
+        row(Triple("Tournois¦♛",gold){events()},Triple("Tutoriels¦?",royal){tutorials()})
+        row(Triple("Social¦♟",Color.rgb(126,82,188)){social()},Triple("Profil¦◉",royal){profile()})
+        row(Triple("Marché¦◈",Color.rgb(126,82,188)){cosmetics()},Triple("Accueil¦⌂",Color.rgb(70,82,100)){home()})
+        panel.addView(grid,LinearLayout.LayoutParams(-1,dp(330)))
+        val footer=if(token.isBlank()) "Mode visiteur • connecte-toi pour la progression" else "Niveau $playerLevel • Score $playerScore • ${formatMGA(accountBalanceMGA)} Ar"
+        panel.addView(label(footer,10.5f,true,0xD7FFFFFF.toInt()).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        overlay.addView(panel,FrameLayout.LayoutParams((resources.displayMetrics.widthPixels*0.66f).toInt().coerceAtLeast(dp(500)),dp(450),Gravity.CENTER))
+        overlay.setOnClickListener{dismissMainMenuOverlay()}
+        host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+        mainMenuOverlay=overlay
+        overlay.post{
+            val g=panel.getChildAt(2) as? ViewGroup
+            g?.let{if(it.childCount>0)(it.getChildAt(0) as? ViewGroup)?.getChildAt(0)?.requestFocus()}
+        }
+    }
     fun gameModeDialog() {
         android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
