@@ -29,7 +29,7 @@ Do not move authoritative logic into this layer. Turn validation, dice outcome, 
 
 ## UI
 
-The Home screen exposes a compact Market icon and a unified navigation menu. Profile also links to Personalisation. Profile also links to the same menu. Each catalog entry updates local selection immediately and refreshes the active board renderer when one is present.
+The Home screen exposes a compact Market icon and a unified navigation menu. Profile links to Personalisation. Each catalog entry updates local selection immediately and refreshes the active board renderer when one is present.
 
 
 ## Free score and level unlocks
