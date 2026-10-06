@@ -351,7 +351,7 @@ try {
     }
   }
   waitStable(500);
-  let modeOpened = hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE");
+  let modeOpened = hasText("GAME_MODE_DIALOG") || hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE");
   if (!modeOpened) {
     // Canvas-backed Home can miss the first tap after returning from Wallet. Refresh the
     // actual JOUER node once, then fall back through several portrait-normalized points.
@@ -361,7 +361,7 @@ try {
       : null;
     if (retryNode) {
       const rt = tapRef({ref: retryNode.ref, gen: retryTree.value.gen});
-      if (rt.ok) { waitStable(500); modeOpened = hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE"); }
+      if (rt.ok) { waitStable(500); modeOpened = hasText("GAME_MODE_DIALOG") || hasText("Choisissez le mode") || hasText("MODE_OFFLINE") || hasText("MODE_ONLINE"); }
     }
   }
   if (!modeOpened) {
