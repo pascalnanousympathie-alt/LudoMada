@@ -536,66 +536,127 @@ class MainActivity : Activity() {
     }
 
     private fun cosmetics() {
-        page("cosmetics","Personnalisation")
-        val current=CosmeticAssetSystem.snapshot(this)
-
-        sectionTitle("Plateaux","Le même plateau 3D, avec une apparence interchangeable.")
-        val boardRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
-        val boardBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        for(style in CosmeticAssetSystem.boards){
-            val selected=style.id==current.board.id
-            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
-                CosmeticAssetSystem.setBoard(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
-            }.apply{contentDescription="PLATEAU_"+style.title; minWidth=dp(150)}
-            boardBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        page("cosmetics","Marché & Personnalisation")
+        if(token.isBlank()){
+            sectionTitle("Marché LudoMada","Connecte-toi pour voir ta collection et acheter des cosmétiques.")
+            add(card("Compte requis","Les achats utilisent uniquement le solde réel du wallet.",royal),92,3,8)
+            add(button("Se connecter",royal){login()},52,3,6)
+            add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
+            return
         }
-        boardRow.addView(boardBox)
-        add(boardRow,68,3,7)
-
-        sectionTitle("Dés","Choisissez le modèle et le comportement visuel du dé.")
-        val diceRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
-        val diceBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        for(style in CosmeticAssetSystem.dice){
-            val selected=style.id==current.dice.id
-            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
-                CosmeticAssetSystem.setDice(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
-            }.apply{contentDescription="DE_"+style.title; minWidth=dp(150)}
-            diceBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+        sectionTitle("Marché","Cosmétiques 3D échangeables • prix affichés en Ariary")
+        add(card("Chargement du catalogue","Récupération du catalogue officiel et de ton ownership…",royal),82,3,8)
+        get("/api/cosmetics"){j->
+            runOnUiThread{
+                accountBalanceMGA=j.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
+                topBalanceView?.text="${formatMGA(accountBalanceMGA)} Ar"
+                renderCosmeticMarket(j)
+            }
         }
-        diceRow.addView(diceBox)
-        add(diceRow,68,3,7)
+    }
 
-        sectionTitle("Pions","La géométrie 3D reste réelle; seule l’apparence est remplacée.")
-        val pawnRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
-        val pawnBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        for(style in CosmeticAssetSystem.pawns){
-            val selected=style.id==current.pawn.id
-            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
-                CosmeticAssetSystem.setPawn(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
-            }.apply{contentDescription="PION_"+style.title; minWidth=dp(150)}
-            pawnBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
+    private fun renderCosmeticMarket(data:JSONObject){
+        if(currentScreen!="cosmetics")return
+        root.removeAllViews()
+        addTopBar("Marché & Personnalisation")
+        sectionTitle("Marché","Cosmétiques 3D échangeables • prix officiels du serveur")
+        val balance=data.optString("balanceMGA").toLongOrNull()?:accountBalanceMGA
+        accountBalanceMGA=balance
+        topBalanceView?.text="${formatMGA(balance)} Ar"
+        add(card("Solde disponible","${formatMGA(balance)} Ar",gold),76,3,8)
+
+        val items=data.optJSONArray("items")?:org.json.JSONArray()
+        val grouped=linkedMapOf(
+            "board" to "Plateaux",
+            "dice" to "Dés",
+            "pawn" to "Pions",
+            "vfx" to "Effets"
+        )
+        for((category,title) in grouped){
+            sectionTitle(title,when(category){
+                "board"->"Plateaux 3D"
+                "dice"->"Modèles de dés"
+                "pawn"->"Styles de pions"
+                else->"Poussière, étincelles et bursts"
+            })
+            val row=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+            val box=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+            for(i in 0 until items.length()){
+                val item=items.optJSONObject(i)?:continue
+                if(item.optString("category")!=category)continue
+                val id=item.optString("id")
+                val titleText=item.optString("title",id)
+                val price=item.optString("priceMGA").toLongOrNull()?:0L
+                val owned=item.optBoolean("owned",false)
+                val selected=isCosmeticSelected(category,id)
+                val label=when{
+                    selected && owned->"✓ ${titleText}\\nÉquipé"
+                    owned->"${titleText}\\nÉquiper"
+                    price<=0L->"${titleText}\\nGratuit"
+                    else->"${titleText}\\n${formatMGA(price)} Ar"
+                }
+                val accent=when{selected&&owned->gold;owned->emerald;else->royal}
+                val b=button(label,accent){
+                    if(owned){
+                        equipCosmetic(category,id)
+                        renderCosmeticMarket(data)
+                    }else{
+                        purchaseCosmetic(category,id,titleText,price)
+                    }
+                }.apply{
+                    minWidth=dp(170)
+                    contentDescription="${titleText} • ${if(owned)"Équiper" else "Acheter"}"
+                }
+                box.addView(b,LinearLayout.LayoutParams(dp(170),dp(72)).apply{setMargins(0,0,dp(8),0)})
+            }
+            row.addView(box)
+            add(row,82,2,6)
         }
-        pawnRow.addView(pawnBox)
-        add(pawnRow,68,3,7)
-
-        sectionTitle("Effets","Étincelles, burst et poussière; aucun effet ne modifie les règles.")
-        val vfxRow=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
-        val vfxBox=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        for(style in CosmeticAssetSystem.vfx){
-            val selected=style.id==current.vfx.id
-            val b=button((if(selected)"✓ " else "")+style.title,if(selected)gold else royal){
-                CosmeticAssetSystem.setVfx(this@MainActivity,style.id); boardHost?.refreshCosmetics(); cosmetics()
-            }.apply{contentDescription="EFFET_"+style.title; minWidth=dp(150)}
-            vfxBox.addView(b,LinearLayout.LayoutParams(dp(150),dp(58)).apply{setMargins(0,0,dp(8),0)})
-        }
-        vfxRow.addView(vfxBox)
-        add(vfxRow,68,3,9)
-
-        add(card("Configuration active",current.board.title+" • "+current.dice.title+" • "+current.pawn.title+" • "+current.vfx.title,gold),76,2,8)
-        add(button("Réinitialiser les cosmétiques",Color.rgb(100,112,128)){
-            CosmeticAssetSystem.reset(this); boardHost?.refreshCosmetics(); cosmetics()
-        },52,2,6)
+        add(card("Paiement","Les achats sont débités uniquement du wallet réel, avec contrôle côté serveur et protection idempotente.",Color.rgb(126,82,188)),90,3,8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52,2,8)
+    }
+
+    private fun isCosmeticSelected(category:String,id:String):Boolean{
+        val s=CosmeticAssetSystem.snapshot(this)
+        return when(category){
+            "board"->s.board.id==id
+            "dice"->s.dice.id==id
+            "pawn"->s.pawn.id==id
+            "vfx"->s.vfx.id==id
+            else->false
+        }
+    }
+
+    private fun equipCosmetic(category:String,id:String){
+        when(category){
+            "board"->CosmeticAssetSystem.setBoard(this,id)
+            "dice"->CosmeticAssetSystem.setDice(this,id)
+            "pawn"->CosmeticAssetSystem.setPawn(this,id)
+            "vfx"->CosmeticAssetSystem.setVfx(this,id)
+        }
+        boardHost?.refreshCosmetics()
+    }
+
+    private fun purchaseCosmetic(category:String,id:String,title:String,price:Long){
+        if(price<=0L){
+            equipCosmetic(category,id)
+            cosmetics()
+            return
+        }
+        val key=UUID.randomUUID().toString()
+        post(
+            "/api/cosmetics/purchase",
+            JSONObject().put("category",category).put("itemId",id),
+            key,
+            {
+                runOnUiThread{
+                    equipCosmetic(category,id)
+                    Toast.makeText(this,"${title} acheté • ${formatMGA(price)} Ar",Toast.LENGTH_SHORT).show()
+                    cosmetics()
+                }
+            },
+            {msg->runOnUiThread{Toast.makeText(this,msg,Toast.LENGTH_LONG).show()}}
+        )
     }
     private fun profile() {
         page("profile","Profil")
