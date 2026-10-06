@@ -39,14 +39,15 @@ android { namespace="com.ludomadagascar"; compileSdk=35; buildToolsVersion="36.0
 }
 
 dependencies {
-    // Reown is optional in the standard APK. The launcher/bootstrap code does not
-    // reference Reown classes directly; the real-enabled build packages them when
-    // a Project ID is supplied.
+    // Reown is a truly optional runtime. Do not place it on compileOnly in the
+    // standard APK because Android's AAR metadata checker still evaluates that
+    // configuration and recent Reown artifacts require newer compileSdk/AGP.
     val reownRuntimeEnabled = providers.gradleProperty("REOWN_PROJECT_ID").orElse("").get().trim().isNotBlank()
-    val reownScope = if (reownRuntimeEnabled) configurations.implementation else configurations.compileOnly
-    add(reownScope.name, platform("com.reown:android-bom:1.6.17"))
-    add(reownScope.name, "com.reown:android-core")
-    add(reownScope.name, "com.reown:appkit")
+    if (reownRuntimeEnabled) {
+        implementation(platform("com.reown:android-bom:1.6.17"))
+        implementation("com.reown:android-core")
+        implementation("com.reown:appkit")
+    }
     implementation("androidx.credentials:credentials:1.6.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.6.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
