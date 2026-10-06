@@ -25,7 +25,6 @@ import androidx.credentials.GetCredentialResponse
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
-import com.reown.appkit.client.AppKit
 
 class MainActivity : Activity() {
     // Build gate recovery marker: no runtime/gameplay behavior change.
@@ -777,7 +776,12 @@ class MainActivity : Activity() {
             Toast.makeText(this, "Connect Wallet: REOWN_PROJECT_ID mbola tsy configuré.", Toast.LENGTH_LONG).show()
             return
         }
-        startActivity(Intent(this, ReownWalletActivity::class.java))
+        runCatching {
+            val klass = Class.forName("com.ludomadagascar.ReownWalletActivity")
+            startActivity(Intent(this, klass))
+        }.onFailure {
+            Toast.makeText(this, "Connect Wallet: Reown indisponible.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun updateExternalWalletStatus() {
@@ -786,11 +790,12 @@ class MainActivity : Activity() {
             return
         }
         runCatching {
-            val account = AppKit.getAccount()
-            account?.let {
-                externalWalletView?.text = "Connecté • " + it.address.take(6) + "…" + it.address.takeLast(4) + " • " + it.chain.chainName
+            val bridge = Class.forName("com.ludomadagascar.ReownRuntime")
+            val summary = bridge.getMethod("accountSummary").invoke(null) as? String ?: ""
+            if (summary.isNotBlank()) {
+                externalWalletView?.text = "Connecté • " + summary
                 externalWalletView?.setTextColor(Color.rgb(21,139,92))
-            } ?: run {
+            } else {
                 externalWalletView?.text = "Wallet externe: non connecté"
                 externalWalletView?.setTextColor(Color.rgb(97,110,128))
             }
