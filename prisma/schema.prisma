@@ -56,6 +56,8 @@ model User {
   gameParticipants   GameParticipant[]
   createdGames       Game[]              @relation("GameCreator")
   cosmeticPurchases CosmeticPurchase[]
+  score              Int                 @default(0)
+  level              Int                 @default(1)
 }
 
 model GoogleAuthChallenge {
