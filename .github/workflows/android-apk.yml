@@ -1,4 +1,5 @@
 name: Build Ludo Madagascar APK
+# CI stability: keep the Termux AAPT2 launcher independent of GitHub Actions HOME overrides.
 
 on:
   workflow_dispatch:
