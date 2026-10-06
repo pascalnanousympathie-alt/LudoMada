@@ -50,6 +50,12 @@ describe("player progression", () => {
       nextLevelScore:3750,
       progressInLevel:350,
       pointsToNextLevel:2150,
+      tier:"novice",
+      tierTitle:"Novice",
+      tierBadge:"N",
+      prestigePerks:["Badge de profil","Titre de niveau"],
+      gameplayAdvantage:false,
+      gameplayModifier:"NONE",
     });
   });
 
