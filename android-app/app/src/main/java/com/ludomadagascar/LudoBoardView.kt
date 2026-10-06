@@ -1227,7 +1227,7 @@ class LudoBoardView(
             if(shadowPass){
                 if(homePreview) drawHomeEnvironmentShadows()
                 if(!homePreview)drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
-                if(boardParts.isNotEmpty()){
+                if(!homePreview && boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
@@ -1272,7 +1272,7 @@ class LudoBoardView(
             } else {
                 drawGameplayBackdrop()
             }
-            if(boardParts.isNotEmpty()){
+            if(!homePreview && boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
             }else{
