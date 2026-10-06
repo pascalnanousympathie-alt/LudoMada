@@ -378,8 +378,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
       super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
       p.setFilterBitmap(true);
     }
-    void flipBackground(){ bgIndex=(bgIndex+1)%backgroundCount(); invalidate(); }
-    int backgroundCount(){ return 5; }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
