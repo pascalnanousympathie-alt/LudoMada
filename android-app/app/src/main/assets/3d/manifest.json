@@ -6,19 +6,31 @@
   "source_scene": "https://higgsfield.ai/3d-jutsu/083cab86-9817-4ddc-8d12-92d9212d008b",
   "assets": {
     "pawn": {
-      "parts": ["base","body","collar","head"],
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head"
+      ],
       "pivot": "bottom-center",
       "material": "lacquer-pbr"
     },
     "die": {
-      "parts": ["body","pips"],
+      "parts": [
+        "body",
+        "pips"
+      ],
       "pivot": "center",
       "material": "hydro-chrome",
       "metallic": 0.95,
       "roughness": 0.08
     },
     "table": {
-      "parts": ["deep-base","recessed-board","gold-frame"],
+      "parts": [
+        "deep-base",
+        "recessed-board",
+        "gold-frame"
+      ],
       "pivot": "center"
     }
   },
@@ -27,5 +39,42 @@
     "prefer_compressed_textures": true,
     "prefer_lod_for_large_assets": true,
     "avoid_external_texture_paths": true
+  },
+  "cosmetic_catalog": {
+    "version": "1",
+    "renderer": "procedural-fallback-v1",
+    "storage": "android-shared-preferences",
+    "selection_keys": {
+      "board": "board",
+      "dice": "dice",
+      "pawn": "pawn",
+      "vfx": "vfx"
+    },
+    "board_ids": [
+      "madagascar",
+      "royal_gold",
+      "ocean_night",
+      "baobab_sunset"
+    ],
+    "dice_ids": [
+      "chrome",
+      "heroic",
+      "crystal",
+      "obsidian"
+    ],
+    "pawn_ids": [
+      "lacquer",
+      "gold",
+      "gem",
+      "obsidian"
+    ],
+    "vfx_ids": [
+      "classic",
+      "spark",
+      "flame",
+      "ice"
+    ],
+    "licensed_glb_root": "cosmetics/",
+    "max_asset_bytes": 12582912
   }
 }
