@@ -532,8 +532,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
       p.setShader(new RadialGradient(92,80,38,0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));c.drawCircle(92,80,38,p);p.setShader(null);
       p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(gold2);c.drawCircle(92,80,26,p);p.setStyle(Paint.Style.FILL);pawn(c,92,81,13,blue);
-      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
-      t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); long score=lng("playerScore"); long level=lng("playerLevel"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"NIV "+level+"  •  SCORE "+formatBal(score),132,98,10,0xD7FFFFFF,true,false);
       box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
       box(c,1096,56,1164,104,18,0xFFEDB83A,0);t(c,"+",1130,87,22,0xFF432600,true,true);t(c,"🎵",1195,88,18,Color.WHITE,true,true);
       // Left action rail
