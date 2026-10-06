@@ -4,6 +4,8 @@ import {
   levelFromScore,
   levelThreshold,
   progressionForScore,
+  progressionTierForLevel,
+  PROGRESSION_TIERS,
   scoreAwardForCompletedGame,
 } from "../src/progression";
 
@@ -19,6 +21,20 @@ describe("player progression", () => {
     expect(levelFromScore(1250)).toBe(2);
     expect(levelFromScore(3749)).toBe(2);
     expect(levelFromScore(3750)).toBe(3);
+  });
+
+  test("prestige tiers change presentation, never gameplay fairness", () => {
+    expect(PROGRESSION_TIERS.map(x => x.minLevel)).toEqual([1, 5, 10, 15, 20, 25]);
+    expect(progressionTierForLevel(1).id).toBe("novice");
+    expect(progressionTierForLevel(10).id).toBe("expert");
+    expect(progressionTierForLevel(20).id).toBe("heroique");
+    expect(progressionTierForLevel(25).id).toBe("legendaire");
+
+    const progression = progressionForScore(25000);
+    expect(progression.tierTitle).toBe("Héroïque");
+    expect(progression.gameplayAdvantage).toBe(false);
+    expect(progression.gameplayModifier).toBe("NONE");
+    expect(progression.prestigePerks.length).toBeGreaterThan(0);
   });
 
   test("every completed game gives free score and the winner gets a bonus", () => {
