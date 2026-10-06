@@ -15,6 +15,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final LudoBoardView home3d;
   private final Button walletHit;
   private final Button cosmeticHit;
+  private final Button menuHit;
   private final Runnable homeBgFlip=new Runnable(){
     @Override public void run(){
       home.flipBackground();invalidate();postDelayed(this,6000L);
@@ -83,11 +84,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     walletHit.setOnClickListener(v->call("wallet"));
 
     cosmeticHit=new Button(c);
-    cosmeticHit.setText("⚙");
-    cosmeticHit.setTextSize(18f);
+    cosmeticHit.setText("◈");
+    cosmeticHit.setTextSize(17f);
     cosmeticHit.setTextColor(Color.WHITE);
     cosmeticHit.setAllCaps(false);
-    cosmeticHit.setContentDescription("PERSONNALISATION");
+    cosmeticHit.setContentDescription("MARCHÉ");
     cosmeticHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     cosmeticHit.setFocusable(true);
     cosmeticHit.setClickable(true);
@@ -96,6 +97,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
         new int[]{0xE82970B8,0xF414396B}));
     cosmeticHit.getBackground().setAlpha(235);
     cosmeticHit.setOnClickListener(v->call("cosmetics"));
+    menuHit=new Button(c);
+    menuHit.setText("≡");
+    menuHit.setTextSize(20f);
+    menuHit.setTextColor(Color.WHITE);
+    menuHit.setAllCaps(false);
+    menuHit.setContentDescription("MENU");
+    menuHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    menuHit.setFocusable(true);
+    menuHit.setClickable(true);
+    menuHit.setPadding(0,0,0,0);
+    menuHit.setBackground(new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+        new int[]{0xE8193E6E,0xF40D2345}));
+    menuHit.getBackground().setAlpha(235);
+    menuHit.setOnClickListener(v->call("mainMenuDialog"));
+
 
     FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
     homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
@@ -106,6 +122,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     addView(homeA11y,homeA11yLp);
     addView(walletHit,walletLp);
     addView(cosmeticHit,new FrameLayout.LayoutParams(64,64));
+    addView(menuHit,new FrameLayout.LayoutParams(48,48));
     addView(playHit,playLp);
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
@@ -114,6 +131,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       positionHome3d();
       positionWalletHit(walletHit);
       positionCosmeticsHit(cosmeticHit);
+      positionMenuHit(menuHit);
       positionPlayHit(playHit,playHitAlt);
     });
   }
@@ -210,9 +228,17 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private void positionCosmeticsHit(View v){
     float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return;
-    int size=Math.max(54,Math.min(72,Math.round(Math.min(W,H)*0.085f)));
-    int left=Math.max(8,Math.round(W-size-22f));
-    int top=Math.max(8,Math.round(H*0.035f));
+    int size=Math.max(40,Math.min(48,Math.round(Math.min(W,H)*0.062f)));
+    int left=Math.max(8,Math.round(W-size-150f));
+    int top=Math.max(8,Math.round(H*0.070f));
+    setHit(v,left,top,size,size);
+  }
+  private void positionMenuHit(View v){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    int size=Math.max(40,Math.min(48,Math.round(Math.min(W,H)*0.062f)));
+    int left=Math.max(8,Math.round(W-size-95f));
+    int top=Math.max(8,Math.round(H*0.070f));
     setHit(v,left,top,size,size);
   }
 
@@ -236,6 +262,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     positionHome3d();
     positionWalletHit(walletHit);
     positionCosmeticsHit(cosmeticHit);
+    positionMenuHit(menuHit);
     if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
   }
 
@@ -535,7 +562,10 @@ public class PremiumHeroViewV2 extends FrameLayout {
       String u=str("username"),tok=str("token"); long bal=lng("accountBalanceMGA"); long score=lng("playerScore"); long level=lng("playerLevel"); String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
       t(c,dn,132,75,18,Color.WHITE,true,false); t(c,"NIV "+level+"  •  SCORE "+formatBal(score),132,98,10,0xD7FFFFFF,true,false);
       box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);t(c,"SOLDE",935,77,9,gold2,true,false);t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
-      box(c,1096,56,1164,104,18,0xFFEDB83A,0);t(c,"+",1130,87,22,0xFF432600,true,true);t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+      // Compact utility icons: Market and Menu remain secondary to the main play actions.
+      box(c,1088,58,1122,92,12,0xB316315A,0x557EB8FF);t(c,"◈",1105,82,13,gold2,true,true);
+      box(c,1130,58,1164,92,12,0xB316315A,0x557EB8FF);t(c,"≡",1147,82,17,Color.WHITE,true,true);
+      t(c,"🎵",1195,88,18,Color.WHITE,true,true);
       // Left action rail
       menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
       menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
@@ -553,7 +583,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
       t(c,"RAPIDE • FLUIDE • RÉALISTE",1105,490,8.5f,gold2,true,true);
       box(c,1010,470,1200,520,18,0xB316315A,0x557EB8FF);t(c,"♛",1042,500,18,Color.WHITE,true,true);t(c,"TOURNOIS",1110,496,10,Color.WHITE,true,true);t(c,"Classement & défis",1110,511,8,0xD0FFFFFF,false,true);
       box(c,1010,528,1200,578,18,0xB316315A,0x557EB8FF);t(c,"?",1042,558,18,gold2,true,true);t(c,"TUTORIELS",1110,554,10,Color.WHITE,true,true);t(c,"Apprendre le Ludo",1110,569,8,0xD0FFFFFF,false,true);
-      box(c,1010,586,1200,628,14,0x88111F38,0x447EB8FF);t(c,"MARCHÉ  •  COSMÉTIQUES 3D",1105,612,8,gold2,true,true);
+      box(c,1010,586,1200,628,14,0x44111F38,0x337EB8FF);
+      t(c,"MENU",1054,612,8.5f,0xD7FFFFFF,true,true);
+      t(c,"◈ MARCHÉ",1165,612,8.5f,gold2,true,true);
       c.restore();postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
@@ -592,6 +624,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
 
     private boolean hitHomeActions(float x,float y){
+      if(y>=48&&y<=108&&x>=1070&&x<1130){call("cosmetics");return true;}
+      if(y>=48&&y<=108&&x>=1130&&x<1180){call("mainMenuDialog");return true;}
       if(y>=140&&y<230&&x<310){call("createGame");return true;}
       if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
       if(y>=325&&y<420&&x<310){call("wallet");return true;}
@@ -599,7 +633,6 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
       if(y>=465&&y<525&&x>970){call("events");return true;}
       if(y>=525&&y<585&&x>970){call("tutorials");return true;}
-      if(y>=585&&y<642&&x>970){call("cosmetics");return true;}
       if(y>=520&&y<650&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
         int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
