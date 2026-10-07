@@ -649,7 +649,7 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if(modeDialog!=null){
+        if(modeScreen!=null){
             dismissGameModeOverlay()
             return
         }
