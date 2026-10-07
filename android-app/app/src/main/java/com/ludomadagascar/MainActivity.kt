@@ -888,24 +888,33 @@ class MainActivity : Activity() {
 
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
-    private var modeDialog: Dialog? = null
+    private var modeScreen: FrameLayout? = null
 
     private fun dismissGameModeOverlay() {
-        modeDialog?.dismiss()
-        modeDialog = null
+        modeScreen = null
     }
 
     fun gameModeDialog() {
         android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
 
-        // Use a native Dialog window instead of dynamically mutating the Activity
-        // content hierarchy. Android 8/Ramus then receives a real accessibility
-        // window with stable JOUER mode targets even after returning from Wallet.
+        // Keep the selector in the Activity window. Ramus/Android 8 then sees
+        // the real mode buttons in one stable accessibility tree instead of a
+        // secondary Dialog window that may not be exposed by the cloud emulator.
+        val outer=FrameLayout(this).apply{
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(3,12,36),Color.rgb(21,45,82),Color.rgb(7,18,43))
+            )
+            contentDescription="GAME_MODE_DIALOG"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
+        }
+
         val panel=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
             gravity=Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22),dp(18),dp(22),dp(18))
+            setPadding(dp(26),dp(22),dp(26),dp(22))
             background=GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))
@@ -914,23 +923,23 @@ class MainActivity : Activity() {
                 setStroke(dp(1),0x66EDB734)
             }
             elevation=dp(18f).toFloat()
-            contentDescription="GAME_MODE_DIALOG"
+            contentDescription="Choisissez le mode"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
 
-        val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
+        val title=label("Choisissez le mode",22f,true,Color.WHITE).apply{
             gravity=Gravity.CENTER
             contentDescription="Choisissez le mode"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
         }
-        panel.addView(title,LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(title,LinearLayout.LayoutParams(-1,dp(42)))
 
         panel.addView(label("La partie se joue directement depuis la scène 3D.",11f,false,0xB8FFFFFF.toInt()).apply{
             gravity=Gravity.CENTER
-            contentDescription="La partie se joue directement depuis la scène 3D."
+            contentDescription="Sélecteur de mode de jeu"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        },LinearLayout.LayoutParams(-1,dp(28)).apply{topMargin=dp(2)})
+        },LinearLayout.LayoutParams(-1,dp(30)).apply{topMargin=dp(3)})
 
         val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){
             dismissGameModeOverlay()
@@ -952,36 +961,30 @@ class MainActivity : Activity() {
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
 
-        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
-        panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
+        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(56)).apply{topMargin=dp(12)})
+        panel.addView(online,LinearLayout.LayoutParams(-1,dp(56)).apply{topMargin=dp(8)})
 
-        val dialog=Dialog(this)
-        dialog.setCanceledOnTouchOutside(true)
-        dialog.setCancelable(true)
-        dialog.setContentView(panel)
-        dialog.setOnDismissListener {
-            if(modeDialog===dialog) modeDialog=null
+        val cancel=button("← Retour",Color.rgb(70,82,100)){
+            dismissGameModeOverlay()
+            home()
+        }.apply{
+            contentDescription="MODE_CANCEL"
+            isFocusable=true
+            isClickable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        modeDialog=dialog
-        dialog.show()
+        panel.addView(cancel,LinearLayout.LayoutParams(dp(180),dp(48)).apply{topMargin=dp(12)})
 
-        dialog.window?.let { w ->
-            w.setBackgroundDrawableResource(android.R.color.transparent)
-            w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            val attrs=w.attributes
-            attrs.dimAmount=0.60f
-            w.attributes=attrs
-            w.setGravity(Gravity.CENTER)
-            w.setLayout(
-                (resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),
-                WindowManager.LayoutParams.WRAP_CONTENT
-            )
-        }
+        outer.addView(panel,FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels*0.48f).toInt().coerceAtLeast(dp(380)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            Gravity.CENTER
+        ))
+        setContentView(outer)
+        modeScreen=outer
 
-        android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ADDED_NATIVE")
-        dialog.window?.decorView?.setContentDescription("GAME_MODE_DIALOG")
-        dialog.window?.decorView?.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-        offline.post {
+        android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ADDED_ACTIVITY")
+        outer.post{
             offline.requestFocus()
             offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
         }
