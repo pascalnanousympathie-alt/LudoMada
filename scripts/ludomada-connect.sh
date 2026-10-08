@@ -28,6 +28,11 @@ TUNNEL_ID="$(sed -n 's/^[[:space:]]*tunnel_id:[[:space:]]*"\([^"]*\)".*/\1/p' "$
 
 mkdir -p "$STATE"
 
+# Remove any legacy tunnel on the same assigned tunnel ID using the old web/HTTP MCP port.
+for p in $(ps -eo pid=,args= 2>/dev/null | awk -v id="$TUNNEL_ID" '$0 ~ /tunnel-client run/ && index($0,id) && index($0,"127.0.0.1:8080") {print $1}'); do
+  [ -n "$p" ] && kill "$p" 2>/dev/null || true
+done
+
 if ! curl -fsS --max-time 2 http://127.0.0.1:8787/mcp >/dev/null 2>&1; then
   if [ -f "$HOME_DIR/ludomada-mcp-commander/server.mjs" ]; then
     (cd "$HOME_DIR/ludomada-mcp-commander" && nohup node server.mjs --http >"$STATE/commander-server.log" 2>&1 </dev/null &)
@@ -112,6 +117,9 @@ else
 fi
 
 sleep 4
+# Record the actual tunnel-client PID (proot parent may already have exited).
+SERVICE_PID="$(ps -eo pid=,args= 2>/dev/null | awk -v port="$HEALTH_PORT" '$0 ~ /tunnel-client run/ && index($0,"--health.listen-addr 127.0.0.1:" port) {print $1; exit}')"
+[ -n "$SERVICE_PID" ] && echo "$SERVICE_PID" >"$PIDFILE"
 if curl -fsS --max-time 3 "http://127.0.0.1:$HEALTH_PORT/healthz" >/dev/null 2>&1; then
   say "READY"
 else
