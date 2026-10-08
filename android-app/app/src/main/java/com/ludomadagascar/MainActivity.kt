@@ -1159,7 +1159,7 @@ class MainActivity : Activity() {
                         if(date.isNotBlank()) append(" • ").append(date)
                         val game=x.optString("gameId","").trim()
                         if(game.isNotBlank()) append(" • game=").append(game.take(12))
-                        append('\\n')
+                        append('\n')
                     }
                 }
             }
