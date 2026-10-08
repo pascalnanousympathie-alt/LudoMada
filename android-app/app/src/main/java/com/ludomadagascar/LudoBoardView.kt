@@ -1587,8 +1587,6 @@ class LudoBoardView(
                 drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.015f,3,false)
                 drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.018f,3,false)
             }
-        }
-
             if(cosmeticPawnId=="chrome" || cosmeticPawnId=="royal" || cosmeticPawnId=="emerald" || cosmeticPawnId=="sapphire"){
                 val accent=when(cosmeticPawnId){
                     "emerald" -> Color.rgb(255,196,72)
