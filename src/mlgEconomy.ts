@@ -47,6 +47,14 @@ export function marketPrice(category: string, itemId: string): bigint | null {
   return typeof price === "bigint" ? price : null;
 }
 
+export function victoryLedgerKey(gameId: string): string {
+  return `game-win-mlg:${gameId}`;
+}
+
+export function referralLedgerKey(inviteeId: string): string {
+  return `referral:${inviteeId}`;
+}
+
 export function newReferralCode(): string {
   return randomBytes(6).toString("base64url").slice(0, 8).toUpperCase();
 }
