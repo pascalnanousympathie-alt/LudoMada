@@ -7,7 +7,7 @@ import android.content.Context
  *
  * Variants change material/FX parameters on authored meshes,
  * so every catalogue item remains a live 3D asset rather than a 2D preview.
- * Economy and game rules remain untouched.
+ * Ownership/pricing is validated by the server MLG economy; local preferences only cache the equipped look.
  */
 object CosmeticCatalog {
     const val PREFS = "ludomada_cosmetics"
