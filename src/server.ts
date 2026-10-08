@@ -667,7 +667,7 @@ app.post("/api/mlg/referral/claim",auth,mlgReferralRateLimit,async(req:any,res)=
         already:false,
         inviterId:inviter.id
       };
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
 
     await audit(prisma,req,"MLG_REFERRAL_CLAIM",{
       inviterId:result.inviterId,
@@ -758,7 +758,7 @@ app.post("/api/market/purchase",auth,mlgMutationRateLimit,async(req:any,res)=>{
 
       const w=await tx.wallet.findUnique({where:{userId:req.userId}});
       return {balanceMLG:(w?.mlgBalance??0n).toString(),priceMlg:price.toString(),already:false};
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
 
     return res.json({
       ok:true,
@@ -824,7 +824,7 @@ app.post("/api/mlg/swap-to-mga",auth,mlgMutationRateLimit,async(req:any,res)=>{
 
       const w=await tx.wallet.findUnique({where:{userId:req.userId}});
       return {balanceMLG:(w?.mlgBalance??0n).toString(),balanceMGA:(w?.balance??0n).toString(),already:false};
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
 
     return res.json({
       ok:true,
