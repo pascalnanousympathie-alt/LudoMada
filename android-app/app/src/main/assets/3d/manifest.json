@@ -7,15 +7,15 @@
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 6,
-    "glb_bytes": 7934184,
-    "material_revision": 5,
+    "revision": 5,
+    "glb_bytes": 867800,
+    "material_revision": 4,
     "material_calibration": "PremiumMaterialLighting.Calibration",
-    "sha256": "c87a4444b1fe4736615a580fba5e1bb3427c1f23e5a431f118ab229a3885bb06",
+    "sha256": "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f",
     "delivery": {
       "type": "repo-bundled",
-      "path": "3d/ludomada-gameplay-market-v6.glb",
-      "verified_size_bytes": 7934184
+      "path": "3d/ludomada-gameplay-rev5.glb",
+      "verified_size_bytes": 867800
     }
   },
   "board_geometry": {
@@ -101,6 +101,9 @@
       "LM_MARKET_PAWN_EMERALD",
       "LM_MARKET_PAWN_SAPPHIRE"
     ],
-    "notes": "Authored 3D showroom variants; selected gameplay remains compatible with the existing runtime loader."
+    "notes": "Authored 3D showroom variants; selected gameplay remains compatible with the existing runtime loader.",
+    "bytes": 7934184,
+    "sha256": "c87a4444b1fe4736615a580fba5e1bb3427c1f23e5a431f118ab229a3885bb06",
+    "runtime_loader": "GlbRuntimeLoader.loadMarketParts"
   }
 }
