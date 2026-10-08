@@ -2455,7 +2455,7 @@ app.use((err:any,req:any,res:any,_next:any)=>{
     error:"Internal server error"
   });
 });
-async function startServer() {
+export async function startServer() {
   const server = app.listen(port, () => {
     console.log(`Ludo Mada V4 API listening on :${port}`);
   });
