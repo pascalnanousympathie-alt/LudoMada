@@ -33,7 +33,6 @@ class MarketPreviewView(context: Context) : GLSurfaceView(context) {
     fun show(category: String, itemId: String) {
         renderer.category = category
         renderer.itemId = itemId
-        renderer.reloadRequested = true
         requestRender()
     }
 
@@ -43,6 +42,8 @@ class MarketPreviewView(context: Context) : GLSurfaceView(context) {
         @Volatile var category: String = "board"
         @Volatile var itemId: String = "royal"
         @Volatile var reloadRequested = true
+        private var lastCategory = ""
+        private var lastItemId = ""
 
         private var marketParts: Map<String, GlbRuntimeLoader.Part> = emptyMap()
         private var heroParts: Map<String, GlbRuntimeLoader.Part> = emptyMap()
@@ -180,6 +181,11 @@ class MarketPreviewView(context: Context) : GLSurfaceView(context) {
             if (reloadRequested) {
                 reloadAssets()
                 reloadRequested = false
+            }
+            if (category != lastCategory || itemId != lastItemId) {
+                rebuildFit()
+                lastCategory = category
+                lastItemId = itemId
             }
 
             GLES30.glViewport(0, 0, width, height)
