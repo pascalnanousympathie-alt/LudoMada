@@ -45,7 +45,7 @@ describeDb("MLG HTTP route concurrency", () => {
   }
 
   async function register(label: string) {
-    const username = `mlg_route_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const username = `mlg_${label}_${Date.now().toString().slice(-8)}_${Math.random().toString(36).slice(2, 6)}`;
     const { response, body } = await request("/api/auth/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
