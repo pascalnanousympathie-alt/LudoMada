@@ -44,7 +44,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
     )
 
     fun loadHeroParts(): Map<String, Part> =
-        loadParts("3d/ludomada-premium-3d-rev3.glb") { heroNames.contains(it) }
+        loadParts("3d/ludomada-gameplay-rev5.glb") { heroNames.contains(it) }
 
     /**
      * Authored gameplay board geometry from the Higgsfield 3D Jutsu scene.
@@ -53,7 +53,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
      * authoritative game state.
      */
     fun loadBoardParts(): Map<String, Part> =
-        loadParts("3d/ludomada-premium-3d-rev3.glb") {
+        loadParts("3d/ludomada-gameplay-rev5.glb") {
             it.startsWith("LM_Board_") ||
                 it.startsWith("LM_Cell_") ||
                 it.startsWith("LM_Center_") ||
