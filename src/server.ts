@@ -196,6 +196,20 @@ const mlgReferralRateLimit = AUTH_RATE_LIMIT_DISABLED
       message: { error: "Too many referral attempts; try again later" }
     });
 
+const mlgMutationRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
+      windowMs: 60_000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req:any) =>
+        "mlg-mutation:" +
+        String(req.userId || "anonymous") + ":" +
+        ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
+      message: { error: "Too many MLG mutation attempts; try again later" }
+    });
+
 const authRateLimit = AUTH_RATE_LIMIT_DISABLED
   ? (_req:any,_res:any,next:any) => next()
   : rateLimit({
@@ -679,7 +693,7 @@ app.post("/api/mlg/referral/claim",auth,mlgReferralRateLimit,async(req:any,res)=
   }
 });
 
-app.post("/api/market/purchase",auth,async(req:any,res)=>{
+app.post("/api/market/purchase",auth,mlgMutationRateLimit,async(req:any,res)=>{
   const parsed=z.object({
     category:z.enum(["board","die","pawn","vfx"]),
     itemId:z.string().trim().min(1).max(64).regex(/^[a-z0-9_-]+$/i)
@@ -696,7 +710,14 @@ app.post("/api/market/purchase",auth,async(req:any,res)=>{
   try{
     const result=await prisma.$transaction(async(tx)=>{
       const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey}});
-      if(prior && prior.type==="MARKET_PURCHASE"){
+      if(prior){
+        if(prior.type!=="MARKET_PURCHASE" || prior.userId!==req.userId){
+          throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        }
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.category!==category || priorMeta.itemId!==itemId || priorMeta.priceMlg!==price.toString()){
+          throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+        }
         const w=await tx.wallet.findUnique({where:{userId:req.userId}});
         return {balanceMLG:(w?.mlgBalance??0n).toString(),priceMlg:price.toString(),already:true};
       }
@@ -746,13 +767,17 @@ app.post("/api/market/purchase",auth,async(req:any,res)=>{
       alreadyOwned:result.already
     });
   }catch(e:any){
-    const status=e?.message==="INSUFFICIENT_MLG" ? 409 : e?.code==="P2002" ? 409 : 500;
+    const status=
+      e?.message==="INSUFFICIENT_MLG" ||
+      e?.message==="IDEMPOTENCY_KEY_CONFLICT" ||
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ||
+      e?.code==="P2002" ? 409 : 500;
     if(status===500) console.error("MARKET_PURCHASE_ERROR",{message:e?.message,userId:req.userId,category,itemId});
     return res.status(status).json({error:status===500?"Internal server error":e.message});
   }
 });
 
-app.post("/api/mlg/swap-to-mga",auth,async(req:any,res)=>{
+app.post("/api/mlg/swap-to-mga",auth,mlgMutationRateLimit,async(req:any,res)=>{
   const parsed=z.object({
     amountMLG:z.number().int().positive().max(100_000_000)
   }).safeParse(req.body);
@@ -767,7 +792,14 @@ app.post("/api/mlg/swap-to-mga",auth,async(req:any,res)=>{
   try{
     const result=await prisma.$transaction(async(tx)=>{
       const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey}});
-      if(prior && prior.type==="SWAP_TO_MGA"){
+      if(prior){
+        if(prior.type!=="SWAP_TO_MGA" || prior.userId!==req.userId){
+          throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        }
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.amountMLG!==amount.toString() || priorMeta.rateMGA!=="1"){
+          throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+        }
         const w=await tx.wallet.findUnique({where:{userId:req.userId}});
         return {balanceMLG:(w?.mlgBalance??0n).toString(),balanceMGA:(w?.balance??0n).toString(),already:true};
       }
@@ -801,7 +833,11 @@ app.post("/api/mlg/swap-to-mga",auth,async(req:any,res)=>{
       balanceMGA:result.balanceMGA
     });
   }catch(e:any){
-    const status=e?.message==="INSUFFICIENT_MLG" ? 409 : e?.code==="P2002" ? 409 : 500;
+    const status=
+      e?.message==="INSUFFICIENT_MLG" ||
+      e?.message==="IDEMPOTENCY_KEY_CONFLICT" ||
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ||
+      e?.code==="P2002" ? 409 : 500;
     if(status===500) console.error("MLG_SWAP_ERROR",{message:e?.message,userId:req.userId});
     return res.status(status).json({error:status===500?"Internal server error":e.message});
   }
