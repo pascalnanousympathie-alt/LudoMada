@@ -185,11 +185,11 @@ class MainActivity : Activity() {
                 cornerRadius=dp(21).toFloat();setStroke(dp(1),Color.rgb(218,227,238))
             };elevation=dp(6).toFloat()
         }
-        listOf("home" to ("⌂" to "Accueil"),"play" to ("●" to "Jouer"),"wallet" to ("¤" to "Wallet"),"social" to ("♟" to "Social"),"profile" to ("◉" to "Profil")).forEach{(key,pair)->
+        listOf("home" to ("⌂" to "Accueil"),"play" to ("●" to "Jouer"),"shop" to ("◆" to "Marché"),"wallet" to ("¤" to "Wallet"),"social" to ("♟" to "Social"),"profile" to ("◉" to "Profil")).forEach{(key,pair)->
             val b=TextView(this).apply{
                 text=pair.first + "\n" + pair.second;textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD)
                 setTextColor(if(key==active)royal else Color.rgb(102,113,130));setPadding(0,dp(4),0,dp(4))
-                setOnClickListener{when(key){"home"->home();"play"->gameModeDialog();"wallet"->wallet();"social"->social();"profile"->profile()}}
+                setOnClickListener{when(key){"home"->home();"play"->gameModeDialog();"shop"->shop();"wallet"->wallet();"social"->social();"profile"->profile()}}
             }
             row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
         }
@@ -738,12 +738,52 @@ class MainActivity : Activity() {
         bottomNav("social")
     }
 
+    private fun cosmeticTile(item: CosmeticCatalog.Item, key: String, fallback: String) {
+        val equipped = CosmeticCatalog.selected(this, key, fallback) == item.id
+        val icon = when (item.category) {
+            "Plateau" -> "▣"
+            "Dé" -> "◆"
+            "Pions" -> "♟"
+            else -> "✦"
+        }
+        val status = if (equipped) "✓ ÉQUIPÉ • 3D LIVE" else if (item.premium) "PREMIUM • 3D LIVE" else "3D LIVE"
+        val accent = when (item.id) {
+            "obsidian" -> Color.rgb(56,64,82)
+            "sapphire" -> Color.rgb(45,93,190)
+            "ruby" -> Color.rgb(184,54,65)
+            "emerald" -> Color.rgb(27,145,111)
+            "chrome" -> Color.rgb(104,121,145)
+            "onyx" -> Color.rgb(62,68,78)
+            "ember" -> Color.rgb(207,79,35)
+            "frost" -> Color.rgb(41,150,195)
+            else -> gold
+        }
+        add(premiumTile(icon, if (equipped) "✓ " + item.name else item.name, item.detail + " • " + status, accent) {
+            CosmeticCatalog.equip(this, key, item.id)
+            boardHost?.requestRender()
+            Toast.makeText(this, item.name + " — équipé dans la scène 3D", Toast.LENGTH_SHORT).show()
+            shop()
+        }, 82, 3, 5)
+    }
+
     private fun shop() {
-        page("shop","Boutique")
-        sectionTitle("Boutique premium","Une identité visuelle prête pour les futurs objets")
-        add(premiumTile("✦","Thèmes de plateau","Bientôt disponible",royal){Toast.makeText(this,"Boutique en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
-        add(premiumTile("◆","Avatars","Profils et badges",Color.rgb(126,82,188)){Toast.makeText(this,"Avatars bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,5)
-        add(premiumTile("◈","Effets premium","Animations et styles",gold){Toast.makeText(this,"Effets bientôt disponibles.",Toast.LENGTH_SHORT).show()},78,3,8)
+        page("shop","Marché")
+        sectionTitle("Marché 3D","Tous les objets sont de vrais styles appliqués aux meshes GLB/runtime, jamais des images plates.")
+        add(card("Équipement actif", CosmeticCatalog.selectedLabel(this), gold), 76, 3, 8)
+
+        sectionTitle("Plateaux","Table + plateau + cadre • rendu temps réel")
+        CosmeticCatalog.boards.forEach { cosmeticTile(it, CosmeticCatalog.BOARD_KEY, "royal") }
+
+        sectionTitle("Dés","Corps 3D + matériau métal + pips")
+        CosmeticCatalog.dice.forEach { cosmeticTile(it, CosmeticCatalog.DIE_KEY, "chrome") }
+
+        sectionTitle("Pions","Même géométrie live, finitions interchangeables")
+        CosmeticCatalog.pawns.forEach { cosmeticTile(it, CosmeticCatalog.PAWN_KEY, "classic") }
+
+        sectionTitle("Effets","FX liés au dé pendant le lancer")
+        CosmeticCatalog.vfx.forEach { cosmeticTile(it, CosmeticCatalog.VFX_KEY, "heroic") }
+
+        add(card("Statut","Aucun paiement ni solde fictif n'est utilisé pour équiper ces styles. L'étape boutique monétisée pourra être branchée séparément au ledger.", emerald), 84, 6, 8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
         bottomNav("shop")
     }
