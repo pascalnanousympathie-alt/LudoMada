@@ -1833,6 +1833,7 @@ class LudoBoardView(
             Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()
         }
         private fun rgba(c:Int)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,1f)
+        private fun rgba(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
         private fun colorFromInt(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
         private fun zoneColorInt(i:Int)=when(i){0->Color.rgb(219,59,66);1->Color.rgb(48,165,92);2->Color.rgb(239,186,46);else->Color.rgb(59,112,219)}
         private fun cubeMesh(): Mesh {
