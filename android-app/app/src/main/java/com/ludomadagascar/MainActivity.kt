@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
+    private var marketPreview: MarketPreviewView? = null
     private var lastMlgVictoryGameShown = ""
     private var moveOverlay: View? = null
     private var movePending = false
@@ -787,7 +788,12 @@ class MainActivity : Activity() {
             else -> gold
         }
         add(premiumTile(icon, if (equipped) "✓ " + item.name else item.name, item.detail + " • " + status, accent) {
-            if (token.isBlank()) { login(); return@premiumTile }
+            val category = cosmeticCategory(key)
+            marketPreview?.show(category, item.id)
+            if (token.isBlank()) {
+                Toast.makeText(this, "Aperçu 3D affiché • connecte-toi pour équiper/acheter.", Toast.LENGTH_SHORT).show()
+                return@premiumTile
+            }
             if (owned) {
                 CosmeticCatalog.equip(this, key, item.id)
                 boardHost?.requestRender()
@@ -798,15 +804,21 @@ class MainActivity : Activity() {
                     Toast.makeText(this,"Prix MLG mbola tsy azo avy amin'ny serveur.",Toast.LENGTH_LONG).show()
                     return@premiumTile
                 }
-                val payload=JSONObject().put("category",cosmeticCategory(key)).put("itemId",item.id)
-                post("/api/market/purchase",payload,UUID.randomUUID().toString(),{j->
-                    ownedCosmetics.add(mKey)
-                    CosmeticCatalog.equip(this,key,item.id)
-                    boardHost?.requestRender()
-                    Toast.makeText(this,"Azo ny " + item.name + " • " + j.optString("chargedMLG",price.toString()) + " MLG",Toast.LENGTH_SHORT).show()
-                    refreshMlgSummary()
-                    shop()
-                },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
+                AlertDialog.Builder(this)
+                    .setTitle("Acheter • " + item.name)
+                    .setMessage(item.detail + "\n\nAperçu 3D live chargé depuis le catalogue GLB Market V6.\nPrix serveur : " + price + " MLG.")
+                    .setNegativeButton("ANNULER", null)
+                    .setPositiveButton("ACHETER • " + price + " MLG") { _, _ ->
+                        val payload=JSONObject().put("category",category).put("itemId",item.id)
+                        post("/api/market/purchase",payload,UUID.randomUUID().toString(),{j->
+                            ownedCosmetics.add(mKey)
+                            CosmeticCatalog.equip(this,key,item.id)
+                            boardHost?.requestRender()
+                            Toast.makeText(this,"Azo ny " + item.name + " • " + j.optString("chargedMLG",price.toString()) + " MLG",Toast.LENGTH_SHORT).show()
+                            refreshMlgSummary()
+                            shop()
+                        },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
+                    }.show()
             }
         }, 82, 3, 5)
     }
@@ -816,6 +828,26 @@ class MainActivity : Activity() {
         sectionTitle("Marché 3D","Tous les objets restent des styles live sur les meshes/runtime. Les achats utilisent exclusivement le solde MLG serveur.")
         add(card("Solde MLG",formatMlg(mlgBalance) + " MLG • 1 MLG = 1 MGA",gold),76,3,4)
         add(card("Équipement actif", CosmeticCatalog.selectedLabel(this), gold), 76, 3, 8)
+
+        sectionTitle("Aperçu live 3D","GLB Market V6 • sélectionne un objet pour le charger ici, puis glisse pour le faire tourner.")
+        val previewCard=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(6),dp(6),dp(6),dp(6))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(navy,Color.rgb(20,44,78))).apply {
+                cornerRadius=dp(22).toFloat()
+                setStroke(dp(1),0x66EDB734)
+            }
+            elevation=dp(7).toFloat()
+        }
+        val preview=MarketPreviewView(this)
+        marketPreview=preview
+        preview.show("board", CosmeticCatalog.selected(this,CosmeticCatalog.BOARD_KEY,"royal"))
+        previewCard.addView(preview,LinearLayout.LayoutParams(-1,dp(260)))
+        previewCard.addView(label("LIVE GLB • rotation tactile • matériaux PBR légers",10.5f,true,0xCCFFFFFF.toInt()).apply {
+            gravity=Gravity.CENTER
+            setPadding(0,dp(5),0,dp(2))
+        },LinearLayout.LayoutParams(-1,dp(26)))
+        add(previewCard,292,3,8)
 
         sectionTitle("Plateaux","Table + plateau + cadre • rendu temps réel")
         CosmeticCatalog.boards.forEach { cosmeticTile(it, CosmeticCatalog.BOARD_KEY, "royal") }
