@@ -2460,7 +2460,7 @@ async function startServer() {
   return server;
 }
 
-export { app, prisma };
+export { app, prisma, pool };
 
 const serverShouldStart = !["test", "loadtest"].includes(
   String(process.env.NODE_ENV ?? "").toLowerCase()
