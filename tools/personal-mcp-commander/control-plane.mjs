@@ -204,7 +204,7 @@ export function createControlPlane({ HOME, config, resolveProject, resolveSafe, 
     return target;
   }
 
-  async function cdpCall({ targetId, method, params = {}, timeoutMs = 10000 }) {
+  async function cdpCallOnce({ targetId, method, params = {}, timeoutMs = 10000 }) {
     const target = await cdpTarget(targetId);
     const ws = new WebSocket(target.webSocketDebuggerUrl);
     return await new Promise((resolve, reject) => {
@@ -213,12 +213,9 @@ export function createControlPlane({ HOME, config, resolveProject, resolveSafe, 
         reject(new Error("CDP timeout"));
       }, Math.min(Math.max(Number(timeoutMs) || 10000, 1000), 30000));
       const finish = (fn, value) => { clearTimeout(timer); try { ws.close(); } catch {} fn(value); };
-      ws.addEventListener("open", () => {
-        ws.send(JSON.stringify({ id: 1, method, params }));
-      });
+      ws.addEventListener("open", () => ws.send(JSON.stringify({ id: 1, method, params })));
       ws.addEventListener("message", event => {
-        let msg;
-        try { msg = JSON.parse(String(event.data)); } catch { return; }
+        let msg; try { msg = JSON.parse(String(event.data)); } catch { return; }
         if (msg.id !== 1) return;
         if (msg.error) finish(reject, new Error(JSON.stringify(msg.error)));
         else finish(resolve, msg.result || {});
@@ -227,6 +224,14 @@ export function createControlPlane({ HOME, config, resolveProject, resolveSafe, 
     });
   }
 
+  async function cdpCall(args) {
+    let lastError;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try { return await cdpCallOnce(args); }
+      catch (e) { lastError = e; if (attempt < 2) await new Promise(r => setTimeout(r, 150)); }
+    }
+    throw lastError;
+  }
   async function browserNavigate(url, targetId) {
     const parsed = new URL(url);
     if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("only http/https browser URLs are allowed");
@@ -279,7 +284,7 @@ export function createControlPlane({ HOME, config, resolveProject, resolveSafe, 
       browserOptional: true,
       securityPrivate: security.files.every(x => x.private),
     };
-    const required = ["project", "git", "gitDiffCheck", "toolchain", "securityPrivate"];
+    const required = ["project", "git", "gitDiffCheck", "toolchain", "securityPrivate", "tunnelHealth", "webPanel", "localMcpHttp"];
     const healthy = required.every(k => checks[k]);
     return {
       controlPlaneVersion: CONTROL_VERSION,

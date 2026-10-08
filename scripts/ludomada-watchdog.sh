@@ -18,6 +18,9 @@ echo $$ > "$PIDFILE"
 trap 'rm -f "$PIDFILE"; rm -rf "$WATCHDOG_LOCK"' EXIT INT TERM
 
 while :; do
+  if [ -f "$STATE/stop.flag" ]; then
+    exit 0
+  fi
   ok=1
   curl -fsS --max-time 4 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1 || ok=0
   curl -fsS --max-time 4 "http://127.0.0.1:8788/health" >/dev/null 2>&1 || ok=0
@@ -27,7 +30,7 @@ while :; do
   else
     FAILS=$((FAILS+1))
     printf "%s watchdog check failed (%s/3)\n" "$(date -Is)" "$FAILS" >> "$LOG"
-    if [ "$FAILS" -ge 3 ]; then
+    if [ "$FAILS" -ge 3 ] && [ ! -f "$STATE/stop.flag" ]; then
       printf "%s restarting personal MCP control plane\n" "$(date -Is)" >> "$LOG"
       LUDOMADA_WATCHDOG_SKIP=1 LUDOMADA_PROJECT_DIR="$PROJECT" bash "$PROJECT/scripts/ludomada-connect.sh" >> "$LOG" 2>&1 || true
       FAILS=0

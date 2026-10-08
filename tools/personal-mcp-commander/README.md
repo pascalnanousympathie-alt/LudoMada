@@ -50,6 +50,7 @@ The watchdog performs local health checks and restarts the control plane after r
 From the Commander directory:
 
 `node smoke.mjs`
+`node production-audit.mjs`
 
 The smoke test validates MCP initialization, required production tools, and the end-to-end health check.
 

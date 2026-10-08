@@ -43,6 +43,7 @@ TUNNEL_ID="$(sed -n 's/^[[:space:]]*tunnel_id:[[:space:]]*"\([^"]*\)".*/\1/p' "$
 [ -n "$TUNNEL_ID" ] || die "tunnel id missing"
 
 mkdir -p "$STATE"
+rm -f "$STATE/stop.flag"
 CONNECT_LOCK="$STATE/connect.lock"
 if ! mkdir "$CONNECT_LOCK" 2>/dev/null; then
   LOCK_PID="$(cat "$CONNECT_LOCK/pid" 2>/dev/null || true)"

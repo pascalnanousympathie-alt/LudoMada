@@ -8,7 +8,8 @@
     "start": "node server.mjs --stdio",
     "http": "node server.mjs --http",
     "doctor": "node server.mjs --doctor",
-    "smoke": "node smoke.mjs"
+    "smoke": "node smoke.mjs",
+    "audit": "node production-audit.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.1.1",

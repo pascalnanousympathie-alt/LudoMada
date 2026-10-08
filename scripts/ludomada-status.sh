@@ -17,6 +17,8 @@ else
 fi
 printf '  watchdog: '
 if [ -f "$WATCHDOG_PIDFILE" ] && kill -0 "$(cat "$WATCHDOG_PIDFILE" 2>/dev/null || echo 0)" 2>/dev/null; then echo "RUNNING pid=$(cat "$WATCHDOG_PIDFILE")"; else echo STOPPED; fi
+printf '  mcp-http: '
+if curl -fsS --max-time 3 http://127.0.0.1:8787/.well-known/oauth-protected-resource >/dev/null 2>&1; then echo READY; else echo DOWN; fi
 printf '  health : '
 if curl -fsS --max-time 3 "http://127.0.0.1:$PORT/healthz" >/dev/null 2>&1; then echo READY; else echo NOT_READY; fi
 printf '  web    : '

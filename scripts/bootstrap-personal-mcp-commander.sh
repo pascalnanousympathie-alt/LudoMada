@@ -18,6 +18,8 @@ node --check "$ROOT/control-plane.mjs"
 node --check "$ROOT/dashboard.mjs"
 
 echo "[Commander] MCP smoke test"
+echo "[Commander] production audit"
+(cd "$ROOT" && node production-audit.mjs)
 (cd "$ROOT" && node smoke.mjs)
 
 chmod 700   "$PROJECT/scripts/ludomada-connect.sh"   "$PROJECT/scripts/ludomada-status.sh"   "$PROJECT/scripts/ludomada-stop.sh"   "$PROJECT/scripts/ludomada-watchdog.sh"
