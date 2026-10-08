@@ -32,7 +32,7 @@ class MainActivity : Activity() {
     private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
     private var entryFee = 500
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
-    private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
+    private var accountBalanceMGA: Long = 0L; private var mlgBalance: Long = 0L; private var topBalanceView: TextView? = null; private var walletMlgView: TextView? = null; private var referralCode = ""; private val ownedCosmetics = mutableSetOf<String>(); private val marketPrices = mutableMapOf<String,Long>()
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
@@ -735,6 +735,12 @@ class MainActivity : Activity() {
         add(premiumTile("♟","Amis","Invitations et joueurs récents",Color.rgb(126,82,188)){Toast.makeText(this,"Fonction sociale en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
         add(premiumTile("◉","Inviter","Partager une room",royal){joinDialog()},78,3,5)
         add(premiumTile("★","Défis","Jouer",emerald){lobby()},78,3,8)
+        val referralCard=card("Parrainage","Invite un nouvel ami • toi = +100 MLG • 1 MLG = 1 MGA",Color.rgb(126,82,188))
+        add(referralCard,82,6,5)
+        val referralActions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        referralActions.addView(button("↗ Inviter",Color.rgb(37,93,196)){shareReferralCode()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(4),0)})
+        referralActions.addView(button("🎟 Entrer un code",Color.rgb(126,82,188)){claimReferralDialog()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(4),0,0,0)})
+        add(referralActions,52,0,6)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
         bottomNav("social")
         refreshMlgSummary()
@@ -1011,6 +1017,7 @@ class MainActivity : Activity() {
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
         bottomNav("wallet")
         loadWallet()
+        refreshMlgSummary()
     }
 
     private fun loadWallet() {
