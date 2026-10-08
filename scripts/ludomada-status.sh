@@ -6,7 +6,10 @@ PIDFILE="$STATE/personal-mcp-runtime.pid"
 PORT="${PERSONAL_MCP_HEALTH_PORT:-8790}"
 printf 'LudoMada Commander status\n'
 printf '  runtime: '
-if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+SERVICE_PID="$(ps -eo pid=,args= 2>/dev/null | awk -v port="$PORT" '$0 ~ /tunnel-client run/ && index($0,"--health.listen-addr 127.0.0.1:" port) {print $1; exit}')"
+if [ -n "$SERVICE_PID" ]; then
+  echo "RUNNING pid=$SERVICE_PID"
+elif [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
   echo "RUNNING pid=$(cat "$PIDFILE")"
 else
   echo "STOPPED"
