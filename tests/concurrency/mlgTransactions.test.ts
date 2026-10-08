@@ -1,4 +1,5 @@
-import { PrismaClient, PrismaPg } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 
