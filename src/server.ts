@@ -534,7 +534,8 @@ app.get("/api/mlg/summary",auth,async(req:any,res)=>{
       referralRewardMLG:MLG_REFERRAL_REWARD.toString(),
       minimumSwapMLG:MLG_MIN_SWAP.toString(),
       referralCode:user.referralCode,
-      ownedCosmetics:[...owned]
+      ownedCosmetics:[...owned],
+      marketItems:MARKET_ITEMS
     });
   }catch(e:any){
     console.error("MLG_SUMMARY_ERROR",{message:e?.message,requestId:req.requestId,userId:req.userId});
