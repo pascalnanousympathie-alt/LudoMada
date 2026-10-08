@@ -5,107 +5,119 @@ HOME_DIR="${HOME:-/data/data/com.termux/files/home}"
 PREFIX_DIR="${PREFIX:-/data/data/com.termux/files/usr}"
 PROJECT="${LUDOMADA_PROJECT_DIR:-$HOME_DIR/LudoMada}"
 STATE="$HOME_DIR/.config/ludomada"
-BIN="$HOME_DIR/bin/ludo-agent"
-RUNTIME_VERSION="v0.0.16"
-RUNTIME_ARCHIVE="tunnel-client-runtime-v0.0.16-linux-arm64.zip"
-RUNTIME_SHA256="ec3bc4815e1b9f7a0773b24de45f64841d9aebe170a58b62742e3f1cef4ac088"
 KEY_FILE="$HOME_DIR/.config/openai/tunnel-client/runtime.key"
 TUNNEL_PROFILE="$HOME_DIR/.config/tunnel-client/ludomada-termux.yaml"
-TUNNEL_PID="$STATE/personal-mcp-runtime.pid"
-TUNNEL_LOG="$STATE/personal-mcp-runtime.log"
+RUNTIME="$HOME_DIR/bin/ludo-agent"
+PROOT_TUNNEL="$HOME_DIR/ludomada-mcp-commander/tunnel/tunnel-client"
 HEALTH_PORT="${PERSONAL_MCP_HEALTH_PORT:-8790}"
-DASHBOARD_DIR="$HOME_DIR/ludomada-mcp-commander"
+PIDFILE="$STATE/personal-mcp.pid"
+LOG="$STATE/personal-mcp.log"
+PROOT_LOG="$STATE/personal-mcp-proot.log"
 
-mkdir -p "$STATE" "$HOME_DIR/bin"
+say(){ printf '[LudoMada] %s\n' "$*"; }
+die(){ printf '[LudoMada] ERROR: %s\n' "$*" >&2; exit 1; }
 
-say() { printf '[LudoMada] %s\n' "$*"; }
-die() { printf '[LudoMada] ERROR: %s\n' "$*" >&2; exit 1; }
-
-command -v curl >/dev/null 2>&1 || die "curl not installed"
-command -v unzip >/dev/null 2>&1 || die "unzip not installed"
-command -v python3 >/dev/null 2>&1 || die "python3 not installed"
-[ -d "$PROJECT" ] || die "LudoMada project not found: $PROJECT"
+[ -d "$PROJECT" ] || die "LudoMada project missing"
 [ -f "$PROJECT/tools/personal-mcp/termux_server.py" ] || die "Personal MCP server missing"
-[ -f "$KEY_FILE" ] || die "local runtime key missing: $KEY_FILE"
-[ -f "$TUNNEL_PROFILE" ] || die "tunnel profile missing: $TUNNEL_PROFILE"
+[ -f "$KEY_FILE" ] || die "local runtime key missing"
+[ -f "$TUNNEL_PROFILE" ] || die "tunnel profile missing"
+[ -x "$PREFIX_DIR/bin/python3" ] || die "Termux python3 missing"
 
 TUNNEL_ID="$(sed -n 's/^[[:space:]]*tunnel_id:[[:space:]]*"\([^"]*\)".*/\1/p' "$TUNNEL_PROFILE" | head -n1)"
-[ -n "$TUNNEL_ID" ] || die "no tunnel_id in $TUNNEL_PROFILE"
+[ -n "$TUNNEL_ID" ] || die "tunnel id missing"
 
-install_runtime() {
-  local archive="$HOME_DIR/.cache/ludomada-personal-mcp/$RUNTIME_ARCHIVE"
-  local extract="$HOME_DIR/.cache/ludomada-personal-mcp/runtime-install"
-  mkdir -p "$HOME_DIR/.cache/ludomada-personal-mcp" "$extract"
-  if [ ! -x "$BIN" ]; then
-    say "Downloading official tunnel runtime $RUNTIME_VERSION..."
-    curl -fL --retry 3 --connect-timeout 15 -o "$archive" \
-      "https://github.com/openai/tunnel-client/releases/download/$RUNTIME_VERSION/$RUNTIME_ARCHIVE"
-    printf '%s  %s\n' "$RUNTIME_SHA256" "$archive" | sha256sum -c -
-    rm -rf "$extract"
-    mkdir -p "$extract"
-    unzip -oq "$archive" -d "$extract"
-    local src="$extract/tunnel-client-runtime"
-    [ -x "$src" ] || { chmod 700 "$src"; }
-    [ -f "$src" ] || die "runtime binary missing after extraction"
-    install -m 700 "$src" "$BIN"
-  fi
-  "$BIN" --version | grep -q 'flavor=runtime' || die "runtime binary is not the run-only flavor"
-}
+mkdir -p "$STATE"
 
-start_if_down() {
-  local url="$1"
-  local label="$2"
-  shift 2
-  if curl -fsS --max-time 2 "$url" >/dev/null 2>&1; then
-    say "$label already running"
-    return 0
-  fi
-  "$@" >/dev/null 2>&1 &
-  say "$label started pid=$!"
-}
-
-install_runtime
-
-if ! curl -fsS --max-time 2 "http://127.0.0.1:8787/mcp" >/dev/null 2>&1; then
-  if [ -f "$DASHBOARD_DIR/server.mjs" ]; then
-    (cd "$DASHBOARD_DIR" && nohup node server.mjs --http >"$STATE/commander-server.log" 2>&1 </dev/null &)
+if ! curl -fsS --max-time 2 http://127.0.0.1:8787/mcp >/dev/null 2>&1; then
+  if [ -f "$HOME_DIR/ludomada-mcp-commander/server.mjs" ]; then
+    (cd "$HOME_DIR/ludomada-mcp-commander" && nohup node server.mjs --http >"$STATE/commander-server.log" 2>&1 </dev/null &)
     say "Commander MCP HTTP server starting"
   fi
 fi
 
-if ! curl -fsS --max-time 2 "http://127.0.0.1:8788/" >/dev/null 2>&1; then
-  if [ -f "$DASHBOARD_DIR/dashboard.mjs" ]; then
-    (cd "$DASHBOARD_DIR" && nohup node dashboard.mjs >"$STATE/commander-dashboard.log" 2>&1 </dev/null &)
+if ! curl -fsS --max-time 2 http://127.0.0.1:8788/ >/dev/null 2>&1; then
+  if [ -f "$HOME_DIR/ludomada-mcp-commander/dashboard.mjs" ]; then
+    (cd "$HOME_DIR/ludomada-mcp-commander" && nohup node dashboard.mjs >"$STATE/commander-dashboard.log" 2>&1 </dev/null &)
     say "Commander Web Panel starting"
   fi
 fi
 
-if [ -f "$TUNNEL_PID" ] && kill -0 "$(cat "$TUNNEL_PID")" 2>/dev/null; then
-  say "Personal MCP tunnel already running pid=$(cat "$TUNNEL_PID")"
-else
-  rm -f "$TUNNEL_PID"
-  say "Connecting GPT <-> Termux..."
-  nohup "$BIN" run \
+start_native_probe() {
+  [ -x "$RUNTIME" ] || return 1
+  "$RUNTIME" --version | grep -q 'flavor=runtime' || return 1
+  rm -f "$STATE/native-probe.log"
+  set +e
+  "$RUNTIME" run \
     --control-plane.tunnel-id "$TUNNEL_ID" \
     --control-plane.api-key "file:$KEY_FILE" \
     --mcp.command "$PREFIX_DIR/bin/python3 $PROJECT/tools/personal-mcp/termux_server.py" \
     --health.listen-addr "127.0.0.1:$HEALTH_PORT" \
     --mcp.startup-wait-timeout 30s \
-    --log.file "$TUNNEL_LOG" \
+    --log.file "$STATE/native-probe.log" \
     --log.format json \
-    --pid.file "$TUNNEL_PID" \
-    >/dev/null 2>&1 &
+    >/dev/null 2>"$STATE/native-probe.stderr" &
+  PROBE_PID=$!
   sleep 2
+  if kill -0 "$PROBE_PID" 2>/dev/null; then
+    kill "$PROBE_PID" 2>/dev/null || true
+    return 0
+  fi
+  wait "$PROBE_PID" 2>/dev/null || true
+  return 1
+}
+
+start_proot() {
+  [ -x "$PROOT_TUNNEL" ] || die "working proot tunnel-client not found"
+  cat >"$STATE/run-personal-mcp-proot.sh" <<EOF
+#!/bin/sh
+set -eu
+export CONTROL_PLANE_API_KEY="$(cat "$KEY_FILE")"
+exec "$PROOT_TUNNEL" run \
+  --control-plane.tunnel-id "$TUNNEL_ID" \
+  --control-plane.api-key env:CONTROL_PLANE_API_KEY \
+  --mcp.command "$PREFIX_DIR/bin/python3 $PROJECT/tools/personal-mcp/termux_server.py" \
+  --health.listen-addr "127.0.0.1:$HEALTH_PORT" \
+  --mcp.startup-wait-timeout 30s \
+  --log.file "$PROOT_LOG" \
+  --log.format json
+EOF
+  chmod 700 "$STATE/run-personal-mcp-proot.sh"
+  proot-distro login debian -- /bin/sh "$STATE/run-personal-mcp-proot.sh" >"$PROOT_LOG.wrapper" 2>&1 &
+  echo $! >"$PIDFILE"
+}
+
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  say "Personal MCP already running pid=$(cat "$PIDFILE")"
+  exit 0
 fi
 
-if curl -fsS --max-time 5 "http://127.0.0.1:$HEALTH_PORT/healthz" >/dev/null 2>&1; then
+rm -f "$PIDFILE"
+
+say "Starting Personal MCP..."
+if start_native_probe; then
+  say "Native runtime compatible."
+  nohup "$RUNTIME" run \
+    --control-plane.tunnel-id "$TUNNEL_ID" \
+    --control-plane.api-key "file:$KEY_FILE" \
+    --mcp.command "$PREFIX_DIR/bin/python3 $PROJECT/tools/personal-mcp/termux_server.py" \
+    --health.listen-addr "127.0.0.1:$HEALTH_PORT" \
+    --mcp.startup-wait-timeout 30s \
+    --log.file "$LOG" \
+    --log.format json \
+    >/dev/null 2>&1 &
+  echo $! >"$PIDFILE"
+else
+  say "Native runtime blocked on this Android kernel; using Debian proot."
+  start_proot
+fi
+
+sleep 4
+if curl -fsS --max-time 3 "http://127.0.0.1:$HEALTH_PORT/healthz" >/dev/null 2>&1; then
   say "READY"
 else
-  say "Tunnel process started but health is not ready yet; see $TUNNEL_LOG"
+  say "NOT_READY — inspect $LOG or $PROOT_LOG"
 fi
 
 printf '\nLudoMada Commander\n'
-printf '  MCP health : http://127.0.0.1:%s/healthz\n' "$HEALTH_PORT"
-printf '  Web Panel  : http://127.0.0.1:8788/\n'
-printf '  Tunnel     : CONNECTED CONFIGURED\n'
-printf '  Project    : %s\n' "$PROJECT"
+printf '  Web Panel : http://127.0.0.1:8788/\n'
+printf '  MCP Health: http://127.0.0.1:%s/healthz\n' "$HEALTH_PORT"
