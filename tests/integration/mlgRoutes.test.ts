@@ -2,6 +2,9 @@ const enabled = Boolean(process.env.DATABASE_URL);
 
 jest.setTimeout(60_000);
 
+import { randomUUID } from "node:crypto";
+import { issueAccessToken } from "../../src/security";
+
 const describeDb = enabled ? describe : describe.skip;
 
 describeDb("MLG HTTP route concurrency", () => {
@@ -16,6 +19,7 @@ describeDb("MLG HTTP route concurrency", () => {
     process.env.NODE_ENV = "test";
     process.env.JWT_SECRET = process.env.JWT_SECRET || "local-test-jwt-secret-012345678901234567890123";
     process.env.CORS_ORIGINS = "";
+    process.env.PG_POOL_MAX = "20";
 
     const mod = await import("../../src/server");
     app = mod.app;
@@ -45,20 +49,18 @@ describeDb("MLG HTTP route concurrency", () => {
   }
 
   async function register(label: string) {
-    const username = `mlg_${label}_${Date.now().toString().slice(-8)}_${Math.random().toString(36).slice(2, 6)}`;
-    const { response, body } = await request("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const id = randomUUID();
+    const username = `mlg_http_${label}_${id.replace(/-/g, "").slice(0, 12)}`;
+    await prisma.user.create({
+      data: {
+        id,
         username,
-        password: "TestPassword!12345"
-      })
+        passwordHash: "test-only",
+        wallet: { create: {} }
+      }
     });
-    if (response.status !== 201) {
-      throw new Error(`REGISTER_FAILED status=${response.status} body=${JSON.stringify(body)}`);
-    }
-    createdUserIds.push(body.user.id);
-    return { id: body.user.id as string, token: body.accessToken as string };
+    createdUserIds.push(id);
+    return { id, token: issueAccessToken(id, "PLAYER", process.env.JWT_SECRET!) };
   }
 
   function authHeaders(token: string, key?: string) {
