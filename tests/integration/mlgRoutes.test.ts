@@ -4,6 +4,8 @@ jest.setTimeout(60_000);
 
 import { randomUUID } from "node:crypto";
 import { issueAccessToken } from "../../src/security";
+import { newGame } from "../../src/game/ludoEngine";
+import { AuthoritativeCommandService } from "../../src/game/authoritativeCommandService";
 
 const describeDb = enabled ? describe : describe.skip;
 
@@ -14,6 +16,7 @@ describeDb("MLG HTTP route concurrency", () => {
   let httpServer: any;
   let baseUrl = "";
   const createdUserIds: string[] = [];
+  const createdGameIds: string[] = [];
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
@@ -34,6 +37,9 @@ describeDb("MLG HTTP route concurrency", () => {
   });
 
   afterAll(async () => {
+    if (createdGameIds.length) {
+      await prisma.game.deleteMany({ where: { id: { in: createdGameIds } } });
+    }
     if (createdUserIds.length) {
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
@@ -71,6 +77,84 @@ describeDb("MLG HTTP route concurrency", () => {
     };
   }
 
+  test("authoritative online winner concurrency: exactly one +20 MLG reward", async () => {
+    const creator = await register("winner-creator");
+    const winner = await register("winner");
+    const gameId = randomUUID();
+
+    await prisma.game.create({
+      data: {
+        id: gameId,
+        creatorId: creator.id,
+        status: "PLAYING",
+        grossAmount: 0n,
+        commission: 0n,
+        prizePool: 0n,
+        participants: {
+          create: [
+            { userId: creator.id, entryFee: 0n },
+            { userId: winner.id, entryFee: 0n }
+          ]
+        }
+      }
+    });
+    createdGameIds.push(gameId);
+
+    const state = newGame([creator.id, winner.id]);
+    state.currentPlayerIndex = 1;
+    state.dice = 1;
+    state.players[1].tokens = [
+      { pos: 56 },
+      { pos: 57 },
+      { pos: 57 },
+      { pos: 57 }
+    ];
+
+    await prisma.authoritativeGameState.create({
+      data: {
+        gameId,
+        stateVersion: state.stateVersion,
+        state: state as any
+      }
+    });
+
+    const service = new AuthoritativeCommandService(prisma);
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, (_, i) =>
+        service.move(
+          gameId,
+          winner.id,
+          0,
+          0,
+          "winner-real-" + i + "-" + randomUUID()
+        )
+      )
+    );
+
+    expect(results.filter(x => x.status === "fulfilled")).toHaveLength(1);
+
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId: winner.id },
+      select: { mlgBalance: true }
+    });
+    const ledger = await prisma.mlgLedgerEntry.findMany({
+      where: { gameId, type: "EARN_VICTORY" }
+    });
+    const payouts = await prisma.transaction.findMany({
+      where: { gameId, type: "DEPOSIT", status: "SUCCESS" }
+    });
+    const finalGame = await prisma.game.findUnique({
+      where: { id: gameId },
+      select: { status: true, winnerId: true }
+    });
+
+    expect(wallet?.mlgBalance).toBe(20n);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].amount).toBe(20n);
+    expect(payouts).toHaveLength(1);
+    expect(finalGame?.status).toBe("FINISHED");
+    expect(finalGame?.winnerId).toBe(winner.id);
+  });
   test("referral concurrent claim: exactly one +100 MLG award", async () => {
     const inviter = await register("inviter");
     const invitee = await register("invitee");
