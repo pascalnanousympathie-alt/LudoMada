@@ -40,6 +40,14 @@ enum LedgerEntryType {
   REFUND
 }
 
+enum MlgLedgerType {
+  EARN_VICTORY
+  EARN_REFERRAL
+  MARKET_PURCHASE
+  SWAP_TO_MGA
+  ADMIN_ADJUSTMENT
+}
+
 model User {
   id                 String              @id @default(cuid())
   username           String              @unique
@@ -53,8 +61,13 @@ model User {
   auditLogs          AuditLog[]
   idempotencyRecords IdempotencyRecord[]
   createdAt          DateTime            @default(now())
+  referralCode       String?             @unique
   gameParticipants   GameParticipant[]
   createdGames       Game[]              @relation("GameCreator")
+  mlgLedgerEntries   MlgLedgerEntry[]
+  referralsSent      Referral[]          @relation("ReferralInviter")
+  referralReceived   Referral?           @relation("ReferralInvitee")
+  cosmeticOwnerships CosmeticOwnership[]
 }
 
 model GoogleAuthChallenge {
@@ -71,6 +84,7 @@ model Wallet {
   id        String   @id @default(cuid())
   userId    String   @unique
   balance   BigInt   @default(0)
+  mlgBalance BigInt  @default(0)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   updatedAt DateTime @updatedAt
 }
@@ -120,6 +134,7 @@ model Game {
   transactions            Transaction[]
   participants            GameParticipant[]
   ledgerEntries           LedgerEntry[]
+  mlgLedgerEntries        MlgLedgerEntry[]
   moves                   GameMove[]
   events                  GameEvent[]
   authoritativeGameStates AuthoritativeGameState[]
@@ -247,4 +262,48 @@ model GameCommand {
   createdAt       DateTime @default(now())
 
   @@index([gameId, createdAt])
+}
+
+
+model MlgLedgerEntry {
+  id             String        @id @default(cuid())
+  userId         String
+  gameId         String?
+  type           MlgLedgerType
+  amount         BigInt
+  idempotencyKey String        @unique
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game           Game?         @relation(fields: [gameId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([gameId, createdAt])
+}
+
+model Referral {
+  id          String   @id @default(cuid())
+  inviterId   String
+  inviteeId   String   @unique
+  code        String
+  rewardMlg   BigInt   @default(100)
+  createdAt   DateTime @default(now())
+  inviter     User     @relation("ReferralInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee     User     @relation("ReferralInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@unique([inviterId, inviteeId])
+  @@index([code, createdAt])
+}
+
+model CosmeticOwnership {
+  id          String   @id @default(cuid())
+  userId      String
+  category    String
+  itemId      String
+  priceMlg    BigInt
+  purchasedAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category, itemId])
+  @@index([userId, purchasedAt])
 }
