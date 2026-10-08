@@ -42,6 +42,7 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
+    private var lastMlgVictoryGameShown = ""
     private var moveOverlay: View? = null
     private var movePending = false
     private val credentialManager by lazy { CredentialManager.create(this) }
@@ -1523,8 +1524,28 @@ class MainActivity : Activity() {
                 showBoardEntry()
                 return@runOnUiThread
             }
+
             if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
             else if(currentScreen=="board") board()
+
+            if(serverStatus=="FINISHED"){
+                val winnerId=j.optString("winnerId","")
+                val iAmWinner=winnerId.isNotBlank() && winnerId==userId
+                status.text = if(iAmWinner) "🏆 Victoire • +20 MLG" else "🏁 Partie terminée"
+                if(iAmWinner && lastMlgVictoryGameShown!=gameId){
+                    lastMlgVictoryGameShown=gameId
+                    // The authoritative server awards MLG when the winning move is committed.
+                    // This UI only reveals the confirmed reward; it never mints MLG client-side.
+                    refreshMlgSummary()
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("🏆 Victoire !")
+                        .setMessage("+20 MLG crédités sur votre solde de récompenses.\n\n1 MLG = 1 MGA\nSwap minimum : 10 000 MLG.")
+                        .setPositiveButton("CONTINUER"){_,_->refreshMlgSummary()}
+                        .setNeutralButton("MARCHÉ"){_,_->shop()}
+                        .setNegativeButton("WALLET"){_,_->wallet()}
+                        .show()
+                }
+            }
         }
     }}
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
