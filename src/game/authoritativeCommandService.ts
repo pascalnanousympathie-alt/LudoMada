@@ -3,6 +3,7 @@ import { GameStateRepository } from "./gameStateRepository";
 import { appendGameEvent } from "./gameEventStore";
 import { rollDice, moveToken } from "./ludoEngine";
 import { randomInt } from "crypto";
+import { MLG_VICTORY_REWARD } from "../mlgEconomy";
 
 export class AuthoritativeCommandService {
   constructor(private prisma:PrismaClient, private repo=new GameStateRepository(prisma)) {}
@@ -262,6 +263,37 @@ export class AuthoritativeCommandService {
           where:{userId:winnerId},
           data:{balance:{increment:game.prizePool}}
         });
+
+        // MLG is a separate reward currency. It is granted only from the
+        // server-authoritative online victory, never from client state.
+        const mlgPayoutKey=`game-win-mlg:${gameId}`;
+        const existingMlgReward=await tx.mlgLedgerEntry.findUnique({
+          where:{idempotencyKey:mlgPayoutKey}
+        });
+        if(!existingMlgReward){
+          await tx.wallet.update({
+            where:{userId:winnerId},
+            data:{mlgBalance:{increment:MLG_VICTORY_REWARD}}
+          });
+          await tx.mlgLedgerEntry.create({
+            data:{
+              userId:winnerId,
+              gameId,
+              type:"EARN_VICTORY",
+              amount:MLG_VICTORY_REWARD,
+              idempotencyKey:mlgPayoutKey,
+              metadata:{reason:"ONLINE_VICTORY_REWARD",rateMGA:"1"}
+            }
+          });
+          await appendGameEvent(
+            tx,
+            gameId,
+            state.stateVersion,
+            "MLG_REWARD_GRANTED",
+            winnerId,
+            {amountMLG:MLG_VICTORY_REWARD.toString(),reason:"ONLINE_VICTORY_REWARD"}
+          );
+        }
 
         await tx.transaction.create({
           data:{
