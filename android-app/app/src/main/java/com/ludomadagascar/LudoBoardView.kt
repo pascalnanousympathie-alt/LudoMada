@@ -1530,13 +1530,30 @@ class LudoBoardView(
             drawEnvironmentGlb(false)
         }
 
+        private fun pawnCosmeticBaseColor():Int = when(cosmeticPawnId){
+            "chrome" -> Color.rgb(226,232,240)
+            "onyx" -> Color.rgb(28,32,42)
+            "emerald" -> Color.rgb(42,118,88)
+            "sapphire" -> Color.rgb(64,102,164)
+            "royal" -> Color.rgb(170,126,52)
+            else -> Color.rgb(176,150,112)
+        }
+
+        /**
+         * Player identity is deliberately isolated to the upper collar/neck band.
+         * The sculpted pawn body/head keep the selected cosmetic's own material,
+         * so two opponents can equip the same pawn without degrading its finish.
+         */
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
             if(active && isLegalPawn(pi,ti)){
                 val pulse=(0.42f+0.06f*sin(System.nanoTime()/180_000_000.0).toFloat()).coerceIn(0.34f,0.50f)
                 drawMesh(disk,identityAt(x,boardTop+0.022f,z,pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.16f,0.88f),0.08f,0.52f,1f,0.035f,4,true)
             }
+
+            val styleColor=pawnCosmeticBaseColor()
             val body=glbParts["LM_Pawn_Tapered_Body"]
             val head=glbParts["LM_Pawn_Spherical_Head"]
+
             if(body!=null && head!=null){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
                 val elastic=LudoMotionPhysics.elasticOut(b)
@@ -1547,6 +1564,27 @@ class LudoBoardView(
                 val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
                 val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
                 val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                val rough=when(cosmeticPawnId){
+                    "chrome"->0.13f
+                    "onyx"->0.20f
+                    "emerald"->0.18f
+                    "sapphire"->0.20f
+                    else->0.24f
+                }
+                val metal=when(cosmeticPawnId){
+                    "chrome"->0.78f
+                    "onyx"->0.62f
+                    "emerald"->0.58f
+                    "sapphire"->0.56f
+                    else->0.38f
+                }
+                val emission=when(cosmeticPawnId){
+                    "chrome"->0.010f
+                    "emerald"->0.008f
+                    "sapphire"->0.006f
+                    else->0.004f
+                }
+
                 listOf(
                     "LM_Pawn_Underside_Insert",
                     "LM_Pawn_Base_Weighted",
@@ -1555,38 +1593,62 @@ class LudoBoardView(
                     "LM_Pawn_Spherical_Head"
                 ).forEach { name ->
                     glbParts[name]?.let { part ->
-                        val model=heroPawnModel(part.transform,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
-                        val pm=PremiumMaterialLighting.pawn(color)
-                        val styledColor=when(cosmeticPawnId){
-                            "chrome"->color
-                            "onyx"->styleColor(color,0.58f)
-                            else->color
-                        }
-                        val rough=when(cosmeticPawnId){
-                            "chrome"->0.13f
-                            "onyx"->0.20f
-                            else->pm.roughness
-                        }
-                        val metal=when(cosmeticPawnId){
-                            "chrome"->0.78f
-                            "onyx"->0.62f
-                            else->pm.metallic
-                        }
-                        val emission=when(cosmeticPawnId){
-                            "chrome"->pm.emission+0.010f
-                            "onyx"->pm.emission
-                            else->pm.emission
-                        }
-                        drawMesh(part.mesh,model,rgba(styledColor),rough,metal,pm.ao,emission,5,false)
+                        val model=heroPawnModel(
+                            part.transform,x,
+                            y+PremiumVisualMotion.landingBounce(b),
+                            z,sx,sy,swayZ,swayX
+                        )
+                        // Only the upper collar carries the player color.
+                        // Everything else stays on the selected cosmetic finish.
+                        val renderColor=if(name=="LM_Pawn_Collar") color else styleColor
+                        drawMesh(
+                            part.mesh,
+                            model,
+                            rgba(renderColor),
+                            rough,
+                            metal,
+                            1f,
+                            emission + if(name=="LM_Pawn_Collar") 0.003f else 0f,
+                            5,
+                            false
+                        )
                     }
                 }
             }else{
-                val styledColor=if(cosmeticPawnId=="onyx")styleColor(color,0.58f)else color
-                val rough=if(cosmeticPawnId=="chrome")0.13f else if(cosmeticPawnId=="onyx")0.20f else 0.22f
-                val metal=if(cosmeticPawnId=="classic")0.04f else if(cosmeticPawnId=="chrome")0.78f else 0.62f
-                drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.015f,3,false)
-                drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.018f,3,false)
+                val rough=when(cosmeticPawnId){
+                    "chrome"->0.13f
+                    "onyx"->0.20f
+                    else->0.22f
+                }
+                val metal=when(cosmeticPawnId){
+                    "chrome"->0.78f
+                    "onyx"->0.62f
+                    "emerald","sapphire"->0.56f
+                    else->0.38f
+                }
+                drawMesh(
+                    pawnBody,
+                    pawnModel(x,y,z,pi,ti),
+                    rgba(styleColor),
+                    rough,metal,1f,0.012f,3,false
+                )
+                drawMesh(
+                    sphere,
+                    pawnHeadModel(x,y,z,pi,ti),
+                    rgba(styleColor),
+                    rough,metal,1f,0.014f,3,false
+                )
+                // Fallback path: the identity marker is still only a collar/neck band.
+                drawMesh(
+                    heroRing,
+                    identityAt(x,y+0.43f,z,0.27f,0.065f,0.27f),
+                    rgba(color,0.98f),
+                    0.16f,0.62f,1f,0.018f,4,false
+                )
             }
+
+            // Cosmetic crown/ring accents stay tied to the cosmetic style,
+            // never to player identity.
             if(cosmeticPawnId=="chrome" || cosmeticPawnId=="royal" || cosmeticPawnId=="emerald" || cosmeticPawnId=="sapphire"){
                 val accent=when(cosmeticPawnId){
                     "emerald" -> Color.rgb(255,196,72)
