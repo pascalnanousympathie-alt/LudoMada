@@ -69,13 +69,15 @@ async function prewarmPgPool() {
   });
 }
 
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
+if (!["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase())) {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 1000).unref();
+}
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
