@@ -1235,6 +1235,7 @@ class LudoBoardView(
                 if(!homePreview)drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
                 if(!homePreview && boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
+                    drawCosmeticBoardAccents(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
                         val xz=host.display[pi][ti]
@@ -1280,6 +1281,7 @@ class LudoBoardView(
             }
             if(!homePreview && boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
+                drawCosmeticBoardAccents(false)
                 drawHomePawnSlots(false)
             }else{
                 drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
@@ -1352,6 +1354,7 @@ class LudoBoardView(
             "LM_Board_Felt"->when(cosmeticBoardId) {
                 "obsidian"->floatArrayOf(0.065f,0.075f,0.095f,1f)
                 "sapphire"->floatArrayOf(0.055f,0.14f,0.27f,1f)
+                "ruby"->floatArrayOf(0.28f,0.035f,0.045f,1f)
                 else->floatArrayOf(0.29f,0.18f,0.10f,1f)
             }
             "LM_Gold_Frame"->when(cosmeticBoardId) {
@@ -1361,9 +1364,27 @@ class LudoBoardView(
             "LM_Table_Lacquer"->when(cosmeticBoardId) {
                 "obsidian"->floatArrayOf(0.025f,0.032f,0.055f,1f)
                 "sapphire"->floatArrayOf(0.025f,0.075f,0.18f,1f)
+                "ruby"->floatArrayOf(0.38f,0.025f,0.022f,1f)
                 else->floatArrayOf(0.34f,0.13f,0.035f,1f)
             }
             else->floatArrayOf(0.82f,0.78f,0.70f,1f)
+        }
+
+        private fun drawCosmeticBoardAccents(shadowPass:Boolean){
+            val edgeX=3.72f
+            val edgeZ=3.72f
+            val points=arrayOf(floatArrayOf(-edgeX,-edgeZ),floatArrayOf(edgeX,-edgeZ),floatArrayOf(-edgeX,edgeZ),floatArrayOf(edgeX,edgeZ))
+            val accent=when(cosmeticBoardId){
+                "obsidian" -> Color.rgb(210,220,236)
+                "sapphire" -> Color.rgb(246,201,78)
+                "ruby" -> Color.rgb(255,211,128)
+                else -> Color.rgb(250,202,84)
+            }
+            for(p in points){
+                val m=identityAt(p[0],boardTop+0.12f,p[1],0.10f,0.055f,0.10f)
+                if(shadowPass) drawShadowMesh(sphere,m)
+                else drawMesh(sphere,m,rgba(accent),0.12f,0.82f,1f,0.025f,4,false)
+            }
         }
 
         private fun drawAuthoredBoard(shadowPass:Boolean){
@@ -1565,6 +1586,17 @@ class LudoBoardView(
                 val metal=if(cosmeticPawnId=="classic")0.04f else if(cosmeticPawnId=="chrome")0.78f else 0.62f
                 drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.015f,3,false)
                 drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(styledColor),rough,metal,1f,0.018f,3,false)
+            }
+        }
+
+            if(cosmeticPawnId=="chrome" || cosmeticPawnId=="royal" || cosmeticPawnId=="emerald" || cosmeticPawnId=="sapphire"){
+                val accent=when(cosmeticPawnId){
+                    "emerald" -> Color.rgb(255,196,72)
+                    "sapphire" -> Color.rgb(206,230,255)
+                    else -> Color.rgb(255,211,104)
+                }
+                drawMesh(heroRing,identityAt(x,y+0.80f,z,0.34f,0.62f,0.34f),rgba(accent,0.92f),0.10f,0.72f,1f,0.02f,4,true)
+                drawMesh(sphere,identityAt(x,y+0.98f,z,0.085f,0.11f,0.085f),rgba(accent),0.10f,0.78f,1f,0.05f,4,false)
             }
         }
 
