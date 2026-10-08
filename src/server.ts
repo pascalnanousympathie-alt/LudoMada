@@ -21,7 +21,7 @@ import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
 import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
-import { MLG_VICTORY_REWARD, MLG_REFERRAL_REWARD, MLG_MIN_SWAP, MARKET_ITEMS, marketPrice, newReferralCode } from "./mlgEconomy";
+import { MLG_VICTORY_REWARD, MLG_REFERRAL_REWARD, MLG_MIN_SWAP, MARKET_ITEMS, marketPrice, newReferralCode, referralLedgerKey } from "./mlgEconomy";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -181,6 +181,20 @@ app.use((req:any,res,next)=>{
 
 
 const AUTH_RATE_LIMIT_DISABLED = ["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase());
+
+const mlgReferralRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
+      windowMs: 10 * 60_000,
+      max: 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req:any) =>
+        "mlg-referral:" +
+        String(req.userId || "anonymous") + ":" +
+        ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
+      message: { error: "Too many referral attempts; try again later" }
+    });
 
 const authRateLimit = AUTH_RATE_LIMIT_DISABLED
   ? (_req:any,_res:any,next:any) => next()
@@ -545,12 +559,17 @@ app.get("/api/mlg/summary",auth,async(req:any,res)=>{
 
 app.get("/api/mlg/history",auth,async(req:any,res)=>{
   try{
-    const rows=await prisma.mlgLedgerEntry.findMany({
-      where:{userId:req.userId},
-      orderBy:{createdAt:"desc"},
-      take:50
-    });
-    return res.json({items:rows.map(x=>({
+    const [rows,wallet]=await Promise.all([
+      prisma.mlgLedgerEntry.findMany({
+        where:{userId:req.userId},
+        orderBy:{createdAt:"desc"},
+        take:50
+      }),
+      prisma.wallet.findUnique({where:{userId:req.userId},select:{mlgBalance:true}})
+    ]);
+    return res.json({
+      balanceMLG:(wallet?.mlgBalance??0n).toString(),
+      items:rows.map(x=>({
       id:x.id,
       type:x.type,
       amountMLG:x.amount.toString(),
@@ -564,7 +583,7 @@ app.get("/api/mlg/history",auth,async(req:any,res)=>{
   }
 });
 
-app.post("/api/mlg/referral/claim",auth,async(req:any,res)=>{
+app.post("/api/mlg/referral/claim",auth,mlgReferralRateLimit,async(req:any,res)=>{
   const code=z.object({
     referralCode:z.string().trim().min(4).max(16).regex(/^[A-Z0-9_-]+$/i)
   }).safeParse(req.body);
@@ -576,10 +595,21 @@ app.post("/api/mlg/referral/claim",auth,async(req:any,res)=>{
   try{
     const normalized=code.data.referralCode.toUpperCase();
     const result=await prisma.$transaction(async(tx)=>{
-      const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey}});
-      if(prior && prior.type==="EARN_REFERRAL"){
+      // The business idempotency key is derived from the immutable invitee id,
+      // not from a caller-controlled request key. This prevents retries with a
+      // fresh HTTP idempotency key from ever paying twice.
+      const ledgerKey=referralLedgerKey(req.userId);
+      const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey:ledgerKey}});
+      if(prior){
+        if(prior.type!=="EARN_REFERRAL") throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.inviteeId!==req.userId) throw new Error("MLG_LEDGER_KEY_CONFLICT");
         const w=await tx.wallet.findUnique({where:{userId:req.userId}});
-        return {balanceMLG:(w?.mlgBalance??0n).toString(),already:true};
+        return {
+          balanceMLG:(w?.mlgBalance??0n).toString(),
+          already:true,
+          inviterId:prior.userId
+        };
       }
 
       const inviter=await tx.user.findUnique({
@@ -601,7 +631,6 @@ app.post("/api/mlg/referral/claim",auth,async(req:any,res)=>{
         }
       });
 
-      const ledgerKey="referral:"+req.userId;
       await tx.wallet.update({
         where:{userId:inviter.id},
         data:{mlgBalance:{increment:MLG_REFERRAL_REWARD}}
@@ -617,19 +646,33 @@ app.post("/api/mlg/referral/claim",auth,async(req:any,res)=>{
       });
 
       const w=await tx.wallet.findUnique({where:{userId:req.userId}});
-      return {balanceMLG:(w?.mlgBalance??0n).toString(),already:false};
+      return {
+        balanceMLG:(w?.mlgBalance??0n).toString(),
+        already:false,
+        inviterId:inviter.id
+      };
+    });
+
+    await audit(prisma,req,"MLG_REFERRAL_CLAIM",{
+      inviterId:result.inviterId,
+      inviteeId:req.userId,
+      rewardMLG:result.already ? "0" : MLG_REFERRAL_REWARD.toString(),
+      already:result.already,
+      idempotencyKey
     });
 
     return res.json({
       ok:true,
       rewardMLG:result.already ? "0" : MLG_REFERRAL_REWARD.toString(),
-      balanceMLG:result.balanceMLG
+      balanceMLG:result.balanceMLG,
+      alreadyClaimed:result.already
     });
   }catch(e:any){
     const status=
       e?.message==="REFERRAL_CODE_NOT_FOUND" ? 404 :
       e?.message==="REFERRAL_SELF_NOT_ALLOWED" ? 409 :
       e?.message==="REFERRAL_ALREADY_CLAIMED" ? 409 :
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ? 409 :
       e?.code==="P2002" ? 409 : 500;
     if(status===500) console.error("MLG_REFERRAL_ERROR",{message:e?.message,userId:req.userId});
     return res.status(status).json({error:status===500?"Internal server error":e.message});
