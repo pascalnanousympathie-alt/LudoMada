@@ -54,7 +54,9 @@ describeDb("MLG HTTP route concurrency", () => {
         password: "TestPassword!12345"
       })
     });
-    expect(response.status).toBe(201);
+    if (response.status !== 201) {
+      throw new Error(`REGISTER_FAILED status=${response.status} body=${JSON.stringify(body)}`);
+    }
     createdUserIds.push(body.user.id);
     return { id: body.user.id as string, token: body.accessToken as string };
   }
