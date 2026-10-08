@@ -115,6 +115,8 @@ jobs:
 
       - name: Generate Prisma client
         run: node node_modules/prisma/build/index.js generate
+      - name: Apply Prisma migrations
+        run: node node_modules/prisma/build/index.js migrate deploy
       - name: Run backend tests
         run: npm test -- --maxWorkers=2
       - name: Build backend
