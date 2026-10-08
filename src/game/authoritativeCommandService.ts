@@ -3,7 +3,7 @@ import { GameStateRepository } from "./gameStateRepository";
 import { appendGameEvent } from "./gameEventStore";
 import { rollDice, moveToken } from "./ludoEngine";
 import { randomInt } from "crypto";
-import { MLG_VICTORY_REWARD } from "../mlgEconomy";
+import { MLG_VICTORY_REWARD, victoryLedgerKey } from "../mlgEconomy";
 
 export class AuthoritativeCommandService {
   constructor(private prisma:PrismaClient, private repo=new GameStateRepository(prisma)) {}
@@ -222,6 +222,9 @@ export class AuthoritativeCommandService {
       if(result.finished) {
         const winnerId=state.winnerId;
         if(!winnerId) throw new Error("WINNER_NOT_SET");
+        // A finished move is produced by exactly one authoritative player.
+        // Refuse any inconsistent state before crediting the single winner reward.
+        if(winnerId!==userId) throw new Error("WINNER_ACTOR_MISMATCH");
 
         const game=await tx.game.findUnique({
           where:{id:gameId}
@@ -266,7 +269,7 @@ export class AuthoritativeCommandService {
 
         // MLG is a separate reward currency. It is granted only from the
         // server-authoritative online victory, never from client state.
-        const mlgPayoutKey=`game-win-mlg:${gameId}`;
+        const mlgPayoutKey=victoryLedgerKey(gameId);
         const existingMlgReward=await tx.mlgLedgerEntry.findUnique({
           where:{idempotencyKey:mlgPayoutKey}
         });
