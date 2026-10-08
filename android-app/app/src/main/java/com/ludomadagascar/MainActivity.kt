@@ -630,13 +630,13 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateExternalWalletStatus()
-        if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
+        if(::music.isInitialized && token.isNotBlank()) { refreshAccountBalance(); refreshMlgSummary() }
     }
 
     private fun refreshAccountBalance() {
         if(token.isBlank()){
             accountBalanceMGA=0L
-            topBalanceView?.text="— Ar"
+            topBalanceView?.text=formatMlg(mlgBalance) + " MLG\\n— Ar"
             window.decorView.invalidate()
             return
         }
@@ -644,7 +644,7 @@ class MainActivity : Activity() {
         get("/api/wallet"){j->
             val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
             accountBalanceMGA=value
-            runOnUiThread{topBalanceView?.text="${formatMGA(value)} Ar";window.decorView.invalidate()}
+            runOnUiThread{updateCombinedBalanceHeader();window.decorView.invalidate()}
         }
     }
 
@@ -696,6 +696,7 @@ class MainActivity : Activity() {
         if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
         setContentView(hero)
         refreshAccountBalance()
+        refreshMlgSummary()
     }
 
     private fun profile() {
@@ -736,17 +737,37 @@ class MainActivity : Activity() {
         add(premiumTile("★","Défis","Jouer",emerald){lobby()},78,3,8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
         bottomNav("social")
+        refreshMlgSummary()
     }
+
+    private fun cosmeticCategory(key:String):String = when(key){
+        CosmeticCatalog.BOARD_KEY -> "board"
+        CosmeticCatalog.DIE_KEY -> "die"
+        CosmeticCatalog.PAWN_KEY -> "pawn"
+        else -> "vfx"
+    }
+
+    private fun marketItemKey(key:String,id:String):String = cosmeticCategory(key) + ":" + id
+
+    private fun cosmeticPrice(key:String,id:String):Long? = marketPrices[marketItemKey(key,id)]
 
     private fun cosmeticTile(item: CosmeticCatalog.Item, key: String, fallback: String) {
         val equipped = CosmeticCatalog.selected(this, key, fallback) == item.id
+        val mKey=marketItemKey(key,item.id)
+        val price=cosmeticPrice(key,item.id)
+        val owned=(price==0L) || ownedCosmetics.contains(mKey)
         val icon = when (item.category) {
             "Plateau" -> "▣"
             "Dé" -> "◆"
             "Pions" -> "♟"
             else -> "✦"
         }
-        val status = if (equipped) "✓ ÉQUIPÉ • 3D LIVE" else if (item.premium) "PREMIUM • 3D LIVE" else "3D LIVE"
+        val status = when {
+            equipped && owned -> "✓ ÉQUIPÉ • 3D LIVE"
+            owned -> "✓ POSSÉDÉ • 3D LIVE"
+            price!=null -> price.toString() + " MLG • ACHETER"
+            else -> "PRIX SERVEUR • 3D LIVE"
+        }
         val accent = when (item.id) {
             "obsidian" -> Color.rgb(56,64,82)
             "sapphire" -> Color.rgb(45,93,190)
@@ -759,16 +780,34 @@ class MainActivity : Activity() {
             else -> gold
         }
         add(premiumTile(icon, if (equipped) "✓ " + item.name else item.name, item.detail + " • " + status, accent) {
-            CosmeticCatalog.equip(this, key, item.id)
-            boardHost?.requestRender()
-            Toast.makeText(this, item.name + " — équipé dans la scène 3D", Toast.LENGTH_SHORT).show()
-            shop()
+            if (token.isBlank()) { login(); return@premiumTile }
+            if (owned) {
+                CosmeticCatalog.equip(this, key, item.id)
+                boardHost?.requestRender()
+                Toast.makeText(this, item.name + " — équipé dans la scène 3D", Toast.LENGTH_SHORT).show()
+                shop()
+            } else {
+                if (price==null) {
+                    Toast.makeText(this,"Prix MLG mbola tsy azo avy amin'ny serveur.",Toast.LENGTH_LONG).show()
+                    return@premiumTile
+                }
+                val payload=JSONObject().put("category",cosmeticCategory(key)).put("itemId",item.id)
+                post("/api/market/purchase",payload,UUID.randomUUID().toString(),{j->
+                    ownedCosmetics.add(mKey)
+                    CosmeticCatalog.equip(this,key,item.id)
+                    boardHost?.requestRender()
+                    Toast.makeText(this,"Azo ny " + item.name + " • " + j.optString("chargedMLG",price.toString()) + " MLG",Toast.LENGTH_SHORT).show()
+                    refreshMlgSummary()
+                    shop()
+                },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
+            }
         }, 82, 3, 5)
     }
 
     private fun shop() {
         page("shop","Marché")
-        sectionTitle("Marché 3D","Tous les objets sont de vrais styles appliqués aux meshes GLB/runtime, jamais des images plates.")
+        sectionTitle("Marché 3D","Tous les objets restent des styles live sur les meshes/runtime. Les achats utilisent exclusivement le solde MLG serveur.")
+        add(card("Solde MLG",formatMlg(mlgBalance) + " MLG • 1 MLG = 1 MGA",gold),76,3,4)
         add(card("Équipement actif", CosmeticCatalog.selectedLabel(this), gold), 76, 3, 8)
 
         sectionTitle("Plateaux","Table + plateau + cadre • rendu temps réel")
@@ -777,15 +816,89 @@ class MainActivity : Activity() {
         sectionTitle("Dés","Corps 3D + matériau métal + pips")
         CosmeticCatalog.dice.forEach { cosmeticTile(it, CosmeticCatalog.DIE_KEY, "chrome") }
 
-        sectionTitle("Pions","Même géométrie live, finitions interchangeables")
+        sectionTitle("Pions","Finition premium conservée • couleur d'identité uniquement au col supérieur")
         CosmeticCatalog.pawns.forEach { cosmeticTile(it, CosmeticCatalog.PAWN_KEY, "classic") }
 
         sectionTitle("Effets","FX liés au dé pendant le lancer")
         CosmeticCatalog.vfx.forEach { cosmeticTile(it, CosmeticCatalog.VFX_KEY, "heroic") }
 
-        add(card("Statut","Aucun paiement ni solde fictif n'est utilisé pour équiper ces styles. L'étape boutique monétisée pourra être branchée séparément au ledger.", emerald), 84, 6, 8)
+        add(card("MLG","Victoire en ligne = +20 MLG • invitation d’un nouveau joueur = +100 MLG • swap vers MGA à partir de 10 000 MLG.", emerald), 98, 6, 8)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
         bottomNav("shop")
+        refreshMlgSummary()
+    }
+
+    private fun formatMlg(value:Long):String = formatMGA(value)
+
+    private fun updateCombinedBalanceHeader(){
+        topBalanceView?.text=formatMlg(mlgBalance) + " MLG\n" + formatMGA(accountBalanceMGA) + " Ar"
+        walletMlgView?.text=formatMlg(mlgBalance) + " MLG"
+    }
+
+    private fun refreshMlgSummary(){
+        if(token.isBlank()){
+            mlgBalance=0L
+            referralCode=""
+            ownedCosmetics.clear()
+            marketPrices.clear()
+            runOnUiThread{updateCombinedBalanceHeader()}
+            return
+        }
+        get("/api/mlg/summary"){j->
+            mlgBalance=j.optString("balanceMLG").toLongOrNull() ?: 0L
+            referralCode=j.optString("referralCode","")
+            ownedCosmetics.clear()
+            val owned=j.optJSONArray("ownedCosmetics")
+            for(i in 0 until (owned?.length()?:0)) ownedCosmetics.add(owned!!.optString(i))
+            marketPrices.clear()
+            val items=j.optJSONArray("marketItems")
+            for(i in 0 until (items?.length()?:0)){
+                val x=items?.optJSONObject(i) ?: continue
+                val k=x.optString("category")+":"+x.optString("itemId")
+                marketPrices[k]=x.optString("priceMlg").toLongOrNull() ?: 0L
+            }
+            runOnUiThread{
+                updateCombinedBalanceHeader()
+                if(currentScreen=="wallet" && ::status.isInitialized) status.text="MLG prêt • +20 MLG par victoire en ligne"
+            }
+        }
+    }
+
+    private fun shareReferralCode(){
+        if(token.isBlank()){login();return}
+        get("/api/mlg/summary"){j->
+            val code=j.optString("referralCode").trim()
+            if(code.isBlank()){Toast.makeText(this,"Code de parrainage indisponible.",Toast.LENGTH_LONG).show();return@get}
+            referralCode=code
+            val text="Rejoins LudoMada avec mon code " + code + " • je gagne 100 MLG quand tu rejoins."
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply{
+                type="text/plain"
+                putExtra(Intent.EXTRA_TEXT,text)
+            },"Inviter sur LudoMada"))
+        }
+    }
+
+    private fun claimReferralDialog(){
+        if(token.isBlank()){login();return}
+        val input=EditText(this).apply{
+            hint="Code ami (ex. ABCD1234)"
+            setSingleLine(true)
+            setPadding(dp(12),0,dp(12),0)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("🎟 Code de parrainage")
+            .setMessage("+100 MLG pour ton ami lorsqu’il rejoint LudoMada.")
+            .setView(input)
+            .setPositiveButton("VALIDER"){_,_->
+                val code=input.text.toString().trim()
+                if(code.isBlank()){Toast.makeText(this,"Code requis.",Toast.LENGTH_SHORT).show();return@setPositiveButton}
+                post("/api/mlg/referral/claim",JSONObject().put("referralCode",code),UUID.randomUUID().toString(),{j->
+                    Toast.makeText(this,"Parrainage enregistré • +" + j.optString("rewardMLG","0") + " MLG au parrain.",Toast.LENGTH_LONG).show()
+                    refreshMlgSummary()
+                },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
+            }
+            .setNegativeButton("AOKA",null)
+            .show()
     }
 
     private fun languageDialog() {
@@ -853,6 +966,13 @@ class MainActivity : Activity() {
         balanceCard.addView(label("SOLDE MGA",10f,true,Color.rgb(105,116,132)),LinearLayout.LayoutParams(-1,dp(20)))
         balanceCard.addView(walletBalanceView,LinearLayout.LayoutParams(-1,dp(45)))
         add(balanceCard,82,6,8)
+        val mlgCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(12),dp(10),dp(12),dp(10));background=shape(Color.WHITE,22f,Color.rgb(237,183,52));elevation=dp(5).toFloat()}
+        mlgCard.addView(label("SOLDE MLG • RÉCOMPENSES",10f,true,Color.rgb(105,116,132)))
+        walletMlgView=label(formatMlg(mlgBalance) + " MLG",27f,true,Color.rgb(171,122,19)).apply{gravity=Gravity.CENTER}
+        mlgCard.addView(walletMlgView,LinearLayout.LayoutParams(-1,dp(45)))
+        mlgCard.addView(label("1 MLG = 1 MGA • minimum de swap = 10 000 MLG",10.5f,false,Color.rgb(96,107,122)).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(24)))
+        add(mlgCard,106,3,6)
+        add(button("⇄ Swap MLG → MGA",Color.rgb(35,150,84)){mlgSwapDialog()},52,0,6)
         add(paymentTile("Connect Wallet","Wallets externes • Reown AppKit","↗",royal){connectWallets()},76,3,4)
         externalWalletView = label("Wallet externe: non connecté", 12f, true, Color.rgb(97,110,128)).apply {
             gravity = Gravity.CENTER
@@ -902,7 +1022,7 @@ class MainActivity : Activity() {
                 topBalanceView?.text="— Ar"
                 if(currentScreen=="wallet"){
                     status.text="Connexion requise pour afficher le solde."
-                    walletBalanceView?.text="— Ar"
+                    walletBalanceView?.text="— Ar"; walletMlgView?.text="— MLG"
                 }
             }
             return
@@ -911,13 +1031,49 @@ class MainActivity : Activity() {
             val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
             accountBalanceMGA=value
             runOnUiThread{
-                topBalanceView?.text="${formatMGA(value)} Ar"
+                topBalanceView?.text=formatMlg(mlgBalance) + " MLG\\n" + formatMGA(value) + " Ar"
                 if(currentScreen=="wallet"){
                     status.text="Solde disponible"
-                    walletBalanceView?.text="${formatMGA(value)} Ar"
+                    walletBalanceView?.text=formatMGA(value) + " Ar"; walletMlgView?.text=formatMlg(mlgBalance) + " MLG"
                 }
             }
         }
+    }
+
+    private fun mlgSwapDialog(){
+        if(token.isBlank()){login();return}
+        val input=EditText(this).apply{
+            hint="Montant MLG (minimum 10 000)"
+            inputType=2
+            setSingleLine(true)
+            setPadding(dp(12),0,dp(12),0)
+        }
+        val info=label("1 MLG = 1 MGA\nAprès swap, le montant rejoint le solde MGA interne.",11f,false,Color.rgb(95,107,125))
+        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        box.addView(input,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(8)})
+        box.addView(info,LinearLayout.LayoutParams(-1,dp(48)))
+        AlertDialog.Builder(this).setTitle("⇄ Swap MLG → MGA").setView(box)
+            .setPositiveButton("SWAP"){_,_->
+                val amount=input.text.toString().toLongOrNull()
+                if(amount==null || amount<10_000L){
+                    Toast.makeText(this,"Minimum = 10 000 MLG.",Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                if(amount>mlgBalance){
+                    Toast.makeText(this,"Solde MLG insuffisant.",Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                post("/api/mlg/swap-to-mga",JSONObject().put("amountMLG",amount),UUID.randomUUID().toString(),{j->
+                    mlgBalance=j.optString("balanceMLG").toLongOrNull() ?: mlgBalance
+                    accountBalanceMGA=j.optString("balanceMGA").toLongOrNull() ?: accountBalanceMGA
+                    updateCombinedBalanceHeader()
+                    walletMlgView?.text=formatMlg(mlgBalance) + " MLG"
+                    walletBalanceView?.text=formatMGA(accountBalanceMGA) + " Ar"
+                    status.text=formatMlg(amount) + " MLG → " + formatMGA(amount) + " MGA"
+                    Toast.makeText(this,"Swap réussi.",Toast.LENGTH_LONG).show()
+                },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
+            }
+            .setNegativeButton("AOKA",null).show()
     }
 
     private fun history() {
