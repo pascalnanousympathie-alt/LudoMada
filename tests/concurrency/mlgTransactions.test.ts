@@ -55,7 +55,67 @@ describeDb("MLG production concurrency regression", () => {
     return user;
   }
 
-  test("winner reward: concurrent finalization through AuthoritativeCommandService grants exactly +20 MLG once", async () => {\n    const winner = await createUser("winner");\n    const creator = await createUser("creator");\n\n    const state = newGame([creator.id, winner.id]);\n    state.currentPlayerIndex = 1;\n    state.dice = 1;\n    state.players[1].tokens = [\n      { pos: 56 },\n      { pos: 57 },\n      { pos: 57 },\n      { pos: 57 }\n    ];\n\n    const game = await prisma.game.create({\n      data: {\n        id: randomUUID(),\n        creatorId: creator.id,\n        status: "PLAYING",\n        grossAmount: 0n,\n        commission: 0n,\n        prizePool: 0n,\n        winnerPayout: 0n,\n        adminRevenue: 0n,\n        currentTurnUserId: winner.id,\n        stateVersion: state.stateVersion,\n        participants: {\n          create: [\n            { userId: creator.id, entryFee: 0n },\n            { userId: winner.id, entryFee: 0n }\n          ]\n        },\n        transactions: undefined\n      }\n    });\n    createdGameIds.push(game.id);\n    await prisma.authoritativeGameState.create({\n      data: { gameId: game.id, stateVersion: state.stateVersion, state: state }\n    });\n\n    const service = new AuthoritativeCommandService(prisma);\n    const key = "winning-move-" + randomUUID();\n    const attempts = Array.from({ length: 8 }, () =>\n      service.move(game.id, winner.id, 0, 0, key)\n    );\n\n    const settled = await Promise.allSettled(attempts);\n    expect(settled.every(x => x.status === "fulfilled")).toBe(true);\n\n    const wallet = await prisma.wallet.findUnique({ where: { userId: winner.id } });\n    const ledger = await prisma.mlgLedgerEntry.findMany({\n      where: { gameId: game.id, type: "EARN_VICTORY" }\n    });\n    const finished = await prisma.game.findUnique({ where: { id: game.id } });\n\n    expect(wallet?.mlgBalance).toBe(20n);\n    expect(ledger).toHaveLength(1);\n    expect(ledger[0].amount).toBe(20n);\n    expect(finished?.status).toBe("FINISHED");\n    expect(finished?.winnerId).toBe(winner.id);\n  });\n\n  test("referral: concurrent claims credit inviter exactly +100 MLG once", async () => {
+  test("winner reward: concurrent finalization through AuthoritativeCommandService grants exactly +20 MLG once", async () => {
+    const winner = await createUser("winner");
+    const creator = await createUser("creator");
+
+    const state = newGame([creator.id, winner.id]);
+    state.currentPlayerIndex = 1;
+    state.dice = 1;
+    state.players[1].tokens = [
+      { pos: 56 },
+      { pos: 57 },
+      { pos: 57 },
+      { pos: 57 }
+    ];
+
+    const game = await prisma.game.create({
+      data: {
+        id: randomUUID(),
+        creatorId: creator.id,
+        status: "PLAYING",
+        grossAmount: 0n,
+        commission: 0n,
+        prizePool: 0n,
+        winnerPayout: 0n,
+        adminRevenue: 0n,
+        currentTurnUserId: winner.id,
+        stateVersion: state.stateVersion,
+        participants: {
+          create: [
+            { userId: creator.id, entryFee: 0n },
+            { userId: winner.id, entryFee: 0n }
+          ]
+        },      }
+    });
+    createdGameIds.push(game.id);
+    await prisma.authoritativeGameState.create({
+      data: { gameId: game.id, stateVersion: state.stateVersion, state: state }
+    });
+
+    const service = new AuthoritativeCommandService(prisma);
+    const key = "winning-move-" + randomUUID();
+    const attempts = Array.from({ length: 8 }, () =>
+      service.move(game.id, winner.id, 0, 0, key)
+    );
+
+    const settled = await Promise.allSettled(attempts);
+    expect(settled.every(x => x.status === "fulfilled")).toBe(true);
+
+    const wallet = await prisma.wallet.findUnique({ where: { userId: winner.id } });
+    const ledger = await prisma.mlgLedgerEntry.findMany({
+      where: { gameId: game.id, type: "EARN_VICTORY" }
+    });
+    const finished = await prisma.game.findUnique({ where: { id: game.id } });
+
+    expect(wallet?.mlgBalance).toBe(20n);
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0].amount).toBe(20n);
+    expect(finished?.status).toBe("FINISHED");
+    expect(finished?.winnerId).toBe(winner.id);
+  });
+
+  test("referral: concurrent claims credit inviter exactly +100 MLG once", async () => {
     const inviter = await createUser("inviter");
     const invitee = await createUser("invitee");
     const code = `REF_${randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
