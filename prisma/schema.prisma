@@ -279,6 +279,7 @@ model MlgLedgerEntry {
 
   @@index([userId, createdAt])
   @@index([gameId, createdAt])
+  @@unique([gameId, type])
 }
 
 model Referral {
