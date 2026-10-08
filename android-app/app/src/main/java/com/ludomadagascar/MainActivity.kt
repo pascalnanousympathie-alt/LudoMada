@@ -1015,7 +1015,7 @@ class MainActivity : Activity() {
         cr3.addView(paymentTile("Tron / TRX","Asset actif • connecteur natif requis","TRX",Color.rgb(210,48,58)){Toast.makeText(this,"TRX: le connecteur wallet natif TRON n’est pas encore configuré. Binance Pay reste OFF.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
         cr3.addView(paymentTile("Binance Pay","DÉSACTIVÉ • séparé des wallets externes","B",Color.rgb(25,44,74)){Toast.makeText(this,"Binance Pay reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
         add(cr3,72,0,6)
-        add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
+        add(button("📜 Historique MGA",Color.rgb(70,82,100)){history()},52);add(button("🪙 Historique MLG",gold){mlgHistory()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
         bottomNav("wallet")
         loadWallet()
         refreshMlgSummary()
@@ -1082,6 +1082,61 @@ class MainActivity : Activity() {
                 },{msg->Toast.makeText(this,msg,Toast.LENGTH_LONG).show()})
             }
             .setNegativeButton("AOKA",null).show()
+    }
+
+    private fun mlgHistory() {
+        page("mlg_history","Historique MLG")
+        sectionTitle("Ledger MLG","Chaque mouvement est enregistré côté serveur : récompenses, parrainage, marché et swap.")
+        add(card("Solde MLG",formatMlg(mlgBalance) + " MLG • 1 MLG = 1 MGA",gold),76,3,6)
+        status=label("Maka ny ledger MLG...",12f,false,Color.rgb(88,99,116))
+        status.setPadding(dp(4),dp(4),dp(4),dp(4))
+        add(status)
+        add(button("↻ Havaozina",Color.rgb(37,93,196)){loadMlgHistory()},52,0,3)
+        add(button("← Wallet",Color.rgb(70,82,100)){wallet()},52,0,6)
+        bottomNav("wallet")
+        loadMlgHistory()
+    }
+
+    private fun loadMlgHistory() {
+        if(token.isBlank()) {
+            runOnUiThread { if(::status.isInitialized) status.text="Connexion requise pour afficher le ledger MLG." }
+            return
+        }
+        get("/api/mlg/history"){j->
+            val balance=j.optString("balanceMLG").toLongOrNull() ?: mlgBalance
+            val rows=j.optJSONArray("items")
+            val text=buildString {
+                if(rows==null || rows.length()==0) {
+                    append("Tsy mbola misy mouvement MLG.")
+                } else {
+                    append(rows.length().coerceAtMost(50)).append(" mouvement(s) récent(s)\\n\\n")
+                    for(idx in 0 until minOf(rows.length(),50)) {
+                        val x=rows.optJSONObject(idx) ?: continue
+                        val type=when(x.optString("type")) {
+                            "EARN_VICTORY" -> "Victoire en ligne"
+                            "EARN_REFERRAL" -> "Parrainage"
+                            "MARKET_PURCHASE" -> "Marché"
+                            "SWAP_TO_MGA" -> "Swap MLG → MGA"
+                            "ADMIN_ADJUSTMENT" -> "Ajustement admin"
+                            else -> x.optString("type","MLG")
+                        }
+                        val raw=x.optString("amountMLG","0").toLongOrNull() ?: 0L
+                        val sign=if(raw>=0L) "+" else ""
+                        val date=x.optString("createdAt","").replace("T"," ").replace("Z","")
+                        append(sign).append(formatMlg(raw)).append(" MLG • ").append(type)
+                        if(date.isNotBlank()) append(" • ").append(date)
+                        val game=x.optString("gameId","").trim()
+                        if(game.isNotBlank()) append(" • game=").append(game.take(12))
+                        append('\\n')
+                    }
+                }
+            }
+            mlgBalance=balance
+            runOnUiThread{
+                updateCombinedBalanceHeader()
+                if(currentScreen=="mlg_history" && ::status.isInitialized) status.text=text
+            }
+        }
     }
 
     private fun history() {
