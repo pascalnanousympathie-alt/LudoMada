@@ -2460,7 +2460,12 @@ async function startServer() {
   return server;
 }
 
-const serverPromise = startServer();
+export { app, prisma };
+
+const serverShouldStart = !["test", "loadtest"].includes(
+  String(process.env.NODE_ENV ?? "").toLowerCase()
+);
+const serverPromise = serverShouldStart ? startServer() : Promise.resolve(null);
 
 let shuttingDown = false;
 
@@ -2474,6 +2479,8 @@ async function shutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully`);
 
   const server = await serverPromise;
+
+  if (!server) return;
 
   server.close(async () => {
     try {
