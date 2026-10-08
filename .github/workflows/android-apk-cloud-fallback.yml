@@ -1,0 +1,59 @@
+name: Android APK Cloud Fallback
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-apk-cloud-fallback.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    concurrency:
+      group: android-apk-cloud-${{ github.ref }}
+      cancel-in-progress: true
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build and unit test
+        env:
+          REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+        run: |
+          set -eu
+          chmod +x gradlew
+          ./gradlew test assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Publish APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-premium-gles3-debug-${{ github.sha }}
+          path: |
+            android-app/app/build/outputs/apk/debug/app-debug.apk
+            android-app/app/build/outputs/apk/debug/output-metadata.json
+          if-no-files-found: error
