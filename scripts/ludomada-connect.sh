@@ -71,7 +71,7 @@ start_proot() {
   cat >"$STATE/run-personal-mcp-proot.sh" <<EOF
 #!/bin/sh
 set -eu
-export CONTROL_PLANE_API_KEY="$(cat "$KEY_FILE")"
+export CONTROL_PLANE_API_KEY="\$(cat "$KEY_FILE")"
 exec "$PROOT_TUNNEL" run \
   --control-plane.tunnel-id "$TUNNEL_ID" \
   --control-plane.api-key env:CONTROL_PLANE_API_KEY \
