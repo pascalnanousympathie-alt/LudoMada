@@ -111,7 +111,7 @@ jobs:
           echo "LUDOMADA_PGPORT=$pg_port" >> "$GITHUB_ENV"
           createdb -h "$pg_sock" -p "$pg_port" ludomada_test
           echo "DATABASE_URL=postgresql://$(whoami)@127.0.0.1:$pg_port/ludomada_test" >> "$GITHUB_ENV"
-          echo "PG_POOL_MAX=5" >> "$GITHUB_ENV"
+          echo "PG_POOL_MAX=20" >> "$GITHUB_ENV"
 
       - name: Generate Prisma client
         run: node node_modules/prisma/build/index.js generate
