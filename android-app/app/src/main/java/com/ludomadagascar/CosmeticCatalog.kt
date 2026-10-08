@@ -27,7 +27,8 @@ object CosmeticCatalog {
     val boards = listOf(
         Item("royal", "Royal Madagascar", "Bois laqué + feutre cacao + cadre or", "Plateau"),
         Item("obsidian", "Obsidian Night", "Laque noire profonde + cadre argent", "Plateau", premium = true),
-        Item("sapphire", "Sapphire Royale", "Laque bleu nuit + cadre or", "Plateau", premium = true)
+        Item("sapphire", "Sapphire Royale", "Laque bleu nuit + cadre or", "Plateau", premium = true),
+        Item("ruby", "Ruby Atelier", "Acajou profond + cuir rubis + champagne", "Plateau", premium = true)
     )
 
     val dice = listOf(
@@ -40,7 +41,9 @@ object CosmeticCatalog {
     val pawns = listOf(
         Item("classic", "Classic Lacquer", "Laque premium réaliste", "Pions"),
         Item("chrome", "Chrome Royale", "Métal poli + highlights", "Pions", premium = true),
-        Item("onyx", "Onyx Shadow", "Finition sombre métallique", "Pions", premium = true)
+        Item("onyx", "Onyx Shadow", "Finition sombre métallique", "Pions", premium = true),
+        Item("emerald", "Emerald Royale", "Laque émeraude + accent or", "Pions", premium = true),
+        Item("sapphire", "Sapphire Jewel", "Finition bleu cristal + accent argent", "Pions", premium = true)
     )
 
     val vfx = listOf(
