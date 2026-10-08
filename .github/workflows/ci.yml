@@ -88,6 +88,29 @@ jobs:
           fi
           ln -s "$source_dir" node_modules
           node -e "require('@prisma/client'); require('jest'); require('typescript'); require('fs').accessSync('node_modules/prisma/build/index.js'); console.log('DEPS_CORE_OK')"
+      - name: Start isolated local PostgreSQL for integration and concurrency tests
+        run: |
+          set -eu
+          command -v initdb
+          command -v pg_ctl
+          command -v createdb
+          pg_data="$RUNNER_TEMP/ludomada-pg"
+          pg_sock="$RUNNER_TEMP/ludomada-pg-sock"
+          pg_port=55432
+          rm -rf "$pg_data" "$pg_sock"
+          mkdir -p "$pg_sock"
+          initdb -D "$pg_data" -A trust --no-locale >/dev/null
+          pg_ctl -D "$pg_data" -o "-p $pg_port -k $pg_sock" -l "$RUNNER_TEMP/ludomada-pg.log" start
+          trap 'pg_ctl -D "$pg_data" stop -m fast >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p "$pg_port" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          pg_isready -h 127.0.0.1 -p "$pg_port"
+          createdb -h "$pg_sock" -p "$pg_port" ludomada_test
+          echo "DATABASE_URL=postgresql://$(whoami)@127.0.0.1:$pg_port/ludomada_test" >> "$GITHUB_ENV"
+          echo "PG_POOL_MAX=5" >> "$GITHUB_ENV"
+
       - name: Generate Prisma client
         run: node node_modules/prisma/build/index.js generate
       - name: Run backend tests
