@@ -156,6 +156,18 @@ def tools_list():
         t("directory_create", "Create a directory tree.", {
             "path": {"type": "string"},
         }, ["path"], destructive=True),
+        t("file_edit_block", "Replace an exact text block in a UTF-8 file, with optional expected occurrence count.", {
+            "path": {"type": "string"},
+            "old_text": {"type": "string"},
+            "new_text": {"type": "string"},
+            "count": {"type": "integer", "minimum": 1},
+        }, ["path", "old_text", "new_text"], destructive=True),
+        t("write_pdf", "Write a simple text PDF without external Python packages.", {
+            "path": {"type": "string"},
+            "text": {"type": "string"},
+            "title": {"type": "string"},
+        }, ["path", "text"], destructive=True),
+        t("mcp_stats", "Return local MCP process statistics.", readonly=True),
         t("file_search", "Search source trees using ripgrep, falling back to grep.", {
             "query": {"type": "string"},
             "path": {"type": "string"},
@@ -288,6 +300,68 @@ def call(name, a):
                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             )
         return text_result(out.stdout[:int(a.get("max_chars", MAX_TEXT))])
+
+    if name == "file_edit_block":
+        p = resolve_path(a["path"])
+        content = p.read_text(encoding="utf-8")
+        old = a["old_text"]
+        new = a["new_text"]
+        expected = a.get("count")
+        occurrences = content.count(old)
+        if occurrences == 0:
+            raise RuntimeError("old_text not found")
+        if expected is not None and occurrences != int(expected):
+            raise RuntimeError(f"expected {expected} occurrences, found {occurrences}")
+        p.write_text(content.replace(old, new), encoding="utf-8")
+        return text_result(json.dumps({"path": str(p), "occurrences": occurrences}, ensure_ascii=False))
+
+    if name == "write_pdf":
+        p = resolve_path(a["path"])
+        p.parent.mkdir(parents=True, exist_ok=True)
+        lines = (a.get("text") or "").replace("\r", "").split("\n")[:88]
+        title = (a.get("title") or "").strip()
+        if title:
+            lines = [title, ""] + lines
+        def pdf_escape(s):
+            return str(s).replace("\\\\", "\\\\\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream_lines = ["BT", "/F1 10 Tf", "50 770 Td", "14 TL"]
+        for i, line in enumerate(lines):
+            if i:
+                stream_lines.append("T*")
+            stream_lines.append(f"({pdf_escape(line[:110])}) Tj")
+        stream_lines.append("ET")
+        stream = "\n".join(stream_lines) + "\n"
+        objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            f"<< /Length {len(stream.encode('latin-1', 'replace'))} >>\nstream\n{stream}endstream",
+        ]
+        pdf = "%PDF-1.4\n"
+        offsets = [0]
+        for i, obj in enumerate(objects, 1):
+            offsets.append(len(pdf.encode("latin-1", "replace")))
+            pdf += f"{i} 0 obj\n{obj}\nendobj\n"
+        xref = len(pdf.encode("latin-1", "replace"))
+        pdf += f"xref\n0 {len(objects)+1}\n0000000000 65535 f \n"
+        for off in offsets[1:]:
+            pdf += f"{off:010d} 00000 n \n"
+        pdf += f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n"
+        p.write_bytes(pdf.encode("latin-1", "replace"))
+        return text_result(f"WROTE_PDF {p}")
+
+    if name == "mcp_stats":
+        with _lock:
+            rows = list(_processes.items())
+        return text_result(json.dumps({
+            "server": NAME,
+            "version": VERSION,
+            "project": str(DEFAULT_PROJECT),
+            "processes": len(rows),
+            "running_processes": sum(1 for _, state in rows if state.proc.poll() is None),
+            "pid_list": [state.proc.pid for _, state in rows],
+        }, ensure_ascii=False))
 
     if name == "process_start":
         cwd = resolve_dir(a.get("cwd"))
