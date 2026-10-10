@@ -1,0 +1,47 @@
+name: Mada Commander public MCP
+
+on:
+  pull_request:
+    paths:
+      - 'tools/mada-commander-public-mcp/**'
+      - 'tools/mada-commander-publication/**'
+      - '.github/workflows/mada-commander-public-mcp.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/mada-commander-public-mcp/**'
+      - 'tools/mada-commander-publication/**'
+      - '.github/workflows/mada-commander-public-mcp.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mada-commander-public-mcp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: tools/mada-commander-public-mcp
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tools/mada-commander-public-mcp/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run security boundary audit and unit tests
+        run: npm run verify
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Smoke-test deployed production endpoint (fail-closed mode)
+        run: npm run smoke:production

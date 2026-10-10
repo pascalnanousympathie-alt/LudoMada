@@ -1,0 +1,12 @@
+{
+  "serverBaseUrl": "https://REPLACE_WITH_MADA_COMMANDER_PUBLIC_ORIGIN",
+  "agentId": "FILLED_BY_PAIR_COMMAND",
+  "agentToken": "FILLED_BY_PAIR_COMMAND",
+  "projects": [
+    {
+      "projectId": "ludomada",
+      "label": "LudoMada",
+      "path": "/absolute/path/to/LudoMada"
+    }
+  ]
+}

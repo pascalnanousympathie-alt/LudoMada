@@ -1,0 +1,57 @@
+# Mada Commander — OpenAI public listing readiness
+
+**Status: DEPLOYED BUT NOT READY TO SUBMIT.** Production URL: https://mada-commander-public-mcp.vercel.app. The deployment is reachable and MCP protocol discovery works, but `/api/health` returns HTTP 503 / `ready:false` because the dedicated database/schema, real Google OAuth credentials, and OpenAI-issued challenge token are still missing. No OpenAI approval is claimed.
+
+## Completed locally
+- Display brand: Mada Commander. Private protocol ID stays separate from public ID `mada-commander-public`.
+- New public MCP has a Google sign-in flow, OAuth 2.1 authorization-code + PKCE S256, hashed session/access/refresh/agent/pair-code storage, user-owned agents/projects/jobs, rate limits, token revocation, job expiry and CSP/security headers.
+- Exactly five least-privilege public tools are advertised. They do not accept shell commands, arbitrary paths, scripts, browser automation, APK installation, or GitHub write actions.
+- The local agent resolves project paths only from its private owner-only config and runs only three fixed diagnostic profiles.
+- Local protocol / boundary test suite: **10 passed, 0 failed**; boundary audit: **32 passed, 0 failed**. MCP initialization, five tool output schemas, unauthenticated HTTP 401 challenge, ChatGPT CIMD/callback URL guard, account controls, Vercel handler/asset packaging and rewrite/config shape are tested.
+- Actual local HTTP smoke: home/privacy/terms/support return HTTP 200; MCP initialize/tools/list return HTTP 200; unauthenticated tool call returns HTTP 401 and WWW-Authenticate; local test challenge token is returned as plain text; local health correctly remains HTTP 503 / not ready without real DB and Google OAuth.
+- Public production deployment is READY at Vercel. A repeatable npm run smoke:production script now passes 12 production checks in fail-closed mode; it can be rerun in fully configured mode with -- --expect-ready. Production root, privacy/terms/support, OAuth protected-resource metadata, OAuth authorization-server metadata, MCP initialize and tools/list return HTTP 200; unauthenticated MCP tools/call returns HTTP 401. Production `/api/health` and the OpenAI challenge endpoint return HTTP 503 as expected until their required configuration is supplied.
+- Added `npm run test:tenant-isolation` for a future isolated Postgres QA database. It has NOT run because MADA_COMMANDER_DATABASE_URL is not configured; it refuses to run without explicit confirmation and does not touch game/wallet tables.
+- Listing draft includes 5 positive and 3 negative review cases; structural draft issues: 0. The real website, support, privacy, and terms URLs now point at the production domain, while legal/operator review remains incomplete. The build/test claims were removed from translated listings because those tools do not exist yet.
+- Added a per-tool justification matrix for each of the three safety hints. The matrix is supporting documentation only; the explanations still need to be entered in OpenAI submission. The 31st audit check now verifies that this matrix covers every public tool and each of the three hints.
+- A production `npm audit --omit=dev --audit-level=high` ran with **0 vulnerabilities**; global security headers were deployed and verified on all tested static pages, health, and MCP routes.
+- Landing, Privacy, Terms and Support pages return HTTP 200 both locally and on the production Vercel alias. The legal copy, verified support contact, and publisher identity still require human/operator review.
+
+## Hard blockers before public review
+1. **Database provisioning is currently blocked by account quotas.** Creating a new Railway project was rejected because the current Free plan hit its resource-provisioning limit; no upgrade or billable service was created. Connect the Supabase integration offered in ChatGPT (or provide an existing, separate free Postgres project) so an isolated database can be created without reusing LudoMada game/wallet data. Supabase Free allows two active projects and may pause low-activity projects after seven days, so availability/quota must be checked after connection.
+2. Create a **new, dedicated Postgres database**. Never reuse the LudoMada game/wallet database or private Commander config database.
+3. Create Google OAuth Web credentials with callback exactly `https://YOUR_PUBLIC_ORIGIN/oauth/google/callback`. Keep the client secret only in the deployment secret manager.
+4. **Completed:** deployed this package to the separate Vercel project `mada-commander-public-mcp` at `https://mada-commander-public-mcp.vercel.app`. Do not overwrite `ludomada-commander-control`; keep the new service fail-closed until its remaining setup is complete.
+5. Configure the exact HTTPS `MADA_PUBLIC_BASE_URL`, dedicated database, Google OAuth credentials, OAuth client mode and remaining environment settings; apply `schema.sql` only to the dedicated DB.
+6. Copy the exact token generated by the OpenAI submission portal into `OPENAI_APPS_CHALLENGE_TOKEN`; serve it as plain text at `/.well-known/openai-apps-challenge`; verify the domain in the portal.
+7. Complete the real OAuth flow and test resource, issuer, redirect, scope, PKCE, token refresh and revocation using the settings shown in the OpenAI portal.
+8. Test tenant isolation with two real accounts. Prove account B cannot list, queue, inspect or revoke agents/projects/jobs belonging to account A. The code scopes queries server-side, but this end-to-end test has not run against a provisioned database.
+9. Scan the deployed MCP in the OpenAI portal and resolve all findings. Run rate-limit, CSRF-origin, unsupported-input, secret-redaction, stale/expired code and agent-revocation tests.
+10. Enter the per-tool/per-hint explanations from PUBLIC_TOOL_ANNOTATIONS.md into the OpenAI submission portal and verify them against the current scanned tools.
+11. Confirm publisher identity and monitored contact. Review the live HTTPS website/support/privacy/terms pages and finish legal/privacy approval.
+12. Actually run all five positive and three negative cases on a public reviewer account, record a real demo video, complete release notes, and provide any demo access privately in the portal.
+13. Verify the publisher identity in OpenAI Platform, submit, and publish only after OpenAI approval.
+
+## Keep private
+- Never publish runtime keys, bearer tokens, pairing codes, cookies, browser sessions, local paths or private GitHub credentials.
+- Never route the public service to the private Termux MCP or expose its general shell/file/GitHub tools.
+- Never commit a real `.env` or OAuth/database secret.
+
+## Official references
+- https://developers.openai.com/plugins/build/mcp-server
+- https://developers.openai.com/plugins/build/auth
+- https://developers.openai.com/plugins/deploy/app-review
+- https://developers.openai.com/plugins/deploy/submission
+- https://developers.openai.com/plugins/deploy/submission-errors
+
+## Real values still missing
+- Verified publisher identity and a monitored contact
+- Production public MCP endpoint: deployed, but not ready (`/api/health` = 503)
+- Dedicated production Postgres connection (not created yet; Railway Free quota blocked new provisioning; Supabase connection/action required)
+- Google OAuth client ID/secret (Google Cloud Console sign-in/profile setup link generated)
+- OpenAI portal OAuth settings and exact portal-issued domain-challenge token/verification
+- Legal-reviewed privacy/terms copy and verified support contact
+- Per-tool/per-hint annotation justifications entered in the OpenAI review portal
+- Reviewer demo video and end-to-end results
+- Successful production tool scan and approval
+
+Do not submit the draft or claim the service is public/approved until these blockers are resolved.

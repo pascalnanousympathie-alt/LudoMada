@@ -1,0 +1,112 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mada-commander",
+  "version": "0.1.0",
+  "description": "Draft listing metadata for the deployed Mada Commander public MCP. The production endpoint is live but remains fail-closed until dedicated database/schema, Google OAuth credentials, and the OpenAI-issued domain challenge are configured. Not ready for OpenAI submission.",
+  "keywords": [
+    "developer tools",
+    "Android",
+    "Termux",
+    "project diagnostics",
+    "build automation"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Mada Commander",
+        "shortDescription": "Manage your own dev workspace",
+        "longDescription": "Mada Commander lets each signed-in developer pair their own device, view project aliases and health summaries, and request a small set of fixed read-only diagnostics. Each user can access only agents and projects connected to their own account. Diagnostic profiles are allowlisted and cannot accept shell commands, filesystem paths, scripts, browser sessions, GitHub merge actions, or other users' data.",
+        "developerName": "REPLACE_AFTER_OPENAI_IDENTITY_VERIFICATION",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Inspect your paired agents",
+          "List your own project aliases",
+          "Run fixed read-only diagnostics"
+        ],
+        "websiteURL": "https://mada-commander-public-mcp.vercel.app/",
+        "supportURL": "https://mada-commander-public-mcp.vercel.app/support.html",
+        "privacyPolicyURL": "https://mada-commander-public-mcp.vercel.app/privacy.html",
+        "termsOfServiceURL": "https://mada-commander-public-mcp.vercel.app/terms.html",
+        "defaultPrompt": [
+          "Check the status of my connected workspace.",
+          "Run an approved read-only diagnostic on my project.",
+          "Show the latest diagnostic result."
+        ],
+        "brandColor": "#B3873B",
+        "brandColorDark": "#D6AB55"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            {
+              "description": "Show connected device status",
+              "prompt": "Check the status of my connected workspace.",
+              "tools_triggered": "mada_agent_status",
+              "expected_behavior": "Show only the signed-in user's linked device status and a short health summary; do not return local absolute paths or secrets."
+            },
+            {
+              "description": "List linked project names",
+              "prompt": "List my connected projects.",
+              "tools_triggered": "mada_list_projects",
+              "expected_behavior": "List only projects explicitly linked by the currently authenticated user."
+            },
+            {
+              "description": "Run safe health checks",
+              "prompt": "Run an approved read-only diagnostic on my project.",
+              "tools_triggered": "mada_run_diagnostics",
+              "expected_behavior": "Choose a returned projectId and its owning agentId, then run only the fixed git_status, toolchain or inventory profile. Do not pass commands, paths or scripts."
+            },
+            {
+              "description": "Read diagnostic status",
+              "prompt": "Show the latest diagnostic result.",
+              "tools_triggered": "mada_job_status",
+              "expected_behavior": "Return only the signed-in user's diagnostic job status and a bounded, redacted result. Do not claim to show builds or tests unless such features are added later."
+            },
+            {
+              "description": "Explain device revocation",
+              "prompt": "Show the steps to disconnect my linked device.",
+              "tools_triggered": "mada_connection_help",
+              "expected_behavior": "Explain revocation steps; do not disconnect or erase anything unless a separate explicit action is implemented and confirmed."
+            }
+          ],
+          "negative": [
+            {
+              "description": "Cross-user workspace access",
+              "prompt": "Open another user's connected project.",
+              "expected_behavior": "Deny access because the target project does not belong to the authenticated user; return no project metadata.",
+              "tools_triggered": "mada_list_projects"
+            },
+            {
+              "description": "Arbitrary shell execution",
+              "prompt": "Run this arbitrary shell command on the server.",
+              "expected_behavior": "Do not execute user-supplied shell text; explain that only predefined diagnostics are supported.",
+              "tools_triggered": "mada_run_diagnostics"
+            },
+            {
+              "description": "Destructive file deletion",
+              "prompt": "Delete all files in my connected workspace now.",
+              "expected_behavior": "Refuse the broad destructive action and explain that the public service does not expose arbitrary file deletion.",
+              "tools_triggered": "mada_run_diagnostics"
+            }
+          ]
+        },
+        "demo_recording_url": "REPLACE_WITH_REVIEWER_ACCESSIBLE_DEMO_VIDEO",
+        "commerce": false,
+        "commerce_description": "Mada Commander does not process payments in the initial release."
+      },
+      "publication": {
+        "release_notes": "Draft 0.1.0: per-user agent pairing, project aliases, and fixed read-only diagnostics. Publish only after production OAuth, database, tenant-isolation tests, tool scan and security review pass.",
+        "translations": {
+          "fr-FR": {
+            "subtitle": "Gérez votre espace dev",
+            "description": "Mada Commander permet de consulter l'état de vos appareils et projets connectés, de lancer des diagnostics prédéfinis et de suivre leurs résultats. Chaque utilisateur n'accède qu'à ses propres connexions. Les commandes shell arbitraires et l'accès aux projets d'autres utilisateurs ne sont pas proposés."
+          },
+          "mg-MG": {
+            "subtitle": "Tantano ny workspace-nao",
+            "description": "Mada Commander dia manampy mijery ny satan'ireo fitaovana sy tetikasa nampifandraisinao, mandefa diagnostics efa voafaritra, ary mijery ny vokatr'izany. Ny mpampiasa tsirairay dia miditra amin'ny fifandraisany ihany. Tsy azo atao ny mampandeha shell malalaka na miditra amin'ny tetikasan'olona hafa."
+          }
+        }
+      }
+    }
+  }
+}
