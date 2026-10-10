@@ -8,7 +8,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "npm run verify",
+    "build": "npm run verify && node scripts/build-output.mjs",
     "start": "node server.mjs",
     "test": "node --test tests/*.test.mjs",
     "migrate": "node scripts/migrate.mjs",
