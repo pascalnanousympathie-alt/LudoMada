@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#071019">
+<title>Mada Commander — Your workspace, your control</title>
+<style>
+:root{color-scheme:dark;font:16px/1.55 system-ui,-apple-system,sans-serif;--bg:#071019;--panel:#0f1b28;--line:#274055;--text:#edf6ff;--muted:#a3b5c7;--gold:#d6ab55;--green:#83e0ad;--red:#ffb4ba}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% -5%,#204158 0,#071019 52%);color:var(--text)}
+main{max-width:920px;margin:auto;padding:28px 16px 60px}.hero{border:1px solid #5c4a2b;background:linear-gradient(135deg,#111b25,#0b151f);border-radius:22px;padding:28px;box-shadow:0 18px 50px #0005}
+.brand{display:flex;align-items:center;gap:12px}.logo{display:grid;place-items:center;width:52px;height:52px;border-radius:14px;background:#171e25;border:1px solid #8c6d37;color:var(--gold);font-size:25px}
+h1{font-size:clamp(28px,5vw,42px);line-height:1.1;margin:20px 0 10px}h2{font-size:19px;margin:0 0 10px}p{margin:8px 0;color:var(--muted)}a{color:#8bcaff}.pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:5px 9px;font-size:12px;color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(245px,1fr));gap:12px;margin:14px 0}.card{background:#0d1823;border:1px solid var(--line);border-radius:16px;padding:18px}.btn{border:1px solid #4a6475;border-radius:10px;padding:11px 14px;background:#152839;color:var(--text);font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}.btn.primary{background:var(--gold);color:#171006;border-color:#f0cf83}.btn.danger{border-color:#6f3a41;color:var(--red)}.btn.disabled{opacity:.45;cursor:not-allowed;pointer-events:none}button:disabled{opacity:.5;cursor:wait}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}.status{font-size:13px;color:var(--muted);overflow-wrap:anywhere}.ok{color:var(--green)}.warn{color:var(--gold)}.err{color:var(--red)}
+.code{background:#040a10;border:1px solid #203747;border-radius:10px;padding:12px;font:12px/1.6 ui-monospace,monospace;overflow-wrap:anywhere;white-space:pre-wrap;user-select:text}
+input{background:#050c13;color:var(--text);border:1px solid #274055;border-radius:9px;padding:10px;width:100%;min-width:0}.label{font-size:12px;color:var(--muted)}ul{color:var(--muted);padding-left:18px}
+.agent{border:1px solid #203747;padding:10px;border-radius:10px;margin-top:7px}.hidden{display:none!important}.foot{font-size:12px;color:var(--muted);margin-top:20px}
+</style></head>
+<body><main>
+<section class="hero">
+<div class="brand"><div class="logo">⌘</div><div><strong>Mada Commander</strong><div class="label">Secure, per-user developer diagnostics</div></div><span class="pill warn" id="heroStatusBadge" style="margin-left:auto">CONFIGURATION REQUIRED</span></div>
+<h1>Your workspace.<br>Your control.</h1>
+<p>Connect your own device, inspect project status, and run a small set of read-only diagnostics. Private paths and credentials stay on your device. Arbitrary shell commands are not exposed through the public service.</p>
+<div class="row"><a class="btn primary disabled" id="login" href="#readiness" aria-disabled="true" tabindex="-1">Sign-in disabled until setup is complete</a><button class="btn hidden" id="logout" type="button">Sign out</button><span class="status warn" id="sessionStatus">Sign-in is disabled until setup is complete.</span></div>
+</section>
+<section class="card" id="readiness" aria-live="polite" style="margin-top:14px">
+<div class="row" style="justify-content:space-between"><h2>Live service status</h2><span class="pill warn" id="readinessBadge">NOT READY</span></div>
+<p id="readinessSummary">Protected operations remain disabled until secure setup is complete.</p>
+<div class="status" id="readinessDetails">The service has not passed its readiness check. No credentials or private account data are shown here.</div>
+</section>
+<div class="grid">
+<section class="card"><h2>1. Sign in and pair</h2><p>Use a verified Google account, then generate a short-lived one-time code. Never share that code with anyone else.</p><div class="row"><button class="btn primary" id="pairBtn" disabled>Create pairing code</button></div><div id="pairBlock" class="hidden"><p class="warn">This code expires shortly and can be used once.</p><div class="code" id="pairCode"></div><div class="row"><button class="btn" id="copyPair">Copy code</button></div><p>On your own Termux device, run:</p><div class="code" id="pairCommand"></div><div class="row"><button class="btn" id="copyCommand">Copy command</button></div></div></section>
+<section class="card"><h2>2. Register a project locally</h2><p>The local agent holds your project path. The cloud sees only your alias, label, branch and short commit hash.</p><div class="code">node ~/LudoMada/tools/mada-commander-public-mcp/agent.mjs project-add ludomada LudoMada "$HOME/LudoMada"</div><p>Replace the alias, label and path for your own project. You must install/pair the local agent yourself.</p></section>
+<section class="card"><h2>3. Start the local agent</h2><p>Keep the agent running while you want the MCP to access your registered project. It polls the service outbound and only accepts fixed diagnostic profiles.</p><div class="code">node ~/LudoMada/tools/mada-commander-public-mcp/agent.mjs run</div><p>Stop it with Ctrl+C. Revoke it from this page whenever you no longer trust the device.</p></section>
+</div>
+<section class="card"><div class="row" style="justify-content:space-between"><h2>Your paired agents</h2><button class="btn" id="refreshAgents" disabled>Refresh</button></div><p id="agentsStatus">Sign in to view or revoke your own agents.</p><div id="agents"></div></section>
+<section class="card" id="accountControls" style="margin-top:14px"><h2>Account and privacy</h2><p>You can sign out or permanently delete your Mada Commander public-service account. Account deletion revokes agents and removes the public-service account records and jobs; it does not delete the local project files on your device.</p><button class="btn danger hidden" id="deleteAccount" type="button">Delete my account and public-service data</button></section>
+<section class="card" style="margin-top:14px"><h2>Public service boundary</h2><ul><li>Only projects registered on your local agent are visible to your account.</li><li>Public diagnostics are restricted to Git status, toolchain versions, and basic project inventory.</li><li>No arbitrary shell command, arbitrary file read/write, browser-session control, APK installation, or GitHub merge is exposed.</li><li>Access tokens are revocable; local agent tokens are kept in an owner-only configuration file.</li></ul></section>
+<footer class="foot">Mada Commander is an early public-service implementation. Protected features remain unavailable until the operator completes the secure service setup. Review <a href="/privacy.html">Privacy</a>, <a href="/terms.html">Terms</a>, and <a href="/support.html">Support</a>. Never send access tokens, pairing codes, or private logs to support.</footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let signedIn=false;
+let serviceReady=false;
+function setLoginAvailability(ready){
+ const login=$("login");
+ login.classList.toggle("disabled",!ready);
+ login.setAttribute("aria-disabled",String(!ready));
+ login.tabIndex=ready?0:-1;
+ login.href=ready?"/oauth/google/start?purpose=dashboard":"#readiness";
+ if(!signedIn)login.textContent=ready?"Sign in with Google":"Sign-in disabled until setup is complete";
+}
+async function api(url,method="GET",body){
+ const response=await fetch(url,{method,credentials:"same-origin",headers:body===undefined?{}:{"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+ const data=await response.json().catch(()=>({}));
+ if(!response.ok)throw new Error(data.error_description||data.error||("HTTP "+response.status));
+ return data;
+}
+async function refreshSession(){
+ try{
+  const d=await api("/api/auth/session");
+  signedIn=Boolean(d.authenticated);
+  $("sessionStatus").textContent=signedIn?("Signed in as "+d.email):"Not signed in";
+  $("sessionStatus").className="status "+(signedIn?"ok":"");
+  setLoginAvailability(serviceReady);
+  $("login").classList.toggle("hidden",signedIn);
+  $("logout").classList.toggle("hidden",!signedIn);
+  $("deleteAccount").classList.toggle("hidden",!signedIn);
+  $("pairBtn").disabled=!signedIn;
+  $("refreshAgents").disabled=!signedIn;
+  if(signedIn)await refreshAgents();else $("agentsStatus").textContent="Sign in to view or revoke your own agents.";
+ }catch(e){
+  if(!serviceReady){$("sessionStatus").textContent="Sign-in will be available after secure setup is complete.";$("sessionStatus").className="status warn";}
+  else{$("sessionStatus").textContent=e.message;$("sessionStatus").className="status err";}
+ }
+}
+$("pairBtn").onclick=async()=>{
+ $("pairBtn").disabled=true;
+ try{
+  const d=await api("/api/agent/pair-code","POST",{});
+  $("pairCode").textContent=d.pairCode;
+  $("pairCommand").textContent='node ~/LudoMada/tools/mada-commander-public-mcp/agent.mjs pair "'+location.origin+'" "'+d.pairCode+'"';
+  $("pairBlock").classList.remove("hidden");
+ }catch(e){$("agentsStatus").textContent=e.message;$("agentsStatus").className="status err";}
+ finally{$("pairBtn").disabled=!signedIn;}
+};
+$("logout").onclick=async()=>{
+ try{await api("/api/auth/logout","POST",{});signedIn=false;$("pairBlock").classList.add("hidden");await refreshSession();}
+ catch(e){$("sessionStatus").textContent=e.message;$("sessionStatus").className="status err";}
+};
+$("deleteAccount").onclick=async()=>{
+ if(!confirm("Permanently delete your Mada Commander public-service account, agents, project aliases and diagnostic jobs? Your actual local project files are not deleted, but the paired agent token becomes invalid."))return;
+ $("deleteAccount").disabled=true;
+ try{
+  await api("/api/account/delete","POST",{confirm:"DELETE"});
+  $("pairBlock").classList.add("hidden");
+  await refreshSession();
+  $("sessionStatus").textContent="Account deleted. Remove the local agent config if you no longer use this service.";
+  $("sessionStatus").className="status ok";
+ }catch(e){$("sessionStatus").textContent=e.message;$("sessionStatus").className="status err";}
+ finally{$("deleteAccount").disabled=!signedIn;}
+};
+$("copyPair").onclick=()=>navigator.clipboard?.writeText($("pairCode").textContent);
+$("copyCommand").onclick=()=>navigator.clipboard?.writeText($("pairCommand").textContent);
+$("refreshAgents").onclick=refreshAgents;
+async function refreshAgents(){
+ try{
+  const d=await api("/api/agent/list");
+  $("agentsStatus").textContent=d.agents.length?d.agents.length+" paired agent(s).":"No paired agent yet.";
+  $("agents").replaceChildren();
+  for(const agent of d.agents){
+   const row=document.createElement("div");row.className="agent";
+   const title=document.createElement("strong");title.textContent=agent.name+" ";
+   const state=document.createElement("span");state.className="pill";state.textContent=agent.connected?"Connected":"Offline";
+   const meta=document.createElement("div");meta.className="label";meta.textContent="Agent ID: "+agent.agentId+" · Last seen: "+(agent.lastSeenAt||"never");
+   const revoke=document.createElement("button");revoke.className="btn danger";revoke.textContent="Revoke";revoke.onclick=async()=>{
+    if(!confirm("Revoke this agent and cancel its queued jobs?"))return;
+    revoke.disabled=true;try{await api("/api/agent/revoke","POST",{agentId:agent.agentId});await refreshAgents();}catch(e){$("agentsStatus").textContent=e.message;revoke.disabled=false;}
+   };
+   row.append(title,state,meta,revoke);$("agents").append(row);
+  }
+ }catch(e){$("agentsStatus").textContent=e.message;$("agentsStatus").className="status err";}
+}
+async function refreshReadiness(){
+ const badge=$("readinessBadge"),summary=$("readinessSummary"),details=$("readinessDetails"),heroBadge=$("heroStatusBadge");
+ try{
+  const response=await fetch("/api/health",{cache:"no-store"});
+  const d=await response.json().catch(()=>({}));
+  const checks=d.checks||{};
+  serviceReady=Boolean(response.ok&&d.ready);
+  setLoginAvailability(serviceReady);
+  const missing=[
+   ["databaseConfigured","Dedicated Postgres database"],
+   ["schemaReady","Database schema migration"],
+   ["googleOAuthConfigured","Google OAuth Web client credentials"],
+   ["domainChallengeConfigured","OpenAI-issued domain challenge token"]
+  ].filter(([key])=>!checks[key]).map(([,label])=>label);
+  if(serviceReady){
+   badge.textContent="READY";badge.className="pill ok";
+   heroBadge.textContent="READY";heroBadge.className="pill ok";
+   summary.textContent="The service is configured. Sign in and pair your own local agent to use diagnostics.";
+   details.textContent="Health check passed.";
+  }else{
+   badge.textContent="NOT READY";badge.className="pill warn";
+   heroBadge.textContent="CONFIGURATION REQUIRED";heroBadge.className="pill warn";
+   summary.textContent="The website is deployed, but protected MCP operations are disabled until secure setup is complete.";
+   details.textContent=missing.length?"Missing: "+missing.join(" · "):"The health check is unavailable; protected operations remain disabled.";
+  }
+ }catch(e){
+  serviceReady=false;setLoginAvailability(false);
+  badge.textContent="STATUS UNKNOWN";badge.className="pill warn";
+  heroBadge.textContent="STATUS UNKNOWN";heroBadge.className="pill warn";
+  summary.textContent="Could not reach the health endpoint.";
+  details.textContent="Retry after the connection is available.";
+ }
+}
+refreshReadiness();
+refreshSession();
+</script></body></html>
