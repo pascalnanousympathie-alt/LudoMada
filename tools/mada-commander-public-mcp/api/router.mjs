@@ -1093,6 +1093,7 @@ function sanitizeResult(profile, raw) {
       ...(typeof control?.checked === "boolean" ? { checked: control.checked } : {})
     }));
     if (typeof value.ok === "boolean") result.ok = value.ok;
+    if (typeof value.scheduled === "boolean") result.scheduled = value.scheduled;
     if (typeof value.reason === "string") result.reason = redactSensitive(value.reason).slice(0,100);
     if (typeof value.clicked === "string") result.clicked = redactSensitive(value.clicked).slice(0,180);
     if (typeof value.updated === "boolean") result.updated = value.updated;

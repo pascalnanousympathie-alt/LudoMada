@@ -286,8 +286,10 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
       el = find("button,a[href],[role=button]").find(x => label(x).toLowerCase().includes(p.text.toLowerCase()));
       if (!el) return { ok:false, reason:"no_visible_matching_control" };
       if (/(delete|remove|clear all|factory reset|reset all|purchase|buy now|pay now|send|authorize|grant access|sign out|log out)/i.test(label(el))) return { ok:false, reason:"sensitive_action_blocked" };
-      el.click();
-      return { ok:true, clicked:label(el) };
+      const clicked = label(el);
+      // Return to CDP before controls that navigate/reload the page execute their click.
+      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 50);
+      return { ok:true, clicked, scheduled:true };
     }
     if (!p.selector) return { ok:false, reason:"selector_required" };
     el = find(p.selector)[0];
@@ -295,7 +297,10 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
     if (p.action === "click_selector") {
       if (el.disabled) return { ok:false, reason:"control_disabled" };
       if (/(delete|remove|clear all|factory reset|reset all|purchase|buy now|pay now|send|authorize|grant access|sign out|log out)/i.test(label(el))) return { ok:false, reason:"sensitive_action_blocked" };
-      el.click(); return { ok:true, clicked:label(el) };
+      const clicked = label(el);
+      // Defer the click so Runtime.evaluate can return before a navigation tears down the target.
+      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 50);
+      return { ok:true, clicked, scheduled:true };
     }
     if (p.action === "fill_selector") {
       const kind = String(el.type || "").toLowerCase();
