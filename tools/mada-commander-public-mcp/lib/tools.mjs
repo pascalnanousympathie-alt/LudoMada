@@ -65,6 +65,62 @@ const diagnosticResult = {
       },
       required: ["hasGit", "hasPackageJson", "hasGradleWrapper", "hasReadme", "topLevelFileCount"],
       additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        relativeDirectory: { type: "string" },
+        entries: { type: "array", items: { type: "object", properties: { name: { type: "string" }, type: { type: "string" } }, required: ["name", "type"], additionalProperties: false } },
+        totalCount: { type: "integer" },
+        truncated: { type: "boolean" }
+      },
+      required: ["relativeDirectory", "entries", "totalCount", "truncated"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { relativeFile: { type: "string" }, content: { type: "string" }, bytes: { type: "integer" }, truncated: { type: "boolean" } },
+      required: ["relativeFile", "content", "bytes", "truncated"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { relativeFile: { type: "string" }, bytes: { type: "integer" }, sha256: { type: "string" }, created: { type: "boolean" } },
+      required: ["relativeFile", "bytes", "sha256", "created"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { task: { type: "string" }, exitCode: { type: "integer" }, timedOut: { type: "boolean" }, durationMs: { type: "integer" }, stdout: { type: "string" }, stderr: { type: "string" } },
+      required: ["task", "exitCode", "timedOut", "durationMs", "stdout", "stderr"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { connected: { type: "boolean" }, browser: { type: "string" }, protocolVersion: { type: "string" }, tabsCount: { type: "integer" } },
+      required: ["connected", "browser", "protocolVersion", "tabsCount"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        tabs: { type: "array", items: { type: "object", properties: { tabId: { type: "string" }, title: { type: "string" }, address: { type: "string" } }, required: ["tabId", "title", "address"], additionalProperties: false } },
+        totalCount: { type: "integer" }, truncated: { type: "boolean" }
+      },
+      required: ["tabs", "totalCount", "truncated"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { tabId: { type: "string" }, address: { type: "string" }, navigated: { type: "boolean" } },
+      required: ["tabId", "address", "navigated"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: { tabId: { type: "string" }, action: { type: "string" }, address: { type: "string" }, result: { type: "object", additionalProperties: true } },
+      required: ["tabId", "action", "address", "result"],
+      additionalProperties: false
     }
   ]
 };
@@ -143,7 +199,7 @@ export const PUBLIC_TOOLS = Object.freeze([
         jobId: { type: "string" },
         projectId: { type: "string" },
         projectName: { type: "string" },
-        profile: { type: "string", enum: ["git_status", "toolchain", "inventory"] },
+        profile: { type: "string", enum: ["git_status", "toolchain", "inventory", "workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action"] },
         status: { type: "string", enum: ["queued", "running", "succeeded", "failed", "cancelled"] },
         result: { anyOf: [diagnosticResult, { type: "null" }] },
         error: { type: "string" }
@@ -171,11 +227,172 @@ export const PUBLIC_TOOLS = Object.freeze([
     },
     securitySchemes: oauth,
     annotations: annotations.readOnly
+  },
+  {
+    name: "mada_workspace_list",
+    title: "List project source files",
+    description: "Queue a bounded listing of one folder in this account's registered local project. The agent never lists blocked directories such as .git, node_modules, build, .config, or secret files. Choose projectId and agentId from mada_list_projects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+        relativeDirectory: { type: "string", maxLength: 240, default: "" }
+      },
+      required: ["projectId", "agentId"],
+      additionalProperties: false
+    },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.readOnly
+  },
+  {
+    name: "mada_workspace_read",
+    title: "Read a project source file",
+    description: "Queue a read of one source or text file inside a registered local project. File paths are always relative to the registered project; credentials, binary files, generated directories, and files above the size limit are blocked. Choose projectId and agentId from mada_list_projects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+        relativeFile: { type: "string", minLength: 1, maxLength: 240 }
+      },
+      required: ["projectId", "agentId", "relativeFile"],
+      additionalProperties: false
+    },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.readOnly
+  },
+  {
+    name: "mada_workspace_write",
+    title: "Write a project source file",
+    description: "Queue a write to one recognised text or source file within a registered local project. Existing files may be replaced. The operation is limited to project-relative paths, rejects credential-like content and blocks secret or generated directories. Use only for code or configuration changes explicitly requested by the signed-in user; run tests afterwards.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+        relativeFile: { type: "string", minLength: 1, maxLength: 240 },
+        content: { type: "string", maxLength: 120000 }
+      },
+      required: ["projectId", "agentId", "relativeFile", "content"],
+      additionalProperties: false
+    },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true }
+  },
+  {
+    name: "mada_run_task",
+    title: "Run an approved test or build",
+    description: "Queue one fixed task in the user's registered project: Git status/diff, an existing npm test/lint/build script, or the Android Gradle wrapper's assembleDebug/testDebugUnitTest. No free-form command, shell, URL, or arguments are accepted. Choose projectId and agentId from mada_list_projects.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+        task: { type: "string", enum: ["git_status", "git_diff_stat", "npm_test", "npm_lint", "npm_build", "android_assemble_debug", "android_test"] }
+      },
+      required: ["projectId", "agentId", "task"],
+      additionalProperties: false
+    },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.queued
+  },
+  {
+    name: "mada_opera_status",
+    title: "Check Opera connection",
+    description: "Check the Opera instance owned by this paired local agent. Returns connection status and tab count only; credentials and remote-debugging socket URLs are never disclosed.",
+    inputSchema: { type: "object", properties: { projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" }, agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" } }, required: ["projectId", "agentId"], additionalProperties: false },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.readOnly
+  },
+  {
+    name: "mada_opera_tabs",
+    title: "List Opera tabs",
+    description: "List up to 40 tabs from Opera in the paired Termux/noVNC session. Titles and origin/path are returned without query strings, credentials, cookies, page contents, or debugging socket URLs.",
+    inputSchema: { type: "object", properties: { projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" }, agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" } }, required: ["projectId", "agentId"], additionalProperties: false },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.readOnly
+  },
+  {
+    name: "mada_opera_navigate",
+    title: "Navigate an Opera tab",
+    description: "Navigate a tab from mada_opera_tabs to an HTTP(S) address or Opera settings/about page. Other protocols, embedded credentials, token-like URL parameters and other internal pages are rejected.",
+    inputSchema: { type: "object", properties: { projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" }, agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" }, tabId: { type: "string", minLength: 1, maxLength: 100 }, address: { type: "string", minLength: 1, maxLength: 2048 } }, required: ["projectId", "agentId", "tabId", "address"], additionalProperties: false },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: annotations.queued
+  },
+  {
+    name: "mada_opera_action",
+    title: "Inspect or adjust Opera settings",
+    description: "Perform one structured DOM action on a visible Opera tab: inspect interactive controls, click a non-sensitive control, fill a non-secret setting field, select an option, or toggle a checkbox. No arbitrary JavaScript is accepted. Passwords, account identifiers, destructive actions, and credential-like values are blocked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$" },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
+        tabId: { type: "string", minLength: 1, maxLength: 100 },
+        action: { type: "string", enum: ["inspect", "click_text", "click_selector", "fill_selector", "select_value", "toggle_checked"] },
+        selector: { type: "string", maxLength: 300 },
+        text: { type: "string", maxLength: 120 },
+        value: { type: "string", maxLength: 2048 },
+        checked: { type: "boolean" }
+      },
+      required: ["projectId", "agentId", "tabId", "action"],
+      additionalProperties: false
+    },
+    outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
+    securitySchemes: oauth,
+    annotations: { readOnlyHint: false, openWorldHint: false, destructiveHint: true }
   }
 ]);
 
 function asResult(data, text) {
   return { content: [{ type: "text", text }], structuredContent: data, isError: false };
+}
+
+async function enqueueProjectOperation(principal, args, operation, request = {}) {
+  if (!isSafeProjectAlias(args?.projectId)) {
+    return { content: [{ type: "text", text: "Invalid project alias. Choose a project returned by mada_list_projects." }], isError: true };
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(String(args?.agentId || ""))) {
+    return { content: [{ type: "text", text: "Invalid agent ID. Choose the agentId returned by mada_list_projects." }], isError: true };
+  }
+  if (!["workspace_list","workspace_read","workspace_write","run_task","opera_status","opera_tabs","opera_navigate","opera_action"].includes(operation)) {
+    return { content: [{ type: "text", text: "Operation is not allowed." }], isError: true };
+  }
+  const serialized = JSON.stringify(request);
+  if (Buffer.byteLength(serialized, "utf8") > 125000) {
+    return { content: [{ type: "text", text: "Request exceeds the allowed size." }], isError: true };
+  }
+  if (operation === "workspace_write") {
+    const content = request.content;
+    if (typeof content !== "string" || content.length > 120000 ||
+        /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/.test(content) ||
+        /\b(?:sk-[A-Za-z0-9_-]{24,}|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,})\b/.test(content)) {
+      return { content: [{ type: "text", text: "The requested file content is invalid, oversized, or resembles a credential." }], isError: true };
+    }
+  }
+  const project = await query(
+    "SELECT p.agent_id, p.project_id, p.label FROM mada_public_projects p JOIN mada_public_agents a ON a.id = p.agent_id WHERE a.user_id = $1 AND a.revoked_at IS NULL AND p.project_id = $2 AND a.id = $3 LIMIT 1",
+    [principal.userId, args.projectId, args.agentId]
+  );
+  if (!project.rowCount) {
+    return { content: [{ type: "text", text: "Project not found in this account. Use mada_list_projects to select a linked project." }], isError: true };
+  }
+  const jobId = crypto.randomUUID();
+  await query(
+    "INSERT INTO mada_public_jobs (id, user_id, agent_id, project_id, profile, status, request) VALUES ($1,$2,$3,$4,$5,'queued',$6::jsonb)",
+    [jobId, principal.userId, project.rows[0].agent_id, project.rows[0].project_id, operation, serialized]
+  );
+  const data = { jobId, status: "queued", operation, projectId: project.rows[0].project_id, projectName: project.rows[0].label };
+  return asResult(data, operation + " queued for " + project.rows[0].label + ". Use mada_job_status with jobId " + jobId + " to check the result.");
 }
 
 export function authChallenge(base, error = "invalid_token") {
@@ -268,6 +485,81 @@ export async function executePublicTool(name, args, principal) {
         error: j.error_summary ? redactSensitive(j.error_summary) : ""
       };
       return asResult(data, "Job status: " + data.status + (data.result ? ". A bounded result is attached." : "."));
+    }
+    case "mada_workspace_list": {
+      const relativeDirectory = typeof args?.relativeDirectory === "string" ? args.relativeDirectory : "";
+      if (relativeDirectory.length > 240) return { content: [{ type: "text", text: "Directory selector is too long." }], isError: true };
+      return enqueueProjectOperation(principal, args, "workspace_list", { relativeDirectory });
+    }
+    case "mada_workspace_read": {
+      if (typeof args?.relativeFile !== "string" || !args.relativeFile || args.relativeFile.length > 240) {
+        return { content: [{ type: "text", text: "A valid project-relative file name is required." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "workspace_read", { relativeFile: args.relativeFile });
+    }
+    case "mada_workspace_write": {
+      if (typeof args?.relativeFile !== "string" || !args.relativeFile || args.relativeFile.length > 240) {
+        return { content: [{ type: "text", text: "A valid project-relative file name is required." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "workspace_write", { relativeFile: args.relativeFile, content: args.content });
+    }
+    case "mada_run_task": {
+      if (!["git_status", "git_diff_stat", "npm_test", "npm_lint", "npm_build", "android_assemble_debug", "android_test"].includes(args?.task)) {
+        return { content: [{ type: "text", text: "Task is not in the fixed allowlist." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "run_task", { task: args.task });
+    }
+    case "mada_opera_status": {
+      return enqueueProjectOperation(principal, args, "opera_status", {});
+    }
+    case "mada_opera_tabs": {
+      return enqueueProjectOperation(principal, args, "opera_tabs", {});
+    }
+    case "mada_opera_navigate": {
+      if (typeof args?.tabId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(args.tabId) ||
+          typeof args?.address !== "string" || args.address.length > 2048) {
+        return { content: [{ type: "text", text: "A valid Opera tab ID and address are required." }], isError: true };
+      }
+      let address;
+      try {
+        address = new URL(args.address);
+        if (address.username || address.password || !["http:","https:","opera:"].includes(address.protocol)) throw new Error("protocol");
+        if (address.protocol === "opera:" && !["settings","about"].includes(address.host)) throw new Error("internal page");
+        for (const [key] of address.searchParams) {
+          if (/^(?:access[_-]?token|refresh[_-]?token|client[_-]?secret|password|authorization|api[_-]?key|code)$/i.test(key)) throw new Error("credential");
+        }
+      } catch {
+        return { content: [{ type: "text", text: "Only safe HTTP(S) addresses and Opera settings/about pages are permitted." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "opera_navigate", { tabId: args.tabId, address: address.href });
+    }
+    case "mada_opera_action": {
+      if (typeof args?.tabId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(args.tabId) ||
+          !["inspect","click_text","click_selector","fill_selector","select_value","toggle_checked"].includes(args?.action)) {
+        return { content: [{ type: "text", text: "A valid Opera tab ID and structured action are required." }], isError: true };
+      }
+      const request = { tabId: args.tabId, action: args.action };
+      if (args.selector !== undefined) request.selector = args.selector;
+      if (args.text !== undefined) request.text = args.text;
+      if (args.value !== undefined) request.value = args.value;
+      if (args.checked !== undefined) request.checked = args.checked;
+      if (["click_text"].includes(args.action) && (typeof args.text !== "string" || !args.text.trim() || args.text.length > 120)) {
+        return { content: [{ type: "text", text: "click_text requires a short, non-empty visible label." }], isError: true };
+      }
+      if (["click_selector","fill_selector","select_value","toggle_checked"].includes(args.action) &&
+          (typeof args.selector !== "string" || !args.selector.trim() || args.selector.length > 300)) {
+        return { content: [{ type: "text", text: "This action requires a CSS selector for a visible control." }], isError: true };
+      }
+      if (args.action === "fill_selector" && (typeof args.value !== "string" || /password|secret|token|credential|email|username/i.test(args.selector))) {
+        return { content: [{ type: "text", text: "Sensitive or account-identity fields cannot be modified." }], isError: true };
+      }
+      if (args.action === "select_value" && typeof args.value !== "string") {
+        return { content: [{ type: "text", text: "select_value requires a string value." }], isError: true };
+      }
+      if (args.action === "toggle_checked" && typeof args.checked !== "boolean") {
+        return { content: [{ type: "text", text: "toggle_checked requires checked=true or checked=false." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "opera_action", request);
     }
     case "mada_connection_help": {
       const data = {

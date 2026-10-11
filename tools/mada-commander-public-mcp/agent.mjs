@@ -5,22 +5,24 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, operaStatus, operaTabs, operaNavigate, operaAction } from "./lib/agent-operations.mjs";
 
 const HOME = os.homedir();
 const STATE_DIR = path.join(HOME, ".config", "mada-commander");
 const CONFIG_FILE = path.join(STATE_DIR, "agent.json");
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ALLOWED_PROFILES = new Set(["git_status", "toolchain", "inventory"]);
+const ALLOWED_OPERATIONS = new Set(["workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action"]);
 
 function usage() {
   console.log(
-    "Mada Commander local agent (safe diagnostic mode)\n" +
+    "Mada Commander local agent (paired workspace and Opera bridge)\n" +
     "  node agent.mjs pair <https-origin> <one-time-pair-code> [agent-name]\n" +
     "  node agent.mjs project-add <id> <label> <absolute-project-path>\n" +
     "  node agent.mjs project-list\n" +
     "  node agent.mjs run [--once]\n" +
     "  node agent.mjs status\n\n" +
-    "Only fixed read-only profiles are accepted. No command or path is received from the public server."
+    "Workspace file operations use project-relative paths and block credentials; tests/builds use a fixed task allowlist; Opera control uses a loopback CDP port and structured actions only. No free-form shell command or absolute path is accepted from the public server."
   );
 }
 
@@ -173,12 +175,21 @@ async function processOneJob(config) {
   // Resolve project aliases locally. The public server cannot pass arbitrary paths or commands.
   const project = (config.projects || []).find(p => p.projectId === job.projectId);
   let status = "failed", result = null;
-  if (project && ALLOWED_PROFILES.has(job.profile)) {
+  if (project && (ALLOWED_PROFILES.has(job.profile) || ALLOWED_OPERATIONS.has(job.profile))) {
     try {
-      result = await runDiagnostic(job.profile, project);
+      const request = job.request && typeof job.request === "object" && !Array.isArray(job.request) ? job.request : {};
+      if (ALLOWED_PROFILES.has(job.profile)) result = await runDiagnostic(job.profile, project);
+      else if (job.profile === "workspace_list") result = await workspaceList(project, request.relativeDirectory || "");
+      else if (job.profile === "workspace_read") result = await workspaceRead(project, request.relativeFile);
+      else if (job.profile === "workspace_write") result = await workspaceWrite(project, request.relativeFile, request.content);
+      else if (job.profile === "run_task") result = await runApprovedTask(project, request.task);
+      else if (job.profile === "opera_status") result = await operaStatus();
+      else if (job.profile === "opera_tabs") result = await operaTabs();
+      else if (job.profile === "opera_navigate") result = await operaNavigate(request.tabId, request.address);
+      else if (job.profile === "opera_action") result = await operaAction(request);
       status = "succeeded";
-    } catch {
-      result = null;
+    } catch (error) {
+      result = { error: String(error?.message || "The approved operation failed.").slice(0, 500) };
       status = "failed";
     }
   }

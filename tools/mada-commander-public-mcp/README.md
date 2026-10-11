@@ -6,14 +6,20 @@ This is a new, least-privilege service separate from `tools/personal-mcp-command
 
 ## Public feature boundary
 
-The MCP advertises five tools:
+The MCP advertises thirteen OAuth-scoped tools:
 - `mada_agent_status`: inspect the signed-in user's own paired agents
 - `mada_list_projects`: list that account's registered project aliases and short Git summaries
-- `mada_run_diagnostics`: queue one fixed `git_status`, `toolchain`, or `inventory` diagnostic
+- `mada_run_diagnostics`: queue fixed Git/toolchain/inventory diagnostics
 - `mada_job_status`: view a job owned by the authenticated account
-- `mada_connection_help`: explain pairing/revocation and list that user's agents
+- `mada_connection_help`: explain local pairing/revocation
+- `mada_workspace_list` and `mada_workspace_read`: inspect a registered workspace's non-secret source tree and text files
+- `mada_workspace_write`: create or replace a recognised source/text file using a project-relative path
+- `mada_run_task`: run one fixed Git, npm test/lint/build, or Android Gradle test/build task
+- `mada_opera_status` and `mada_opera_tabs`: inspect the paired Termux/noVNC Opera instance without returning cookies or debugging sockets
+- `mada_opera_navigate`: navigate a selected tab to HTTP(S) or approved Opera settings/about pages
+- `mada_opera_action`: inspect visible controls and make bounded non-secret setting changes through a fixed action allowlist
 
-It does **not** expose arbitrary shell, arbitrary file read/write, local browser/CDP, APK installation, GitHub merge/review, or user-supplied command steps. The local agent receives only an allowlisted profile and project alias; it resolves both against its own private local configuration and never accepts a filesystem path or command from the cloud.
+It still does **not** expose free-form shell commands, arbitrary filesystem paths, passwords, raw CDP sockets, arbitrary JavaScript, APK installation, or GitHub merge/review. Source changes are constrained to registered project-relative text files; tasks are fixed allowlisted invocations; Opera commands target only the paired agent's loopback CDP port. File writes, navigation, and UI actions can change local state and should be followed by tests and Git review.
 
 ## Run local structural/protocol tests
 
@@ -89,7 +95,7 @@ node tools/mada-commander-public-mcp/agent.mjs pair "https://YOUR_PUBLIC_ORIGIN"
 node tools/mada-commander-public-mcp/agent.mjs project-add ludomada LudoMada "$HOME/LudoMada"
 node tools/mada-commander-public-mcp/agent.mjs run
 ```
-The agent token and registered absolute project paths stay on the local device in `~/.config/mada-commander/agent.json`, permissions 0600. The service receives only project alias/label, branch, short hash, and allowlisted diagnostic results. The agent polls every 15 seconds and can be stopped with Ctrl+C. Revoke the agent from the website to block further requests.
+The agent token and registered absolute project paths stay on the local device in `~/.config/mada-commander/agent.json`, permissions 0600. The service receives only project alias/label and short Git metadata during heartbeat; job payloads contain bounded, project-relative file requests, fixed task names, or structured Opera actions. Local source contents are returned only for explicit read requests, redacted and size-limited; write operations are recorded as queued jobs and produce a SHA-256 result. Opera control connects only to loopback CDP port 9223, never uploads cookies or debugging socket URLs, and excludes password/account identity fields from UI interaction. The agent polls every 15 seconds and can be stopped with Ctrl+C. Revoke the agent from the website to block further requests.
 
 ## OpenAI public submission
 
