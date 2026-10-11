@@ -55,7 +55,7 @@ check("MCP and public OAuth endpoints allow cross-origin clients while account a
 check("OAuth consent permits embedded browser origins only behind session-bound one-time nonces for both approve and deny", !router.includes("Cross-origin authorization is not allowed.") && router.split("consent_nonce_hash = $3").length === 4);
 const oauthApproveHandler = router.slice(router.indexOf("async function handleOAuthApprove"), router.indexOf("async function handleOAuthToken"));
 check("OAuth consent uses local allowlist or validated ChatGPT redirect shape and avoids remote fetches while holding the transaction lock", !/await clientIdAllowed|await clientRedirectAllowed/.test(oauthApproveHandler) && /staticClientAllowed/.test(oauthApproveHandler) && /dynamicChatGptClientAllowed/.test(oauthApproveHandler));
-check("CIMD metadata lookup tolerates slower upstream responses and records redacted failure reasons", /AbortSignal\\.timeout\\(12_000\\)/.test(router) && /Mada Commander CIMD metadata lookup failed/.test(router));
+check("CIMD metadata lookup tolerates slower upstream responses and records redacted failure reasons", router.includes("AbortSignal.timeout(12_000)") && /Mada Commander CIMD metadata lookup failed/.test(router));
 check("private Commander runtime and config are not imported", !/personal-mcp-commander|runtime\.key|tunnel-client.*runtime/i.test(publicCode));
 check("public package excludes environment files from Git", (await read(".gitignore")).includes(".env.*") && (await read(".gitignore")).includes("!.env.example"));
 check("real deployment secrets are not in the public package", !await fs.stat(path.join(ROOT, ".env")).then(s => s.isFile()).catch(() => false));
