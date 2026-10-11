@@ -94,7 +94,7 @@ test("OAuth consent tolerates embedded browser origins while requiring one-time 
   const fs = await import("node:fs/promises");
   const api = await fs.readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
   assert.ok(!api.includes('Cross-origin authorization is not allowed.'));
-  assert.equal((api.match(/consent_nonce_hash = \$3/g) || []).length, 2);
+  assert.equal((api.match(/consent_nonce_hash = \$3/g) || []).length, 3);
   assert.match(api, /WHERE transaction_id = \$1 AND user_id = \$2 AND consent_nonce_hash = \$3 AND expires_at > now\(\) LIMIT 1/);
   assert.match(api, /WHERE transaction_id = \$1 AND user_id = \$2 AND consent_nonce_hash = \$3 AND expires_at > now\(\) FOR UPDATE/);
 });
