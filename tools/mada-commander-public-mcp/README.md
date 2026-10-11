@@ -71,6 +71,16 @@ The example above is a placeholder only; never paste secrets in chat or commit t
 
 Never define values for the private runtime tunnel key in this project's environment. The public service has its own authentication and database.
 
+## Persistent authorization and account management
+
+The account dashboard at https://mada-commander-public-mcp.vercel.app manages both paired local agents and connected OAuth applications. Under **Connected applications**, the owner can revoke a client's authorization; revocation deletes both that client's refresh tokens and current access tokens immediately.
+
+OAuth access tokens remain short-lived (15 minutes). Refresh grants do not expire automatically: they rotate during refresh and remain valid until the owner revokes the application, signs out only from the website (which does not revoke the MCP connection), or deletes the Mada Commander account. They are stored as hashes, never as plaintext. Existing refresh grants are migrated to this persistent policy.
+
+Dashboard sessions remain active until explicit sign-out/account deletion; the browser cookie is renewed as the dashboard is used. The browser itself can still clear stored cookies.
+
+Only the saved authorization is persistent. The initial OAuth handshake remains time-bounded (the authorization request is valid for 60 minutes, and the Google sign-in state is separately bounded) and the consent nonce is one-time/session-bound. Those temporary values must not be made permanent: they protect against replay and account takeover.
+
 ## Local agent pairing
 
 After the public origin and Google sign-in/database work:
