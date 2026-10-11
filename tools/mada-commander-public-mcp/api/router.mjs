@@ -440,7 +440,7 @@ async function handleOAuthAuthorize(req, res, url) {
   if (!scopes) return oauthErrorRedirect(res, redirectUri, state, "invalid_scope", "Only the mada:workspace scope is supported.");
   const txnId = crypto.randomUUID();
   await query(
-    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '20 minutes')",
+    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '60 minutes')",
     [txnId, clientId, redirectUri, state, verifierChallenge, scopes, resource]
   );
   const start = new URL(getPublicBase() + "/oauth/google/start");
