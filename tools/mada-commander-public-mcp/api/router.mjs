@@ -523,9 +523,9 @@ async function handleOAuthApprove(req, res) {
   if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
   requireDatabase();
   const body = await readBody(req);
-  const base = getPublicBase();
-  const origin = req.headers.origin;
-  if (origin && origin !== base) return jsonError(res, 403, "access_denied", "Cross-origin authorization is not allowed.");
+  // The embedded ChatGPT OAuth flow can submit consent from an opaque or non-canonical browser origin.
+  // Protect this state-changing endpoint with the authenticated session, user-bound transaction,
+  // and one-time consent nonce instead of a brittle Origin equality check.
   const cookies = parseCookies(req.headers.cookie);
   const sessionToken = cookies[COOKIE_NAME];
   if (!sessionToken) return jsonError(res, 401, "login_required");
@@ -535,7 +535,7 @@ async function handleOAuthApprove(req, res) {
   const nonce = String(body.consent_nonce || "");
   if (body.decision !== "approve" && body.decision !== "deny") return jsonError(res, 400, "invalid_request", "An explicit approve or deny decision is required.");
   if (body.decision === "deny") {
-    const tx = await query("SELECT redirect_uri, client_state, client_id FROM mada_oauth_authorization_requests WHERE transaction_id = $1 AND user_id = $2 AND expires_at > now() LIMIT 1", [txnId, user.userId]);
+    const tx = await query("SELECT redirect_uri, client_state, client_id FROM mada_oauth_authorization_requests WHERE transaction_id = $1 AND user_id = $2 AND consent_nonce_hash = $3 AND expires_at > now() LIMIT 1", [txnId, user.userId, hashToken(nonce)]);
     if (tx.rowCount) {
       await query("DELETE FROM mada_oauth_authorization_requests WHERE transaction_id = $1", [txnId]);
       const u = new URL(tx.rows[0].redirect_uri);
