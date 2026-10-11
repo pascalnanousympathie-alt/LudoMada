@@ -133,6 +133,38 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
     });
     return { status: r.status, headers: r.headers, body: await r.json() };
   }
+
+  // ChatGPT/browser clients can present embedded origins unknown in advance. The public
+  // /mcp transport must answer preflight with wildcard CORS, while management APIs stay restricted.
+  const mcpOrigin = "https://embedded-client.example";
+  const preflight = await fetch(process.env.MADA_PUBLIC_BASE_URL + "/mcp", {
+    method: "OPTIONS",
+    headers: {
+      origin: mcpOrigin,
+      "access-control-request-method": "POST",
+      "access-control-request-headers": "authorization, content-type, mcp-protocol-version, accept"
+    }
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
+  assert.match(preflight.headers.get("access-control-allow-headers") || "", /Authorization/);
+
+  const crossOriginInit = await fetch(process.env.MADA_PUBLIC_BASE_URL + "/mcp", {
+    method: "POST",
+    headers: { origin: mcpOrigin, "content-type": "application/json", accept: "application/json, text/event-stream" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 77, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "cors-test", version: "1" } } })
+  });
+  assert.equal(crossOriginInit.status, 200);
+  assert.equal(crossOriginInit.headers.get("access-control-allow-origin"), "*");
+
+  const rejectedManagementOrigin = await fetch(process.env.MADA_PUBLIC_BASE_URL + "/api/account/delete", {
+    method: "POST",
+    headers: { origin: mcpOrigin, "content-type": "application/json" },
+    body: JSON.stringify({})
+  });
+  assert.equal(rejectedManagementOrigin.status, 403);
+  assert.deepEqual(await rejectedManagementOrigin.json(), { error: "origin_not_allowed" });
+
   const init = await rpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } });
   assert.equal(init.status, 200);
   assert.equal(init.body.result.serverInfo.name, "mada-commander-public");
