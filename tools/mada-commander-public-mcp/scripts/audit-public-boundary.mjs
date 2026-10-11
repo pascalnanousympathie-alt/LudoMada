@@ -50,7 +50,7 @@ check("OAuth token exchange requires PKCE S256 and exact resource match", /safeE
 check("OAuth access tokens are checked for user scope and exact audience resource", /t\.resource !== resourceUrl/.test(router) && /t\.scope\.includes\(REQUIRED_SCOPE\)/.test(router));
 check("CIMD trusts only official ChatGPT metadata URL and callback shapes", /hostname !== "chatgpt\.com"/.test(router) && /isApprovedChatGptRedirect\(uri\)/.test(router));
 check("OAuth authorization failures can return issuer-tagged errors to validated redirects", /function oauthErrorRedirect/.test(router) && /target\.searchParams\.set\("iss", getPublicBase\(\)\)/.test(router));
-check("public health exposes missing setup rather than reporting false readiness", /const ready = Object\.values\(checks\)\.every\(Boolean\)/.test(router));
+check("public health requires all runtime prerequisites but keeps domain publication challenge separate", /const ready = Object\.entries\(checks\)\.filter\(\(\[key\]\) => key !== "domainChallengeConfigured"\)\.every\(\(\[, value\]\) => value\)/.test(router) && /domainChallengeConfigured: Boolean\(process\.env\.OPENAI_APPS_CHALLENGE_TOKEN\)/.test(router));
 check("private Commander runtime and config are not imported", !/personal-mcp-commander|runtime\.key|tunnel-client.*runtime/i.test(publicCode));
 check("public package excludes environment files from Git", (await read(".gitignore")).includes(".env.*") && (await read(".gitignore")).includes("!.env.example"));
 check("real deployment secrets are not in the public package", !await fs.stat(path.join(ROOT, ".env")).then(s => s.isFile()).catch(() => false));
