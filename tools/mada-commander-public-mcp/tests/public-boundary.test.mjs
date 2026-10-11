@@ -4,12 +4,14 @@ import http from "node:http";
 import { createServer } from "node:http";
 import { PUBLIC_TOOLS, authChallenge, executePublicTool } from "../lib/tools.mjs";
 import { hashToken, pkceChallenge, safeEqual, isSafeProjectAlias, isSafeProjectLabel } from "../lib/security.mjs";
+import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, validateOperaAddress } from "../lib/agent-operations.mjs";
 import vercelHandler, { handleRequest, isTrustedCimdUrl, isApprovedChatGptRedirect, validateCimdMetadata } from "../api/router.mjs";
 
 test("only the least-privilege public tool surface is advertised", () => {
-  assert.deepEqual(PUBLIC_TOOLS.map(t => t.name), [
+  assert.deepEqual(PUBLIC_TOOLS.slice(0, 5).map(t => t.name), [
     "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status", "mada_connection_help"
   ]);
+  assert.equal(PUBLIC_TOOLS.length, 13);
   for (const tool of PUBLIC_TOOLS) {
     assert.equal(typeof tool.description, "string");
     assert.ok(tool.description.length >= 40);
@@ -215,7 +217,7 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
 
   const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   assert.equal(listed.status, 200);
-  assert.equal(listed.body.result.tools.length, 5);
+  assert.equal(listed.body.result.tools.length, 13);
   assert.deepEqual(listed.body.result.tools.map(t => t.name), PUBLIC_TOOLS.map(t => t.name));
   assert.ok(listed.body.result.tools.every(t => t.outputSchema && t.outputSchema.type === "object"));
 
@@ -323,4 +325,56 @@ test("Vercel rewrites and migration guards are explicit", async () => {
   assert.ok(schema.includes("mada_public_agents"));
   assert.ok(schema.includes("mada_public_jobs"));
   assert.ok(!schema.includes("game_wallet"));
+});
+
+test("workspace operations stay within a registered project and block private files", async t => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "mada-agent-"));
+  const project = { path: root };
+  t.after(async () => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, "README.md"), "# project\n");
+  await fs.writeFile(path.join(root, ".env"), "MADA_SECRET=do-not-read\n");
+  await fs.mkdir(path.join(root, ".git"));
+  const listing = await workspaceList(project);
+  assert.ok(listing.entries.some(entry => entry.name === "src"));
+  assert.ok(!listing.entries.some(entry => entry.name === ".env" || entry.name === ".git"));
+  const written = await workspaceWrite(project, "src/sample.mjs", "export const ok = true;\n");
+  assert.equal(written.created, true);
+  assert.equal((await workspaceRead(project, "src/sample.mjs")).content, "export const ok = true;\n");
+  await assert.rejects(() => workspaceRead(project, ".env"), /blocked|path/i);
+  await assert.rejects(() => workspaceWrite(project, "../outside.mjs", "bad"), /invalid|blocked|escape/i);
+  await assert.rejects(() => workspaceWrite(project, "src/leak.mjs", "const token = 'ghp_012345678901234567890123456789';"), /credential|secret/i);
+  await assert.rejects(() => runApprovedTask(project, "arbitrary_shell"), /allowlist/i);
+});
+
+test("Opera navigation accepts only web pages and approved settings internals", () => {
+  assert.equal(validateOperaAddress("https://example.com/settings").startsWith("https://"), true);
+  assert.equal(validateOperaAddress("opera://settings"), "opera://settings");
+  assert.equal(validateOperaAddress("opera://about"), "opera://about");
+  assert.throws(() => validateOperaAddress("javascript:alert(1)"), /HTTP|Opera/i);
+  assert.throws(() => validateOperaAddress("file:///etc/passwd"), /HTTP|Opera/i);
+  assert.throws(() => validateOperaAddress("opera://extensions"), /Only Opera settings/i);
+  assert.throws(() => validateOperaAddress("https://example.com/?access_token=abc"), /credential-like/i);
+});
+
+test("new write and Opera tools reject unsafe inputs before queuing", async () => {
+  const principal = { userId: "user-test", scope: ["mada:workspace"] };
+  const common = { projectId: "ludomada", agentId: "11111111-1111-4111-8111-111111111111" };
+  const secretWrite = await executePublicTool("mada_workspace_write", {
+    ...common, relativeFile: "src/app.mjs", content: "ghp_012345678901234567890123456789"
+  }, principal);
+  assert.equal(secretWrite.isError, true);
+  const arbitraryTask = await executePublicTool("mada_run_task", { ...common, task: "shell" }, principal);
+  assert.equal(arbitraryTask.isError, true);
+  const unsafeNavigation = await executePublicTool("mada_opera_navigate", {
+    ...common, tabId: "tab_1", address: "javascript:alert(1)"
+  }, principal);
+  assert.equal(unsafeNavigation.isError, true);
+  const passwordField = await executePublicTool("mada_opera_action", {
+    ...common, tabId: "tab_1", action: "fill_selector", selector: "#password", value: "not-a-real-password"
+  }, principal);
+  assert.equal(passwordField.isError, true);
 });

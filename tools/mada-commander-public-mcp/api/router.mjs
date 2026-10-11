@@ -966,7 +966,7 @@ async function handleAgentPoll(req, res) {
   const job = await withTransaction(async db => {
     await db.query("UPDATE mada_public_agents SET last_seen_at = now() WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL", [agent.agentId, agent.userId]);
     const next = await db.query(
-      "SELECT id, project_id, profile FROM mada_public_jobs WHERE agent_id = $1 AND user_id = $2 AND status = 'queued' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
+      "SELECT id, project_id, profile, request FROM mada_public_jobs WHERE agent_id = $1 AND user_id = $2 AND status = 'queued' ORDER BY created_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
       [agent.agentId, agent.userId]
     );
     if (!next.rowCount) return null;
@@ -976,7 +976,7 @@ async function handleAgentPoll(req, res) {
       [row.id, agent.agentId, agent.userId]
     );
     if (!updated.rowCount) return null;
-    return { jobId: row.id, projectId: row.project_id, profile: row.profile };
+    return { jobId: row.id, projectId: row.project_id, profile: row.profile, request: row.request || {} };
   });
   return send(res, 200, { job });
 }
@@ -1006,6 +1006,103 @@ function sanitizeResult(profile, raw) {
       hasGradleWrapper: Boolean(raw.hasGradleWrapper),
       hasReadme: Boolean(raw.hasReadme),
       topLevelFileCount: Number.isInteger(raw.topLevelFileCount) ? Math.max(0, Math.min(1000, raw.topLevelFileCount)) : 0
+    };
+  }
+  if (profile === "workspace_list") {
+    const entries = Array.isArray(raw.entries) ? raw.entries.slice(0, 100).map(entry => ({
+      name: redactSensitive(String(entry?.name || "")).slice(0, 160),
+      type: ["file","directory","other"].includes(entry?.type) ? entry.type : "other"
+    })) : [];
+    return {
+      relativeDirectory: redactSensitive(String(raw.relativeDirectory || "")).slice(0, 240),
+      entries,
+      totalCount: Number.isInteger(raw.totalCount) ? Math.max(0, Math.min(100000, raw.totalCount)) : entries.length,
+      truncated: Boolean(raw.truncated)
+    };
+  }
+  if (profile === "workspace_read") {
+    if (typeof raw.content !== "string" || typeof raw.relativeFile !== "string") return null;
+    return {
+      relativeFile: redactSensitive(raw.relativeFile).slice(0, 240),
+      content: redactSensitive(raw.content).slice(0, 40000),
+      bytes: Number.isInteger(raw.bytes) ? Math.max(0, Math.min(1_000_000, raw.bytes)) : 0,
+      truncated: Boolean(raw.truncated)
+    };
+  }
+  if (profile === "workspace_write") {
+    if (typeof raw.relativeFile !== "string" || !/^[a-f0-9]{64}$/i.test(String(raw.sha256 || ""))) return null;
+    return {
+      relativeFile: redactSensitive(raw.relativeFile).slice(0, 240),
+      bytes: Number.isInteger(raw.bytes) ? Math.max(0, Math.min(120000, raw.bytes)) : 0,
+      sha256: String(raw.sha256),
+      created: Boolean(raw.created)
+    };
+  }
+  if (profile === "run_task") {
+    const task = ["git_status","git_diff_stat","npm_test","npm_lint","npm_build","android_assemble_debug","android_test"].includes(raw.task) ? raw.task : "";
+    if (!task || !Number.isInteger(raw.exitCode)) return null;
+    return {
+      task,
+      exitCode: Math.max(-1, Math.min(255, raw.exitCode)),
+      timedOut: Boolean(raw.timedOut),
+      durationMs: Number.isInteger(raw.durationMs) ? Math.max(0, Math.min(600000, raw.durationMs)) : 0,
+      stdout: redactSensitive(String(raw.stdout || "")).slice(-6000),
+      stderr: redactSensitive(String(raw.stderr || "")).slice(-2500)
+    };
+  }
+  if (profile === "opera_status") {
+    return {
+      connected: Boolean(raw.connected),
+      browser: redactSensitive(String(raw.browser || "")).slice(0, 120),
+      protocolVersion: String(raw.protocolVersion || "").slice(0, 30),
+      tabsCount: Number.isInteger(raw.tabsCount) ? Math.max(0, Math.min(10000, raw.tabsCount)) : 0
+    };
+  }
+  if (profile === "opera_tabs") {
+    const tabs = Array.isArray(raw.tabs) ? raw.tabs.slice(0,40).map(tab => ({
+      tabId: /^[A-Za-z0-9_-]{1,100}$/.test(String(tab?.tabId || "")) ? String(tab.tabId) : "",
+      title: redactSensitive(String(tab?.title || "")).slice(0,160),
+      address: redactSensitive(String(tab?.address || "")).replace(/[?#].*$/, "").replace(/\/[^/]{49,}/g, "/[redacted]").slice(0,400)
+    })).filter(tab => tab.tabId) : [];
+    return {
+      tabs,
+      totalCount: Number.isInteger(raw.totalCount) ? Math.max(tabs.length, Math.min(10000, raw.totalCount)) : tabs.length,
+      truncated: Boolean(raw.truncated)
+    };
+  }
+  if (profile === "opera_navigate") {
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(String(raw.tabId || "")) || typeof raw.address !== "string") return null;
+    return {
+      tabId: String(raw.tabId),
+      address: redactSensitive(String(raw.address)).replace(/[?#].*$/, "").slice(0,400),
+      navigated: Boolean(raw.navigated)
+    };
+  }
+  if (profile === "opera_action") {
+    const action = ["inspect","click_text","click_selector","fill_selector","select_value","toggle_checked"].includes(raw.action) ? raw.action : "";
+    if (!action || !/^[A-Za-z0-9_-]{1,100}$/.test(String(raw.tabId || ""))) return null;
+    const value = raw.result && typeof raw.result === "object" ? raw.result : {};
+    const result = {};
+    if (typeof value.title === "string") result.title = redactSensitive(value.title).slice(0,160);
+    if (typeof value.readyState === "string") result.readyState = value.readyState.slice(0,30);
+    if (Array.isArray(value.controls)) result.controls = value.controls.slice(0,60).map(control => ({
+      tag: String(control?.tag || "").slice(0,20),
+      kind: String(control?.kind || "").slice(0,40),
+      label: redactSensitive(String(control?.label || "")).slice(0,180),
+      disabled: Boolean(control?.disabled),
+      ...(typeof control?.checked === "boolean" ? { checked: control.checked } : {})
+    }));
+    if (typeof value.ok === "boolean") result.ok = value.ok;
+    if (typeof value.reason === "string") result.reason = redactSensitive(value.reason).slice(0,100);
+    if (typeof value.clicked === "string") result.clicked = redactSensitive(value.clicked).slice(0,180);
+    if (typeof value.updated === "boolean") result.updated = value.updated;
+    if (typeof value.selected === "string") result.selected = redactSensitive(value.selected).slice(0,100);
+    if (typeof value.checked === "boolean") result.checked = value.checked;
+    return {
+      tabId: String(raw.tabId),
+      action,
+      address: redactSensitive(String(raw.address || "")).replace(/[?#].*$/, "").slice(0,400),
+      result
     };
   }
   return null;

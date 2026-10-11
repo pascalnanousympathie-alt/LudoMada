@@ -13,3 +13,16 @@ This is the operator's submission worksheet for OpenAI's MCP review. The current
 The hosted endpoint being publicly reachable does not, by itself, make a tool open-world. These justifications describe the actual tool behavior and do not replace server-side authorization or validation.
 
 Before submission, compare this matrix against the current tool scan. If any tool behavior or hint changes, update the justification for every affected hint in the OpenAI submission portal and rerun the scan.
+
+## Additional workspace and browser tools
+
+| Tool | `readOnlyHint` and rationale | `openWorldHint` and rationale | `destructiveHint` and rationale |
+|---|---|---|---|
+| `mada_workspace_list` | `true`: lists bounded names/types from one registered local project folder. | `false`: resolved only against the account's paired agent and project alias; sensitive/generated directories are excluded. | `false`: no local files are changed. |
+| `mada_workspace_read` | `true`: reads a bounded text/source file and sanitizes the returned content. | `false`: file names are relative to one registered project; absolute paths and credentials are not accepted. | `false`: no files are changed. |
+| `mada_workspace_write` | `false`: queues a change to a source/text file in the user's registered project. | `false`: only a paired agent and project-relative path are accepted, with blocked secret paths and content checks. | `true`: an existing source file can be replaced; subsequent tests and Git review are recommended. |
+| `mada_run_task` | `false`: queues one operation from the fixed Git/npm/Gradle task allowlist. | `false`: the task runs only in a selected registered project and accepts no free-form command or arguments. | `false`: tasks are limited to Git status/diff, existing test/lint/build scripts and fixed Android test/build wrapper tasks; no file-deletion command is exposed. |
+| `mada_opera_status` | `true`: reads the paired Opera instance's version and open-tab count. | `false`: targets only the loopback CDP service of the user's paired Termux agent. | `false`: no browser state is changed. |
+| `mada_opera_tabs` | `true`: lists bounded tab IDs, titles and sanitized addresses. | `false`: the tool cannot specify arbitrary browser or network targets. | `false`: it does not change tabs. |
+| `mada_opera_navigate` | `false`: changes the selected Opera tab's address. | `false`: it accepts only a selected tab and validated HTTP(S) or Opera settings/about address; secret-like URL query values are rejected. | `false`: navigation is reversible and does not itself delete data or change account permissions. |
+| `mada_opera_action` | `false`: can change visible page controls through a fixed structured action allowlist. | `false`: no arbitrary JavaScript is accepted; the target is one tab of the paired local Opera instance. | `true`: a supported click, fill, selection or toggle can change settings; password, identity, token and destructive controls are blocked. |
