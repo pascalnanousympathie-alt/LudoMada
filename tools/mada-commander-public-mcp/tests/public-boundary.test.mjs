@@ -387,4 +387,7 @@ test("Opera clicks are scheduled so navigations cannot tear down the CDP reply",
   assert.equal(deferredClicks.length, 2);
   assert.equal((source.match(/scheduled:true/g) || []).length, 2);
   assert.ok(source.includes("Defer the click so Runtime.evaluate can return before a navigation tears down the target."));
+  assert.ok(source.includes("__targetUrl: target.url"));
+  assert.ok(source.includes("Use the URL captured before Runtime.evaluate."));
+  assert.ok(source.includes('address: safeOperaAddress(String(response.__targetUrl || ""))'));
 });
