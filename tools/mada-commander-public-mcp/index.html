@@ -133,7 +133,6 @@ async function refreshReadiness(){
    ["databaseConfigured","Dedicated Postgres database"],
    ["schemaReady","Database schema migration"],
    ["googleOAuthConfigured","Google OAuth Web client credentials"],
-   ["domainChallengeConfigured","OpenAI-issued domain challenge token"]
   ].filter(([key])=>!checks[key]).map(([,label])=>label);
   if(serviceReady){
    badge.textContent="READY";badge.className="pill ok";
