@@ -43,7 +43,43 @@ jobs:
         run: npm run verify
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Wait for the Git-linked main deployment to expose the current tool set
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          MADA_PUBLIC_BASE_URL: https://mada-commander-public-mcp-auto.vercel.app
+        run: |
+          node --input-type=module <<'NODE'
+          const expected = [
+            "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status",
+            "mada_connection_help", "mada_workspace_list", "mada_workspace_read", "mada_workspace_write",
+            "mada_run_task", "mada_opera_status", "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action"
+          ];
+          const endpoint = process.env.MADA_PUBLIC_BASE_URL.replace(/\/$/, "") + "/mcp";
+          const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+          for (let attempt = 1; attempt <= 24; attempt++) {
+            try {
+              const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+                body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+                signal: AbortSignal.timeout(8000)
+              });
+              const body = await response.json();
+              const names = Array.isArray(body?.result?.tools) ? body.result.tools.map(tool => tool.name) : [];
+              if (response.ok && names.length === expected.length && names.every((name, index) => name === expected[index])) {
+                console.log("PASS production endpoint exposes all " + expected.length + " expected tools");
+                process.exit(0);
+              }
+              console.log("Waiting for deployment propagation (attempt " + attempt + "/24, tools=" + names.length + ")");
+            } catch (error) {
+              console.log("Waiting for reachable production deployment (attempt " + attempt + "/24)");
+            }
+            await pause(5000);
+          }
+          throw new Error("Production alias did not expose the tested commit's tool list within 120 seconds.");
+          NODE
       - name: Smoke-test the Git-linked production endpoint (fail-closed mode)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           MADA_PUBLIC_BASE_URL: https://mada-commander-public-mcp-auto.vercel.app
         run: npm run smoke:production
