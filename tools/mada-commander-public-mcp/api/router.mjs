@@ -623,7 +623,13 @@ async function handleOAuthToken(req, res) {
   const body = await readBody(req);
   const base = getPublicBase();
   const clientId = String(body.client_id || "");
-  if (!await clientIdAllowed(clientId)) return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+  const isRefreshGrant = body.grant_type === "refresh_token";
+  // Authorization-code grants validate the current client metadata. An existing,
+  // unexpired refresh token proves the previously validated client binding, so renewal
+  // must not depend on a fresh remote metadata fetch succeeding.
+  if (!clientId || clientId.length > 2048 || (!isRefreshGrant && !await clientIdAllowed(clientId))) {
+    return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+  }
   if (body.grant_type === "authorization_code") {
     const code = String(body.code || "");
     const redirectUri = String(body.redirect_uri || "");
