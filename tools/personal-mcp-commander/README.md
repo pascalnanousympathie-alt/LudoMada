@@ -2,6 +2,12 @@
 
 Production-oriented developer control plane for Termux/Android.
 
+## Opera/noVNC browser bridge
+
+The private Commander supports the Chromium DevTools Protocol (CDP) over loopback. The default endpoint remains `127.0.0.1:9222` for the optional headless Chromium instance. The Termux/noVNC startup script sets `PERSONAL_MCP_CDP_PORT=9223` so `browser_status`, `browser_navigate`, `browser_evaluate`, and `browser_screenshot` target the already-running Opera profile instead.
+
+Keep CDP bound to `127.0.0.1`; do not publish port 9222 or 9223 through a public tunnel or unauthenticated listener. Access browser tools through the authenticated private Commander endpoint. To override the port for a different local browser, set `PERSONAL_MCP_CDP_PORT` in the Commander process environment.
+
 ## Architecture
 
 `ChatGPT / OpenAI Secure MCP Tunnel → tunnel-client → Node MCP Commander → Android / Termux / Browser / GitHub / Build`

@@ -194,13 +194,21 @@ export function createControlPlane({ HOME, config, resolveProject, resolveSafe, 
   }
 
   async function cdpTarget(targetId) {
-    const list = await fetchText("http://127.0.0.1:9222/json/list", 2000);
-    if (!list.ok) throw new Error("CDP endpoint unavailable");
+    // Allow an explicitly selected browser endpoint. In the persistent Termux/noVNC
+    // setup Opera uses loopback port 9223, while optional headless Chromium may use 9222.
+    // Keep CDP loopback-only; never expose this endpoint through an internet-facing bind.
+    const configuredPort = process.env.PERSONAL_MCP_CDP_PORT;
+    const cdpPort = configuredPort === undefined || configuredPort === "" ? 9222 : Number(configuredPort);
+    if (!Number.isInteger(cdpPort) || cdpPort < 1024 || cdpPort > 65535) {
+      throw new Error("PERSONAL_MCP_CDP_PORT must be a valid TCP port");
+    }
+    const list = await fetchText("http://127.0.0.1:" + cdpPort + "/json/list", 2000);
+    if (!list.ok) throw new Error("CDP endpoint unavailable on configured port " + cdpPort);
     let tabs;
     try { tabs = JSON.parse(list.text); } catch { throw new Error("invalid CDP target list"); }
     const pages = tabs.filter(x => x.type === "page" && x.webSocketDebuggerUrl);
     const target = targetId ? pages.find(x => x.id === targetId) : pages[0];
-    if (!target) throw new Error("no matching browser page target");
+    if (!target) throw new Error("no matching browser page target on port " + cdpPort);
     return target;
   }
 
