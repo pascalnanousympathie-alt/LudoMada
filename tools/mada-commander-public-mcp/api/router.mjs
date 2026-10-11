@@ -965,17 +965,38 @@ async function handleHealth(res) {
   return send(res, ready ? 200 : 503, { service: "mada-commander-public-mcp", displayName: "Mada Commander", ready, checks });
 }
 
+const CROSS_ORIGIN_PUBLIC_ROUTES = new Set([
+  "mcp",
+  "oauth-resource",
+  "oauth-server",
+  "oauth-authorize",
+  "oauth-token",
+  "oauth-revoke",
+  "google-start",
+  "google-callback",
+  "oauth-approve",
+  "domain-challenge"
+]);
+
 function cors(req, res, base, route) {
   const origin = req.headers.origin;
   if (!origin) return true;
-  const isMcpTransport = route === "mcp";
+  const publicCrossOriginRoute = CROSS_ORIGIN_PUBLIC_ROUTES.has(route);
   const allowed = new Set([base, "https://chatgpt.com", "https://chat.openai.com", ...allowedList("MADA_CORS_ORIGINS")]);
-  // The remote MCP transport is a public, bearer-token-protected endpoint. ChatGPT's
-  // embedded/browser clients may use varying origins, so CORS is open only on /mcp.
-  // Account, pairing, and dashboard endpoints continue to use the explicit allowlist.
-  if (!isMcpTransport && !allowed.has(origin)) return false;
-  res.setHeader("Access-Control-Allow-Origin", isMcpTransport ? "*" : origin);
-  if (!isMcpTransport) res.setHeader("Vary", "Origin");
+  // Public MCP and OAuth protocol endpoints must support embedded browser clients whose
+  // Origin may vary. Session, account deletion, pairing, and agent-management APIs stay
+  // on the explicit allowlist and retain their route-level authentication/CSRF checks.
+  if (!publicCrossOriginRoute && !allowed.has(origin)) {
+    console.warn("Mada Commander CORS rejection", {
+      method: req.method,
+      path: String(req.url || "/").split("?")[0].slice(0, 180),
+      route,
+      origin: String(origin).slice(0, 180)
+    });
+    return false;
+  }
+  res.setHeader("Access-Control-Allow-Origin", publicCrossOriginRoute ? "*" : origin);
+  if (!publicCrossOriginRoute) res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, Accept");
   res.setHeader("Access-Control-Max-Age", "600");
@@ -997,12 +1018,13 @@ export async function handleRequest(req, res) {
     if (!cors(req, res, base, route)) return send(res, 403, { error: "origin_not_allowed" });
   }
   if (req.method === "OPTIONS") {
+    const publicCrossOriginRoute = CROSS_ORIGIN_PUBLIC_ROUTES.has(route);
     const corsHeaders = base ? {
-      "Access-Control-Allow-Origin": route === "mcp" ? "*" : (req.headers.origin || base),
+      "Access-Control-Allow-Origin": publicCrossOriginRoute ? "*" : (req.headers.origin || base),
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version, Accept",
       "Access-Control-Max-Age": "600",
-      ...(route === "mcp" ? {} : { "Vary": "Origin" })
+      ...(publicCrossOriginRoute ? {} : { "Vary": "Origin" })
     } : {};
     res.writeHead(204, corsHeaders);
     return res.end();
