@@ -242,7 +242,7 @@ async function operaCdpCall(tabIdInput, method, params = {}) {
       try { message = JSON.parse(String(event.data)); } catch { return; }
       if (message.id !== 1) return;
       if (message.error) finish(new Error("Opera rejected the requested action."));
-      else finish(null, message.result);
+      else finish(null, { ...message.result, __targetUrl: target.url });
     });
     socket.addEventListener("error", () => finish(new Error("Could not connect to the selected Opera tab.")), { once: true });
   });
@@ -329,7 +329,7 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
   const result = response.result?.value || {};
   if (result.title) result.title = redactSensitive(result.title).slice(0,160);
   if (Array.isArray(result.controls)) result.controls = result.controls.map(c => ({ ...c, label: redactSensitive(c.label || "").slice(0,180) }));
-  const targets = await operaFetchJson("/json/list");
-  const target = (Array.isArray(targets) ? targets : []).find(t => t.id === tabId);
-  return { tabId, action, address: safeOperaAddress(String(target?.url || "")), result };
+  // Use the URL captured before Runtime.evaluate. A scheduled click may navigate immediately,
+  // so querying /json/list again here can race with target teardown and turn a successful click into a timeout.
+  return { tabId, action, address: safeOperaAddress(String(response.__targetUrl || "")), result };
 }
