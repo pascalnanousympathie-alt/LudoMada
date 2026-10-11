@@ -2,8 +2,8 @@ import crypto from "node:crypto";
 
 export const REQUIRED_SCOPE = "mada:workspace";
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
-export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
-export const WEB_SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
+// Refresh tokens have no automatic expiry: users revoke connected apps from the account dashboard.
+export const WEB_SESSION_TTL_SECONDS = 400 * 24 * 60 * 60;
 export const AUTH_CODE_TTL_SECONDS = 90;
 export const GOOGLE_STATE_TTL_SECONDS = 5 * 60;
 export const PAIR_CODE_TTL_SECONDS = 10 * 60;
