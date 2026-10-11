@@ -412,7 +412,7 @@ async function handleOAuthAuthorize(req, res, url) {
   if (!scopes) return oauthErrorRedirect(res, redirectUri, state, "invalid_scope", "Only the mada:workspace scope is supported.");
   const txnId = crypto.randomUUID();
   await query(
-    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '10 minutes')",
+    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '20 minutes')",
     [txnId, clientId, redirectUri, state, verifierChallenge, scopes, resource]
   );
   const start = new URL(getPublicBase() + "/oauth/google/start");
@@ -436,7 +436,7 @@ async function handleGoogleStart(req, res, url) {
   }
   const state = randomToken(32);
   await query(
-    "INSERT INTO mada_google_states (state_hash, purpose, transaction_id, expires_at) VALUES ($1,$2,$3,now() + interval '5 minutes')",
+    "INSERT INTO mada_google_states (state_hash, purpose, transaction_id, expires_at) VALUES ($1,$2,$3,now() + interval '15 minutes')",
     [hashToken(state), purpose, transactionId]
   );
   const base = getPublicBase();
@@ -961,7 +961,7 @@ async function handleHealth(res) {
       checks.schemaReady = Object.values(r.rows[0] || {}).every(Boolean);
     } catch { checks.schemaReady = false; }
   } else checks.schemaReady = false;
-  const ready = Object.values(checks).every(Boolean);
+  const ready = Object.entries(checks).filter(([key]) => key !== "domainChallengeConfigured").every(([, value]) => value);
   return send(res, ready ? 200 : 503, { service: "mada-commander-public-mcp", displayName: "Mada Commander", ready, checks });
 }
 
