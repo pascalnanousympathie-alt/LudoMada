@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS mada_public_users (
 CREATE TABLE IF NOT EXISTS mada_web_sessions (
   token_hash char(64) PRIMARY KEY,
   user_id text NOT NULL REFERENCES mada_public_users(id) ON DELETE CASCADE,
-  expires_at timestamptz NOT NULL,
+  expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS mada_web_sessions_user_idx ON mada_web_sessions(user_id);
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS mada_oauth_refresh_tokens (
   client_id text NOT NULL,
   scope text[] NOT NULL,
   resource text NOT NULL,
-  expires_at timestamptz NOT NULL,
+  expires_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS mada_refresh_tokens_expires_idx ON mada_oauth_refresh_tokens(expires_at);
@@ -138,3 +138,13 @@ CREATE TABLE IF NOT EXISTS mada_public_rate_limits (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS mada_public_rate_limits_updated_idx ON mada_public_rate_limits(updated_at);
+
+
+-- Make existing dashboard sessions and OAuth grants persistent as well.
+-- They remain revocable through sign-out/account controls and the connected-apps page.
+ALTER TABLE public.mada_web_sessions ALTER COLUMN expires_at DROP NOT NULL;
+UPDATE public.mada_web_sessions SET expires_at = NULL;
+ALTER TABLE public.mada_oauth_refresh_tokens ALTER COLUMN expires_at DROP NOT NULL;
+UPDATE public.mada_oauth_refresh_tokens SET expires_at = NULL;
+CREATE INDEX IF NOT EXISTS mada_refresh_tokens_user_client_idx ON public.mada_oauth_refresh_tokens(user_id, client_id);
+CREATE INDEX IF NOT EXISTS mada_access_tokens_user_client_idx ON public.mada_oauth_access_tokens(user_id, client_id);

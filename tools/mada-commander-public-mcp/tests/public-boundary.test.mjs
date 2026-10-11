@@ -267,11 +267,42 @@ test("dashboard offers sign-out, account deletion, and owned-agent revocation", 
   assert.ok(html.includes("Sign-in will be available after secure setup is complete."));
   assert.ok(html.includes("Protected features remain unavailable until the operator completes the secure service setup."));
   assert.ok(html.includes('id="deleteAccount"'));
+  assert.ok(html.includes('id="oauthConnections"'));
+  assert.ok(html.includes('/api/oauth/connections'));
+  assert.ok(html.includes('/api/oauth/connections/revoke'));
+  assert.ok(html.includes("These grants do not expire automatically."));
   assert.ok(html.includes('/api/account/delete'));
   assert.ok(html.includes('confirm:"DELETE"'));
   assert.ok(api.includes('case "account-delete": return await handleAccountDelete(req, res);'));
   assert.ok(api.includes('DELETE FROM mada_public_users WHERE id = $1'));
   assert.ok(api.includes('UPDATE mada_public_agents SET revoked_at = now()'));
+});
+
+test("OAuth refresh grants persist until revoked and can be managed from the website", async () => {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = path.resolve(new URL("..", import.meta.url).pathname);
+  const [router, schema, vercel, security] = await Promise.all([
+    fs.readFile(path.join(root, "api/router.mjs"), "utf8"),
+    fs.readFile(path.join(root, "schema.sql"), "utf8"),
+    fs.readFile(path.join(root, "vercel.json"), "utf8").then(JSON.parse),
+    fs.readFile(path.join(root, "lib/security.mjs"), "utf8")
+  ]);
+  assert.match(router, /INSERT INTO mada_oauth_refresh_tokens .*VALUES \(\$1,\$2,\$3,\$4,\$5,NULL\)/);
+  assert.match(router, /expires_at IS NULL OR expires_at > now\(\)\) FOR UPDATE/);
+  assert.match(router, /DELETE FROM mada_oauth_refresh_tokens WHERE user_id = \$1 AND client_id = \$2/);
+  assert.match(router, /DELETE FROM mada_oauth_access_tokens WHERE user_id = \$1 AND client_id = \$2/);
+  const tokenHandler = router.slice(router.indexOf("async function handleOAuthToken"), router.indexOf("async function handleOAuthRevoke"));
+  assert.match(tokenHandler, /const isRefreshGrant = body\.grant_type === "refresh_token"/);
+  assert.match(tokenHandler, /!isRefreshGrant && !await clientIdAllowed\(clientId\)/);
+  assert.match(router, /expires_at IS NULL OR s\.expires_at > now\(\)/);
+  assert.match(router, /now\(\) \+ interval '60 minutes'/);
+  assert.match(schema, /ALTER TABLE public\.mada_oauth_refresh_tokens ALTER COLUMN expires_at DROP NOT NULL/);
+  assert.match(schema, /UPDATE public\.mada_oauth_refresh_tokens SET expires_at = NULL/);
+  assert.match(schema, /ALTER TABLE public\.mada_web_sessions ALTER COLUMN expires_at DROP NOT NULL/);
+  assert.match(security, /WEB_SESSION_TTL_SECONDS = 400 \* 24 \* 60 \* 60/);
+  assert.ok(vercel.rewrites.some(r => r.source === "/api/oauth/connections"));
+  assert.ok(vercel.rewrites.some(r => r.source === "/api/oauth/connections/revoke"));
 });
 
 test("Vercel rewrites and migration guards are explicit", async () => {

@@ -34,6 +34,11 @@ input{background:#050c13;color:var(--text);border:1px solid #274055;border-radiu
 <section class="card"><h2>3. Start the local agent</h2><p>Keep the agent running while you want the MCP to access your registered project. It polls the service outbound and only accepts fixed diagnostic profiles.</p><div class="code">node ~/LudoMada/tools/mada-commander-public-mcp/agent.mjs run</div><p>Stop it with Ctrl+C. Revoke it from this page whenever you no longer trust the device.</p></section>
 </div>
 <section class="card"><div class="row" style="justify-content:space-between"><h2>Your paired agents</h2><button class="btn" id="refreshAgents" disabled>Refresh</button></div><p id="agentsStatus">Sign in to view or revoke your own agents.</p><div id="agents"></div></section>
+<section class="card" id="oauthConnectionsCard" style="margin-top:14px">
+<div class="row" style="justify-content:space-between"><h2>Connected applications</h2><button class="btn" id="refreshConnections" disabled>Refresh</button></div>
+<p>Your ChatGPT authorization stays active until you revoke it here. Access tokens remain short-lived and refresh automatically; you should not need to approve the connection again just because time passed.</p>
+<p id="connectionsStatus">Sign in to view your authorized applications.</p><div id="oauthConnections"></div>
+</section>
 <section class="card" id="accountControls" style="margin-top:14px"><h2>Account and privacy</h2><p>You can sign out or permanently delete your Mada Commander public-service account. Account deletion revokes agents and removes the public-service account records and jobs; it does not delete the local project files on your device.</p><button class="btn danger hidden" id="deleteAccount" type="button">Delete my account and public-service data</button></section>
 <section class="card" style="margin-top:14px"><h2>Public service boundary</h2><ul><li>Only projects registered on your local agent are visible to your account.</li><li>Public diagnostics are restricted to Git status, toolchain versions, and basic project inventory.</li><li>No arbitrary shell command, arbitrary file read/write, browser-session control, APK installation, or GitHub merge is exposed.</li><li>Access tokens are revocable; local agent tokens are kept in an owner-only configuration file.</li></ul></section>
 <footer class="foot">Mada Commander is an early public-service implementation. Protected features remain unavailable until the operator completes the secure service setup. Review <a href="/privacy.html">Privacy</a>, <a href="/terms.html">Terms</a>, and <a href="/support.html">Support</a>. Never send access tokens, pairing codes, or private logs to support.</footer>
@@ -68,7 +73,13 @@ async function refreshSession(){
   $("deleteAccount").classList.toggle("hidden",!signedIn);
   $("pairBtn").disabled=!signedIn;
   $("refreshAgents").disabled=!signedIn;
-  if(signedIn)await refreshAgents();else $("agentsStatus").textContent="Sign in to view or revoke your own agents.";
+  if(signedIn){await refreshAgents();await refreshConnections();}
+  else{
+   $("agentsStatus").textContent="Sign in to view or revoke your own agents.";
+   $("refreshConnections").disabled=true;
+   $("connectionsStatus").textContent="Sign in to view your authorized applications.";
+   $("oauthConnections").replaceChildren();
+  }
  }catch(e){
   if(!serviceReady){$("sessionStatus").textContent="Sign-in will be available after secure setup is complete.";$("sessionStatus").className="status warn";}
   else{$("sessionStatus").textContent=e.message;$("sessionStatus").className="status err";}
@@ -103,6 +114,38 @@ $("deleteAccount").onclick=async()=>{
 $("copyPair").onclick=()=>navigator.clipboard?.writeText($("pairCode").textContent);
 $("copyCommand").onclick=()=>navigator.clipboard?.writeText($("pairCommand").textContent);
 $("refreshAgents").onclick=refreshAgents;
+async function refreshConnections(){
+ const refresh=$("refreshConnections");
+ refresh.disabled=true;
+ try{
+  const d=await api("/api/oauth/connections");
+  const connections=Array.isArray(d.connections)?d.connections:[];
+  $("connectionsStatus").textContent=connections.length
+   ?connections.length+" authorized application(s). These grants do not expire automatically."
+   :"No persistent application authorization yet.";
+  const container=$("oauthConnections");
+  container.replaceChildren();
+  for(const connection of connections){
+   const row=document.createElement("div");row.className="agent";
+   const title=document.createElement("strong");title.textContent=connection.displayName+" ";
+   const state=document.createElement("span");state.className="pill ok";state.textContent="Persistent";
+   const meta=document.createElement("div");meta.className="label";
+   meta.textContent="Automatic renewal · Last token issued: "+(connection.lastRenewedAt||"unknown")+" · active grant tokens: "+connection.activeTokenCount;
+   const revoke=document.createElement("button");revoke.className="btn danger";revoke.textContent="Revoke authorization";
+   revoke.onclick=async()=>{
+    if(!confirm("Revoke the persistent authorization for "+connection.displayName+"? ChatGPT will no longer be able to access Mada Commander until connected again."))return;
+    revoke.disabled=true;
+    try{await api("/api/oauth/connections/revoke","POST",{clientId:connection.clientId});await refreshConnections();}
+    catch(e){$("connectionsStatus").textContent=e.message;$("connectionsStatus").className="status err";revoke.disabled=false;}
+   };
+   row.append(title,state,meta,revoke);container.append(row);
+  }
+ }catch(e){
+  $("connectionsStatus").textContent=e.message;
+  $("connectionsStatus").className="status err";
+ }finally{refresh.disabled=!signedIn;}
+}
+$("refreshConnections").onclick=refreshConnections;
 async function refreshAgents(){
  try{
   const d=await api("/api/agent/list");

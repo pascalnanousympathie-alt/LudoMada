@@ -21,6 +21,14 @@
       "destination": "/api/router?route=auth-logout"
     },
     {
+      "source": "/api/oauth/connections",
+      "destination": "/api/router?route=oauth-connections"
+    },
+    {
+      "source": "/api/oauth/connections/revoke",
+      "destination": "/api/router?route=oauth-connections-revoke"
+    },
+    {
       "source": "/api/account/delete",
       "destination": "/api/router?route=account-delete"
     },

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { query, withTransaction, databaseConfigured } from "../lib/db.mjs";
 import {
   ACCESS_TOKEN_TTL_SECONDS, AUTH_CODE_TTL_SECONDS, GOOGLE_STATE_TTL_SECONDS,
-  PAIR_CODE_TTL_SECONDS, REFRESH_TOKEN_TTL_SECONDS, WEB_SESSION_TTL_SECONDS,
+  PAIR_CODE_TTL_SECONDS, WEB_SESSION_TTL_SECONDS,
   REQUIRED_SCOPE, allowedList, escapeHtml, getPublicBase, hashToken,
   isSafeProjectAlias, isSafeProjectLabel, mcpResourceUrl, parseBearer, parseBodyText,
   parseCookies, pkceChallenge, randomToken, redactSensitive,
@@ -100,6 +100,8 @@ function routeFor(url) {
     "/oauth/approve": "oauth-approve",
     "/api/auth/session": "auth-session",
     "/api/auth/logout": "auth-logout",
+    "/api/oauth/connections": "oauth-connections",
+    "/api/oauth/connections/revoke": "oauth-connections-revoke",
     "/api/account/delete": "account-delete",
     "/api/agent/list": "agent-list",
     "/api/agent/revoke": "agent-revoke",
@@ -276,10 +278,26 @@ async function sessionUser(req) {
   if (!token) return null;
   requireDatabase();
   const r = await query(
-    "SELECT u.id, u.email, u.display_name FROM mada_web_sessions s JOIN mada_public_users u ON u.id = s.user_id WHERE s.token_hash = $1 AND s.expires_at > now() LIMIT 1",
+    "SELECT u.id, u.email, u.display_name FROM mada_web_sessions s JOIN mada_public_users u ON u.id = s.user_id WHERE s.token_hash = $1 AND (s.expires_at IS NULL OR s.expires_at > now()) LIMIT 1",
     [hashToken(token)]
   );
   return r.rows[0] ? { userId: r.rows[0].id, email: r.rows[0].email, displayName: r.rows[0].display_name } : null;
+}
+
+async function renewPersistentWebSession(req, res, route, base) {
+  const sessionRoutes = new Set([
+    "home", "auth-session", "auth-logout", "account-delete", "agent-list",
+    "agent-revoke", "agent-pair-code", "oauth-connections", "oauth-connections-revoke"
+  ]);
+  if (!base || !sessionRoutes.has(route)) return;
+  const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
+  if (!token) return;
+  requireDatabase();
+  const active = await query(
+    "SELECT 1 FROM mada_web_sessions WHERE token_hash = $1 AND (expires_at IS NULL OR expires_at > now()) LIMIT 1",
+    [hashToken(token)]
+  );
+  if (active.rowCount) setSessionCookie(res, token, base);
 }
 
 async function agentUser(req) {
@@ -422,7 +440,7 @@ async function handleOAuthAuthorize(req, res, url) {
   if (!scopes) return oauthErrorRedirect(res, redirectUri, state, "invalid_scope", "Only the mada:workspace scope is supported.");
   const txnId = crypto.randomUUID();
   await query(
-    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '20 minutes')",
+    "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '60 minutes')",
     [txnId, clientId, redirectUri, state, verifierChallenge, scopes, resource]
   );
   const start = new URL(getPublicBase() + "/oauth/google/start");
@@ -509,7 +527,7 @@ async function handleGoogleCallback(req, res, url) {
   );
   const sessionToken = randomToken(32);
   await query(
-    "INSERT INTO mada_web_sessions (token_hash, user_id, expires_at) VALUES ($1,$2,now() + interval '7 days')",
+    "INSERT INTO mada_web_sessions (token_hash, user_id, expires_at) VALUES ($1,$2,NULL)",
     [hashToken(sessionToken), user.rows[0].id]
   );
   setSessionCookie(res, sessionToken, base);
@@ -605,7 +623,13 @@ async function handleOAuthToken(req, res) {
   const body = await readBody(req);
   const base = getPublicBase();
   const clientId = String(body.client_id || "");
-  if (!await clientIdAllowed(clientId)) return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+  const isRefreshGrant = body.grant_type === "refresh_token";
+  // Authorization-code grants validate the current client metadata. An existing,
+  // unexpired refresh token proves the previously validated client binding, so renewal
+  // must not depend on a fresh remote metadata fetch succeeding.
+  if (!clientId || clientId.length > 2048 || (!isRefreshGrant && !await clientIdAllowed(clientId))) {
+    return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+  }
   if (body.grant_type === "authorization_code") {
     const code = String(body.code || "");
     const redirectUri = String(body.redirect_uri || "");
@@ -629,8 +653,8 @@ async function handleOAuthToken(req, res) {
         [hashToken(accessToken), row.user_id, row.client_id, row.scope, row.resource, ACCESS_TOKEN_TTL_SECONDS]
       );
       await db.query(
-        "INSERT INTO mada_oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,now() + ($6 * interval '1 second'))",
-        [hashToken(refreshToken), row.user_id, row.client_id, row.scope, row.resource, REFRESH_TOKEN_TTL_SECONDS]
+        "INSERT INTO mada_oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,NULL)",
+        [hashToken(refreshToken), row.user_id, row.client_id, row.scope, row.resource]
       );
       return { ok: true, accessToken, refreshToken, scope: row.scope.join(" "), resource: row.resource };
     });
@@ -642,7 +666,7 @@ async function handleOAuthToken(req, res) {
     if (!refreshToken) return jsonError(res, 400, "invalid_grant");
     const result = await withTransaction(async db => {
       const found = await db.query(
-        "SELECT * FROM mada_oauth_refresh_tokens WHERE token_hash = $1 AND expires_at > now() FOR UPDATE",
+        "SELECT * FROM mada_oauth_refresh_tokens WHERE token_hash = $1 AND (expires_at IS NULL OR expires_at > now()) FOR UPDATE",
         [hashToken(refreshToken)]
       );
       if (!found.rowCount) return { ok: false };
@@ -657,8 +681,8 @@ async function handleOAuthToken(req, res) {
         [hashToken(accessToken), row.user_id, row.client_id, row.scope, row.resource, ACCESS_TOKEN_TTL_SECONDS]
       );
       await db.query(
-        "INSERT INTO mada_oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,now() + ($6 * interval '1 second'))",
-        [hashToken(nextRefreshToken), row.user_id, row.client_id, row.scope, row.resource, REFRESH_TOKEN_TTL_SECONDS]
+        "INSERT INTO mada_oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,NULL)",
+        [hashToken(nextRefreshToken), row.user_id, row.client_id, row.scope, row.resource]
       );
       return { ok: true, accessToken, refreshToken: nextRefreshToken, scope: row.scope.join(" "), resource: row.resource };
     });
@@ -720,6 +744,58 @@ async function handleAuthSession(req, res) {
   const user = await sessionUser(req);
   if (!user) return send(res, 200, { authenticated: false });
   return send(res, 200, { authenticated: true, email: user.email, displayName: user.displayName });
+}
+
+async function handleOAuthConnections(req, res) {
+  if (req.method !== "GET") return jsonError(res, 405, "method_not_allowed");
+  requireDatabase();
+  const user = await sessionUser(req);
+  if (!user) return jsonError(res, 401, "login_required");
+  const r = await query(
+    "SELECT client_id, max(created_at) AS last_renewed_at, count(*)::int AS token_count " +
+    "FROM mada_oauth_refresh_tokens WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > now()) " +
+    "GROUP BY client_id ORDER BY max(created_at) DESC LIMIT 50",
+    [user.userId]
+  );
+  return send(res, 200, { connections: r.rows.map(row => {
+    let displayName = "Authorized application";
+    try {
+      const hostname = new URL(row.client_id).hostname;
+      displayName = hostname === "chatgpt.com" ? "ChatGPT" : hostname;
+    } catch {}
+    return {
+      clientId: row.client_id,
+      displayName,
+      persistent: true,
+      lastRenewedAt: row.last_renewed_at ? new Date(row.last_renewed_at).toISOString() : null,
+      activeTokenCount: Number(row.token_count) || 0
+    };
+  }) });
+}
+
+async function handleOAuthConnectionRevoke(req, res) {
+  if (req.method !== "POST") return jsonError(res, 405, "method_not_allowed");
+  requireDatabase();
+  if (req.headers.origin && req.headers.origin !== getPublicBase()) {
+    return jsonError(res, 403, "access_denied", "Cross-origin connection revocation is not allowed.");
+  }
+  const user = await sessionUser(req);
+  if (!user) return jsonError(res, 401, "login_required");
+  const body = await readBody(req);
+  const clientId = String(body.clientId || "");
+  if (!clientId || clientId.length > 2048) return jsonError(res, 400, "invalid_request", "An authorized client ID is required.");
+  const deleted = await withTransaction(async db => {
+    const refresh = await db.query(
+      "DELETE FROM mada_oauth_refresh_tokens WHERE user_id = $1 AND client_id = $2 RETURNING token_hash",
+      [user.userId, clientId]
+    );
+    const access = await db.query(
+      "DELETE FROM mada_oauth_access_tokens WHERE user_id = $1 AND client_id = $2 RETURNING token_hash",
+      [user.userId, clientId]
+    );
+    return refresh.rowCount + access.rowCount;
+  });
+  return send(res, 200, { ok: true, revoked: deleted > 0, deletedTokenCount: deleted });
 }
 
 async function handleAccountDelete(req, res) {
@@ -1058,6 +1134,7 @@ export async function handleRequest(req, res) {
     return res.end();
   }
   try {
+    await renewPersistentWebSession(req, res, route, base);
     switch (route) {
       case "home": return await serveStatic(res, "index.html");
       case "privacy": return await serveStatic(res, "privacy.html");
@@ -1076,6 +1153,8 @@ export async function handleRequest(req, res) {
       case "oauth-approve": return await handleOAuthApprove(req, res);
       case "auth-session": return await handleAuthSession(req, res);
       case "auth-logout": return await handleOAuthLogout(req, res);
+      case "oauth-connections": return await handleOAuthConnections(req, res);
+      case "oauth-connections-revoke": return await handleOAuthConnectionRevoke(req, res);
       case "account-delete": return await handleAccountDelete(req, res);
       case "agent-list": return await handleAgentList(req, res);
       case "agent-revoke": return await handleAgentRevoke(req, res);
