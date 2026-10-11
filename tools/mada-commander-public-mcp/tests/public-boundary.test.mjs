@@ -101,7 +101,7 @@ test("OAuth consent tolerates embedded browser origins while requiring one-time 
   assert.doesNotMatch(approveHandler, /await clientIdAllowed|await clientRedirectAllowed/, "consent must not refetch remote client metadata");
   assert.match(approveHandler, /staticClientAllowed/);
   assert.match(approveHandler, /dynamicChatGptClientAllowed/);
-  assert.match(api, /AbortSignal\\.timeout\\(12_000\\)/, "CIMD fetch timeout should tolerate metadata latency");
+  assert.ok(api.includes("AbortSignal.timeout(12_000)"), "CIMD fetch timeout should tolerate metadata latency");
 });
 
 test("the Vercel entrypoint exports a valid default handler and help exposes no agent secrets", async () => {
