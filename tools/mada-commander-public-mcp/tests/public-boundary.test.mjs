@@ -149,6 +149,30 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
   assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
   assert.match(preflight.headers.get("access-control-allow-headers") || "", /Authorization/);
 
+  // ChatGPT may fetch OAuth discovery and token endpoints from an embedded origin too.
+  for (const publicUrl of [
+    process.env.MADA_PUBLIC_BASE_URL + "/.well-known/oauth-protected-resource",
+    process.env.MADA_PUBLIC_BASE_URL + "/.well-known/oauth-authorization-server",
+    process.env.MADA_PUBLIC_BASE_URL + "/oauth/token"
+  ]) {
+    const publicPreflight = await fetch(publicUrl, {
+      method: "OPTIONS",
+      headers: {
+        origin: mcpOrigin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "content-type"
+      }
+    });
+    assert.equal(publicPreflight.status, 204, publicUrl);
+    assert.equal(publicPreflight.headers.get("access-control-allow-origin"), "*", publicUrl);
+  }
+
+  const crossOriginResourceMetadata = await fetch(process.env.MADA_PUBLIC_BASE_URL + "/.well-known/oauth-protected-resource", {
+    headers: { origin: mcpOrigin }
+  });
+  assert.equal(crossOriginResourceMetadata.status, 200);
+  assert.equal(crossOriginResourceMetadata.headers.get("access-control-allow-origin"), "*");
+
   const crossOriginInit = await fetch(process.env.MADA_PUBLIC_BASE_URL + "/mcp", {
     method: "POST",
     headers: { origin: mcpOrigin, "content-type": "application/json", accept: "application/json, text/event-stream" },
