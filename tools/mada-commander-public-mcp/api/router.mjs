@@ -190,15 +190,25 @@ async function getCimdMetadata(clientId) {
   const cached = cimdCache.get(clientId);
   if (cached && cached.expiresAt > Date.now()) return cached.metadata;
   try {
-    const response = await fetch(clientId, { redirect: "error", headers: { accept: "application/json" }, signal: AbortSignal.timeout(5000) });
-    if (!response.ok) return null;
+    const response = await fetch(clientId, { redirect: "error", headers: { accept: "application/json" }, signal: AbortSignal.timeout(12_000) });
+    if (!response.ok) {
+      console.warn("Mada Commander CIMD metadata lookup failed", { reason: "http_status", status: response.status });
+      return null;
+    }
     const text = await response.text();
-    if (text.length > 32_768) return null;
+    if (text.length > 32_768) {
+      console.warn("Mada Commander CIMD metadata lookup failed", { reason: "metadata_too_large" });
+      return null;
+    }
     const metadata = JSON.parse(text);
-    if (!validateCimdMetadata(clientId, metadata)) return null;
+    if (!validateCimdMetadata(clientId, metadata)) {
+      console.warn("Mada Commander CIMD metadata lookup failed", { reason: "metadata_validation_failed" });
+      return null;
+    }
     cimdCache.set(clientId, { metadata, expiresAt: Date.now() + CIMD_CACHE_MS });
     return metadata;
-  } catch {
+  } catch (error) {
+    console.warn("Mada Commander CIMD metadata lookup failed", { reason: error?.name === "TimeoutError" ? "timeout" : "fetch_or_parse_error" });
     return null;
   }
 }
@@ -547,6 +557,7 @@ async function handleOAuthApprove(req, res) {
     return html(res, 400, "<!doctype html><title>Cancelled</title><p>The request expired.</p>");
   }
   const code = randomToken(32);
+  let consentFailureReason = "transaction_expired_or_nonce_mismatch";
   const created = await withTransaction(async db => {
     const tx = await db.query(
       "SELECT * FROM mada_oauth_authorization_requests WHERE transaction_id = $1 AND user_id = $2 AND consent_nonce_hash = $3 AND expires_at > now() FOR UPDATE",
@@ -554,15 +565,32 @@ async function handleOAuthApprove(req, res) {
     );
     if (!tx.rowCount) return null;
     const row = tx.rows[0];
-    if (!(await clientIdAllowed(row.client_id)) || !(await clientRedirectAllowed(row.client_id, row.redirect_uri))) return null;
+
+    // The authorization endpoint already validated this client ID + redirect URI before
+    // creating the transaction. Do not re-fetch remote CIMD metadata while holding a DB lock;
+    // transient network/timeout failures here incorrectly reject an otherwise valid consent.
+    const staticClientAllowed = allowedList("MADA_OAUTH_CLIENT_IDS").includes(row.client_id)
+      && allowedList("MADA_OAUTH_REDIRECT_URIS").includes(row.redirect_uri);
+    const dynamicChatGptClientAllowed = CIMD_ENABLED
+      && isTrustedCimdUrl(row.client_id)
+      && isApprovedChatGptRedirect(row.redirect_uri);
+    if (!staticClientAllowed && !dynamicChatGptClientAllowed) {
+      consentFailureReason = "client_redirect_not_allowed";
+      return null;
+    }
+
     await db.query(
       "INSERT INTO mada_oauth_codes (code_hash, user_id, client_id, redirect_uri, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + ($8 * interval '1 second'))",
       [hashToken(code), user.userId, row.client_id, row.redirect_uri, row.code_challenge, row.scope, row.resource, AUTH_CODE_TTL_SECONDS]
     );
     await db.query("DELETE FROM mada_oauth_authorization_requests WHERE transaction_id = $1", [txnId]);
+    consentFailureReason = "";
     return row;
   });
-  if (!created) return html(res, 400, "<!doctype html><title>Invalid request</title><p>The authorization request expired or failed validation. Start again from ChatGPT.</p>");
+  if (!created) {
+    console.warn("Mada Commander OAuth consent validation failed", { reason: consentFailureReason });
+    return html(res, 400, "<!doctype html><title>Invalid request</title><p>The authorization request expired or failed validation. Start again from ChatGPT.</p>");
+  }
   const target = new URL(created.redirect_uri);
   target.searchParams.set("code", code);
   target.searchParams.set("state", created.client_state);
