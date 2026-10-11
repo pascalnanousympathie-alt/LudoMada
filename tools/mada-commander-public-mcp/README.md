@@ -1,6 +1,6 @@
 # Mada Commander — Public MCP (separate service)
 
-**State: deployed at https://mada-commander-public-mcp.vercel.app, but NOT READY for protected use or OpenAI review.** The live health endpoint intentionally returns HTTP 503 until the dedicated database/schema, Google OAuth credentials, and OpenAI-issued challenge token are configured.
+**State: deployed at https://mada-commander-public-mcp.vercel.app.** The live health endpoint reports `ready: true` and `schemaReady: true` after the dedicated database/schema and Google OAuth setup. OpenAI review is still **not ready** until the exact portal-issued `OPENAI_APPS_CHALLENGE_TOKEN` is configured and the public MCP tool scan, OAuth flow, and owner/device pairing are verified end to end.
 
 This is a new, least-privilege service separate from `tools/personal-mcp-commander`. Never point it at the private Commander's database, tunnel key, local HTTP token, Google session, browser state, or the LudoMada game database.
 

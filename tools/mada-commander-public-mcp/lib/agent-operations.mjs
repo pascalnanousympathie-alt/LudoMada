@@ -299,9 +299,10 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
     }
     if (p.action === "fill_selector") {
       const kind = String(el.type || "").toLowerCase();
-      const name = String(el.name || el.id || "").toLowerCase();
+      const identity = [el.name,el.id,el.getAttribute("autocomplete"),el.getAttribute("aria-label"),el.getAttribute("placeholder"),kind].join(" ").toLowerCase();
       if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) ||
-          ["password","hidden","file"].includes(kind) || /password|secret|token|credential|email|username/.test(name)) return { ok:false, reason:"field_type_not_allowed" };
+          ["password","hidden","file","email"].includes(kind) ||
+          /password|secret|token|credential|email|username|one-time-code|current-password|new-password/.test(identity)) return { ok:false, reason:"field_type_not_allowed" };
       el.focus(); el.value=p.value;
       el.dispatchEvent(new Event("input",{bubbles:true})); el.dispatchEvent(new Event("change",{bubbles:true}));
       return { ok:true, updated:true };

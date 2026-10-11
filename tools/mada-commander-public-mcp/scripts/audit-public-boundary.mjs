@@ -25,7 +25,8 @@ const annotationNotes = await read("PUBLIC_TOOL_ANNOTATIONS.md");
 const environmentExample = await read(".env.example");
 const tenantTest = await read("scripts/test-tenant-isolation.mjs");
 const manifest = JSON.parse(await fs.readFile(path.join(REPO, "tools/mada-commander-publication/listing-metadata.draft.json"), "utf8"));
-const publicCode = [router, security, agent, await read("lib/db.mjs"), await read("lib/tools.mjs")].join("\n");
+const operations = await read("lib/agent-operations.mjs");
+const publicCode = [router, security, agent, operations, await read("lib/db.mjs"), await read("lib/tools.mjs")].join("\n");
 
 check("package is isolated under its own package name", packageJson.name === "mada-commander-public-mcp");
 check("Vercel deployment has a default Node handler", /export default async function vercelHandler/.test(router));
@@ -43,6 +44,11 @@ check("diagnostic tool rejects extra input properties", PUBLIC_TOOLS.find(t => t
 check("local agent never spawns a shell", /shell:\s*false/.test(agent) && !/shell:\s*true/.test(agent));
 check("local agent does not execute user-supplied remote commands", !/body\.(command|cmd|shell|script|path)|job\.(command|cmd|shell|script|path)/i.test(agent));
 check("local agent supports only fixed diagnostic program/argument sites", ["git", "process.execPath", "npm", "java"].every(program => agent.includes(program)));
+check("workspace access blocks credentials, generated directories, symlinks and non-text files", operations.includes("BLOCKED_DIRS") && operations.includes("BLOCKED_NAMES") && operations.includes("isSymbolicLink") && operations.includes("Only recognised text/source files"));
+check("local build tasks are a fixed shell-free allowlist with timeouts", operations.includes("shell: false") && operations.includes("android_assemble_debug") && operations.includes("android_test") && operations.includes("npm_build") && operations.includes("timeoutMs"));
+check("Opera commands are loopback-only and never expose raw CDP socket URLs", operations.includes("127.0.0.1") && operations.includes("webSocketDebuggerUrl") && operations.includes("Unexpected Opera debugging socket") && operations.includes("No arbitrary JavaScript") === false);
+check("Opera navigation rejects arbitrary protocols and sensitive query parameters", operations.includes("validateOperaAddress") && operations.includes("Credential-like query parameters are not allowed") && operations.includes("Only HTTP, HTTPS, and approved Opera settings pages"));
+check("Opera DOM automation is structured and blocks account identity and destructive UI controls", operations.includes("const allowed = [") && operations.includes("password") && operations.includes("sensitive_action_blocked"));
 check("jobs enforce a database-level owner-agent composite foreign key", /FOREIGN KEY \(agent_id, user_id\) REFERENCES mada_public_agents\(id, user_id\) ON DELETE CASCADE/.test(schema));
 check("agent/user composite key prevents cross-tenant job ownership", /UNIQUE \(id, user_id\)/.test(schema));
 check("agent paths are stored only in a local owner-only file", agent.includes('path.join(HOME, ".config", "mada-commander")') && agent.includes('"agent.json"') && /chmod\(STATE_DIR, 0o700\)/.test(agent) && /chmod\(CONFIG_FILE, 0o600\)/.test(agent));
