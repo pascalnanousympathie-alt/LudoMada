@@ -292,6 +292,9 @@ test("OAuth refresh grants persist until revoked and can be managed from the web
   assert.match(router, /expires_at IS NULL OR expires_at > now\(\)\) FOR UPDATE/);
   assert.match(router, /DELETE FROM mada_oauth_refresh_tokens WHERE user_id = \$1 AND client_id = \$2/);
   assert.match(router, /DELETE FROM mada_oauth_access_tokens WHERE user_id = \$1 AND client_id = \$2/);
+  const tokenHandler = router.slice(router.indexOf("async function handleOAuthToken"), router.indexOf("async function handleOAuthRevoke"));
+  assert.match(tokenHandler, /const isRefreshGrant = body\.grant_type === "refresh_token"/);
+  assert.match(tokenHandler, /!isRefreshGrant && !await clientIdAllowed\(clientId\)/);
   assert.match(router, /expires_at IS NULL OR s\.expires_at > now\(\)/);
   assert.match(router, /now\(\) \+ interval '60 minutes'/);
   assert.match(schema, /ALTER TABLE public\.mada_oauth_refresh_tokens ALTER COLUMN expires_at DROP NOT NULL/);
