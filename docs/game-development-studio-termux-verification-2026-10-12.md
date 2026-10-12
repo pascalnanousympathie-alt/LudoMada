@@ -132,3 +132,10 @@ The repository does have `android-app/app/src/androidTest/java/com/ludomadagasca
 The first local `assembleDebug` retry failed because Gradle attempted to launch a Linux-host AAPT2 binary directly under Termux; the error was `syntax error: unexpected '('`. A custom wrapper was built in the external workspace at `$HOME/.local/share/ludomada-game-development-studio/aapt2-wrapper/aapt2`. It invokes the ARM64 AAPT2 binary through Debian proot and retains the caller's working directory. Its isolated resource compilation smoke test passed. The full Android `assembleDebug` retry using this wrapper is not marked PASS in this report until Gradle exits successfully and the output APK's timestamp/hash are checked.
 
 No actual game screenshot, GPU trace, FPS measurement, or hardware performance conclusion has been created by these tests. A real capture adapter remains unconfigured until the Android app can be built, installed/launched with an approved method, and captured repeatably. No game rules, wallet, ledger, MLG, payment, authentication or anti-cheat code was changed.
+
+
+### Codex MCP registration: PASS
+
+The MCP server was installed as a local Debian-userland command at `/usr/local/bin/game-dev-mcp`, which invokes the same checksum-verified CLI's `dist/mcp/server.js` through Linux Node 24.19.0. An MCP stdio `initialize` request returned protocol `2025-03-26`, server name `game-development-studio`, version `1.5.0`. The CLI-generated Codex snippet was added to `/root/.codex/config.toml` after making a backup at `/root/.codex/config.toml.before-game-dev-20261012`. `codex mcp list` reports `game_dev` as enabled. The server is local stdio and does not use an OAuth flow; Codex labels its auth mode as unsupported because it is not a web-auth server.
+
+The configured server sets `ASSET_OUTPUT_DIR` to the external LudoMada workspace. Paid provider tools remain disabled, and scenario execution/project writes/GPU/performance authorities have not been enabled. That restriction is intentional while the real LudoMada capture adapter and its execution commands remain unverified.
