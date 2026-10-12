@@ -295,6 +295,54 @@ async function operaCdpCall(tabIdInput, method, params = {}) {
   const target = (Array.isArray(targets) ? targets : []).find(t => t.id === tabId && t.type === "page");
   if (!target?.id) throw new Error("Selected Opera tab is no longer available.");
 
+  // Runtime.evaluate hangs on Opera's browser-level flattened session in some
+  // builds. Use the target-scoped debugger socket for DOM operations; keep
+  // Page.navigate on the browser socket because navigation may close a page socket.
+  if (method === "Runtime.evaluate") {
+    let targetSocket;
+    try { targetSocket = new URL(String(target.webSocketDebuggerUrl || "")); }
+    catch { throw new Error("Opera did not provide a valid target debugging endpoint."); }
+    if (targetSocket.protocol !== "ws:" ||
+        !["127.0.0.1", "localhost", "::1"].includes(targetSocket.hostname) ||
+        Number(targetSocket.port) !== operaCdpPort() ||
+        !targetSocket.pathname.startsWith("/devtools/page/") ||
+        !/^[A-Za-z0-9_-]{1,100}$/.test(targetSocket.pathname.slice("/devtools/page/".length)) ||
+        targetSocket.username || targetSocket.password || targetSocket.search || targetSocket.hash) {
+      throw new Error("Unexpected Opera target debugging socket; connection refused.");
+    }
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      let stage = "opening target socket";
+      const socket = new WebSocket(targetSocket.href);
+      const timer = setTimeout(() => finish(new Error("Opera command timed out at stage: " + stage + ".")), 12000);
+      function finish(error, result) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { socket.close(); } catch {}
+        if (error) reject(error); else resolve(result || {});
+      }
+      socket.addEventListener("open", () => {
+        stage = "awaiting " + method + " response";
+        socket.send(JSON.stringify({ id: 1, method, params }));
+      }, { once: true });
+      socket.addEventListener("message", event => {
+        let message;
+        try { message = JSON.parse(String(event.data)); } catch { return; }
+        if (message.id !== 1) return;
+        if (message.error) {
+          finish(new Error("Opera rejected the requested browser action."));
+          return;
+        }
+        finish(null, { ...(message.result || {}), __targetUrl: target.url });
+      });
+      socket.addEventListener("error", () => finish(new Error("Could not connect to the Opera target debugging session.")), { once: true });
+      socket.addEventListener("close", () => {
+        if (!settled) finish(new Error("Opera target debugging session closed before replying."));
+      }, { once: true });
+    });
+  }
+
   // Use the browser-level WebSocket and a flattened CDP session. A per-page
   // socket can close during cross-origin navigation before Page.navigate's
   // acknowledgement is delivered, which looks like a timeout despite success.
