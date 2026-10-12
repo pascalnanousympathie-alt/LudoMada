@@ -77,12 +77,17 @@ export function escapeHtml(value) {
 export function redactSensitive(value) {
   let text = typeof value === "string" ? value : JSON.stringify(value ?? "");
   text = text
-    .replace(/(authorization|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|password|pairing[_ -]?code|cookie)(\s*["']?\s*[:=]\s*["']?)[^\s,"'&}]+/gi, "$1$2[REDACTED]")
-    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,})\b/g, "[REDACTED_TOKEN]")
+    .replace(
+      /(["']?(?:authorization|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret(?:[_ -]?(?:key|token))?|api[_ -]?key|private[_ -]?key|password|pairing[_ -]?code|cookie|database[_ -]?(?:url|uri)|connection[_ -]?string|credential(?:s)?|token)["']?\s*[:=]\s*)(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,"'&}]+))/gi,
+      (_match, prefix, doubleQuoted, singleQuoted) =>
+        prefix + (doubleQuoted !== undefined ? '"[REDACTED]"' : singleQuoted !== undefined ? "'[REDACTED]'" : "[REDACTED]")
+    )
+    .replace(/^([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|DATABASE_URL|DATABASE_URI|CONNECTION_STRING|CREDENTIALS?|AUTHORIZATION|COOKIE)[A-Z0-9_]*\s*=\s*).+$/gim, "$1[REDACTED]")
+    .replace(/\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED_CONNECTION_STRING]")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{16,})\b/g, "[REDACTED_TOKEN]")
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]");
   return text.slice(0, 6000);
 }
-
 export function setSecurityHeaders(res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
