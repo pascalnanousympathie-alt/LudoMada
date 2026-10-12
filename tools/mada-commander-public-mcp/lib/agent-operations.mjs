@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { redactSensitive } from "./security.mjs";
+import { listMcpIntegrations, listAllowedMcpTools, callAllowedMcpTool } from "./mcp-integrations.mjs";
 
 const BLOCKED_DIRS = new Set([".git", ".config", ".ssh", ".vercel", "node_modules", "vendor", "build", "dist", "coverage", ".next", ".cache"]);
 const BLOCKED_NAMES = /^(?:\.env(?:\..*)?|\.npmrc|\.git-credentials|credentials(?:\..*)?|secrets?(?:\..*)?|.*\.(?:pem|key|p12|pfx|jks|keystore))$/i;
@@ -381,4 +382,22 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
   // Use the URL captured before Runtime.evaluate. A scheduled click may navigate immediately,
   // so querying /json/list again here can race with target teardown and turn a successful click into a timeout.
   return { tabId, action, address: safeOperaAddress(String(response.__targetUrl || "")), result };
+}
+
+
+/**
+ * Optional local MCP bridge. The server can request only these fixed operations;
+ * each target executable, endpoint, credential mapping and allowed tool name is
+ * read from the owner's chmod-600 local integration file.
+ */
+export async function mcpIntegrationCatalog() {
+  return await listMcpIntegrations();
+}
+
+export async function mcpIntegrationTools(serverId) {
+  return await listAllowedMcpTools(serverId);
+}
+
+export async function mcpIntegrationCall(serverId, toolName, args) {
+  return await callAllowedMcpTool(serverId, toolName, args);
 }
