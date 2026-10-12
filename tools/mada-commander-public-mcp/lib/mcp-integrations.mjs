@@ -18,6 +18,23 @@ const MCP_INITIALIZE_TIMEOUT_MS = 60_000;
 const SAFE_ID = /^[a-z][a-z0-9_-]{0,39}$/;
 const SAFE_TOOL_NAME = /^[A-Za-z0-9_.-]{1,120}$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,127}$/;
+const MCP_TOOLSETS = new Set(["repos", "issues", "pull_requests", "actions"]);
+
+function validateHttpRequestHeaders(server) {
+  if (server.requestHeaders === undefined) return;
+  if (server.transport !== "http") throw new Error("MCP requestHeaders are supported only for HTTP integrations.");
+  const headers = server.requestHeaders;
+  if (!headers || typeof headers !== "object" || Array.isArray(headers)) throw new Error("MCP requestHeaders must be a static header map.");
+  const entries = Object.entries(headers);
+  if (entries.length !== 1 || entries[0][0].toLowerCase() !== "x-mcp-toolsets") {
+    throw new Error("MCP HTTP requestHeaders only support the X-MCP-Toolsets header.");
+  }
+  const value = entries[0][1];
+  const names = typeof value === "string" ? value.split(",") : [];
+  if (names.length < 1 || names.length > MCP_TOOLSETS.size || names.some(name => !MCP_TOOLSETS.has(name)) || new Set(names).size !== names.length) {
+    throw new Error("X-MCP-Toolsets must be a unique comma-separated subset of repos,issues,pull_requests,actions.");
+  }
+}
 
 function safeId(value) {
   return typeof value === "string" && SAFE_ID.test(value);
@@ -52,6 +69,7 @@ function validateServer(server) {
     }
     if (server.authEnv !== undefined && !ENV_NAME.test(server.authEnv)) throw new Error("MCP HTTP authEnv must name a local environment variable, not contain a token.");
   }
+  validateHttpRequestHeaders(server);
   const allowedTools = server.allowedTools;
   const readOnlyTools = server.readOnlyTools;
   if (!Array.isArray(allowedTools) || allowedTools.length > MAX_TOOLS || allowedTools.some(n => !safeToolName(n)) || new Set(allowedTools).size !== allowedTools.length) {
@@ -237,6 +255,7 @@ async function parseHttpResult(response, maxBytes = MAX_RESPONSE_BYTES) {
 async function withHttp(server, fn) {
   const headers = { accept: "application/json, text/event-stream", "content-type": "application/json" };
   if (server.authEnv && process.env[server.authEnv]) headers.authorization = "Bearer " + process.env[server.authEnv];
+  for (const [name, value] of Object.entries(server.requestHeaders || {})) headers[name.toLowerCase()] = value;
   let sessionId = "";
   let protocolVersion = "2025-06-18";
   let initialized = false;

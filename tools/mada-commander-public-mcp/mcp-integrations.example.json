@@ -14,7 +14,10 @@
         "search_repositories",
         "list_commits",
         "list_pull_requests",
-        "issue_read"
+        "issue_read",
+        "actions_get",
+        "actions_list",
+        "get_job_logs"
       ],
       "readOnlyTools": [
         "get_file_contents",
@@ -22,9 +25,15 @@
         "search_repositories",
         "list_commits",
         "list_pull_requests",
-        "issue_read"
+        "issue_read",
+        "actions_get",
+        "actions_list",
+        "get_job_logs"
       ],
-      "writeEnabled": false
+      "writeEnabled": false,
+      "requestHeaders": {
+        "X-MCP-Toolsets": "repos,issues,pull_requests,actions"
+      }
     },
     {
       "id": "playwright",
