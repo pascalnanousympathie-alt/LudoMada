@@ -28,7 +28,9 @@ game-dev credentials status --output-dir /absolute/path/to/ludomada-gds-workspac
 
 Use an absolute, project-specific output directory outside the Git working tree. Review and redact diagnostic output before sharing it. A credential status check may confirm presence only; never print, copy, or ask for credential values.
 
-The official CLI requires Node.js 22.5+ and documents Windows, macOS, and Linux. Android/Termux is not yet validated for this project: verify it experimentally before relying on it. Do not describe it as installed or working until `game-dev --version`, `doctor`, and the appropriate capability checks succeed on that exact host.
+The official CLI requires Node.js 22.5+ and documents Windows, macOS, and Linux. On the LudoMada Termux host, the default `game-dev` and `game-dev-mcp` launchers enter Debian 13 proot and run the checksum-verified v1.5.0 package using Linux ARM64 Node.js 24.19.0 from the existing Actions runner. That Linux-userland route has passed `game-dev doctor` with `healthy: true`. The preserved `game-dev-termux` launcher uses native Android/Termux and is not upstream-supported; its `doctor` reports `android arm64`. Do not patch or suppress the platform check. If the Linux wrapper, Node runtime, or doctor status changes, rerun the checks and report the evidence before relying on the CLI.
+
+The local Codex MCP server is registered at `/root/.codex/config.toml` under `mcp_servers.game_dev`. Paid-provider access, project writes, scenario execution, GPU and hardware-performance authority remain disabled unless separately reviewed and deliberately enabled. The five local skills are installed in Termux and Debian-userland skill roots. The skills-only bundle and the separate upstream ChatGPT plugin are not the same thing.
 
 ## LudoMada-specific capture gate
 
