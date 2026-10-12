@@ -11,6 +11,8 @@ const MAX_CONFIG_BYTES = 128_000;
 const MAX_TOOLS = 150;
 const MAX_ARGUMENT_BYTES = 32_000;
 const MAX_RESPONSE_BYTES = 500_000;
+// Some hosted MCP servers publish large tool catalogs; cap protocol frames separately from user-facing tool results.
+const MAX_PROTOCOL_LINE_BYTES = 2_000_000;
 const SAFE_ID = /^[a-z][a-z0-9_-]{0,39}$/;
 const SAFE_TOOL_NAME = /^[A-Za-z0-9_.-]{1,120}$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,127}$/;
@@ -144,7 +146,7 @@ async function withStdio(server, fn) {
   };
   const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
   lines.on("line", line => {
-    if (!line || Buffer.byteLength(line, "utf8") > MAX_RESPONSE_BYTES) return;
+    if (!line || Buffer.byteLength(line, "utf8") > MAX_PROTOCOL_LINE_BYTES) return;
     let message;
     try { message = JSON.parse(line); } catch { return; }
     if (message?.id === undefined || message?.id === null) return;
