@@ -354,7 +354,7 @@ async function handleMcp(req, res, url) {
       protocolVersion,
       capabilities: { tools: { listChanged: false } },
       serverInfo: { name: "mada-commander-public", version: "0.1.0" },
-      instructions: "Mada Commander only works on projects registered by the signed-in user's own paired local agent. mada_run_diagnostics queues one of three fixed read-only checks (Git status, toolchain versions, or basic inventory). It never accepts arbitrary shell commands or remote file paths."
+      instructions: "Mada Commander only works on projects registered by the signed-in user's own paired local agent. mada_run_command supports an explicit allowlist of command executables with separately passed arguments and no shell parsing; the commands can still modify files or use the paired user's network permissions. The registered workspace is the starting directory, not a sandbox."
     }));
   }
   if (body.method === "ping") return send(res, 200, mcpResult(body.id, {}));
@@ -412,7 +412,7 @@ async function handleMcp(req, res, url) {
 function consentPage(txnId, nonce) {
   return '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Authorize Mada Commander</title>' +
     '<body style="margin:0;background:#071019;color:#edf6ff;font:16px system-ui"><main style="max-width:520px;margin:12vh auto;padding:24px;background:#0e1925;border:1px solid #29465c;border-radius:16px">' +
-    '<h1>Mada Commander</h1><h2>Authorize workspace diagnostics?</h2><p>Mada Commander will be able to see the project aliases you register and run only fixed, read-only diagnostics on your paired device. It cannot run arbitrary shell commands through this public connection.</p>' +
+    '<h1>Mada Commander</h1><h2>Authorize workspace and command access?</h2><p>Mada Commander can inspect and edit registered project files and run allowlisted command executables on your paired device using separate arguments. Commands run with the local agent account permissions and can modify or delete files or access the network. Continue only if this is your device and you trust the requesting ChatGPT connection.</p>' +
     '<form method="post" action="/oauth/approve"><input type="hidden" name="transaction_id" value="' + escapeHtml(txnId) + '"><input type="hidden" name="consent_nonce" value="' + escapeHtml(nonce) + '">' +
     '<button name="decision" value="approve" style="padding:12px 18px;background:#b3873b;color:#160f05;border:0;border-radius:10px;font-weight:700">Approve</button> ' +
     '<button name="decision" value="deny" style="padding:12px 18px;background:#142839;color:#edf6ff;border:1px solid #29465c;border-radius:10px">Cancel</button></form></main></body></html>';
@@ -1036,6 +1036,19 @@ function sanitizeResult(profile, raw) {
       bytes: Number.isInteger(raw.bytes) ? Math.max(0, Math.min(120000, raw.bytes)) : 0,
       sha256: String(raw.sha256),
       created: Boolean(raw.created)
+    };
+  }
+  if ((profile === "run_command" || profile === "run_task") && typeof raw.program === "string" && Array.isArray(raw.args)) {
+    if (typeof raw.cwd !== "string" || !Number.isInteger(raw.exitCode)) return null;
+    return {
+      program: redactSensitive(raw.program).slice(0, 80),
+      args: raw.args.slice(0, 40).filter(arg => typeof arg === "string").map(arg => redactSensitive(arg).slice(0, 2000)),
+      cwd: redactSensitive(raw.cwd).slice(0, 240),
+      exitCode: Math.max(-1, Math.min(255, raw.exitCode)),
+      timedOut: Boolean(raw.timedOut),
+      durationMs: Number.isInteger(raw.durationMs) ? Math.max(0, Math.min(900000, raw.durationMs)) : 0,
+      stdout: redactSensitive(String(raw.stdout || "")).slice(-6000),
+      stderr: redactSensitive(String(raw.stderr || "")).slice(-2500)
     };
   }
   if (profile === "run_task") {

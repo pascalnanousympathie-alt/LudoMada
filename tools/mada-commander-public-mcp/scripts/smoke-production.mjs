@@ -88,11 +88,11 @@ await check("MCP initialize succeeds", async () => {
   const body = await response.json();
   assert.equal(body.result?.serverInfo?.name, "mada-commander-public");
 });
-await check("MCP lists all sixteen scoped tools with output schemas", async () => {
+await check("MCP lists all seventeen scoped tools with output schemas", async () => {
   const response = await rpc({jsonrpc:"2.0",id:2,method:"tools/list",params:{}});
   assert.equal(response.status, 200);
   const body = await response.json();
-  const want = ["mada_agent_status","mada_list_projects","mada_run_diagnostics","mada_job_status","mada_connection_help","mada_workspace_list","mada_workspace_read","mada_workspace_write","mada_run_task","mada_opera_status","mada_opera_tabs","mada_opera_navigate","mada_opera_action","mada_mcp_integrations","mada_mcp_tools","mada_mcp_call"];
+  const want = ["mada_agent_status","mada_list_projects","mada_run_diagnostics","mada_job_status","mada_connection_help","mada_workspace_list","mada_workspace_read","mada_workspace_write","mada_run_task","mada_run_command","mada_opera_status","mada_opera_tabs","mada_opera_navigate","mada_opera_action","mada_mcp_integrations","mada_mcp_tools","mada_mcp_call"];
   assert.deepEqual(body.result?.tools?.map(t=>t.name), want);
   assert.ok(body.result.tools.every(t=>t.outputSchema?.type === "object"));
   assert.ok(body.result.tools.every(t=>["readOnlyHint","openWorldHint","destructiveHint"].every(k=>typeof t.annotations?.[k] === "boolean")));
