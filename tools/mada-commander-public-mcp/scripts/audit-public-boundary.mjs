@@ -46,15 +46,17 @@ check("MCP tools are deny-by-default and write tools require explicit local opt-
 check("MCP credentials are mapped by environment-variable names and never returned in integration status", mcpIntegrations.includes("requiredEnvNames") && mcpIntegrations.includes("missingEnvironmentVariables") && !/gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(await read("mcp-integrations.example.json")));
 check("MCP example integrations are all disabled, write-disabled, and contain only placeholders", integrationExample.version === 1 && integrationExample.servers.length >= 3 && integrationExample.servers.every(s => s.enabled === false && s.writeEnabled === false) && !/REPLACE_WITH_REAL|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(JSON.stringify(integrationExample)));
 const githubMcpExample = integrationExample.servers.find(s => s.id === "github");
-const githubReadOnlyAllowlist = ["get_file_contents", "search_code", "search_repositories", "list_commits", "list_pull_requests", "issue_read"];
-check("GitHub MCP template uses the hosted HTTPS endpoint and a closed six-tool read-only allowlist",
+const githubReadOnlyAllowlist = ["get_file_contents", "search_code", "search_repositories", "list_commits", "list_pull_requests", "issue_read", "actions_get", "actions_list", "get_job_logs"];
+check("GitHub MCP template uses the hosted HTTPS endpoint and a closed nine-tool read-only allowlist with the Actions toolset",
   githubMcpExample?.transport === "http" &&
   githubMcpExample.url === "https://api.githubcopilot.com/mcp/" &&
   githubMcpExample.authEnv === "GITHUB_PERSONAL_ACCESS_TOKEN" &&
+  githubMcpExample.requestHeaders?.["X-MCP-Toolsets"] === "repos,issues,pull_requests,actions" &&
   githubMcpExample.enabled === false && githubMcpExample.writeEnabled === false &&
   JSON.stringify(githubMcpExample.allowedTools) === JSON.stringify(githubReadOnlyAllowlist) &&
   JSON.stringify(githubMcpExample.readOnlyTools) === JSON.stringify(githubReadOnlyAllowlist) &&
   !("command" in githubMcpExample));
+check("HTTP MCP request headers are limited to a validated static GitHub toolset hint", mcpIntegrations.includes("validateHttpRequestHeaders") && mcpIntegrations.includes("only support the X-MCP-Toolsets header") && mcpIntegrations.includes("headers[name.toLowerCase()] = value"));
 check("MCP integration tests cover stdio, HTTP session negotiation, allowlist denial, and config permissions", integrationTests.includes("stdio bridge") && integrationTests.includes("HTTP bridge") && integrationTests.includes("allowlist") && integrationTests.includes("world-readable config"));
 check("paired agent admits only fixed MCP bridge operation types", agent.includes('"mcp_integrations"') && agent.includes('"mcp_tools"') && agent.includes('"mcp_call"') && agent.includes("mcpIntegrationCall"));
 check("OpenAI submission rationale documents every tool and each safety annotation", PUBLIC_TOOLS.every(t => annotationNotes.includes("`" + t.name + "`")) && ["readOnlyHint", "openWorldHint", "destructiveHint"].every(label => annotationNotes.includes(label)) && annotationNotes.includes("rationale"));

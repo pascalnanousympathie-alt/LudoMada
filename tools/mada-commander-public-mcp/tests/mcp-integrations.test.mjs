@@ -103,7 +103,7 @@ test("HTTP bridge negotiates an MCP session and sends session headers after init
     let text = "";
     for await (const chunk of req) text += chunk.toString();
     const msg = text ? JSON.parse(text) : {};
-    seen.push({ method: msg.method, session: req.headers["mcp-session-id"], version: req.headers["mcp-protocol-version"] });
+    seen.push({ method: msg.method, session: req.headers["mcp-session-id"], version: req.headers["mcp-protocol-version"], toolsets: req.headers["x-mcp-toolsets"] });
     if (msg.method === "notifications/initialized") {
       res.writeHead(202); res.end(); return;
     }
@@ -134,11 +134,20 @@ test("HTTP bridge negotiates an MCP session and sends session headers after init
     url: "http://127.0.0.1:" + address.port + "/mcp",
     allowedTools: ["http_read"],
     readOnlyTools: ["http_read"],
+    requestHeaders: { "X-MCP-Toolsets": "repos,issues" },
     writeEnabled: false
   }]);
   const result = await callAllowedMcpTool("http-fixture", "http_read", {}, file);
   assert.match(result.content[0].text, /http fixture passed/);
   assert.ok(seen.some(item => item.method === "tools/list" && item.session === "fixture-session" && item.version === "2025-06-18"));
+  assert.ok(seen.some(item => item.method === "initialize" && item.toolsets === "repos,issues"));
+
+  const invalidHeaderFile = await makeConfig(t, [{
+    id: "http-fixture", label: "HTTP fixture", transport: "http", enabled: true,
+    url: "http://127.0.0.1:" + address.port + "/mcp", allowedTools: ["http_read"],
+    readOnlyTools: ["http_read"], requestHeaders: { Authorization: "placeholder" }, writeEnabled: false
+  }]);
+  await assert.rejects(() => listAllowedMcpTools("http-fixture", invalidHeaderFile), /only support the X-MCP-Toolsets header/);
 });
 
 test("configuration rejects shell commands and world-readable config files", async t => {
