@@ -67,3 +67,75 @@ The first test attempt inherited an `ASSET_OUTPUT_DIR` pointing inside Desktop C
 Identify the exact local Android build/launch and screenshot mechanism for LudoMada, then write and review a small project-owned adapter that calls only those known commands. Test it against the actual app with a disposable run directory and closed artifact roster. Do not install a generic sample adapter as if it were a LudoMada adapter, and do not grant GPU/performance authority until the adapter's evidence contract is reviewed.
 
 Keep all Game Development Studio run bundles outside the Git checkout. The successful generic run proves the harness's synthetic contract only, not LudoMada's live scene.
+
+
+---
+
+## Follow-up resolution attempt (later on 2026-10-12)
+
+### Linux-userland compatibility gate: PASS
+
+The direct Termux path reports `android arm64`, which remains outside the upstream platform list. Rather than patching that result, the active `$PREFIX/bin/game-dev` and `game-dev-mcp` wrappers were redirected into the existing Debian 13 proot using the existing Actions-runner Linux ARM64 Node binary:
+
+- Node executable: `$HOME/actions-runner/externals/node24/bin/node`
+- Runtime inside Debian: `linux arm64 v24.19.0`
+- CLI version through `game-dev --version`: `1.5.0`
+- `game-dev doctor --json`: `ok: true`, `healthy: true`, `platform: linux arm64`
+- Required Node runtime and `node:sqlite` checks: PASS
+- Workspace and generic-sample checks: PASS
+- All five skills: PASS in the Debian userland `/root/.codex/skills` root
+- Native- Termux wrappers are preserved as `$PREFIX/bin/game-dev-termux` and `$PREFIX/bin/game-dev-mcp-termux`; they are fallbacks, not the recommended route.
+
+The outer device is still Android/Termux. A green doctor result applies to the supported Linux userland running under proot; it is not proof that upstream officially supports native Android or that a GPU driver has been validated.
+
+### Synthetic capture: PASS again
+
+A new run was created through the default Linux-userland wrapper and verified:
+
+- Run ID: `run_1791825102917_1434308a3ac2463d90224ff056cf57c5`
+- Run-manifest SHA-256: `cad6b77053f6c72b9974cd3522949a7ef9433da3a591238c638ab37fab51308b`
+- Status: `completed`, exit code 0
+- `game-dev capture verify`: `ok: true`
+
+As with the earlier sample, this is synthetic-only evidence. Its raster is a fixture, not a screenshot of the LudoMada scene. It does not establish GPU completion, hardware timing, FPS, visual quality, or successful on-device rendering.
+
+### GLB inspection: local compatibility hotfix and upstream issue
+
+The installed v1.5.0 inspector originally failed on LudoMada GLBs because it registered only `KHRTextureBasisu`, while some valid model files declare the required `KHR_lights_punctual` extension and also use `KHR_materials_clearcoat`. A local, reversible hotfix in the installed CLI's `dist/inspection/gltf.js` registers `ALL_EXTENSIONS` from the already bundled glTF-Transform extension package. The original installed file is preserved outside the repository at:
+
+```
+$HOME/.local/share/ludomada-game-development-studio/patches/gltf.js.release-1.5.0.original
+```
+
+- Original SHA-256: `ce7359ea20d5371b3cc1af1f039d749dcd1d961c38a345c928b2f4d3414258a7`
+- Patched SHA-256: `6d5f376362f56ba4cf473df10b674a2eee08dd47fe5786366dc7cbcb6663c42c`
+- Upstream tracking issue: [theisegoria/game-development-studio #12](https://github.com/theisegoria/game-development-studio/issues/12)
+
+The hotfix is not a committed project or upstream code change; reinstalling the upstream CLI may replace it. Five real project GLBs were parsed with the bundled GLTF-Transform extensions; `game-dev asset inspect` also returned `ok: true` for the gameplay market GLB after the hotfix. Current reports show missing UVs/no base-colour textures on many primitives. Those warnings are retained; no asset was normalized or overwritten to hide them.
+
+Observed asset metrics:
+
+| Asset | Meshes | Primitives | Triangles | Reported warning |
+|---|---:|---:|---:|---|
+| `ludomada-premium-3d-rev3.glb` | 112 | 112 | 33,654 | 4 primitives missing UV; no base-colour texture reported |
+| `ludomada-environment-final.glb` | 56 | 56 | 13,086 | 34 primitives missing UV; no base-colour texture reported |
+| `ludomada-gameplay-rev5.glb` | 114 | 114 | 53,214 | 4 primitives missing UV; no base-colour texture reported |
+| `ludomada-gameplay-market-v6.glb` | 153 | 185 | 355,650 | 4 primitives missing UV; no base-colour texture reported |
+| `environment/baobab-real.glb` | 2 | 2 | 512 | 1 primitive missing UV; 256×256 texture below the 1024-pixel recommendation |
+
+These are the inspector's technical findings; they are not a human artistic-quality verdict. Keep source GLBs unchanged until the graphics owner reviews the affected materials/UVs and agrees to a specific asset change.
+
+### Real-app capture and APK build: still gated
+
+The repository does have `android-app/app/src/androidTest/java/com/ludomadagascar/StartupUiTest.kt`, which traverses Home → offline game and requests a screenshot at `/sdcard/Download/ludomada-startup-offline.png`. But the Android application is not installed on this host (`pm path com.ludomadagascar` returned no package), and `adb devices -l` listed no connected device. Calling `am start -n com.ludomadagascar/.MainActivity` returned Android error type 3 (activity absent). A direct Termux call to `/system/bin/screencap` produced a zero-byte file, so it is not admitted as screenshot evidence.
+
+The first local `assembleDebug` retry failed because Gradle attempted to launch a Linux-host AAPT2 binary directly under Termux; the error was `syntax error: unexpected '('`. A custom wrapper was built in the external workspace at `$HOME/.local/share/ludomada-game-development-studio/aapt2-wrapper/aapt2`. It invokes the ARM64 AAPT2 binary through Debian proot and retains the caller's working directory. Its isolated resource compilation smoke test passed. The full Android `assembleDebug` retry using this wrapper is not marked PASS in this report until Gradle exits successfully and the output APK's timestamp/hash are checked.
+
+No actual game screenshot, GPU trace, FPS measurement, or hardware performance conclusion has been created by these tests. A real capture adapter remains unconfigured until the Android app can be built, installed/launched with an approved method, and captured repeatably. No game rules, wallet, ledger, MLG, payment, authentication or anti-cheat code was changed.
+
+
+### Codex MCP registration: PASS
+
+The MCP server was installed as a local Debian-userland command at `/usr/local/bin/game-dev-mcp`, which invokes the same checksum-verified CLI's `dist/mcp/server.js` through Linux Node 24.19.0. An MCP stdio `initialize` request returned protocol `2025-03-26`, server name `game-development-studio`, version `1.5.0`. The CLI-generated Codex snippet was added to `/root/.codex/config.toml` after making a backup at `/root/.codex/config.toml.before-game-dev-20261012`. `codex mcp list` reports `game_dev` as enabled. The server is local stdio and does not use an OAuth flow; Codex labels its auth mode as unsupported because it is not a web-auth server.
+
+The configured server sets `ASSET_OUTPUT_DIR` to the external LudoMada workspace. Paid provider tools remain disabled, and scenario execution/project writes/GPU/performance authorities have not been enabled. That restriction is intentional while the real LudoMada capture adapter and its execution commands remain unverified.
