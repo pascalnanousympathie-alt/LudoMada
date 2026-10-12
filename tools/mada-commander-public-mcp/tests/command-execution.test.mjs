@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { runCommand } from "../lib/agent-operations.mjs";
+import { runCommand, runShellCommand } from "../lib/agent-operations.mjs";
 import { redactSensitive } from "../lib/security.mjs";
 
 test("runCommand executes an approved program with separate argv", async t => {
@@ -48,4 +48,24 @@ test("sensitive values are redacted from structured and environment-style output
   const env = redactSensitive("MADA_COMMANDER_DATABASE_URL=postgresql://owner:db-secret@db.example.test/app\nSUPABASE_SECRET_KEY=sb_secret_12345678901234567890");
   assert.doesNotMatch(env, /db-secret|sb_secret_12345678901234567890/);
   assert.match(env, /REDACTED/);
+});
+
+
+test("runShellCommand supports pipes and command chaining", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mada-shell-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const command = "printf 'ALPHA\\nBETA\\n' | grep BETA && printf DONE";
+  const result = await runShellCommand({ path: root }, command, ".", 10000);
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.stdout, "BETA\nDONE");
+  assert.equal(result.cwd, ".");
+});
+
+test("runShellCommand rejects empty commands, traversal and excessive timeouts", async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "mada-shell-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await assert.rejects(() => runShellCommand({ path: root }, " ", ".", 10000), /non-empty/i);
+  await assert.rejects(() => runShellCommand({ path: root }, "pwd", "../outside", 10000), /invalid or blocked|project-relative/i);
+  await assert.rejects(() => runShellCommand({ path: root }, "pwd", ".", 900001), /timeout/i);
 });
