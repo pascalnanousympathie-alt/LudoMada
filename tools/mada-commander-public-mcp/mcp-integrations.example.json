@@ -58,8 +58,7 @@
         "browser_take_screenshot"
       ],
       "readOnlyTools": [
-        "browser_snapshot",
-        "browser_take_screenshot"
+        "browser_snapshot"
       ],
       "writeEnabled": false
     },
