@@ -357,7 +357,7 @@ export const PUBLIC_TOOLS = Object.freeze([
       properties: {
         projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$", description: "Project alias returned by mada_list_projects." },
         agentId: { type: "string", pattern: "^[0-9a-f-]{36}$", description: "Exact owning agent ID returned beside that project." },
-        program: { type: "string", enum: ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"], description: "Exact executable name from the approved command list." },
+        program: { type: "string", enum: ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"], description: "Exact executable name from the approved command list." },
         args: { type: "array", maxItems: 40, items: { type: "string", maxLength: 2000 }, description: "Arguments passed directly as argv, without shell parsing; total size is limited to 32 KB." },
         cwd: { type: "string", maxLength: 240, default: ".", description: "Optional path relative to the registered project, used as the starting directory." },
         timeoutMs: { type: "integer", minimum: 1000, maximum: 900000, default: 120000, description: "Command timeout in milliseconds." }
@@ -677,7 +677,7 @@ export async function executePublicTool(name, args, principal) {
       const commandArgs = args?.args === undefined ? [] : args.args;
       const cwd = args?.cwd === undefined ? "." : args.cwd;
       const timeoutMs = args?.timeoutMs === undefined ? 120000 : args.timeoutMs;
-      const allowedPrograms = ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"];
+      const allowedPrograms = ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"];
       const inlineFlags = { node: ["-e","--eval","-p","--print","-r","--require","--import"], python: ["-c","--command"], python3: ["-c","--command"] };
       if (typeof program !== "string" || !allowedPrograms.includes(program)) {
         return { content: [{ type: "text", text: "Executable is not in Mada Commander's approved command list." }], isError: true };

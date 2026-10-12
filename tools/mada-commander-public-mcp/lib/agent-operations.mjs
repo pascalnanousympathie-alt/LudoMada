@@ -11,7 +11,7 @@ const TEXT_EXTENSIONS = new Set([".mjs", ".cjs", ".js", ".jsx", ".ts", ".tsx", "
 const COMMAND_PROGRAMS = new Set([
   "git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb",
   "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail",
-  "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod",
+  "pwd", "whoami", "uname", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod",
   "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test",
   "termux-info", "pkg"
 ]);

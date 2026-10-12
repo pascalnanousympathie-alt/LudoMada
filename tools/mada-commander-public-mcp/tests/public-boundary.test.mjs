@@ -33,6 +33,8 @@ test("only the least-privilege public tool surface is advertised", () => {
     const properties = Object.keys(tool.inputSchema.properties || {});
     if (tool.name === "mada_run_command") {
       assert.ok(properties.includes("program"));
+      assert.ok(!tool.inputSchema.properties.program.enum.includes("env"));
+      assert.ok(!tool.inputSchema.properties.program.enum.includes("printenv"));
       assert.equal(tool.inputSchema.properties.args.maxItems, 40);
       assert.equal(tool.annotations.destructiveHint, true);
       assert.deepEqual(tool.inputSchema.required, ["projectId", "agentId", "program", "args"]);
