@@ -26,7 +26,10 @@ const environmentExample = await read(".env.example");
 const tenantTest = await read("scripts/test-tenant-isolation.mjs");
 const manifest = JSON.parse(await fs.readFile(path.join(REPO, "tools/mada-commander-publication/listing-metadata.draft.json"), "utf8"));
 const operations = await read("lib/agent-operations.mjs");
-const publicCode = [router, security, agent, operations, await read("lib/db.mjs"), await read("lib/tools.mjs")].join("\n");
+const mcpIntegrations = await read("lib/mcp-integrations.mjs");
+const integrationExample = JSON.parse(await read("mcp-integrations.example.json"));
+const integrationTests = await read("tests/mcp-integrations.test.mjs");
+const publicCode = [router, security, agent, operations, mcpIntegrations, await read("lib/db.mjs"), await read("lib/tools.mjs")].join("\n");
 
 check("package is isolated under its own package name", packageJson.name === "mada-commander-public-mcp");
 check("Vercel deployment has a default Node handler", /export default async function vercelHandler/.test(router));
@@ -36,8 +39,14 @@ check("repeatable production smoke separates runtime readiness from domain publi
 check("static and dynamic routes receive baseline security headers from Vercel", Array.isArray(vercel.headers) && vercel.headers.some(rule => rule.source === "/(.*)" && ["Content-Security-Policy","X-Content-Type-Options","X-Frame-Options","Referrer-Policy","Permissions-Policy","Cache-Control"].every(key => rule.headers?.some(h => h.key === key))));
 check("production base URL requires HTTPS", /NODE_ENV === "production" && url\.protocol !== "https:/.test(security));
 check("project paths are not accepted in MCP tool inputs", PUBLIC_TOOLS.every(t => !Object.keys(t.inputSchema.properties || {}).some(k => /(^|_)(path|command|script|token|secret|cookie)($|_)/i.test(k))));
-check("exactly thirteen scoped public tools are advertised", PUBLIC_TOOLS.length === 13 && PUBLIC_TOOLS.every(t => t.securitySchemes?.some(s => s.type === "oauth2")));
+check("exactly sixteen scoped public tools are advertised", PUBLIC_TOOLS.length === 16 && PUBLIC_TOOLS.every(t => t.securitySchemes?.some(s => s.type === "oauth2")));
 check("all public tools expose an output schema and explicit annotations", PUBLIC_TOOLS.every(t => t.outputSchema?.type === "object" && typeof t.annotations?.readOnlyHint === "boolean" && typeof t.annotations?.openWorldHint === "boolean" && typeof t.annotations?.destructiveHint === "boolean"));
+check("local MCP integration bridge supports stdio and HTTPS transports without shell execution", mcpIntegrations.includes('transport !== "stdio" && server.transport !== "http"') && mcpIntegrations.includes("shell: false") && mcpIntegrations.includes('redirect: "error"'));
+check("MCP tools are deny-by-default and write tools require explicit local opt-in", mcpIntegrations.includes("server.readOnlyTools") && mcpIntegrations.includes("server.writeEnabled ? server.allowedTools : server.readOnlyTools") && mcpIntegrations.includes("not explicitly allowlisted"));
+check("MCP credentials are mapped by environment-variable names and never returned in integration status", mcpIntegrations.includes("requiredEnvNames") && mcpIntegrations.includes("missingEnvironmentVariables") && !/gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(await read("mcp-integrations.example.json")));
+check("MCP example integrations are all disabled, write-disabled, and contain only placeholders", integrationExample.version === 1 && integrationExample.servers.length >= 3 && integrationExample.servers.every(s => s.enabled === false && s.writeEnabled === false) && !/REPLACE_WITH_REAL|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(JSON.stringify(integrationExample)));
+check("MCP integration tests cover stdio, HTTP session negotiation, allowlist denial, and config permissions", integrationTests.includes("stdio bridge") && integrationTests.includes("HTTP bridge") && integrationTests.includes("allowlist") && integrationTests.includes("world-readable config"));
+check("paired agent admits only fixed MCP bridge operation types", agent.includes('"mcp_integrations"') && agent.includes('"mcp_tools"') && agent.includes('"mcp_call"') && agent.includes("mcpIntegrationCall"));
 check("OpenAI submission rationale documents every tool and each safety annotation", PUBLIC_TOOLS.every(t => annotationNotes.includes("`" + t.name + "`")) && ["readOnlyHint", "openWorldHint", "destructiveHint"].every(label => annotationNotes.includes(label)) && annotationNotes.includes("rationale"));
 check("diagnostic profile list is a closed allowlist", PUBLIC_TOOLS.find(t => t.name === "mada_run_diagnostics")?.inputSchema.properties.profile.enum.join(",") === "git_status,toolchain,inventory");
 check("diagnostic tool rejects extra input properties", PUBLIC_TOOLS.find(t => t.name === "mada_run_diagnostics")?.inputSchema.additionalProperties === false);
