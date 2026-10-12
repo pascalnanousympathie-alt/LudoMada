@@ -147,7 +147,7 @@ function operaCdpPort() {
 }
 
 async function operaFetchJson(route) {
-  const response = await fetch("http://127.0.0.1:" + operaCdpPort() + route, { signal: AbortSignal.timeout(3000) });
+  const response = await fetch("http://127.0.0.1:" + operaCdpPort() + route, { signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error("Opera debugging endpoint returned HTTP " + response.status + ".");
   return response.json();
 }
@@ -228,7 +228,7 @@ async function operaCdpCall(tabIdInput, method, params = {}) {
   return await new Promise((resolve, reject) => {
     let settled = false;
     const socket = new WebSocket(address.href);
-    const timer = setTimeout(() => finish(new Error("Opera command timed out.")), 7000);
+    const timer = setTimeout(() => finish(new Error("Opera command timed out.")), 15000);
     function finish(error, result) {
       if (settled) return;
       settled = true;
