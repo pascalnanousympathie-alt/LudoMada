@@ -6,7 +6,7 @@ This is a new, least-privilege service separate from `tools/personal-mcp-command
 
 ## Public feature boundary
 
-The MCP advertises sixteen OAuth-scoped tools:
+The MCP advertises seventeen OAuth-scoped tools:
 - `mada_agent_status`: inspect the signed-in user's own paired agents
 - `mada_list_projects`: list that account's registered project aliases and short Git summaries
 - `mada_run_diagnostics`: queue fixed Git/toolchain/inventory diagnostics
@@ -15,6 +15,7 @@ The MCP advertises sixteen OAuth-scoped tools:
 - `mada_workspace_list` and `mada_workspace_read`: inspect a registered workspace's non-secret source tree and text files
 - `mada_workspace_write`: create or replace a recognised source/text file using a project-relative path
 - `mada_run_task`: run one fixed Git, npm test/lint/build, or Android Gradle test/build task
+- `mada_run_command`: run approved local executables with separately passed arguments, bounded runtime/output, and best-effort secret redaction; this is high-privilege device access, not an OS sandbox
 - `mada_opera_status` and `mada_opera_tabs`: inspect the paired Termux/noVNC Opera instance without returning cookies or debugging sockets
 - `mada_opera_navigate`: navigate a selected tab to HTTP(S) or approved Opera settings/about pages
 - `mada_opera_action`: inspect visible controls and make bounded non-secret setting changes through a fixed action allowlist
