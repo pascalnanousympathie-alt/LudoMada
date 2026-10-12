@@ -426,4 +426,9 @@ test("Opera clicks are scheduled so navigations cannot tear down the CDP reply",
   assert.ok(source.includes("__targetUrl: target.url"));
   assert.ok(source.includes("Use the URL captured before Runtime.evaluate."));
   assert.ok(source.includes('address: safeOperaAddress(String(response.__targetUrl || ""))'));
+  assert.ok(source.includes('if (method === "Runtime.evaluate")'));
+  assert.ok(source.includes("target.webSocketDebuggerUrl"));
+  assert.ok(source.includes('targetSocket.pathname.startsWith("/devtools/page/")'));
+  assert.ok(source.includes("Unexpected Opera target debugging socket; connection refused."));
+  assert.ok(source.includes("socket.send(JSON.stringify({ id: 1, method, params }))"));
 });
