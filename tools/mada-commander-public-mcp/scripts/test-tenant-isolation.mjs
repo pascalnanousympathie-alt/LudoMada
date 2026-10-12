@@ -213,7 +213,6 @@ try {
   const deleteAccount = await localApi("/api/account/delete", sessionA, { confirm: "DELETE" }, "cookie");
   assert.equal(deleteAccount.status, 200);
   assert.equal(deleteAccount.body.deleted, true);
-  deletedA = true;
   const staleMcp = await rpc(accessA, "mada_agent_status");
   assert.equal(staleMcp.status, 401);
   const deletedRows = await query(
@@ -235,7 +234,6 @@ try {
   if (seeded) {
     try {
       await query("DELETE FROM mada_public_users WHERE google_sub = ANY($1::text[])", [[googleSubA, googleSubB]]);
-      deletedB = true;
     } catch (error) {
       console.error("Tenant-test cleanup by test marker failed:", String(error?.code || "CLEANUP_ERROR"));
     }
