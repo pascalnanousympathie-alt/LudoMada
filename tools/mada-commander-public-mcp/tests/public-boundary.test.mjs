@@ -337,6 +337,11 @@ test("Vercel rewrites and migration guards are explicit", async () => {
   assert.ok(schema.includes("mada_public_agents"));
   assert.ok(schema.includes("mada_public_jobs"));
   assert.ok(!schema.includes("game_wallet"));
+  assert.match(schema, /to_regprocedure\('public\.rls_auto_enable\(\)'\)/);
+  assert.match(schema, /REVOKE EXECUTE ON FUNCTION public\.rls_auto_enable\(\) FROM PUBLIC/i);
+  assert.match(schema, /REVOKE EXECUTE ON FUNCTION public\.rls_auto_enable\(\) FROM anon/i);
+  assert.match(schema, /REVOKE EXECUTE ON FUNCTION public\.rls_auto_enable\(\) FROM authenticated/i);
+  assert.match(schema, /GRANT EXECUTE ON FUNCTION public\.rls_auto_enable\(\) TO service_role/i);
 });
 
 test("workspace operations stay within a registered project and block private files", async t => {
