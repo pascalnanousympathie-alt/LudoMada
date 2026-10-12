@@ -153,3 +153,23 @@ ALTER TABLE public.mada_oauth_refresh_tokens ALTER COLUMN expires_at DROP NOT NU
 UPDATE public.mada_oauth_refresh_tokens SET expires_at = NULL;
 CREATE INDEX IF NOT EXISTS mada_refresh_tokens_user_client_idx ON public.mada_oauth_refresh_tokens(user_id, client_id);
 CREATE INDEX IF NOT EXISTS mada_access_tokens_user_client_idx ON public.mada_oauth_access_tokens(user_id, client_id);
+
+-- Keep the internal RLS event-trigger helper out of the public Data API.
+-- This function/event trigger is provisioned separately on Supabase; guard every reference so
+-- fresh non-Supabase test databases can still apply this schema safely.
+DO $rls_acl$
+BEGIN
+  IF to_regprocedure('public.rls_auto_enable()') IS NOT NULL THEN
+    EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM PUBLIC';
+    IF to_regrole('anon') IS NOT NULL THEN
+      EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM anon';
+    END IF;
+    IF to_regrole('authenticated') IS NOT NULL THEN
+      EXECUTE 'REVOKE EXECUTE ON FUNCTION public.rls_auto_enable() FROM authenticated';
+    END IF;
+    IF to_regrole('service_role') IS NOT NULL THEN
+      EXECUTE 'GRANT EXECUTE ON FUNCTION public.rls_auto_enable() TO service_role';
+    END IF;
+  END IF;
+END
+$rls_acl$;
