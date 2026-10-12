@@ -11,13 +11,13 @@ class OfflineLudoRulesTest {
     fun tokenMustRollSixToLeaveHome() {
         assertFalse(OfflineLudoRules.canMove(-1, 5))
         assertTrue(OfflineLudoRules.canMove(-1, 6))
-        assertEquals(0, OfflineLudoRules.nextPosition(-1, 6))
+        assertEquals(0, OfflineLudoRules.nextPosition(-1, 6) ?: -99)
         assertNull(OfflineLudoRules.nextPosition(-1, 5))
     }
 
     @Test
     fun finishRequiresExactDiceValue() {
-        assertEquals(57, OfflineLudoRules.nextPosition(56, 1))
+        assertEquals(57, OfflineLudoRules.nextPosition(56, 1) ?: -99)
         assertNull(OfflineLudoRules.nextPosition(56, 2))
         assertFalse(OfflineLudoRules.canMove(57, 1))
     }
@@ -32,11 +32,11 @@ class OfflineLudoRulesTest {
 
     @Test
     fun playerPathsWrapOnTheSharedFiftyTwoSquareTrack() {
-        assertEquals(0, OfflineLudoRules.globalSquare(0, 0))
-        assertEquals(13, OfflineLudoRules.globalSquare(1, 0))
-        assertEquals(26, OfflineLudoRules.globalSquare(2, 0))
-        assertEquals(39, OfflineLudoRules.globalSquare(3, 0))
-        assertEquals(0, OfflineLudoRules.globalSquare(1, 39))
+        assertEquals(0, OfflineLudoRules.globalSquare(0, 0) ?: -1)
+        assertEquals(13, OfflineLudoRules.globalSquare(1, 0) ?: -1)
+        assertEquals(26, OfflineLudoRules.globalSquare(2, 0) ?: -1)
+        assertEquals(39, OfflineLudoRules.globalSquare(3, 0) ?: -1)
+        assertEquals(0, OfflineLudoRules.globalSquare(1, 39) ?: -1)
         assertNull(OfflineLudoRules.globalSquare(4, 0))
         assertNull(OfflineLudoRules.globalSquare(0, 52))
     }
