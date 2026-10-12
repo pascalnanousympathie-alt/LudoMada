@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "servers": [
+    {
+      "id": "github",
+      "label": "GitHub MCP (read-only by default)",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "github-mcp-server",
+      "args": [
+        "stdio",
+        "--read-only",
+        "--toolsets",
+        "repos,issues,pull_requests,actions"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
+      },
+      "allowedTools": [
+        "get_file_contents",
+        "search_code",
+        "search_repositories",
+        "list_commits",
+        "list_pull_requests",
+        "issue_read",
+        "actions_list"
+      ],
+      "readOnlyTools": [
+        "get_file_contents",
+        "search_code",
+        "search_repositories",
+        "list_commits",
+        "list_pull_requests",
+        "issue_read",
+        "actions_list"
+      ],
+      "writeEnabled": false
+    },
+    {
+      "id": "playwright",
+      "label": "Playwright MCP (isolated browser)",
+      "transport": "stdio",
+      "enabled": false,
+      "command": "npx",
+      "args": [
+        "--yes",
+        "@playwright/mcp@0.0.83",
+        "--headless",
+        "--isolated"
+      ],
+      "env": {},
+      "allowedTools": [
+        "browser_navigate",
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_press_key",
+        "browser_take_screenshot"
+      ],
+      "readOnlyTools": [
+        "browser_snapshot"
+      ],
+      "writeEnabled": false
+    },
+    {
+      "id": "supabase",
+      "label": "Supabase MCP (project scoped; activate only after auth validation)",
+      "transport": "http",
+      "enabled": false,
+      "url": "https://mcp.supabase.com/mcp?project_ref=REPLACE_WITH_PROJECT_REF",
+      "authEnv": "SUPABASE_MCP_ACCESS_TOKEN",
+      "allowedTools": [
+        "list_tables",
+        "get_advisors",
+        "list_migrations",
+        "get_project_url",
+        "execute_sql"
+      ],
+      "readOnlyTools": [
+        "list_tables",
+        "get_advisors",
+        "list_migrations",
+        "get_project_url"
+      ],
+      "writeEnabled": false
+    },
+    {
+      "id": "vercel",
+      "label": "Vercel MCP (activate only with provider-supported bearer credentials)",
+      "transport": "http",
+      "enabled": false,
+      "url": "https://mcp.vercel.com",
+      "authEnv": "VERCEL_MCP_ACCESS_TOKEN",
+      "allowedTools": [],
+      "readOnlyTools": [],
+      "writeEnabled": false
+    }
+  ]
+}

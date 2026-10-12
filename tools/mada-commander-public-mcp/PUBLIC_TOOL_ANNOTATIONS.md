@@ -26,3 +26,12 @@ Before submission, compare this matrix against the current tool scan. If any too
 | `mada_opera_tabs` | `true`: lists bounded tab IDs, titles and sanitized addresses. | `false`: the tool cannot specify arbitrary browser or network targets. | `false`: it does not change tabs. |
 | `mada_opera_navigate` | `false`: changes the selected Opera tab's address. | `false`: it accepts only a selected tab and validated HTTP(S) or Opera settings/about address; secret-like URL query values are rejected. | `false`: navigation is reversible and does not itself delete data or change account permissions. |
 | `mada_opera_action` | `false`: can change visible page controls through a fixed structured action allowlist. | `false`: no arbitrary JavaScript is accepted; the target is one tab of the paired local Opera instance. | `true`: a supported click, fill, selection or toggle can change settings; password, identity, token and destructive controls are blocked. |
+
+
+## Optional local MCP bridge tools
+
+| Tool | `readOnlyHint` and rationale | `openWorldHint` and rationale | `destructiveHint` and rationale |
+|---|---|---|---|
+| `mada_mcp_integrations` | `false`: it queues a local inventory job and therefore creates job state, while the local operation only reports configuration metadata. | `false`: it reads only the signed-in user's own paired agent's local MCP registry; no endpoint or command is accepted from the caller. | `false`: it does not execute an external MCP tool or change the registry. |
+| `mada_mcp_tools` | `false`: it queues a tool-discovery job and creates job state, even though the discovery request does not intentionally mutate the target service. | `true`: the selected, owner-configured MCP server can be a remote HTTPS service, so discovery communicates outside the local workspace. | `false`: discovery lists only locally allowlisted tools and does not call a tool. |
+| `mada_mcp_call` | `false`: it queues and runs an external MCP call; a queue record is created and the external tool may have side effects. | `true`: a locally approved MCP tool can communicate with remote services or browser targets. The caller cannot supply a new server URL, command, or server configuration. | `true`: the owner may deliberately enable explicitly allowlisted write tools in the local config. By default, only the `readOnlyTools` list is exposed; credentials are mapped from local environment variables and never returned by the catalog. |

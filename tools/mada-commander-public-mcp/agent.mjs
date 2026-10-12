@@ -5,14 +5,16 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, operaStatus, operaTabs, operaNavigate, operaAction } from "./lib/agent-operations.mjs";
+import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, operaStatus, operaTabs, operaNavigate, operaAction, mcpIntegrationCatalog, mcpIntegrationTools, mcpIntegrationCall } from "./lib/agent-operations.mjs";
 
 const HOME = os.homedir();
 const STATE_DIR = path.join(HOME, ".config", "mada-commander");
 const CONFIG_FILE = path.join(STATE_DIR, "agent.json");
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
+const MCP_CONFIG_FILE = path.join(STATE_DIR, "mcp-integrations.json");
+const MCP_CONFIG_TEMPLATE = path.join(THIS_DIR, "mcp-integrations.example.json");
 const ALLOWED_PROFILES = new Set(["git_status", "toolchain", "inventory"]);
-const ALLOWED_OPERATIONS = new Set(["workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action"]);
+const ALLOWED_OPERATIONS = new Set(["workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action", "mcp_integrations", "mcp_tools", "mcp_call"]);
 
 function usage() {
   console.log(
@@ -21,7 +23,8 @@ function usage() {
     "  node agent.mjs project-add <id> <label> <absolute-project-path>\n" +
     "  node agent.mjs project-list\n" +
     "  node agent.mjs run [--once]\n" +
-    "  node agent.mjs status\n\n" +
+    "  node agent.mjs status\n" +
+    "  node agent.mjs integration-init | integration-list | integration-tools <server-id>\n\n" +
     "Workspace file operations use project-relative paths and block credentials; tests/builds use a fixed task allowlist; Opera control uses a loopback CDP port and structured actions only. No free-form shell command or absolute path is accepted from the public server."
   );
 }
@@ -187,6 +190,9 @@ async function processOneJob(config) {
       else if (job.profile === "opera_tabs") result = await operaTabs();
       else if (job.profile === "opera_navigate") result = await operaNavigate(request.tabId, request.address);
       else if (job.profile === "opera_action") result = await operaAction(request);
+      else if (job.profile === "mcp_integrations") result = await mcpIntegrationCatalog();
+      else if (job.profile === "mcp_tools") result = await mcpIntegrationTools(request.serverId);
+      else if (job.profile === "mcp_call") result = await mcpIntegrationCall(request.serverId, request.toolName, request.arguments);
       status = "succeeded";
     } catch (error) {
       result = { error: String(error?.message || "The approved operation failed.").slice(0, 500) };
@@ -216,11 +222,34 @@ async function pair(baseArg, code, nameArg) {
   console.log("Add project aliases, then run: node " + THIS_DIR + "/agent.mjs run");
 }
 
+async function initMcpIntegrationConfig() {
+  await fs.mkdir(STATE_DIR, { recursive: true, mode: 0o700 });
+  await fs.chmod(STATE_DIR, 0o700);
+  const existing = await fs.lstat(MCP_CONFIG_FILE).catch(error => error?.code === "ENOENT" ? null : Promise.reject(error));
+  if (existing) throw new Error("MCP integration config already exists; refusing to overwrite it.");
+  const template = await fs.readFile(MCP_CONFIG_TEMPLATE, "utf8");
+  await fs.writeFile(MCP_CONFIG_FILE, template, { encoding: "utf8", mode: 0o600, flag: "wx" });
+  await fs.chmod(MCP_CONFIG_FILE, 0o600);
+  console.log("Created local MCP integration config with all optional servers disabled.");
+  console.log("Edit only this local file, set credentials in the agent environment, and keep permissions at 600.");
+  console.log("Config location: ~/.config/mada-commander/mcp-integrations.json");
+}
+
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "help" || command === "--help") return usage();
   if (command === "pair") return pair(args[0], args[1], args[2]);
   if (command === "project-add") return addProject(args[0], args[1], args.slice(2).join(" "));
+  if (command === "integration-init") return initMcpIntegrationConfig();
+  if (command === "integration-list") {
+    console.log(JSON.stringify(await mcpIntegrationCatalog(), null, 2));
+    return;
+  }
+  if (command === "integration-tools") {
+    if (!args[0]) throw new Error("Provide a server ID shown by integration-list.");
+    console.log(JSON.stringify(await mcpIntegrationTools(args[0]), null, 2));
+    return;
+  }
   if (command === "project-list") {
     const config = await readConfig();
     console.log(JSON.stringify((config.projects || []).map(p => ({ projectId: p.projectId, label: p.label, configured: Boolean(p.path) })), null, 2));

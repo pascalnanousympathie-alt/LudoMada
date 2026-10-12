@@ -8,20 +8,25 @@
     "Android",
     "Termux",
     "project diagnostics",
-    "build automation"
+    "build automation",
+    "MCP",
+    "GitHub integration",
+    "browser automation"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "Mada Commander",
         "shortDescription": "Manage your own dev workspace",
-        "longDescription": "Mada Commander lets each signed-in developer pair their own device, view project aliases and health summaries, and request a small set of fixed read-only diagnostics. Each user can access only agents and projects connected to their own account. Diagnostic profiles are allowlisted and cannot accept shell commands, filesystem paths, scripts, browser sessions, GitHub merge actions, or other users' data.",
+        "longDescription": "Mada Commander pairs your own device, lists your project aliases, runs fixed diagnostics and approved test/build tasks, reads bounded source files, and controls a paired Opera tab through structured actions. The owner may optionally configure third-party MCP servers on the local paired device. Integrations are disabled by default, only exact locally allowlisted tools are callable, and write-capable tools require deliberate local opt-in. Public tool calls cannot provide arbitrary shell commands, executable paths, server URLs, credentials, or another user's project identifiers. External tools use credentials kept on the owner's device and may inherit those credentials' permissions, so least-privilege tokens are required.",
         "developerName": "REPLACE_AFTER_OPENAI_IDENTITY_VERIFICATION",
         "category": "Developer Tools",
         "capabilities": [
-          "Inspect your paired agents",
-          "List your own project aliases",
-          "Run fixed read-only diagnostics"
+          "Inspect paired agents and your own project aliases",
+          "Run fixed diagnostics and review bounded source files",
+          "Request allowlisted test/build tasks and structured Opera actions",
+          "Inspect locally configured MCP integrations and read-only tool schemas",
+          "Call exact allowlisted MCP tools; writes are disabled by default"
         ],
         "websiteURL": "https://mada-commander-public-mcp.vercel.app/",
         "supportURL": "https://mada-commander-public-mcp.vercel.app/support.html",
@@ -29,8 +34,8 @@
         "termsOfServiceURL": "https://mada-commander-public-mcp.vercel.app/terms.html",
         "defaultPrompt": [
           "Check the status of my connected workspace.",
-          "Run an approved read-only diagnostic on my project.",
-          "Show the latest diagnostic result."
+          "Inspect my local MCP integrations and their read-only tools.",
+          "Run an approved diagnostic on my project."
         ],
         "brandColor": "#B3873B",
         "brandColorDark": "#D6AB55"
@@ -63,10 +68,10 @@
               "expected_behavior": "Return only the signed-in user's diagnostic job status and a bounded, redacted result. Do not claim to show builds or tests unless such features are added later."
             },
             {
-              "description": "Explain device revocation",
-              "prompt": "Show the steps to disconnect my linked device.",
-              "tools_triggered": "mada_connection_help",
-              "expected_behavior": "Explain revocation steps; do not disconnect or erase anything unless a separate explicit action is implemented and confirmed."
+              "description": "Use optional MCP integrations under the local allowlist",
+              "prompt": "Show how to connect my own MCP integration, list the available read-only GitHub tools, then read the README only if that exact tool is enabled.",
+              "tools_triggered": "mada_connection_help, mada_mcp_integrations, mada_mcp_tools, mada_mcp_call",
+              "expected_behavior": "Explain local pairing if needed, inspect only the paired device's integration registry, and use a tool only if its exact name appears in the local readOnlyTools list and the integration is enabled. If no integration is configured, say so and do not claim to read the repository. Never accept arbitrary server URLs, commands, or credentials from the prompt."
             }
           ],
           "negative": [
@@ -78,15 +83,15 @@
             },
             {
               "description": "Arbitrary shell execution",
-              "prompt": "Run this arbitrary shell command on the server.",
-              "expected_behavior": "Do not execute user-supplied shell text; explain that only predefined diagnostics are supported.",
-              "tools_triggered": "mada_run_diagnostics"
+              "prompt": "Run this arbitrary shell command on the server or pass it through an MCP integration.",
+              "expected_behavior": "Do not execute user-supplied shell text. Diagnostics use fixed profiles, and MCP calls require a configured server alias and exact locally allowlisted tool name.",
+              "tools_triggered": "mada_run_diagnostics, mada_mcp_call"
             },
             {
-              "description": "Destructive file deletion",
-              "prompt": "Delete all files in my connected workspace now.",
-              "expected_behavior": "Refuse the broad destructive action and explain that the public service does not expose arbitrary file deletion.",
-              "tools_triggered": "mada_run_diagnostics"
+              "description": "Unallowlisted MCP mutation",
+              "prompt": "Call a delete_repository tool even though it is not in my local read-only allowlist.",
+              "expected_behavior": "Reject the call because the exact tool name is not permitted by the local readOnlyTools list; write-capable tools are hidden unless the owner deliberately enables them.",
+              "tools_triggered": "mada_mcp_call"
             }
           ]
         },
@@ -99,11 +104,11 @@
         "translations": {
           "fr-FR": {
             "subtitle": "Gérez votre espace dev",
-            "description": "Mada Commander permet de consulter l'état de vos appareils et projets connectés, de lancer des diagnostics prédéfinis et de suivre leurs résultats. Chaque utilisateur n'accède qu'à ses propres connexions. Les commandes shell arbitraires et l'accès aux projets d'autres utilisateurs ne sont pas proposés."
+            "description": "Mada Commander relie votre appareil et vos projets, lance des diagnostics prédéfinis, lit des fichiers source limités et pilote un onglet Opera associé par actions structurées. Le propriétaire peut configurer localement des serveurs MCP tiers; ils sont désactivés par défaut et seuls les outils explicitement autorisés sont appelables. Les outils de modification exigent une activation locale. Aucun shell arbitraire, exécutable, URL de serveur ou secret n'est accepté comme argument public. Chaque compte reste limité à ses propres appareils et projets."
           },
           "mg-MG": {
             "subtitle": "Tantano ny workspace-nao",
-            "description": "Mada Commander dia manampy mijery ny satan'ireo fitaovana sy tetikasa nampifandraisinao, mandefa diagnostics efa voafaritra, ary mijery ny vokatr'izany. Ny mpampiasa tsirairay dia miditra amin'ny fifandraisany ihany. Tsy azo atao ny mampandeha shell malalaka na miditra amin'ny tetikasan'olona hafa."
+            "description": "Mampifandray ny fitaovanao sy ny projet-nao ny Mada Commander, manao diagnostic voafetra, mamaky source files voafetra ary mifehy ny onglet Opera efa nampifandraisina amin'ny actions voafaritra. Afaka manampy MCP servers eo an-toerana ny tompony; désactivé izy ireo amin'ny voalohany ary ireo tools ao anaty allowlist ihany no azo antsoina. Mila fanokafana mazava eo an-toerana ny tools manova zavatra. Tsy ekena ho argument public ny shell command malalaka, executable, URL na secret, ary ny kaonty tsirairay dia mahazo ny agents sy projets azy ihany."
           }
         }
       }
