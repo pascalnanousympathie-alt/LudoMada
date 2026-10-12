@@ -13,6 +13,8 @@ const MAX_ARGUMENT_BYTES = 32_000;
 const MAX_RESPONSE_BYTES = 500_000;
 // Some hosted MCP servers publish large tool catalogs; cap protocol frames separately from user-facing tool results.
 const MAX_PROTOCOL_LINE_BYTES = 2_000_000;
+// OAuth-backed MCP proxies can need ~30 s for first token negotiation on mobile devices.
+const MCP_INITIALIZE_TIMEOUT_MS = 60_000;
 const SAFE_ID = /^[a-z][a-z0-9_-]{0,39}$/;
 const SAFE_TOOL_NAME = /^[A-Za-z0-9_.-]{1,120}$/;
 const ENV_NAME = /^[A-Z][A-Z0-9_]{0,127}$/;
@@ -195,7 +197,7 @@ async function withStdio(server, fn) {
     const init = await sendMessage({
       jsonrpc: "2.0", id: nextId++, method: "initialize",
       params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mada-commander-local-bridge", version: "0.2.0" } }
-    });
+    }, MCP_INITIALIZE_TIMEOUT_MS);
     if (!init.protocolVersion || !init.capabilities) throw new Error("MCP stdio server returned an invalid initialize response.");
     notify("notifications/initialized", {});
     await fn({
