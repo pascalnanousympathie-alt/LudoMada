@@ -6,7 +6,7 @@ The project-specific instructions are in `.agents/skills/ludomada-game-developme
 
 **The supported Linux-userland path is verified.** Through the default wrapper, `game-dev doctor --json` returns `ok: true`, `healthy: true`, and `platform: linux arm64`; Node 24.19.0, SQLite, workspace, generic sample and all five skills pass. The unwrapped native Termux path remains outside the upstream supported-platform list and reports `android arm64`, so that check has not been falsified or disabled. The generic capture is synthetic-only; no LudoMada scene, live GPU, hardware timing or visual-quality evidence is implied.
 
-The five local skills are installed both under `$HOME/.codex/skills` and the Debian userland's `/root/.codex/skills`. This is separate from installation of the upstream ChatGPT/marketplace plugin, which has not been installed. The complete evidence and limitations are in `docs/game-development-studio-termux-verification-2026-10-12.md`.
+The five local skills are installed both under `$HOME/.codex/skills` and the Debian userland's `/root/.codex/skills`. The local MCP server is registered in `/root/.codex/config.toml` and reports enabled in `codex mcp list`; the previous config is backed up as `/root/.codex/config.toml.before-game-dev-20261012`. Initialization over stdio was verified using protocol `2025-03-26`. Paid-provider tools, project writes, scenario execution and GPU/performance authority remain disabled. This is separate from the upstream ChatGPT/marketplace plugin, which has not been installed. The complete evidence and limitations are in `docs/game-development-studio-termux-verification-2026-10-12.md`.
 
 ## Where it belongs
 
@@ -51,9 +51,9 @@ It does not replace the GLES3/PBR renderer or the actual interactive game. Stati
 ## Installation surfaces
 
 - **Repository-local:** project role instructions and integration notes are tracked in the repository.
-- **Official skills bundle:** five upstream skills installed into local `$HOME/.codex/skills`; they are not the same as the separate ChatGPT/marketplace plugin.
-- **Local CLI:** upstream v1.5.0 installed in a dedicated prefix after SHA-256 verification. Termux wrappers bypass the incompatible `/usr/bin/env` launcher; see the dated report for the exact paths and results.
-- **Termux/Android:** local CPU/synthetic workflow partially works, but `doctor` remains unhealthy because Android/Termux is outside the upstream supported-platform list. A real LudoMada capture adapter is still missing.
+- **Official skills bundle:** five upstream skills are installed into both `$HOME/.codex/skills` and Debian-userland `/root/.codex/skills`; they are not the same as the separate ChatGPT/marketplace plugin.
+- **Local CLI:** upstream v1.5.0 installed in a dedicated prefix after SHA-256 verification. The standard wrappers enter Debian proot with Linux Node 24.19.0, and the direct Termux wrappers are preserved as `game-dev-termux` and `game-dev-mcp-termux`.
+- **Termux/Android:** use the Linux-userland wrapper; its doctor passes as `linux arm64`. The direct native Termux path remains outside the upstream platform list. A real LudoMada capture adapter is still missing.
 
 ## Acceptance checklist
 
