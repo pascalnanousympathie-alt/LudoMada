@@ -1038,8 +1038,8 @@ function sanitizeResult(profile, raw) {
       created: Boolean(raw.created)
     };
   }
-  if (profile === "run_command") {
-    if (typeof raw.program !== "string" || !Array.isArray(raw.args) || typeof raw.cwd !== "string" || !Number.isInteger(raw.exitCode)) return null;
+  if ((profile === "run_command" || profile === "run_task") && typeof raw.program === "string" && Array.isArray(raw.args)) {
+    if (typeof raw.cwd !== "string" || !Number.isInteger(raw.exitCode)) return null;
     return {
       program: redactSensitive(raw.program).slice(0, 80),
       args: raw.args.slice(0, 40).filter(arg => typeof arg === "string").map(arg => redactSensitive(arg).slice(0, 2000)),

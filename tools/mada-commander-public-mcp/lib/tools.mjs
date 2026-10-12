@@ -518,7 +518,7 @@ function asResult(data, text) {
   return { content: [{ type: "text", text }], structuredContent: data, isError: false };
 }
 
-async function enqueueProjectOperation(principal, args, operation, request = {}) {
+async function enqueueProjectOperation(principal, args, operation, request = {}, reportedOperation = operation) {
   if (!isSafeProjectAlias(args?.projectId)) {
     return { content: [{ type: "text", text: "Invalid project alias. Choose a project returned by mada_list_projects." }], isError: true };
   }
@@ -552,8 +552,8 @@ async function enqueueProjectOperation(principal, args, operation, request = {})
     "INSERT INTO mada_public_jobs (id, user_id, agent_id, project_id, profile, status, request) VALUES ($1,$2,$3,$4,$5,'queued',$6::jsonb)",
     [jobId, principal.userId, project.rows[0].agent_id, project.rows[0].project_id, operation, serialized]
   );
-  const data = { jobId, status: "queued", operation, projectId: project.rows[0].project_id, projectName: project.rows[0].label };
-  return asResult(data, operation + " queued for " + project.rows[0].label + ". Use mada_job_status with jobId " + jobId + " to check the result.");
+  const data = { jobId, status: "queued", operation: reportedOperation, projectId: project.rows[0].project_id, projectName: project.rows[0].label };
+  return asResult(data, reportedOperation + " queued for " + project.rows[0].label + ". Use mada_job_status with jobId " + jobId + " to check the result.");
 }
 
 export function authChallenge(base, error = "invalid_token") {
@@ -633,7 +633,7 @@ export async function executePublicTool(name, args, principal) {
         return { content: [{ type: "text", text: "Invalid job ID." }], isError: true };
       }
       const r = await query(
-        "SELECT j.id, j.project_id, p.label, j.profile, j.status, j.result, j.error_summary FROM mada_public_jobs j JOIN mada_public_projects p ON p.agent_id = j.agent_id AND p.project_id = j.project_id JOIN mada_public_agents a ON a.id = j.agent_id WHERE j.id = $1 AND j.user_id = $2 AND a.user_id = $2 LIMIT 1",
+        "SELECT j.id, j.project_id, p.label, j.profile, j.request, j.status, j.result, j.error_summary FROM mada_public_jobs j JOIN mada_public_projects p ON p.agent_id = j.agent_id AND p.project_id = j.project_id JOIN mada_public_agents a ON a.id = j.agent_id WHERE j.id = $1 AND j.user_id = $2 AND a.user_id = $2 LIMIT 1",
         [jobId, principal.userId]
       );
       if (!r.rowCount) {
@@ -641,7 +641,9 @@ export async function executePublicTool(name, args, principal) {
       }
       const j = r.rows[0];
       const data = {
-        jobId: j.id, projectId: j.project_id, projectName: j.label, profile: j.profile, status: j.status,
+        jobId: j.id, projectId: j.project_id, projectName: j.label,
+        profile: j.profile === "run_task" && j.request?.kind === "command" ? "run_command" : j.profile,
+        status: j.status,
         result: j.result ? safePublicResult(j.result) : null,
         error: j.error_summary ? redactSensitive(j.error_summary) : ""
       };
@@ -695,7 +697,7 @@ export async function executePublicTool(name, args, principal) {
       if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 900000) {
         return { content: [{ type: "text", text: "timeoutMs must be an integer from 1000 to 900000." }], isError: true };
       }
-      return enqueueProjectOperation(principal, args, "run_command", { program, args: commandArgs, cwd: cwd || ".", timeoutMs });
+      return enqueueProjectOperation(principal, args, "run_task", { kind: "command", program, args: commandArgs, cwd: cwd || ".", timeoutMs }, "run_command");
     }
     case "mada_opera_status": {
       return enqueueProjectOperation(principal, args, "opera_status", {});

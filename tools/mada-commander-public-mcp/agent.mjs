@@ -185,6 +185,7 @@ async function processOneJob(config) {
       else if (job.profile === "workspace_list") result = await workspaceList(project, request.relativeDirectory || "");
       else if (job.profile === "workspace_read") result = await workspaceRead(project, request.relativeFile);
       else if (job.profile === "workspace_write") result = await workspaceWrite(project, request.relativeFile, request.content);
+      else if (job.profile === "run_task" && request.kind === "command") result = await runCommand(project, request.program, request.args || [], request.cwd || ".", request.timeoutMs);
       else if (job.profile === "run_task") result = await runApprovedTask(project, request.task);
       else if (job.profile === "run_command") result = await runCommand(project, request.program, request.args || [], request.cwd || ".", request.timeoutMs);
       else if (job.profile === "opera_status") result = await operaStatus();
