@@ -50,6 +50,12 @@ test("local MCP registry reports status without ever revealing credential values
   assert.ok(!JSON.stringify(result).includes("never-return-this-token"));
 });
 
+test("OAuth-backed stdio initialization allows delayed first-token negotiation", async () => {
+  const source = await fs.readFile(new URL("../lib/mcp-integrations.mjs", import.meta.url), "utf8");
+  assert.match(source, /const MCP_INITIALIZE_TIMEOUT_MS = 60_000;/);
+  assert.match(source, /method: "initialize",[\s\S]{0,240}MCP_INITIALIZE_TIMEOUT_MS/);
+});
+
 test("stdio bridge exposes only the explicit read-only allowlist and calls only those tools", async t => {
   const file = await makeConfig(t, [stdioServer()]);
   const listed = await listAllowedMcpTools("fixture", file);
