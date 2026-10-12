@@ -6,7 +6,7 @@ This is a new, least-privilege service separate from `tools/personal-mcp-command
 
 ## Public feature boundary
 
-The MCP advertises seventeen OAuth-scoped tools:
+The MCP advertises eighteen OAuth-scoped tools:
 - `mada_agent_status`: inspect the signed-in user's own paired agents
 - `mada_list_projects`: list that account's registered project aliases and short Git summaries
 - `mada_run_diagnostics`: queue fixed Git/toolchain/inventory diagnostics
@@ -15,7 +15,8 @@ The MCP advertises seventeen OAuth-scoped tools:
 - `mada_workspace_list` and `mada_workspace_read`: inspect a registered workspace's non-secret source tree and text files
 - `mada_workspace_write`: create or replace a recognised source/text file using a project-relative path
 - `mada_run_task`: run one fixed Git, npm test/lint/build, or Android Gradle test/build task
-- `mada_run_command`: run approved local executables with separately passed arguments, bounded runtime/output, and best-effort secret redaction; this is high-privilege device access, not an OS sandbox
+- `mada_run_command`: run approved local executables with separately passed arguments, bounded runtime/output, and best-effort secret redaction
+- `mada_run_shell`: run full shell commands including pipes, redirects, and chaining, with bounded runtime/output and best-effort redaction. This grants maximum-privilege access as the paired OS user; the project path is not an OS sandbox.
 - `mada_opera_status` and `mada_opera_tabs`: inspect the paired Termux/noVNC Opera instance without returning cookies or debugging sockets
 - `mada_opera_navigate`: navigate a selected tab to HTTP(S) or approved Opera settings/about pages
 - `mada_opera_action`: inspect visible controls and make bounded non-secret setting changes through a fixed action allowlist
@@ -24,7 +25,7 @@ The MCP advertises seventeen OAuth-scoped tools:
 - `mada_mcp_call`: invoke one locally allowlisted tool; write-capable tools remain hidden unless the owner deliberately enables them
 
 
-The public MCP includes `mada_run_command` for approved command executables on the paired local device. Arguments are passed directly without shell parsing; inline Node/Python evaluation flags are blocked. Commands execute as the local agent OS user and may read, create, modify, or delete files and use that user's network permissions. The registered project is the starting directory, not an OS sandbox; command output is sanitized and bounded. Treat this as high-privilege command access, keep OAuth and agent tokens private, and revoke the paired agent when it is no longer trusted. The fixed `mada_run_task` tool remains available for routine tests/builds, and Opera control still targets only the paired agent's loopback CDP port.
+The public MCP includes `mada_run_command` for approved executables and `mada_run_shell` for explicit full-shell operations on the paired local device. Full-shell mode supports pipelines, redirects and chaining, executes as the paired OS user, and can read, create, modify or delete any files that user can access or use the network. The registered project is only the starting directory, not an OS sandbox. Output redaction is best-effort and cannot guarantee every unknown secret is removed, so never include or deliberately print credentials. Treat both terminal tools as high privilege, keep OAuth and agent tokens private, and revoke the paired agent when it is no longer trusted. The fixed `mada_run_task` tool remains available for routine tests/builds, and Opera control still targets only the paired agent's loopback CDP port.
 
 ## Run local structural/protocol tests
 

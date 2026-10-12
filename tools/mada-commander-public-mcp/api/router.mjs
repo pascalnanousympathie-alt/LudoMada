@@ -1051,6 +1051,17 @@ function sanitizeResult(profile, raw) {
       stderr: redactSensitive(String(raw.stderr || "")).slice(-2500)
     };
   }
+  if (profile === "run_task" && typeof raw.command === "string" && typeof raw.cwd === "string" && Number.isInteger(raw.exitCode)) {
+    return {
+      command: redactSensitive(raw.command).slice(0, 4000),
+      cwd: redactSensitive(raw.cwd).slice(0, 240),
+      exitCode: Math.max(-1, Math.min(255, raw.exitCode)),
+      timedOut: Boolean(raw.timedOut),
+      durationMs: Number.isInteger(raw.durationMs) ? Math.max(0, Math.min(900000, raw.durationMs)) : 0,
+      stdout: redactSensitive(String(raw.stdout || "")).slice(-6000),
+      stderr: redactSensitive(String(raw.stderr || "")).slice(-2500)
+    };
+  }
   if (profile === "run_task") {
     const task = ["git_status","git_diff_stat","npm_test","npm_lint","npm_build","android_assemble_debug","android_test"].includes(raw.task) ? raw.task : "";
     if (!task || !Number.isInteger(raw.exitCode)) return null;

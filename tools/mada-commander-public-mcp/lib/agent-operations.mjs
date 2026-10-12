@@ -188,6 +188,32 @@ export async function runCommand(project, programInput, argsInput = [], cwdInput
   };
 }
 
+/**
+ * Execute a complete shell command for owners who explicitly need pipes/chaining.
+ * This uses the paired device's shell with its OS permissions; cwd is NOT a sandbox.
+ */
+export async function runShellCommand(project, commandInput, cwdInput = ".", timeoutInput = 120000) {
+  if (typeof commandInput !== "string" || !commandInput.trim() ||
+      commandInput.length > 4000 || commandInput.includes(String.fromCharCode(0))) {
+    throw new Error("Shell command must be non-empty, contain no NUL, and be at most 4000 characters.");
+  }
+  if (typeof cwdInput !== "string" || cwdInput.length > 240) {
+    throw new Error("Working directory must be a project-relative path no longer than 240 characters.");
+  }
+  const timeoutMs = timeoutInput === undefined ? 120000 : timeoutInput;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 900000) {
+    throw new Error("Shell timeout must be an integer between 1000 and 900000 milliseconds.");
+  }
+  const { target, parts } = await resolveWorkspacePath(project, cwdInput || ".", { allowRoot: true });
+  if (!(await fs.stat(target)).isDirectory()) throw new Error("Shell working directory must be a workspace directory.");
+  const result = await runChild("sh", ["-lc", commandInput], target, timeoutMs);
+  return {
+    command: redactSensitive(commandInput).slice(0, 4000),
+    cwd: parts.join("/") || ".",
+    ...result
+  };
+}
+
 function operaCdpPort() {
   const port = Number(process.env.MADA_OPERA_CDP_PORT || 9223);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error("Mada Commander Opera CDP port is invalid.");

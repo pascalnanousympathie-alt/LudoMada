@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, runCommand, operaStatus, operaTabs, operaNavigate, operaAction, mcpIntegrationCatalog, mcpIntegrationTools, mcpIntegrationCall } from "./lib/agent-operations.mjs";
+import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, runCommand, runShellCommand, operaStatus, operaTabs, operaNavigate, operaAction, mcpIntegrationCatalog, mcpIntegrationTools, mcpIntegrationCall } from "./lib/agent-operations.mjs";
 
 const HOME = os.homedir();
 const STATE_DIR = path.join(HOME, ".config", "mada-commander");
@@ -25,7 +25,7 @@ function usage() {
     "  node agent.mjs run [--once]\n" +
     "  node agent.mjs status\n" +
     "  node agent.mjs integration-init | integration-list | integration-tools <server-id>\n\n" +
-    "Mada Commander supports a broad allowlist of local command executables (Git, Node/npm, Python scripts, Gradle/Java, file utilities, and Termux package tools). Arguments are passed directly without shell parsing; inline Node/Python code-evaluation flags are blocked. Commands still run with the local agent OS user's permissions. Use only on your own device and revoke pairing when no longer trusted."
+    "Mada Commander provides both an approved direct-argv executable tool and a full-shell tool for explicit pipes/chaining. Full-shell commands run with the paired local agent user's OS permissions and can modify/delete files or access the network; the workspace is only the starting directory, not a sandbox. Never send secrets in commands and use only with a device and projects you own or are authorized to administer."
   );
 }
 
@@ -185,9 +185,11 @@ async function processOneJob(config) {
       else if (job.profile === "workspace_list") result = await workspaceList(project, request.relativeDirectory || "");
       else if (job.profile === "workspace_read") result = await workspaceRead(project, request.relativeFile);
       else if (job.profile === "workspace_write") result = await workspaceWrite(project, request.relativeFile, request.content);
+      else if (job.profile === "run_task" && request.kind === "shell") result = await runShellCommand(project, request.command, request.cwd || ".", request.timeoutMs);
       else if (job.profile === "run_task" && request.kind === "command") result = await runCommand(project, request.program, request.args || [], request.cwd || ".", request.timeoutMs);
       else if (job.profile === "run_task") result = await runApprovedTask(project, request.task);
       else if (job.profile === "run_command") result = await runCommand(project, request.program, request.args || [], request.cwd || ".", request.timeoutMs);
+      else if (job.profile === "run_shell") result = await runShellCommand(project, request.command, request.cwd || ".", request.timeoutMs);
       else if (job.profile === "opera_status") result = await operaStatus();
       else if (job.profile === "opera_tabs") result = await operaTabs();
       else if (job.profile === "opera_navigate") result = await operaNavigate(request.tabId, request.address);

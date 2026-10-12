@@ -11,7 +11,7 @@ test("only the least-privilege public tool surface is advertised", () => {
   assert.deepEqual(PUBLIC_TOOLS.slice(0, 5).map(t => t.name), [
     "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status", "mada_connection_help"
   ]);
-  assert.equal(PUBLIC_TOOLS.length, 17);
+  assert.equal(PUBLIC_TOOLS.length, 18);
   for (const tool of PUBLIC_TOOLS) {
     assert.equal(typeof tool.description, "string");
     assert.ok(tool.description.length >= 40);
@@ -23,7 +23,7 @@ test("only the least-privilege public tool surface is advertised", () => {
     assert.ok(tool.outputSchema && tool.outputSchema.type === "object");
     assert.equal(
       tool.annotations.openWorldHint,
-      ["mada_mcp_tools", "mada_mcp_call", "mada_run_command"].includes(tool.name),
+      ["mada_mcp_tools", "mada_mcp_call", "mada_run_command", "mada_run_shell"].includes(tool.name),
       "only configured external MCP discovery/calls are open-world"
     );
     if (tool.name === "mada_run_diagnostics") {
@@ -38,6 +38,10 @@ test("only the least-privilege public tool surface is advertised", () => {
       assert.equal(tool.inputSchema.properties.args.maxItems, 40);
       assert.equal(tool.annotations.destructiveHint, true);
       assert.deepEqual(tool.inputSchema.required, ["projectId", "agentId", "program", "args"]);
+    } else if (tool.name === "mada_run_shell") {
+      assert.equal(tool.inputSchema.properties.command.maxLength, 4000);
+      assert.equal(tool.annotations.destructiveHint, true);
+      assert.deepEqual(tool.inputSchema.required, ["projectId", "agentId", "command"]);
     } else {
       assert.ok(!properties.some(k => /command|shell|path|script|url|token|secret|cookie/i.test(k)));
     }
@@ -230,7 +234,7 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
 
   const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   assert.equal(listed.status, 200);
-  assert.equal(listed.body.result.tools.length, 17);
+  assert.equal(listed.body.result.tools.length, 18);
   assert.deepEqual(listed.body.result.tools.map(t => t.name), PUBLIC_TOOLS.map(t => t.name));
   assert.ok(listed.body.result.tools.every(t => t.outputSchema && t.outputSchema.type === "object"));
 
@@ -397,6 +401,10 @@ test("new write and Opera tools reject unsafe inputs before queuing", async () =
   assert.equal(arbitraryTask.isError, true);
   const invalidCommand = await executePublicTool("mada_run_command", { ...common, program: "not-approved", args: [] }, principal);
   assert.equal(invalidCommand.isError, true);
+  const invalidShell = await executePublicTool("mada_run_shell", { ...common, command: "   " }, principal);
+  assert.equal(invalidShell.isError, true);
+  const oversizedShell = await executePublicTool("mada_run_shell", { ...common, command: "x".repeat(4001) }, principal);
+  assert.equal(oversizedShell.isError, true);
   const unsafeNavigation = await executePublicTool("mada_opera_navigate", {
     ...common, tabId: "tab_1", address: "javascript:alert(1)"
   }, principal);

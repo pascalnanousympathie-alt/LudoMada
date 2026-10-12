@@ -381,6 +381,37 @@ export const PUBLIC_TOOLS = Object.freeze([
     annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: true }
   },
   {
+    name: "mada_run_shell",
+    title: "Run a full shell command on my paired device",
+    description: "Run an explicitly requested shell command on the signed-in user's selected registered workspace through their paired local agent. Supports shell syntax such as pipes, redirects, command chaining and environment-aware scripts. This is maximum-privilege local command execution: it runs as the paired device's OS user, can read/change/delete any files that user can access and can use its network permissions. The registered project and cwd are only the starting directory, NOT an OS sandbox. Output is bounded and secret-like values are redacted on a best-effort basis, but redaction cannot guarantee every unknown secret is removed. Never put passwords, API keys, cookies or other secrets in a command; use only on a device you own or are authorized to administer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$", description: "Project alias returned by mada_list_projects." },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$", description: "Exact owning agent ID returned beside that project." },
+        command: { type: "string", minLength: 1, maxLength: 4000, description: "Complete shell command; pipelines/chaining are supported. Do not include secret values." },
+        cwd: { type: "string", maxLength: 240, default: ".", description: "Optional project-relative starting directory, not a filesystem sandbox." },
+        timeoutMs: { type: "integer", minimum: 1000, maximum: 900000, default: 120000, description: "Maximum execution time in milliseconds." }
+      },
+      required: ["projectId", "agentId", "command"],
+      additionalProperties: false
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        jobId: { type: "string" },
+        status: { type: "string", enum: ["queued"] },
+        operation: { type: "string", enum: ["run_shell"] },
+        projectId: { type: "string" },
+        projectName: { type: "string" }
+      },
+      required: ["jobId", "status", "operation", "projectId", "projectName"],
+      additionalProperties: false
+    },
+    securitySchemes: oauth,
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: true }
+  },
+  {
     name: "mada_opera_status",
     title: "Check Opera connection",
     description: "Check the Opera instance owned by this paired local agent. Returns connection status and tab count only; credentials and remote-debugging socket URLs are never disclosed.",
@@ -642,7 +673,7 @@ export async function executePublicTool(name, args, principal) {
       const j = r.rows[0];
       const data = {
         jobId: j.id, projectId: j.project_id, projectName: j.label,
-        profile: j.profile === "run_task" && j.request?.kind === "command" ? "run_command" : j.profile,
+        profile: j.profile === "run_task" && j.request?.kind === "shell" ? "run_shell" : j.profile === "run_task" && j.request?.kind === "command" ? "run_command" : j.profile,
         status: j.status,
         result: j.result ? safePublicResult(j.result) : null,
         error: j.error_summary ? redactSensitive(j.error_summary) : ""
@@ -698,6 +729,21 @@ export async function executePublicTool(name, args, principal) {
         return { content: [{ type: "text", text: "timeoutMs must be an integer from 1000 to 900000." }], isError: true };
       }
       return enqueueProjectOperation(principal, args, "run_task", { kind: "command", program, args: commandArgs, cwd: cwd || ".", timeoutMs }, "run_command");
+    }
+    case "mada_run_shell": {
+      const command = args?.command;
+      const cwd = args?.cwd === undefined ? "." : args.cwd;
+      const timeoutMs = args?.timeoutMs === undefined ? 120000 : args.timeoutMs;
+      if (typeof command !== "string" || !command.trim() || command.length > 4000 || command.includes(String.fromCharCode(0))) {
+        return { content: [{ type: "text", text: "Shell command must be non-empty and at most 4000 characters." }], isError: true };
+      }
+      if (typeof cwd !== "string" || cwd.length > 240 || cwd.startsWith("/") || cwd.includes("\\")) {
+        return { content: [{ type: "text", text: "cwd must be a project-relative starting directory." }], isError: true };
+      }
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 900000) {
+        return { content: [{ type: "text", text: "timeoutMs must be an integer from 1000 to 900000." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "run_task", { kind: "shell", command, cwd: cwd || ".", timeoutMs }, "run_shell");
     }
     case "mada_opera_status": {
       return enqueueProjectOperation(principal, args, "opera_status", {});
