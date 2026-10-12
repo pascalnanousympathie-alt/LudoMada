@@ -52,7 +52,7 @@ jobs:
           const expected = [
             "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status",
             "mada_connection_help", "mada_workspace_list", "mada_workspace_read", "mada_workspace_write",
-            "mada_run_task", "mada_run_command", "mada_opera_status", "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action",
+            "mada_run_task", "mada_run_command", "mada_run_shell", "mada_opera_status", "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action",
             "mada_mcp_integrations", "mada_mcp_tools", "mada_mcp_call"
           ];
           const endpoint = process.env.MADA_PUBLIC_BASE_URL.replace(/\/$/, "") + "/mcp";
