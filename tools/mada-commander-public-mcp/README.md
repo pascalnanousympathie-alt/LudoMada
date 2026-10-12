@@ -15,6 +15,7 @@ The MCP advertises thirteen OAuth-scoped tools:
 - `mada_workspace_list` and `mada_workspace_read`: inspect a registered workspace's non-secret source tree and text files
 - `mada_workspace_write`: create or replace a recognised source/text file using a project-relative path
 - `mada_run_task`: run one fixed Git, npm test/lint/build, or Android Gradle test/build task
+- `mada_run_command`: run one approved executable (Git, Node/npm, Python scripts, Gradle/Java, file/network tools, Termux package tools) with separate argv arguments, bounded timeout/output, and best-effort secret redaction. Inline Node/Python evaluation flags and `env`/`printenv` are blocked. This remains high-privilege local execution as the paired OS user; the project is only the starting directory, not an OS sandbox.
 - `mada_opera_status` and `mada_opera_tabs`: inspect the paired Termux/noVNC Opera instance without returning cookies or debugging sockets
 - `mada_opera_navigate`: navigate a selected tab to HTTP(S) or approved Opera settings/about pages
 - `mada_opera_action`: inspect visible controls and make bounded non-secret setting changes through a fixed action allowlist
