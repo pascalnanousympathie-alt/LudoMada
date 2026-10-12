@@ -154,6 +154,21 @@ const diagnosticResult = {
       required: ["serverId", "toolName", "isError", "content"],
       additionalProperties: false
     },
+    {
+      type: "object",
+      properties: {
+        program: { type: "string" },
+        args: { type: "array", items: { type: "string" } },
+        cwd: { type: "string" },
+        exitCode: { type: "integer" },
+        timedOut: { type: "boolean" },
+        durationMs: { type: "integer" },
+        stdout: { type: "string" },
+        stderr: { type: "string" }
+      },
+      required: ["program", "args", "cwd", "exitCode", "timedOut", "durationMs", "stdout", "stderr"],
+      additionalProperties: false
+    },
   ]
 };
 
@@ -231,7 +246,7 @@ export const PUBLIC_TOOLS = Object.freeze([
         jobId: { type: "string" },
         projectId: { type: "string" },
         projectName: { type: "string" },
-        profile: { type: "string", enum: ["git_status", "toolchain", "inventory", "workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action", "mcp_integrations", "mcp_tools", "mcp_call"] },
+        profile: { type: "string", enum: ["git_status", "toolchain", "inventory", "workspace_list", "workspace_read", "workspace_write", "run_task", "run_command", "opera_status", "opera_tabs", "opera_navigate", "opera_action", "mcp_integrations", "mcp_tools", "mcp_call"] },
         status: { type: "string", enum: ["queued", "running", "succeeded", "failed", "cancelled"] },
         result: { anyOf: [diagnosticResult, { type: "null" }] },
         error: { type: "string" }
@@ -332,6 +347,38 @@ export const PUBLIC_TOOLS = Object.freeze([
     outputSchema: { type: "object", properties: { jobId: { type: "string" }, status: { type: "string" }, operation: { type: "string" }, projectId: { type: "string" }, projectName: { type: "string" } }, required: ["jobId", "status", "operation", "projectId", "projectName"], additionalProperties: false },
     securitySchemes: oauth,
     annotations: annotations.queued
+  },
+  {
+    name: "mada_run_command",
+    title: "Run an approved command on my paired device",
+    description: "Execute one allowlisted command executable on the signed-in user's selected registered workspace through the paired local agent. The executable is called directly without shell parsing; arguments are passed separately. Supported tools include Git, Node/npm/npx, Python scripts, Gradle/Java, file utilities, network utilities and Termux package commands. Inline Node/Python code-evaluation flags are blocked. This is high privilege: commands run with the local agent user's OS permissions and can change or delete files or use the network. The selected cwd is only the starting directory, not a security sandbox.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,39}$", description: "Project alias returned by mada_list_projects." },
+        agentId: { type: "string", pattern: "^[0-9a-f-]{36}$", description: "Exact owning agent ID returned beside that project." },
+        program: { type: "string", enum: ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"], description: "Exact executable name from the approved command list." },
+        args: { type: "array", maxItems: 40, items: { type: "string", maxLength: 2000 }, description: "Arguments passed directly as argv, without shell parsing; total size is limited to 32 KB." },
+        cwd: { type: "string", maxLength: 240, default: ".", description: "Optional path relative to the registered project, used as the starting directory." },
+        timeoutMs: { type: "integer", minimum: 1000, maximum: 900000, default: 120000, description: "Command timeout in milliseconds." }
+      },
+      required: ["projectId", "agentId", "program", "args"],
+      additionalProperties: false
+    },
+    outputSchema: {
+      type: "object",
+      properties: {
+        jobId: { type: "string" },
+        status: { type: "string", enum: ["queued"] },
+        operation: { type: "string", enum: ["run_command"] },
+        projectId: { type: "string" },
+        projectName: { type: "string" }
+      },
+      required: ["jobId", "status", "operation", "projectId", "projectName"],
+      additionalProperties: false
+    },
+    securitySchemes: oauth,
+    annotations: { readOnlyHint: false, openWorldHint: true, destructiveHint: true }
   },
   {
     name: "mada_opera_status",
@@ -478,7 +525,7 @@ async function enqueueProjectOperation(principal, args, operation, request = {})
   if (!/^[0-9a-f-]{36}$/i.test(String(args?.agentId || ""))) {
     return { content: [{ type: "text", text: "Invalid agent ID. Choose the agentId returned by mada_list_projects." }], isError: true };
   }
-  if (!["workspace_list","workspace_read","workspace_write","run_task","opera_status","opera_tabs","opera_navigate","opera_action","mcp_integrations","mcp_tools","mcp_call"].includes(operation)) {
+  if (!["workspace_list","workspace_read","workspace_write","run_task","run_command","opera_status","opera_tabs","opera_navigate","opera_action","mcp_integrations","mcp_tools","mcp_call"].includes(operation)) {
     return { content: [{ type: "text", text: "Operation is not allowed." }], isError: true };
   }
   const serialized = JSON.stringify(request);
@@ -622,6 +669,33 @@ export async function executePublicTool(name, args, principal) {
         return { content: [{ type: "text", text: "Task is not in the fixed allowlist." }], isError: true };
       }
       return enqueueProjectOperation(principal, args, "run_task", { task: args.task });
+    }
+    case "mada_run_command": {
+      const program = args?.program;
+      const commandArgs = args?.args === undefined ? [] : args.args;
+      const cwd = args?.cwd === undefined ? "." : args.cwd;
+      const timeoutMs = args?.timeoutMs === undefined ? 120000 : args.timeoutMs;
+      const allowedPrograms = ["git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb", "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail", "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod", "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test", "termux-info", "pkg"];
+      const inlineFlags = { node: ["-e","--eval","-p","--print","-r","--require","--import"], python: ["-c","--command"], python3: ["-c","--command"] };
+      if (typeof program !== "string" || !allowedPrograms.includes(program)) {
+        return { content: [{ type: "text", text: "Executable is not in Mada Commander's approved command list." }], isError: true };
+      }
+      if (!Array.isArray(commandArgs) || commandArgs.length > 40 ||
+          commandArgs.some(arg => typeof arg !== "string" || arg.length > 2000 || arg.includes(String.fromCharCode(0))) ||
+          Buffer.byteLength(JSON.stringify(commandArgs), "utf8") > 32000) {
+        return { content: [{ type: "text", text: "Arguments exceed the allowed list or size limits." }], isError: true };
+      }
+      const blockedFlags = inlineFlags[program] || [];
+      if (commandArgs.some(arg => blockedFlags.includes(arg) || blockedFlags.some(flag => arg.startsWith(flag + "=")))) {
+        return { content: [{ type: "text", text: "Inline Node/Python code-evaluation flags are blocked; run a script file instead." }], isError: true };
+      }
+      if (typeof cwd !== "string" || cwd.length > 240 || cwd.startsWith("/") || cwd.includes("\\")) {
+        return { content: [{ type: "text", text: "cwd must be a project-relative working directory." }], isError: true };
+      }
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 900000) {
+        return { content: [{ type: "text", text: "timeoutMs must be an integer from 1000 to 900000." }], isError: true };
+      }
+      return enqueueProjectOperation(principal, args, "run_command", { program, args: commandArgs, cwd: cwd || ".", timeoutMs });
     }
     case "mada_opera_status": {
       return enqueueProjectOperation(principal, args, "opera_status", {});

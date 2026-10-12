@@ -134,7 +134,7 @@ CREATE INDEX IF NOT EXISTS mada_public_jobs_finished_idx ON mada_public_jobs(fin
 -- Bounded request payloads allow registered agents to perform approved workspace operations.
 ALTER TABLE public.mada_public_jobs ADD COLUMN IF NOT EXISTS request jsonb NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE public.mada_public_jobs DROP CONSTRAINT IF EXISTS mada_public_jobs_profile_check;
-ALTER TABLE public.mada_public_jobs ADD CONSTRAINT mada_public_jobs_profile_check CHECK (profile IN ('git_status','toolchain','inventory','workspace_list','workspace_read','workspace_write','run_task','opera_status','opera_tabs','opera_navigate','opera_action'));
+ALTER TABLE public.mada_public_jobs ADD CONSTRAINT mada_public_jobs_profile_check CHECK (profile IN ('git_status','toolchain','inventory','workspace_list','workspace_read','workspace_write','run_task','run_command','opera_status','opera_tabs','opera_navigate','opera_action','mcp_integrations','mcp_tools','mcp_call'));
 
 CREATE TABLE IF NOT EXISTS mada_public_rate_limits (
   key_hash char(64) PRIMARY KEY,

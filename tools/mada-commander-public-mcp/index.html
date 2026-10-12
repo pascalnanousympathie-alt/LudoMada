@@ -18,9 +18,9 @@ input{background:#050c13;color:var(--text);border:1px solid #274055;border-radiu
 </style></head>
 <body><main>
 <section class="hero">
-<div class="brand"><div class="logo">⌘</div><div><strong>Mada Commander</strong><div class="label">Secure, per-user developer diagnostics</div></div><span class="pill warn" id="heroStatusBadge" style="margin-left:auto">CONFIGURATION REQUIRED</span></div>
+<div class="brand"><div class="logo">⌘</div><div><strong>Mada Commander</strong><div class="label">Secure, per-user terminal and workspace control</div></div><span class="pill warn" id="heroStatusBadge" style="margin-left:auto">CONFIGURATION REQUIRED</span></div>
 <h1>Your workspace.<br>Your control.</h1>
-<p>Connect your own device, inspect project status, and run a small set of read-only diagnostics. Private paths and credentials stay on your device. Arbitrary shell commands are not exposed through the public service.</p>
+<p>Connect your own device, inspect and edit registered projects, run tests/builds, and execute allowlisted command-line tools through your paired local agent. Arguments are passed directly without shell parsing. Commands still run with that agent user's OS permissions and can read or modify files or use the network; the workspace is only the starting directory, not a sandbox. Keep access limited to devices and GPT connections you trust.</p>
 <div class="row"><a class="btn primary disabled" id="login" href="#readiness" aria-disabled="true" tabindex="-1">Sign-in disabled until setup is complete</a><button class="btn hidden" id="logout" type="button">Sign out</button><span class="status warn" id="sessionStatus">Sign-in is disabled until setup is complete.</span></div>
 </section>
 <section class="card" id="readiness" aria-live="polite" style="margin-top:14px">

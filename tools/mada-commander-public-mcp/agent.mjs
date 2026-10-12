@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, operaStatus, operaTabs, operaNavigate, operaAction, mcpIntegrationCatalog, mcpIntegrationTools, mcpIntegrationCall } from "./lib/agent-operations.mjs";
+import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, runCommand, operaStatus, operaTabs, operaNavigate, operaAction, mcpIntegrationCatalog, mcpIntegrationTools, mcpIntegrationCall } from "./lib/agent-operations.mjs";
 
 const HOME = os.homedir();
 const STATE_DIR = path.join(HOME, ".config", "mada-commander");
@@ -14,7 +14,7 @@ const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const MCP_CONFIG_FILE = path.join(STATE_DIR, "mcp-integrations.json");
 const MCP_CONFIG_TEMPLATE = path.join(THIS_DIR, "mcp-integrations.example.json");
 const ALLOWED_PROFILES = new Set(["git_status", "toolchain", "inventory"]);
-const ALLOWED_OPERATIONS = new Set(["workspace_list", "workspace_read", "workspace_write", "run_task", "opera_status", "opera_tabs", "opera_navigate", "opera_action", "mcp_integrations", "mcp_tools", "mcp_call"]);
+const ALLOWED_OPERATIONS = new Set(["workspace_list", "workspace_read", "workspace_write", "run_task", "run_command", "opera_status", "opera_tabs", "opera_navigate", "opera_action", "mcp_integrations", "mcp_tools", "mcp_call"]);
 
 function usage() {
   console.log(
@@ -25,7 +25,7 @@ function usage() {
     "  node agent.mjs run [--once]\n" +
     "  node agent.mjs status\n" +
     "  node agent.mjs integration-init | integration-list | integration-tools <server-id>\n\n" +
-    "Workspace file operations use project-relative paths and block credentials; tests/builds use a fixed task allowlist; Opera control uses a loopback CDP port and structured actions only. No free-form shell command or absolute path is accepted from the public server."
+    "Mada Commander supports a broad allowlist of local command executables (Git, Node/npm, Python scripts, Gradle/Java, file utilities, and Termux package tools). Arguments are passed directly without shell parsing; inline Node/Python code-evaluation flags are blocked. Commands still run with the local agent OS user's permissions. Use only on your own device and revoke pairing when no longer trusted."
   );
 }
 
@@ -186,6 +186,7 @@ async function processOneJob(config) {
       else if (job.profile === "workspace_read") result = await workspaceRead(project, request.relativeFile);
       else if (job.profile === "workspace_write") result = await workspaceWrite(project, request.relativeFile, request.content);
       else if (job.profile === "run_task") result = await runApprovedTask(project, request.task);
+      else if (job.profile === "run_command") result = await runCommand(project, request.program, request.args || [], request.cwd || ".", request.timeoutMs);
       else if (job.profile === "opera_status") result = await operaStatus();
       else if (job.profile === "opera_tabs") result = await operaTabs();
       else if (job.profile === "opera_navigate") result = await operaNavigate(request.tabId, request.address);

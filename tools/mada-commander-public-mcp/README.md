@@ -23,7 +23,7 @@ The MCP advertises sixteen OAuth-scoped tools:
 - `mada_mcp_call`: invoke one locally allowlisted tool; write-capable tools remain hidden unless the owner deliberately enables them
 
 
-It still does **not** expose free-form shell commands, arbitrary filesystem paths, passwords, raw CDP sockets, arbitrary JavaScript, APK installation, or GitHub merge/review. Source changes are constrained to registered project-relative text files; tasks are fixed allowlisted invocations; Opera commands target only the paired agent's loopback CDP port. File writes, navigation, and UI actions can change local state and should be followed by tests and Git review.
+The public MCP includes `mada_run_command` for approved command executables on the paired local device. Arguments are passed directly without shell parsing; inline Node/Python evaluation flags are blocked. Commands execute as the local agent OS user and may read, create, modify, or delete files and use that user's network permissions. The registered project is the starting directory, not an OS sandbox; command output is sanitized and bounded. Treat this as high-privilege command access, keep OAuth and agent tokens private, and revoke the paired agent when it is no longer trusted. The fixed `mada_run_task` tool remains available for routine tests/builds, and Opera control still targets only the paired agent's loopback CDP port.
 
 ## Run local structural/protocol tests
 

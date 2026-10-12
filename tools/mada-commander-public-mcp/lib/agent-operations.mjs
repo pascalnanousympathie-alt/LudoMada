@@ -8,6 +8,18 @@ import { listMcpIntegrations, listAllowedMcpTools, callAllowedMcpTool } from "./
 const BLOCKED_DIRS = new Set([".git", ".config", ".ssh", ".vercel", "node_modules", "vendor", "build", "dist", "coverage", ".next", ".cache"]);
 const BLOCKED_NAMES = /^(?:\.env(?:\..*)?|\.npmrc|\.git-credentials|credentials(?:\..*)?|secrets?(?:\..*)?|.*\.(?:pem|key|p12|pfx|jks|keystore))$/i;
 const TEXT_EXTENSIONS = new Set([".mjs", ".cjs", ".js", ".jsx", ".ts", ".tsx", ".json", ".md", ".yaml", ".yml", ".html", ".css", ".scss", ".xml", ".sql", ".sh", ".py", ".kt", ".kts", ".java", ".gradle", ".properties", ".txt", ".toml", ".lock", ".svg", ".vue", ".svelte", ".go", ".rs", ".dart", ".gitignore", ".editorconfig"]);
+const COMMAND_PROGRAMS = new Set([
+  "git", "node", "npm", "npx", "python", "python3", "java", "javac", "gradle", "./gradlew", "adb",
+  "ls", "cat", "mkdir", "cp", "mv", "rm", "touch", "find", "grep", "sed", "awk", "head", "tail",
+  "pwd", "whoami", "uname", "env", "printenv", "curl", "wget", "jq", "tar", "zip", "unzip", "chmod",
+  "stat", "du", "df", "ps", "pgrep", "pkill", "kill", "date", "printf", "true", "false", "test",
+  "termux-info", "pkg"
+]);
+const INLINE_EVAL_FLAGS = {
+  node: new Set(["-e", "--eval", "-p", "--print", "-r", "--require", "--import"]),
+  python: new Set(["-c", "--command"]),
+  python3: new Set(["-c", "--command"])
+};
 const TASKS = Object.freeze({
   git_status: ["git", ["status", "--short", "--branch"], 15000],
   git_diff_stat: ["git", ["diff", "--stat"], 15000],
@@ -139,6 +151,41 @@ export async function runApprovedTask(project, task) {
     if (!wrapper?.isFile()) throw new Error("This workspace has no Gradle wrapper.");
   }
   return { task, ...await runChild(program,args,project.path,timeoutMs) };
+}
+
+/**
+ * Run a validated executable directly without shell parsing.
+ * Arguments are passed as separate argv items; cwd is a project-relative start folder.
+ */
+export async function runCommand(project, programInput, argsInput = [], cwdInput = ".", timeoutInput = 120000) {
+  if (typeof programInput !== "string" || !COMMAND_PROGRAMS.has(programInput)) {
+    throw new Error("Executable is not in Mada Commander's approved command list.");
+  }
+  if (!Array.isArray(argsInput) || argsInput.length > 40 ||
+      argsInput.some(arg => typeof arg !== "string" || arg.length > 2000 || arg.includes(String.fromCharCode(0))) ||
+      Buffer.byteLength(JSON.stringify(argsInput), "utf8") > 32000) {
+    throw new Error("Command arguments must be at most 40 strings, 2000 characters each, and 32 KB total.");
+  }
+  const blockedFlags = INLINE_EVAL_FLAGS[programInput];
+  if (blockedFlags && argsInput.some(arg => blockedFlags.has(arg) || [...blockedFlags].some(flag => arg.startsWith(flag + "=")))) {
+    throw new Error("Inline code-evaluation flags are blocked; run a reviewed script file instead.");
+  }
+  if (typeof cwdInput !== "string" || cwdInput.length > 240) {
+    throw new Error("Working directory must be a project-relative path no longer than 240 characters.");
+  }
+  const timeoutMs = timeoutInput === undefined ? 120000 : timeoutInput;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 900000) {
+    throw new Error("Command timeout must be an integer between 1000 and 900000 milliseconds.");
+  }
+  const { target, parts } = await resolveWorkspacePath(project, cwdInput || ".", { allowRoot: true });
+  if (!(await fs.stat(target)).isDirectory()) throw new Error("Command working directory must be a workspace directory.");
+  const result = await runChild(programInput, argsInput, target, timeoutMs);
+  return {
+    program: programInput,
+    args: argsInput.map(arg => redactSensitive(arg).slice(0, 2000)),
+    cwd: parts.join("/") || ".",
+    ...result
+  };
 }
 
 function operaCdpPort() {
