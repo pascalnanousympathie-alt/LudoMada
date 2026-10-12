@@ -391,7 +391,7 @@ test("Opera clicks are scheduled so navigations cannot tear down the CDP reply",
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
   const source = await fs.readFile(new URL("../lib/agent-operations.mjs", import.meta.url), "utf8");
-  const deferredClicks = source.match(/setTimeout\(\(\) => \{ try \{ if \(el\.isConnected && !el\.disabled\) el\.click\(\); \} catch \{\} \}, 50\);/g) || [];
+  const deferredClicks = source.match(/setTimeout\(\(\) => \{ try \{ if \(el\.isConnected && !el\.disabled\) el\.click\(\); \} catch \{\} \}, 750\);/g) || [];
   assert.equal(deferredClicks.length, 2);
   assert.equal((source.match(/scheduled:true/g) || []).length, 2);
   assert.ok(source.includes("Defer the click so Runtime.evaluate can return before a navigation tears down the target."));

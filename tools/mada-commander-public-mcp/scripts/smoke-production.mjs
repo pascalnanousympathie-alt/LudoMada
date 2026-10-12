@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const BASE = new URL(process.env.MADA_PUBLIC_BASE_URL || "https://mada-commander-public-mcp.vercel.app");
 const expectReady = process.argv.includes("--expect-ready");
+const expectDomainChallenge = process.argv.includes("--expect-domain-challenge");
 assert.equal(BASE.protocol, "https:", "production smoke requires HTTPS");
 assert.equal(BASE.pathname, "/", "base URL must be an origin, not a path");
 const failures = [];
@@ -54,7 +55,8 @@ await check("health matches expected setup state", async () => {
   if (expectReady) {
     assert.equal(response.status, 200);
     assert.equal(health.ready, true);
-    assert.ok(Object.values(health.checks || {}).every(Boolean));
+    assert.ok(Object.entries(health.checks || {}).filter(([key]) => key !== "domainChallengeConfigured").every(([, value]) => value));
+    assert.equal(health.checks?.domainChallengeConfigured, expectDomainChallenge);
   } else {
     assert.equal(response.status, 503);
     assert.equal(health.ready, false);
@@ -65,7 +67,7 @@ await check("domain challenge matches expected configuration state", async () =>
   const response = await get("/.well-known/openai-apps-challenge");
   await checkHeaders(response, "domain challenge");
   const body = (await response.text()).trim();
-  if (expectReady) {
+  if (expectDomainChallenge) {
     assert.equal(response.status, 200);
     assert.ok(body.length > 0);
     assert.ok(!body.startsWith("{"), "challenge should be served as plain text");
@@ -112,5 +114,5 @@ await check("Google sign-in state matches service readiness", async () => {
     assert.match(await response.text(), /service_not_configured/);
   }
 });
-console.log("\nPRODUCTION SMOKE SUMMARY: " + passes.length + " passed, " + failures.length + " failed; mode=" + (expectReady ? "ready" : "fail-closed"));
+console.log("\nPRODUCTION SMOKE SUMMARY: " + passes.length + " passed, " + failures.length + " failed; mode=" + (expectReady ? "ready" : "fail-closed") + "; domainChallenge=" + (expectDomainChallenge ? "configured" : "not-configured"));
 if (failures.length) process.exitCode = 1;

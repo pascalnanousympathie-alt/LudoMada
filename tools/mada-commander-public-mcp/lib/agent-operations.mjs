@@ -219,32 +219,81 @@ async function operaCdpCall(tabIdInput, method, params = {}) {
   const tabId = validOperaTabId(tabIdInput);
   const targets = await operaFetchJson("/json/list");
   const target = (Array.isArray(targets) ? targets : []).find(t => t.id === tabId && t.type === "page");
-  if (!target?.webSocketDebuggerUrl) throw new Error("Selected Opera tab is no longer available.");
-  const address = new URL(target.webSocketDebuggerUrl);
-  if (address.protocol !== "ws:" || !["127.0.0.1","localhost","::1"].includes(address.hostname) || Number(address.port) !== operaCdpPort()) {
-    throw new Error("Unexpected Opera debugging socket; connection refused.");
-  }
+  if (!target?.id) throw new Error("Selected Opera tab is no longer available.");
+
+  // Use the browser-level WebSocket and a flattened CDP session. A per-page
+  // socket can close during cross-origin navigation before Page.navigate's
+  // acknowledgement is delivered, which looks like a timeout despite success.
+  const version = await operaFetchJson("/json/version");
   if (typeof WebSocket !== "function") throw new Error("This Node runtime does not provide a WebSocket client.");
+  let browserSocket;
+  try { browserSocket = new URL(String(version.webSocketDebuggerUrl || "")); }
+  catch { throw new Error("Opera did not provide a valid browser debugging endpoint."); }
+  if (browserSocket.protocol !== "ws:" ||
+      !["127.0.0.1","localhost","::1"].includes(browserSocket.hostname) ||
+      Number(browserSocket.port) !== operaCdpPort() ||
+      !browserSocket.pathname.startsWith("/devtools/browser/")) {
+    throw new Error("Unexpected Opera browser debugging socket; connection refused.");
+  }
+
   return await new Promise((resolve, reject) => {
     let settled = false;
-    const socket = new WebSocket(address.href);
-    const timer = setTimeout(() => finish(new Error("Opera command timed out.")), 15000);
+    let attached = false;
+    let stage = "opening browser socket";
+    let nextId = 1;
+    const pending = new Map();
+    const socket = new WebSocket(browserSocket.href);
+    const timer = setTimeout(() => finish(new Error("Opera command timed out at stage: " + stage + ".")), 12000);
+
     function finish(error, result) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      pending.clear();
       try { socket.close(); } catch {}
       if (error) reject(error); else resolve(result || {});
     }
-    socket.addEventListener("open", () => socket.send(JSON.stringify({ id: 1, method, params })), { once: true });
+    function send(command, commandParams, sessionId) {
+      const id = nextId++;
+      pending.set(id, { command, sessionId: sessionId || null });
+      const message = { id, method: command, params: commandParams };
+      if (sessionId) message.sessionId = sessionId;
+      socket.send(JSON.stringify(message));
+    }
+
+    socket.addEventListener("open", () => {
+      stage = "attaching to target";
+      send("Target.attachToTarget", { targetId: target.id, flatten: true });
+    }, { once: true });
+
     socket.addEventListener("message", event => {
       let message;
       try { message = JSON.parse(String(event.data)); } catch { return; }
-      if (message.id !== 1) return;
-      if (message.error) finish(new Error("Opera rejected the requested action."));
-      else finish(null, { ...message.result, __targetUrl: target.url });
+      const pendingCommand = pending.get(message.id);
+      if (!pendingCommand) return;
+      pending.delete(message.id);
+      if (message.error) {
+        finish(new Error("Opera rejected the requested browser action."));
+        return;
+      }
+      if (!attached) {
+        const sessionId = message.result?.sessionId;
+        if (pendingCommand.command !== "Target.attachToTarget" || typeof sessionId !== "string" || !sessionId) {
+          finish(new Error("Opera did not create a browser-control session."));
+          return;
+        }
+        attached = true;
+        stage = "awaiting " + method + " response";
+        send(method, params, sessionId);
+        return;
+      }
+      finish(null, { ...(message.result || {}), __targetUrl: target.url });
     });
-    socket.addEventListener("error", () => finish(new Error("Could not connect to the selected Opera tab.")), { once: true });
+
+    socket.addEventListener("error", () => finish(new Error("Could not connect to the Opera browser-control session.")), { once: true });
+    socket.addEventListener("close", () => {
+      if (!settled) finish(new Error("Opera browser-control session closed before replying."));
+    }, { once: true });
   });
 }
 
@@ -288,7 +337,7 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
       if (/(delete|remove|clear all|factory reset|reset all|purchase|buy now|pay now|send|authorize|grant access|sign out|log out)/i.test(label(el))) return { ok:false, reason:"sensitive_action_blocked" };
       const clicked = label(el);
       // Return to CDP before controls that navigate/reload the page execute their click.
-      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 50);
+      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 750);
       return { ok:true, clicked, scheduled:true };
     }
     if (!p.selector) return { ok:false, reason:"selector_required" };
@@ -299,7 +348,7 @@ export async function operaAction({ tabId: tabInput, action, selector = "", text
       if (/(delete|remove|clear all|factory reset|reset all|purchase|buy now|pay now|send|authorize|grant access|sign out|log out)/i.test(label(el))) return { ok:false, reason:"sensitive_action_blocked" };
       const clicked = label(el);
       // Defer the click so Runtime.evaluate can return before a navigation tears down the target.
-      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 50);
+      setTimeout(() => { try { if (el.isConnected && !el.disabled) el.click(); } catch {} }, 750);
       return { ok:true, clicked, scheduled:true };
     }
     if (p.action === "fill_selector") {
