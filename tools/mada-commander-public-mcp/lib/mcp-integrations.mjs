@@ -235,10 +235,11 @@ async function withHttp(server, fn) {
   if (server.authEnv && process.env[server.authEnv]) headers.authorization = "Bearer " + process.env[server.authEnv];
   let sessionId = "";
   let protocolVersion = "2025-06-18";
+  let initialized = false;
   async function request(message, timeoutMs = 45_000) {
     const outgoing = { ...headers };
     if (sessionId) outgoing["mcp-session-id"] = sessionId;
-    if (protocolVersion) outgoing["mcp-protocol-version"] = protocolVersion;
+    if (initialized && protocolVersion) outgoing["mcp-protocol-version"] = protocolVersion;
     const response = await fetch(server.url, {
       method: "POST",
       headers: outgoing,
@@ -259,6 +260,8 @@ async function withHttp(server, fn) {
     params: { protocolVersion, capabilities: {}, clientInfo: { name: "mada-commander-local-bridge", version: "0.2.0" } }
   });
   if (!init.protocolVersion || !init.capabilities) throw new Error("MCP HTTP server returned an invalid initialize response.");
+  protocolVersion = init.protocolVersion;
+  initialized = true;
   await fetch(server.url, {
     method: "POST",
     headers: { ...headers, ...(sessionId ? { "mcp-session-id": sessionId } : {}), "mcp-protocol-version": protocolVersion },
