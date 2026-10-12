@@ -258,6 +258,9 @@ test("dashboard offers sign-out, account deletion, and owned-agent revocation", 
   const root = path.resolve(new URL("..", import.meta.url).pathname);
   const html = await fs.readFile(path.join(root, "index.html"), "utf8");
   const api = await fs.readFile(path.join(root, "api/router.mjs"), "utf8");
+  const privacy = await fs.readFile(path.join(root, "privacy.html"), "utf8");
+  const terms = await fs.readFile(path.join(root, "terms.html"), "utf8");
+  const support = await fs.readFile(path.join(root, "support.html"), "utf8");
   assert.ok(html.includes('id="logout"'));
   assert.ok(html.includes('class="btn primary disabled" id="login" href="#readiness" aria-disabled="true" tabindex="-1"'));
   assert.ok(html.includes("login.tabIndex=ready?0:-1"));
@@ -267,7 +270,12 @@ test("dashboard offers sign-out, account deletion, and owned-agent revocation", 
   assert.ok(html.includes("Sign-in is disabled until setup is complete."));
   assert.ok(html.includes("serviceReady=Boolean(response.ok&&d.ready)"));
   assert.ok(html.includes("Sign-in will be available after secure setup is complete."));
-  assert.ok(html.includes("Protected features remain unavailable until the operator completes the secure service setup."));
+  assert.ok(html.includes("Workspace and Opera tools require Google sign-in and a locally paired agent."));
+  assert.ok(privacy.includes("Selected text/source file content can be transmitted"));
+  assert.ok(privacy.includes("sanitized tab titles/addresses"));
+  assert.ok(terms.includes("fixed Git/npm/Gradle test/build tasks"));
+  assert.ok(terms.includes("password/credential fields"));
+  assert.ok(support.includes("structured Opera tab/navigation/visible-control actions"));
   assert.ok(html.includes('id="deleteAccount"'));
   assert.ok(html.includes('id="oauthConnections"'));
   assert.ok(html.includes('/api/oauth/connections'));
