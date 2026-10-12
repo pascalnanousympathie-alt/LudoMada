@@ -269,7 +269,15 @@ async function withHttp(server, fn) {
     redirect: "error",
     signal: AbortSignal.timeout(10_000)
   }).catch(() => {});
-  await fn({ request });
+  let nextId = 2;
+  await fn({
+    request: async (method, params = {}, timeoutMs = 45_000) => {
+      if (typeof method !== "string" || !method || method.length > 120) {
+        throw new Error("Invalid MCP HTTP method.");
+      }
+      return await request({ jsonrpc: "2.0", id: nextId++, method, params }, timeoutMs);
+    }
+  });
 }
 
 function allowedNames(server) {
