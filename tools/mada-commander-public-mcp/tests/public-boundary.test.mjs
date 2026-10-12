@@ -11,7 +11,7 @@ test("only the least-privilege public tool surface is advertised", () => {
   assert.deepEqual(PUBLIC_TOOLS.slice(0, 5).map(t => t.name), [
     "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status", "mada_connection_help"
   ]);
-  assert.equal(PUBLIC_TOOLS.length, 13);
+  assert.equal(PUBLIC_TOOLS.length, 16);
   for (const tool of PUBLIC_TOOLS) {
     assert.equal(typeof tool.description, "string");
     assert.ok(tool.description.length >= 40);
@@ -21,7 +21,11 @@ test("only the least-privilege public tool surface is advertised", () => {
     assert.equal(typeof tool.annotations.openWorldHint, "boolean");
     assert.equal(typeof tool.annotations.destructiveHint, "boolean");
     assert.ok(tool.outputSchema && tool.outputSchema.type === "object");
-    assert.equal(tool.annotations.openWorldHint, false, "tools stay bounded to a user's paired workspace");
+    assert.equal(
+      tool.annotations.openWorldHint,
+      ["mada_mcp_tools", "mada_mcp_call"].includes(tool.name),
+      "only configured external MCP discovery/calls are open-world"
+    );
     if (tool.name === "mada_run_diagnostics") {
       assert.deepEqual(tool.inputSchema.required, ["projectId", "agentId", "profile"]);
       assert.equal(tool.inputSchema.properties.profile.enum.join(","), "git_status,toolchain,inventory");
@@ -217,7 +221,7 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
 
   const listed = await rpc({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   assert.equal(listed.status, 200);
-  assert.equal(listed.body.result.tools.length, 13);
+  assert.equal(listed.body.result.tools.length, 16);
   assert.deepEqual(listed.body.result.tools.map(t => t.name), PUBLIC_TOOLS.map(t => t.name));
   assert.ok(listed.body.result.tools.every(t => t.outputSchema && t.outputSchema.type === "object"));
 
