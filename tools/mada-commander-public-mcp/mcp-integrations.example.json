@@ -3,27 +3,18 @@
   "servers": [
     {
       "id": "github",
-      "label": "GitHub MCP (read-only by default)",
-      "transport": "stdio",
+      "label": "GitHub MCP hosted HTTPS (read-only allowlist)",
+      "transport": "http",
       "enabled": false,
-      "command": "github-mcp-server",
-      "args": [
-        "stdio",
-        "--read-only",
-        "--toolsets",
-        "repos,issues,pull_requests,actions"
-      ],
-      "env": {
-        "GITHUB_PERSONAL_ACCESS_TOKEN": "GITHUB_PERSONAL_ACCESS_TOKEN"
-      },
+      "url": "https://api.githubcopilot.com/mcp/",
+      "authEnv": "GITHUB_PERSONAL_ACCESS_TOKEN",
       "allowedTools": [
         "get_file_contents",
         "search_code",
         "search_repositories",
         "list_commits",
         "list_pull_requests",
-        "issue_read",
-        "actions_list"
+        "issue_read"
       ],
       "readOnlyTools": [
         "get_file_contents",
@@ -31,8 +22,7 @@
         "search_repositories",
         "list_commits",
         "list_pull_requests",
-        "issue_read",
-        "actions_list"
+        "issue_read"
       ],
       "writeEnabled": false
     },
