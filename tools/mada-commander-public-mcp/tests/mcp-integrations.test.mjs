@@ -56,11 +56,10 @@ test("stdio bridge exposes only the explicit read-only allowlist and calls only 
   assert.deepEqual(listed.tools.map(tool => tool.name), ["read_ok"]);
   assert.equal(listed.serverId, "fixture");
 
-  const denied = await callAllowedMcpTool("fixture", "write_ok", {}, file);
-  assert.fail("Expected write tool denial, got " + JSON.stringify(denied));
-}).catch(error => {
-  // Keep the deny assertion explicit while still allowing the test runner to report failure.
-  if (!/not explicitly allowlisted/.test(String(error?.message))) throw error;
+  await assert.rejects(
+    () => callAllowedMcpTool("fixture", "write_ok", {}, file),
+    /not explicitly allowlisted/
+  );
 });
 
 test("stdio bridge runs an allowlisted call and returns bounded tool output", async t => {
