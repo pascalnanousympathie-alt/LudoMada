@@ -6,7 +6,7 @@ This is a new, least-privilege service separate from `tools/personal-mcp-command
 
 ## Public feature boundary
 
-The MCP advertises thirteen OAuth-scoped tools:
+The MCP advertises sixteen OAuth-scoped tools:
 - `mada_agent_status`: inspect the signed-in user's own paired agents
 - `mada_list_projects`: list that account's registered project aliases and short Git summaries
 - `mada_run_diagnostics`: queue fixed Git/toolchain/inventory diagnostics
@@ -18,6 +18,10 @@ The MCP advertises thirteen OAuth-scoped tools:
 - `mada_opera_status` and `mada_opera_tabs`: inspect the paired Termux/noVNC Opera instance without returning cookies or debugging sockets
 - `mada_opera_navigate`: navigate a selected tab to HTTP(S) or approved Opera settings/about pages
 - `mada_opera_action`: inspect visible controls and make bounded non-secret setting changes through a fixed action allowlist
+- `mada_mcp_integrations`: inspect the paired device's owner-managed local MCP registry without returning secrets
+- `mada_mcp_tools`: discover only the exact MCP tool names in the local read-only allowlist
+- `mada_mcp_call`: invoke one locally allowlisted tool; write-capable tools remain hidden unless the owner deliberately enables them
+
 
 It still does **not** expose free-form shell commands, arbitrary filesystem paths, passwords, raw CDP sockets, arbitrary JavaScript, APK installation, or GitHub merge/review. Source changes are constrained to registered project-relative text files; tasks are fixed allowlisted invocations; Opera commands target only the paired agent's loopback CDP port. File writes, navigation, and UI actions can change local state and should be followed by tests and Git review.
 
@@ -96,6 +100,27 @@ node tools/mada-commander-public-mcp/agent.mjs project-add ludomada LudoMada "$H
 node tools/mada-commander-public-mcp/agent.mjs run
 ```
 The agent token and registered absolute project paths stay on the local device in `~/.config/mada-commander/agent.json`, permissions 0600. The service receives only project alias/label and short Git metadata during heartbeat; job payloads contain bounded, project-relative file requests, fixed task names, or structured Opera actions. Local source contents are returned only for explicit read requests, redacted and size-limited; write operations are recorded as queued jobs and produce a SHA-256 result. Opera control connects only to loopback CDP port 9223, never uploads cookies or debugging socket URLs, and excludes password/account identity fields from UI interaction. The agent polls every 15 seconds and can be stopped with Ctrl+C. Revoke the agent from the website to block further requests.
+
+
+## Optional MCP server integrations (local agent)
+
+The public server does not download or run third-party MCP server packages inside Vercel. Instead, the paired local agent can bridge owner-configured MCP servers over **STDIO** or **HTTPS Streamable HTTP**. Third-party credentials stay in the local agent process, sourced from named environment variables; the cloud service receives a server alias, an allowlisted tool name, bounded arguments and the resulting sanitized output.
+
+Initialize the local integration registry once:
+```sh
+node tools/mada-commander-public-mcp/agent.mjs integration-init
+node tools/mada-commander-public-mcp/agent.mjs integration-list
+```
+This creates `~/.config/mada-commander/mcp-integrations.json` with owner-only file permissions. All template integrations start disabled and all write-capable tools are off. Review the upstream server, install it locally, replace only placeholders, set the required credentials in the agent's local environment, and explicitly enable an integration after verifying its tool names. Keep the config at mode `0600`; the agent refuses a group/world-readable file.
+
+The template includes:
+- **GitHub MCP:** the official `github/github-mcp-server` stdio binary, using its read-only mode and a limited toolset. Install the binary for the actual device architecture first; do not paste a token into command-line arguments.
+- **Playwright MCP:** pinned to `@playwright/mcp@0.0.83` with a separate isolated/headless browser. It does **not** attach to the existing Opera noVNC profile and may need a supported browser runtime; leave disabled on Android/Termux unless it passes a local smoke test.
+- **Supabase MCP and Vercel MCP:** remote HTTPS placeholders, disabled by default. This bridge supports bearer credentials from a local environment variable, not an interactive OAuth consent flow. Do not enable these entries unless the provider explicitly supports the configured bearer-token method, the project is correctly scoped, and a non-mutating tool list has been verified.
+
+Only names present in the local `readOnlyTools` list are exposed by default. Adding a name to `allowedTools` alone does not enable it while `writeEnabled` is false. Setting `writeEnabled: true` permits the full local `allowedTools` list, including any mutations, and should be a deliberate operator decision. External tool descriptions and results are untrusted data; the bridge limits message sizes, sanitizes returned text, hides image/binary content, rejects arbitrary remote commands, and never accepts a server URL or executable path from a remote tool call. The remote MCP server may still act on external accounts using the local token's permissions, so use least-privilege credentials.
+
+The bridge and its configuration are source changes on a separate branch until reviewed and merged. The deployed production endpoint does not gain these tools merely because a branch exists.
 
 ## OpenAI public submission
 
