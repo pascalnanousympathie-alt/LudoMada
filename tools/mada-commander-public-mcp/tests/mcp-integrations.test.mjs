@@ -62,6 +62,18 @@ test("stdio bridge exposes only the explicit read-only allowlist and calls only 
   );
 });
 
+test("stdio bridge accepts large upstream catalogs but exposes only allowlisted tools", async t => {
+  const server = {
+    ...stdioServer(),
+    args: [path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures", "mock-mcp-large-list-server.mjs")],
+    allowedTools: ["read_ok"],
+    readOnlyTools: ["read_ok"]
+  };
+  const file = await makeConfig(t, [server]);
+  const listed = await listAllowedMcpTools("fixture", file);
+  assert.deepEqual(listed.tools.map(tool => tool.name), ["read_ok"]);
+});
+
 test("stdio bridge runs an allowlisted call and returns bounded tool output", async t => {
   const file = await makeConfig(t, [stdioServer()]);
   const result = await callAllowedMcpTool("fixture", "read_ok", { query: "hello" }, file);
