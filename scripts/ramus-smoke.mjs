@@ -490,7 +490,12 @@ try {
       waitStable(350);
     }
     if (!modeGlbLoaded) throw new Error(`GLB runtime failed for ${mode}-player board`);
-    console.log(`${mode}-PLAYER GLES3 BOARD + GLB PASS`);
+    if (!hasText("RENDERER=GLES3_PBR")) {
+      const diag = allow("snapshot", "--session", session, "--include-offscreen");
+      if (diag.ok) console.log("RENDERER_DIAGNOSTIC=" + JSON.stringify((diag.value?.elements || []).filter(e => String(e.text || e.contentDesc || "").includes("RENDERER="))));
+      throw new Error(`Expected native GLES3/PBR renderer for ${mode}-player board`);
+    }
+    console.log(`${mode}-PLAYER GLES3/PBR BOARD + GLB PASS`);
     shot(`board-${mode}p`);
 
     // Prove the gameplay HUD can invoke the real dice-roll callback. Tokens are
@@ -540,7 +545,8 @@ try {
     waitStable(350);
   }
   if(!glbRuntimeOk){ const diag=allow("snapshot","--session",session,"--include-offscreen"); if(diag.ok) console.log("GLB_RUNTIME_DIAGNOSTIC="+JSON.stringify((diag.value?.elements||[]).filter(e=>String(e.text||e.contentDesc||"").includes("GLB_RUNTIME_LOAD")))); throw new Error("Runtime GLB did not report GLB_RUNTIME_LOAD_OK on gameplay SurfaceView"); }
-  console.log("GLB_RUNTIME_LOAD PASS");
+  if (!hasText("RENDERER=GLES3_PBR")) throw new Error("4-player board did not select the required native GLES3/PBR renderer");
+  console.log("GLB_RUNTIME_LOAD + NATIVE_GLES3_PBR PASS");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
   shot("board-4p");
