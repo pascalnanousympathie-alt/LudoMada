@@ -28,6 +28,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ludomada-lane-f-${{ github.head_ref || github.ref_name }}
@@ -35,42 +36,23 @@ concurrency:
 
 jobs:
   premium-gate:
-    # Ramus is a remote emulator. Do not serialize this evidence run behind the phone's
-    # self-hosted Termux runner; the APK build and instrumented tests have a separate gate.
+    # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
+    # Cloud Fallback job instead of running a second Gradle build for the same SHA.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      RELEASE_MAX_RUNTIME: "39600"
     steps:
-      - name: Checkout exact PR source
+      - name: Checkout exact merge candidate
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
           clean: true
           path: _runs/${{ github.run_id }}
-
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-          cache-dependency-path: _runs/${{ github.run_id }}/android-app/gradle/wrapper/gradle-wrapper.properties
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 12266719
-          accept-android-sdk-licenses: true
-          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Strict premium source gate
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
@@ -81,21 +63,63 @@ jobs:
           node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
 
-      - name: Configure Android SDK
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
-        run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+      - name: Locate successful Cloud Fallback artifact for the exact merge SHA
+        id: apk-run
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pr = context.payload.pull_request;
+            const branch = pr?.head?.ref || context.ref.replace(/^refs\/heads\//, "");
+            const headSha = pr?.head?.sha || context.sha;
+            const mergeSha = context.sha;
+            const expectedName = `LudoMada-premium-gles3-debug-${mergeSha}`;
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner,
+              repo,
+              workflow_id: "android-apk-cloud-fallback.yml",
+              branch,
+              status: "completed",
+              per_page: 100
+            });
+            const candidates = runs.filter(run =>
+              run.conclusion === "success" &&
+              run.head_sha === headSha
+            );
+            for (const run of candidates) {
+              const listed = await github.rest.actions.listWorkflowRunArtifacts({
+                owner, repo, run_id: run.id, per_page: 100
+              });
+              const artifact = listed.data.artifacts.find(item =>
+                !item.expired && item.name === expectedName
+              );
+              if (artifact) {
+                core.setOutput("run_id", String(run.id));
+                core.info(`Using APK artifact ${artifact.name} from successful run ${run.id}`);
+                return;
+              }
+            }
+            core.setFailed(
+              `No successful Cloud Fallback artifact named "${expectedName}" found for head SHA ${headSha}; run Cloud Fallback successfully before Lane F.`
+            );
 
-      - name: Build debug APK for Ramus
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
+      - name: Download verified debug and instrumentation APKs
+        uses: actions/download-artifact@v4
+        with:
+          name: LudoMada-premium-gles3-debug-${{ github.sha }}
+          path: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk
+          run-id: ${{ steps.apk-run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+
+      - name: Verify current 3D assets are packaged in the downloaded APK
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          chmod +x gradlew
-          ./gradlew -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
-          test -s app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Verify current 3D assets are packaged in APK
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+          test -s android-app/app/build/outputs/apk/debug/app-debug.apk
+          test -s android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Install pinned Ramus CLI
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
