@@ -563,7 +563,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       // Header / identity.
       t(c,"Ludo",650,82,22,Color.WHITE,true,true);
       t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
-      t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
+      t(c,"Joue. Gagne. Grandis.",680,101,8.5f,0xEEFFFFFF,false,true);
       box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
       p.setShader(new RadialGradient(d(92),d(80),d(38),0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));
       c.drawCircle(d(92),d(80),d(38),p); p.setShader(null);
@@ -575,7 +575,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       long bal=lng("accountBalanceMGA");
       String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
       t(c,dn,132,75,18,Color.WHITE,true,false);
-      t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      t(c,"LudoMada  •  Joue. Gagne. Grandis.",132,98,11,0xD7FFFFFF,false,false);
       box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);
       t(c,"SOLDE",935,77,9,gold2,true,false);
       t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);

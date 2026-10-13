@@ -71,7 +71,7 @@ class MainActivity : Activity() {
     private val royal = Color.rgb(24,92,210)
     private val cyan = Color.rgb(34,171,255)
     private val emerald = Color.rgb(19,166,112)
-    private val gold = Color.rgb(237,183,52)
+    private val gold = Color.rgb(237,184,58)
     private fun darker(c:Int):Int = Color.rgb((Color.red(c)*.62f).toInt(),(Color.green(c)*.62f).toInt(),(Color.blue(c)*.62f).toInt())
     private fun button(s:String, accent:Int=royal, action:(()->Unit)?=null) = Button(this).apply {
         text=s; textSize=14f; isAllCaps=false; setTextColor(Color.WHITE); setTypeface(null,android.graphics.Typeface.BOLD)
