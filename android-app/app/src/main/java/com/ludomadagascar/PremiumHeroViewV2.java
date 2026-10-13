@@ -370,7 +370,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
 
   private void addHomeActionTargets(){
     addHomeTargets("HOME_PROFILE_CHIP",52,43,468,72,()->call("profile"));
-    addHomeTargets("HOME_CREATE_ROOM",52,145,238,80,()->call("createGame"));
+    addHomeTargets("HOME_CREATE_ROOM",52,145,238,80,()->call("lobby"));
     addHomeTargets("HOME_JOIN_ROOM",52,238,238,80,()->call("joinDialog"));
     addHomeTargets("HOME_PROFILE",52,424,238,80,()->call("profile"));
     addHomeTargets("HOME_MARKET",825,45,90,70,()->call("shop"));
@@ -814,7 +814,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=45&&y<115&&x>=1096&&x<1164){call("wallet");return true;}
       if(y>=45&&y<115&&x>=1164&&x<1230){call("toggleHomeMusic");return true;}
       if(y>=45&&y<115&&x>=825&&x<915){call("shop");return true;}
-      if(y>=140&&y<230&&x>=45&&x<310){call("createGame");return true;}
+      if(y>=140&&y<230&&x>=45&&x<310){call("lobby");return true;}
       if(y>=230&&y<325&&x>=45&&x<310){call("joinDialog");return true;}
       if(y>=325&&y<420&&x>=45&&x<310){call("wallet");return true;}
       if(y>=420&&y<515&&x>=45&&x<310){call("profile");return true;}
