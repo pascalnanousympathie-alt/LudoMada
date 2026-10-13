@@ -149,22 +149,52 @@ try {
 
   session = started.value.session;
   console.log(`Ramus session: ${session}`);
-  waitStable(1800);
+  waitStable(1200);
+
+  // Ramus may allocate the emulator successfully while Android remains on the
+  // launcher if package auto-detection did not bring the installed APK forward.
+  // Launch the exact application ID explicitly; never infer app startup from an
+  // available session or a successful screenshot RPC alone.
+  const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+  if (!launched.ok) {
+    throw new Error("Ramus could not launch com.ludomadagascar: " + JSON.stringify(launched.value));
+  }
+  waitStable(1600);
 
   let startup = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     startup = allow("snapshot", "--session", session);
     if (startup.ok) break;
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
-  if (!startup?.ok) throw new Error("Startup snapshot failed after retries");
+  if (!startup?.ok) throw new Error("Startup snapshot failed after explicit app launch");
+  const home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
   shot("startup");
 
+  // A valid session can still be sitting on the Android launcher after an app
+  // crash. Fail at the true startup boundary and report a compact UI diagnostic
+  // rather than cascading into misleading JOUER/game-mode errors.
+  if (!home.ok || !home.value?.elements?.length) {
+    const current = allow("snapshot", "--session", session, "--include-offscreen");
+    const elements = current.ok
+      ? (current.value?.elements || []).slice(0, 40).map(e => ({
+          text: String(e.text || "").slice(0, 100),
+          contentDesc: String(e.contentDesc || "").slice(0, 100),
+          clickable: Boolean(e.clickable)
+        }))
+      : [];
+    console.error("RAMUS_STARTUP_DIAGNOSTIC=" + JSON.stringify({
+      launch: launched.value,
+      snapshotOk: Boolean(startup.ok),
+      screen: startup.value?.screen || null,
+      visibleElements: elements
+    }));
+    throw new Error("LudoMada Premium Home did not open after explicit launch; inspect startup screenshot and Android crash/device logs");
+  }
+
   // Screenshot 1 is the Home reference. The current app intentionally starts here.
-  const home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  if (home.ok && home.value.elements?.length) {
-    console.log("STARTUP→PREMIUM HOME PASS");
+  console.log("STARTUP→PREMIUM HOME PASS");
     if (process.env.RAMUS_CAPTURE === "1") {
       shot("home-a");
       const rotationSleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
