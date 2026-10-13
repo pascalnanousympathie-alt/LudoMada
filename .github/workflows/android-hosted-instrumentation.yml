@@ -15,6 +15,7 @@ on:
       - ci/ludomada-live-home-screenshot-v9-20261013
       - ci/ludomada-renderer-init-trace-v10-20261013
       - ci/ludomada-renderer-init-trace-v11-20261013
+      - ci/ludomada-renderer-gpu-config-v12-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
@@ -114,7 +115,7 @@ jobs:
           disk-size: 5G
           # Normalize the AVD property after the action appends disk-size; avoid a duplicate profile default overriding 5G.
           pre-emulator-launch-script: >-
-            set -eu; : "${RUNNER_TEMP:=/home/runner/work/_temp}"; cfg=/home/runner/.android/avd/test.avd/config.ini; mkdir -p "$RUNNER_TEMP/ludomada-device-diag"; echo "AVD disk setting before normalization:"; grep '^disk.dataPartition.size=' "$cfg" || true; sed -i '/^disk\.dataPartition.size=/d' "$cfg"; printf '%s\n' 'disk.dataPartition.size=5G' >> "$cfg"; test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1; echo "AVD disk setting after normalization:"; grep '^disk.dataPartition.size=' "$cfg"; printf '%s\n' "AVD_CONFIG=$cfg" > "$RUNNER_TEMP/ludomada-device-diag/avd-config.txt"
+            set -eu; : "${RUNNER_TEMP:=/home/runner/work/_temp}"; mkdir -p /home/runner/.android; printf '%s\\n' 'Vulkan = off' 'GLDirectMem = on' > /home/runner/.android/advancedFeatures.ini; echo "Emulator advanced features:"; cat /home/runner/.android/advancedFeatures.ini; cfg=/home/runner/.android/avd/test.avd/config.ini; mkdir -p "$RUNNER_TEMP/ludomada-device-diag"; echo "AVD disk setting before normalization:"; grep '^disk.dataPartition.size=' "$cfg" || true; sed -i '/^disk\.dataPartition.size=/d' "$cfg"; printf '%s\n' 'disk.dataPartition.size=5G' >> "$cfg"; test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1; echo "AVD disk setting after normalization:"; grep '^disk.dataPartition.size=' "$cfg"; printf '%s\n' "AVD_CONFIG=$cfg" > "$RUNNER_TEMP/ludomada-device-diag/avd-config.txt"
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
