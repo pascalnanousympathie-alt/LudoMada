@@ -39,12 +39,12 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
-        repeat(24) {
+        for (attempt in 1..24) {
             assertTrue("Dice button must remain reachable", device.hasObject(By.text("Lancer le dé")))
             device.findObject(By.text("Lancer le dé")).click()
             if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
-                return@repeat
+                break
             }
             device.wait(Until.hasObject(By.textContains("Joueur ")), 1200)
             Thread.sleep(250)
@@ -56,7 +56,7 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        val file = File("/sdcard/Download/ludomada-startup-offline.png")
+        val file = File(context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
     }
