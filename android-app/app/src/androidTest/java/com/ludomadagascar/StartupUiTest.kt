@@ -98,7 +98,9 @@ class StartupUiTest {
         assertTrue("Join-room dismissal should preserve Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 3000))
 
         device.findObject(By.desc("HOME_CREATE_ROOM")).click()
-        assertTrue("Unauthenticated room creation should open the login screen", device.wait(Until.hasObject(By.text("CONNEXION")), 3000))
+        assertTrue("Create-room menu should open the entry-fee lobby", device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
+        device.findObject(By.text("500 Ar")).click()
+        assertTrue("Selecting a stake without a session should route to login", device.wait(Until.hasObject(By.text("CONNEXION")), 3000))
     }
 
     @Test
