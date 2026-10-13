@@ -7,6 +7,7 @@ on:
       - ci/hosted-android-startup-diagnostic-20261013
       - ci/hosted-android-startup-diagnostic-v2-20261013
       - ci/hosted-android-startup-diagnostic-v3-20261013
+      - ci/hosted-android-startup-diagnostic-v4-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
@@ -62,6 +63,20 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
+      - name: Enable KVM access on hosted runner
+        run: |
+          set -eu
+          if [ ! -e /dev/kvm ]; then
+            echo "KVM device is missing on this runner."
+            exit 1
+          fi
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules || true
+          sudo udevadm trigger --name-match=kvm || true
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+
       - name: Run StartupUiTest on a hosted Android emulator and preserve device diagnostics
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -73,33 +88,30 @@ jobs:
           # emulator's implicit 6G partition request that exceeded available disk.
           disk-size: 5G
           # Normalize the AVD property after the action appends disk-size; avoid a duplicate profile default overriding 5G.
-          pre-emulator-launch-script: |
-            set -eu
-            cfg="$HOME/.android/avd/test.avd/config.ini"
-            echo "AVD disk setting before normalization:"
-            grep '^disk.dataPartition.size=' "$cfg" || true
-            sed -i '/^disk\.dataPartition\.size=/d' "$cfg"
-            printf 'disk.dataPartition.size=5G\n' >> "$cfg"
-            test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1
-            echo "AVD disk setting after normalization:"
-            grep '^disk.dataPartition.size=' "$cfg"
+          pre-emulator-launch-script: >-
+            set -eu; cfg=/home/runner/.android/avd/test.avd/config.ini; echo "AVD disk setting before normalization:"; grep '^disk.dataPartition.size=' "$cfg" || true; sed -i '/^disk\\.dataPartition.size=/d' "$cfg"; printf 'disk.dataPartition.size=5G\\n' >> "$cfg"; test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1; echo "AVD disk setting after normalization:"; grep '^disk.dataPartition.size=' "$cfg"
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
           script: |
             set +e
+            mkdir -p "$RUNNER_TEMP/ludomada-device-diag"
+            adb shell am start -W -n com.ludomadagascar/.MainActivity > "$RUNNER_TEMP/ludomada-device-diag/manual-launch.txt" 2>&1 || true
+            sleep 5
+            adb exec-out screencap -p > "$RUNNER_TEMP/ludomada-device-diag/home-before-tests.png" 2> "$RUNNER_TEMP/ludomada-device-diag/screenshot-before.err" || true
             cd android-app
             ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace > "$RUNNER_TEMP/ludomada-connected-tests.log" 2>&1
             test_exit=$?
             cat "$RUNNER_TEMP/ludomada-connected-tests.log"
-            mkdir -p "$RUNNER_TEMP/ludomada-device-diag"
+            adb exec-out screencap -p > "$RUNNER_TEMP/ludomada-device-diag/home-after-tests.png" 2> "$RUNNER_TEMP/ludomada-device-diag/screenshot-after.err" || true
             adb logcat -d -v threadtime > "$RUNNER_TEMP/ludomada-device-diag/logcat.txt" 2>&1 || true
             adb shell dumpsys activity activities > "$RUNNER_TEMP/ludomada-device-diag/activities.txt" 2>&1 || true
             adb shell dumpsys activity top > "$RUNNER_TEMP/ludomada-device-diag/activity-top.txt" 2>&1 || true
             adb shell dumpsys package com.ludomadagascar > "$RUNNER_TEMP/ludomada-device-diag/package.txt" 2>&1 || true
             adb shell dumpsys window windows > "$RUNNER_TEMP/ludomada-device-diag/windows.txt" 2>&1 || true
             exit "$test_exit"
+
 
       - name: Upload instrumentation reports and Android device diagnostics
         if: always()
