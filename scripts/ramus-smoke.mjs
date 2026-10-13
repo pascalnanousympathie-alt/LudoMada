@@ -164,7 +164,7 @@ function captureStartupLogcat(stage) {
   // the emulator generates hundreds of unrelated system messages.
   const decoded = raw.replace(/\\n/g, "\n");
   const records = decoded
-    .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"/g, "\n")
+    .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"\s*:)/g, "\n")
     .split(/\r?\n/);
   const relevant = records.filter(line =>
     /FATAL EXCEPTION|AndroidRuntime|com\.ludomadagascar|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process:|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|PackageManager|Launch timeout|force finishing/i.test(line)
