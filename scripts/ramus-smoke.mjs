@@ -132,8 +132,8 @@ function sha256File(name) {
 
 function redactDiagnosticText(value) {
   return String(value || "")
-    .replace(/(Bearer\\s+)[A-Za-z0-9._~+\\/-]+=*/gi, "$1[REDACTED]")
-    .replace(/((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|password|authorization|cookie|nonce)\\s*[=:]\\s*)[^,;\\s}]+/gi, "$1[REDACTED]");
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, "$1[REDACTED]")
+    .replace(/((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|password|authorization|cookie|nonce)\s*[=:]\s*)[^,;\s}]+/gi, "$1[REDACTED]");
 }
 
 function captureFailureDiagnostics() {
@@ -169,12 +169,12 @@ function captureFailureDiagnostics() {
     return;
   }
   const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
-  const decoded = raw.replace(/\\\\n/g, "\\n");
-  const lines = decoded.split(/\\r?\\n/);
+  const decoded = raw.replace(/\\n/g, "\n");
+  const lines = decoded.split(/\r?\n/);
   const relevant = lines.filter(line =>
-    /FATAL EXCEPTION|AndroidRuntime|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process: com\\.ludomadagascar|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|ActivityManager/i.test(line)
+    /FATAL EXCEPTION|AndroidRuntime|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process: com\.ludomadagascar|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|ActivityManager/i.test(line)
   );
-  const excerpt = (relevant.length ? relevant : lines).slice(-80).join("\\n");
+  const excerpt = (relevant.length ? relevant : lines).slice(-80).join("\n");
   console.error("RAMUS_FAILURE_LOGCAT=" + redactDiagnosticText(excerpt).slice(-12000));
 }
 
