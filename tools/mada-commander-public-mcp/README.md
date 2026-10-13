@@ -104,6 +104,34 @@ node tools/mada-commander-public-mcp/agent.mjs run
 The agent token and registered absolute project paths stay on the local device in `~/.config/mada-commander/agent.json`, permissions 0600. The service receives only project alias/label and short Git metadata during heartbeat; job payloads contain bounded, project-relative file requests, fixed task names, or structured Opera actions. Local source contents are returned only for explicit read requests, redacted and size-limited; write operations are recorded as queued jobs and produce a SHA-256 result. Opera control connects only to loopback CDP port 9223, never uploads cookies or debugging socket URLs, and excludes password/account identity fields from UI interaction. The agent polls every 15 seconds and can be stopped with Ctrl+C. Revoke the agent from the website to block further requests.
 
 
+## Keep the Termux bridge online
+
+The local agent now sends its heartbeat independently every 30 seconds, including while a build or approved command is still running. Temporary poll failures use bounded exponential backoff; the agent token is reused from the existing owner-only configuration, so normal network recovery does not require a new pairing.
+
+On Termux, install the service supervisor once and restart the Termux shell:
+```sh
+pkg install termux-services
+```
+
+From the LudoMada repository root, install the persistent service:
+```sh
+bash tools/mada-commander-public-mcp/scripts/install-termux-service.sh
+bash tools/mada-commander-public-mcp/scripts/check-termux-service.sh
+```
+
+The installer checks that the device is already paired and refuses to overwrite a different existing service. It enables a runit service, captures logs, and prepares `~/.termux/boot/10-mada-commander`. Automatic start after an Android reboot requires the Termux:Boot app from the same trusted Termux distribution. On Android, also allow Termux background activity and disable battery optimization for Termux if the device is killing its background process.
+
+Useful recovery commands:
+```sh
+sv status mada-commander
+sv restart mada-commander
+tail -n 80 "$PREFIX/var/log/sv/mada-commander/current"
+```
+
+A current heartbeat is considered connected for 90 seconds. Server-side runtime monitoring runs every 15 minutes and checks both production aliases for health, MCP initialization, the expected 18-tool catalog, and that Google sign-in starts with a redirect to Google's authorization endpoint. It does not pretend to complete an actual user consent or token exchange; those require a dedicated end-to-end test account/approval path.
+
+OAuth server failures now include a generated `x-request-id` and a redacted route-stage event. Use that ID to correlate a failure in Vercel logs. Never add OAuth codes, tokens, cookies, client secrets, or full callback URLs to logs or issue reports.
+
 ## Optional MCP server integrations (local agent)
 
 The public server does not download or run third-party MCP server packages inside Vercel. Instead, the paired local agent can bridge owner-configured MCP servers over **STDIO** or **HTTPS Streamable HTTP**. Third-party credentials stay in the local agent process, sourced from named environment variables; the cloud service receives a server alias, an allowlisted tool name, bounded arguments and the resulting sanitized output.
