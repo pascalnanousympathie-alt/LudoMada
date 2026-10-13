@@ -247,10 +247,29 @@ try {
     }
   }
 
-  // The pinned workflow CLI is 0.1.13 and does not implement `session install`.
-  // If the original launch is still stuck after the one bounded foreground retry,
-  // end only the session created by this smoke, then allow one fresh APK-backed
-  // session to clear a wedged launch request. Never overlap sessions or loop forever.
+  // Lane F now installs exact Ramus CLI 0.1.14, which supports its documented
+  // same-session install/open command. Try that first after a stuck initial launch;
+  // it keeps the current emulator and avoids burning a second slot.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-same-session-install");
+    const installed = allow("session", "install", "--session", session, apk);
+    launchInfo = { ...launchInfo, sameSessionInstall: safeLaunchSummary(installed.value) };
+    waitStable(1200);
+    captureStartupLogcat("after-same-session-install");
+    if (installed.ok) {
+      home = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        waitStable(1000);
+        home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (home.ok && home.value?.elements?.length) break;
+        if (attempt === 1) captureStartupLogcat("same-session-install-home-missing");
+      }
+    }
+  }
+
+  // Last bounded recovery: if the same-session install/open path did not reach Home,
+  // end only the session created by this smoke and allow one fresh APK-backed session.
+  // This fallback remains sequential; it never overlaps sessions or retries forever.
   if (!home?.ok || !home.value?.elements?.length) {
     captureStartupLogcat("before-fresh-session");
     const ended = allow("session", "end", "--session", session);
