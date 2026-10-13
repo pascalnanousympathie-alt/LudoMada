@@ -754,7 +754,7 @@ class MainActivity : Activity() {
                 row.addView(button((if(fee==entryFee)"✓ " else "") + formatMGA(fee.toLong()) + " Ar",
                     if(fee==entryFee)emerald else royal) {
                     setDefaultEntryFee(fee)
-                    Toast.makeText(this,"Mise par défaut : " + formatMGA(fee) + " Ar",Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this,"Mise par défaut : " + formatMGA(fee.toLong()) + " Ar",Toast.LENGTH_SHORT).show()
                     settings()
                 },LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(3),0,dp(3),0)})
             }
