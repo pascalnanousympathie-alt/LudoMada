@@ -83,25 +83,41 @@ jobs:
               status: "completed",
               per_page: 100
             });
-            const candidates = runs.filter(run =>
-              run.conclusion === "success" &&
-              run.head_sha === headSha
-            );
-            for (const run of candidates) {
-              const listed = await github.rest.actions.listWorkflowRunArtifacts({
-                owner, repo, run_id: run.id, per_page: 100
+            // Cloud Fallback and Lane F start from the same PR event. Poll for the
+            // matching artifact rather than failing simply because Gradle is still building.
+            for (let attempt = 1; attempt <= 30; attempt++) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+                owner,
+                repo,
+                workflow_id: "android-apk-cloud-fallback.yml",
+                branch,
+                status: "completed",
+                per_page: 100
               });
-              const artifact = listed.data.artifacts.find(item =>
-                !item.expired && item.name === expectedName
+              const candidates = runs.filter(run =>
+                run.conclusion === "success" &&
+                run.head_sha === headSha
               );
-              if (artifact) {
-                core.setOutput("run_id", String(run.id));
-                core.info(`Using APK artifact ${artifact.name} from successful run ${run.id}`);
-                return;
+              for (const run of candidates) {
+                const listed = await github.rest.actions.listWorkflowRunArtifacts({
+                  owner, repo, run_id: run.id, per_page: 100
+                });
+                const artifact = listed.data.artifacts.find(item =>
+                  !item.expired && item.name === expectedName
+                );
+                if (artifact) {
+                  core.setOutput("run_id", String(run.id));
+                  core.info(`Using APK artifact ${artifact.name} from successful run ${run.id}`);
+                  return;
+                }
+              }
+              if (attempt < 30) {
+                core.info(`Waiting for exact-SHA Cloud Fallback artifact (${attempt}/30)`);
+                await new Promise(resolve => setTimeout(resolve, 10000));
               }
             }
             core.setFailed(
-              `No successful Cloud Fallback artifact named "${expectedName}" found for head SHA ${headSha}; run Cloud Fallback successfully before Lane F.`
+              `No successful Cloud Fallback artifact named "${expectedName}" found for head SHA ${headSha} after 5 minutes; inspect the Android Cloud Fallback run.`
             );
 
       - name: Download verified debug and instrumentation APKs
