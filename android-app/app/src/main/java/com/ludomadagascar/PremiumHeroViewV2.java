@@ -18,6 +18,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final Button walletHit;
   private final Button walletHitAlt;
   private final TextView playA11y;
+  private Button playHit;
+  private Button playHitAlt;
   private final ArrayList<HomeTarget> homeTargets=new ArrayList<>();
 
   private static final class HomeTarget {
@@ -53,7 +55,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(-1,-1);
     addView(homeBoard,homeBoardLp);
 
-    final Button playHit=new Button(c);
+    playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
     playHit.setContentDescription("JOUER");
@@ -76,7 +78,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     playA11y.setOnClickListener(v->call("gameModeDialog"));
 
-    final Button playHitAlt=new Button(c);
+    playHitAlt=new Button(c);
     playHitAlt.setText("JOUER");
     playHitAlt.setTextColor(Color.TRANSPARENT);
     playHitAlt.setContentDescription("JOUER");
@@ -212,14 +214,14 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private boolean homeMenuGesture;
 
   private boolean isHomeActionPoint(float x,float y){
-    if(y>=140 && y<230 && x<310)return true;       // create room
-    if(y>=230 && y<325 && x<310)return true;       // join room
-    if(y>=325 && y<420 && x<310)return true;       // wallet
-    if(y>=420 && y<515 && x<310)return true;       // profile
-    if(y>=520 && y<650 && x<310)return true;       // entry-fee selectors
-    if(y>=370 && y<465 && x>970)return true;       // play / mode selector
-    if(y>=465 && y<525 && x>970)return true;       // tournaments / leaderboard
-    if(y>=525 && y<585 && x>970)return true;       // tutorials
+    if(y>=140 && y<230 && x>=45 && x<310)return true; // create room
+    if(y>=230 && y<325 && x>=45 && x<310)return true; // join room
+    if(y>=325 && y<420 && x>=45 && x<310)return true; // wallet
+    if(y>=420 && y<515 && x>=45 && x<310)return true; // profile
+    if(y>=520 && y<650 && x>=52 && x<310)return true; // entry-fee selectors
+    if(y>=370 && y<465 && x>=1005)return true;        // play / mode selector
+    if(y>=465 && y<525 && x>=1005)return true;        // tournaments / leaderboard
+    if(y>=525 && y<585 && x>=1005)return true;        // tutorials
     if(y>=45 && y<115 && x>=52 && x<520)return true;    // profile chip / avatar
     if(y>=45 && y<115 && x>=825 && x<915)return true;   // market shortcut
     if(y>=45 && y<115 && x>=1096 && x<1230)return true; // wallet / music shortcuts
@@ -345,7 +347,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     positionWalletHit(walletHit, walletHitAlt);
     positionPlayA11y(playA11y);
     positionHomeTargets();
-    if(getChildCount()>=3) positionPlayHit(getChildAt(5),getChildAt(6));
+    if(playHit!=null && playHitAlt!=null) positionPlayHit(playHit,playHitAlt);
   }
 
   private void addHomeTargets(String description,float x,float y,float width,float height,Runnable action){
@@ -798,14 +800,14 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=45&&y<115&&x>=1096&&x<1164){call("wallet");return true;}
       if(y>=45&&y<115&&x>=1164&&x<1230){call("toggleHomeMusic");return true;}
       if(y>=45&&y<115&&x>=825&&x<915){call("shop");return true;}
-      if(y>=140&&y<230&&x<310){call("createGame");return true;}
-      if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
-      if(y>=325&&y<420&&x<310){call("wallet");return true;}
-      if(y>=420&&y<515&&x<310){call("profile");return true;}
-      if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
-      if(y>=465&&y<525&&x>970){call("events");return true;}
-      if(y>=525&&y<585&&x>970){call("tutorials");return true;}
-      if(y>=520&&y<650&&x<310){
+      if(y>=140&&y<230&&x>=45&&x<310){call("createGame");return true;}
+      if(y>=230&&y<325&&x>=45&&x<310){call("joinDialog");return true;}
+      if(y>=325&&y<420&&x>=45&&x<310){call("wallet");return true;}
+      if(y>=420&&y<515&&x>=45&&x<310){call("profile");return true;}
+      if(y>=370&&y<465&&x>=1005){call("gameModeDialog");return true;}
+      if(y>=465&&y<525&&x>=1005){call("events");return true;}
+      if(y>=525&&y<585&&x>=1005){call("tutorials");return true;}
+      if(y>=520&&y<650&&x>=52&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
         int i=(int)((x-60)/37f);i=Math.max(0,Math.min(5,i));chooseEntryFee(fs[i]);return true;
       }
