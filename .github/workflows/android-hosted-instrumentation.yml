@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - ci/hosted-android-startup-diagnostic-20261013
+      - ci/hosted-android-startup-diagnostic-v2-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
