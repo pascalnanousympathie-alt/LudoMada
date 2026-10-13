@@ -329,8 +329,16 @@ class MainActivity : Activity() {
             elevation = dp(6f).toFloat()
             if (action != null) setOnClickListener { action() }
         }
-        controls.addView(control("🔊", "SON", gold) { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
-        controls.addView(control("⚙", "PARAMETRES", gold), LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        val soundControl=control(if(music.enabled()) "🔊" else "🔇", "SON", gold)
+        soundControl.setOnClickListener {
+            music.toggle()
+            homeMusicEnabled=music.enabled()
+            soundControl.text=if(music.enabled()) "🔊" else "🔇"
+            updateMusicButton()
+            window.decorView.invalidate()
+        }
+        controls.addView(soundControl, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("⚙", "PARAMETRES", gold) { settings() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         controls.addView(control("☰", "MENU_JEU", gold) { offlineMenu() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         frame.addView(controls, FrameLayout.LayoutParams(dp(170), dp(54)).apply {
             gravity = Gravity.TOP or Gravity.END
