@@ -8,6 +8,7 @@ on:
       - ci/hosted-android-startup-diagnostic-v2-20261013
       - ci/hosted-android-startup-diagnostic-v3-20261013
       - ci/hosted-android-startup-diagnostic-v4-20261013
+      - ci/hosted-android-startup-diagnostic-v5-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
@@ -89,29 +90,13 @@ jobs:
           disk-size: 5G
           # Normalize the AVD property after the action appends disk-size; avoid a duplicate profile default overriding 5G.
           pre-emulator-launch-script: >-
-            set -eu; cfg=/home/runner/.android/avd/test.avd/config.ini; echo "AVD disk setting before normalization:"; grep '^disk.dataPartition.size=' "$cfg" || true; sed -i '/^disk\\.dataPartition.size=/d' "$cfg"; printf 'disk.dataPartition.size=5G\\n' >> "$cfg"; test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1; echo "AVD disk setting after normalization:"; grep '^disk.dataPartition.size=' "$cfg"
+            set -eu; : "${RUNNER_TEMP:=/home/runner/work/_temp}"; cfg=/home/runner/.android/avd/test.avd/config.ini; mkdir -p "$RUNNER_TEMP/ludomada-device-diag"; echo "AVD disk setting before normalization:"; grep '^disk.dataPartition.size=' "$cfg" || true; sed -i '/^disk\.dataPartition.size=/d' "$cfg"; printf '%s\n' 'disk.dataPartition.size=5G' >> "$cfg"; test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1; echo "AVD disk setting after normalization:"; grep '^disk.dataPartition.size=' "$cfg"; printf '%s\n' "AVD_CONFIG=$cfg" > "$RUNNER_TEMP/ludomada-device-diag/avd-config.txt"; (for attempt in $(seq 1 600); do if adb -s emulator-5554 get-state 2>/dev/null | grep -qx device; then adb -s emulator-5554 logcat -b all -v threadtime > "$RUNNER_TEMP/ludomada-device-diag/pretest-logcat.txt" 2>&1; exit 0; fi; sleep 2; done) </dev/null >/dev/null 2>&1 &
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: |
-            set +e
-            mkdir -p "$RUNNER_TEMP/ludomada-device-diag"
-            adb shell am start -W -n com.ludomadagascar/.MainActivity > "$RUNNER_TEMP/ludomada-device-diag/manual-launch.txt" 2>&1 || true
-            sleep 5
-            adb exec-out screencap -p > "$RUNNER_TEMP/ludomada-device-diag/home-before-tests.png" 2> "$RUNNER_TEMP/ludomada-device-diag/screenshot-before.err" || true
-            cd android-app
-            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace > "$RUNNER_TEMP/ludomada-connected-tests.log" 2>&1
-            test_exit=$?
-            cat "$RUNNER_TEMP/ludomada-connected-tests.log"
-            adb exec-out screencap -p > "$RUNNER_TEMP/ludomada-device-diag/home-after-tests.png" 2> "$RUNNER_TEMP/ludomada-device-diag/screenshot-after.err" || true
-            adb logcat -d -v threadtime > "$RUNNER_TEMP/ludomada-device-diag/logcat.txt" 2>&1 || true
-            adb shell dumpsys activity activities > "$RUNNER_TEMP/ludomada-device-diag/activities.txt" 2>&1 || true
-            adb shell dumpsys activity top > "$RUNNER_TEMP/ludomada-device-diag/activity-top.txt" 2>&1 || true
-            adb shell dumpsys package com.ludomadagascar > "$RUNNER_TEMP/ludomada-device-diag/package.txt" 2>&1 || true
-            adb shell dumpsys window windows > "$RUNNER_TEMP/ludomada-device-diag/windows.txt" 2>&1 || true
-            exit "$test_exit"
-
+          script: >-
+            set +e; : "${RUNNER_TEMP:=/home/runner/work/_temp}"; mkdir -p "$RUNNER_TEMP/ludomada-device-diag"; cd android-app || exit 90; ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace > "$RUNNER_TEMP/ludomada-connected-tests.log" 2>&1; test_exit=$?; cat "$RUNNER_TEMP/ludomada-connected-tests.log"; adb shell am force-stop com.ludomadagascar || true; adb shell am start -W -n com.ludomadagascar/.MainActivity > "$RUNNER_TEMP/ludomada-device-diag/manual-launch-after-tests.txt" 2>&1 || true; sleep 5; adb exec-out screencap -p > "$RUNNER_TEMP/ludomada-device-diag/home-after-tests.png" 2> "$RUNNER_TEMP/ludomada-device-diag/screenshot-after.err" || true; adb logcat -d -v threadtime > "$RUNNER_TEMP/ludomada-device-diag/logcat-final.txt" 2>&1 || true; adb shell dumpsys activity activities > "$RUNNER_TEMP/ludomada-device-diag/activities.txt" 2>&1 || true; adb shell dumpsys activity top > "$RUNNER_TEMP/ludomada-device-diag/activity-top.txt" 2>&1 || true; adb shell dumpsys package com.ludomadagascar > "$RUNNER_TEMP/ludomada-device-diag/package.txt" 2>&1 || true; adb shell dumpsys window windows > "$RUNNER_TEMP/ludomada-device-diag/windows.txt" 2>&1 || true; exit "$test_exit"
 
       - name: Upload instrumentation reports and Android device diagnostics
         if: always()
