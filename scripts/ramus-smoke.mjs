@@ -105,7 +105,18 @@ try {
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertMenuButton("👤 2 joueurs");
   assertMenuButton("👥 3 joueurs");
+  assertMenuButton("👥 4 joueurs");
+
+  // Exercise the three-player option without invoking any network or wallet path.
+  target = findRef("👥 3 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertTurn("Joueur 1/3");
+  console.log("3-PLAYER BOARD BOOT PASS");
+
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   assertMenuButton("👥 4 joueurs");
   target = findRef("👥 4 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
