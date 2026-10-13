@@ -194,7 +194,8 @@ try {
   }
 
   // Screenshot 1 is the Home reference. The current app intentionally starts here.
-  console.log("STARTUP→PREMIUM HOME PASS");
+  if (home.ok && home.value.elements?.length) {
+    console.log("STARTUP→PREMIUM HOME PASS");
     if (process.env.RAMUS_CAPTURE === "1") {
       shot("home-a");
       const rotationSleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
