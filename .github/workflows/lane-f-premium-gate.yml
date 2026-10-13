@@ -29,8 +29,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     concurrency:
-      group: ludomada-lane-f-${{ github.head_ref || github.ref_name }}
-      cancel-in-progress: true
+      group: ludomada-shared-ramus-fleet
+      cancel-in-progress: false
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
