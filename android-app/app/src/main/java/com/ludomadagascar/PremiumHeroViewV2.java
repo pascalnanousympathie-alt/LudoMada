@@ -360,6 +360,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
     target.setContentDescription(description);
     target.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     target.setFocusable(true);target.setClickable(true);target.setAlpha(1f);
+    if(description.startsWith("HOME_ENTRY_FEE_")){
+      target.setSelected(description.equals("HOME_ENTRY_FEE_"+lng("entryFee")));
+    }
     target.setOnClickListener(v->{if(action!=null)action.run();});
     addView(target,new FrameLayout.LayoutParams(1,1));
     homeTargets.add(new HomeTarget(target,x,y,width,height));
@@ -793,7 +796,18 @@ public class PremiumHeroViewV2 extends FrameLayout {
       return true;
     }
 
-    void chooseEntryFee(int value){fee=value;set("entryFee",value);invalidate();}
+    void chooseEntryFee(int value){
+      fee=value;
+      set("entryFee",value);
+      for(HomeTarget target:homeTargets){
+        String description=String.valueOf(target.view.getContentDescription());
+        if(description.startsWith("HOME_ENTRY_FEE_")){
+          target.view.setSelected(description.equals("HOME_ENTRY_FEE_"+value));
+          target.view.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_SELECTED);
+        }
+      }
+      invalidate();
+    }
 
     private boolean hitHomeActions(float x,float y){
       if(y>=45&&y<115&&x>=52&&x<520){call("profile");return true;}
