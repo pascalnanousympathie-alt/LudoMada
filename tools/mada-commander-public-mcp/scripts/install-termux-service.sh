@@ -1,11 +1,16 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
+export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 EXPECTED_PREFIX="/data/data/com.termux/files/usr"
-if [[ "${PREFIX:-}" != "$EXPECTED_PREFIX" ]]; then
+if [[ "$PREFIX" != "$EXPECTED_PREFIX" ]]; then
   echo "ERROR: run this script inside Termux on the Android device." >&2
   exit 2
 fi
+# Force Termux-specific paths; background shells can inherit a Linux-style /var/service.
+export SVDIR="$PREFIX/var/service"
+export LOGDIR="$PREFIX/var/log"
+export PATH="$PREFIX/bin:$PATH"
 
 PACKAGE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_FILE="$PACKAGE_DIR/agent.mjs"
@@ -67,6 +72,10 @@ mkdir -p "$HOME/.termux/boot"
 cat > "$BOOT_FILE" <<'BOOT'
 #!/data/data/com.termux/files/usr/bin/sh
 # Keep Mada Commander available after Android restarts. Requires Termux:Boot.
+export PREFIX="/data/data/com.termux/files/usr"
+export PATH="$PREFIX/bin:$PATH"
+export SVDIR="$PREFIX/var/service"
+export LOGDIR="$PREFIX/var/log"
 termux-wake-lock
 sleep 5
 sv up mada-commander
