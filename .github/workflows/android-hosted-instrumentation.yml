@@ -9,6 +9,7 @@ on:
       - ci/hosted-android-startup-diagnostic-v3-20261013
       - ci/hosted-android-startup-diagnostic-v4-20261013
       - ci/hosted-android-startup-diagnostic-v5-20261013
+      - ci/hosted-android-startup-diagnostic-v6-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
@@ -63,6 +64,24 @@ jobs:
           ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Reclaim hosted runner disk for Android userdata
+        run: |
+          set -eu
+          echo "Disk free before cleanup:"
+          df -h /home/runner
+          # Android 35 needs roughly 7.4 GB free to materialize userdata-qemu.img.
+          # Remove unrelated preinstalled toolchains only; keep Java, Android SDK,
+          # source checkout, Gradle caches and compiled APKs intact.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost /usr/local/share/powershell /usr/share/swift
+          echo "Disk free after cleanup:"
+          df -h /home/runner
+          available_kib="$(df -Pk /home/runner | awk 'NR == 2 { print $4 }')"
+          echo "Available KiB after cleanup: $available_kib"
+          if [ "$available_kib" -lt 8500000 ]; then
+            echo "Need at least 8.5 GB free for the hosted Android 35 emulator."
+            exit 1
+          fi
 
       - name: Enable KVM access on hosted runner
         run: |
