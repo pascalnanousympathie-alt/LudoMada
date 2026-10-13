@@ -77,8 +77,8 @@ jobs:
         working-directory: .
         run: |
           set -eu
-          python3 scripts/android-release-audit.py app/build/outputs/apk/debug/app-debug.apk
-          python3 scripts/android-release-audit.py app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/debug/app-debug.apk
+          python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
       - name: Check Ramus test script syntax
         working-directory: .
