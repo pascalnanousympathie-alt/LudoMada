@@ -605,12 +605,22 @@ class LudoBoardView(
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
-                    host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_OK" }
+                    host.post {
+                        val marker = host.contentDescription?.toString()?.substringBefore("|GLB_RUNTIME_LOAD_")
+                        val base = marker?.takeIf { it.startsWith("GAMEPLAY_3D_OFFLINE_") }
+                            ?: "GAMEPLAY_3D_OFFLINE_${host.state?.optJSONArray("players")?.length() ?: 0}P"
+                        host.contentDescription = "${base}|GLB_RUNTIME_LOAD_OK"
+                    }
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
-                host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_FALLBACK" }
+                host.post {
+                    val marker = host.contentDescription?.toString()?.substringBefore("|GLB_RUNTIME_LOAD_")
+                    val base = marker?.takeIf { it.startsWith("GAMEPLAY_3D_OFFLINE_") }
+                        ?: "GAMEPLAY_3D_OFFLINE_${host.state?.optJSONArray("players")?.length() ?: 0}P"
+                    host.contentDescription = "${base}|GLB_RUNTIME_LOAD_FALLBACK"
+                }
                 emptyMap()
             }
         }
