@@ -488,6 +488,13 @@ try {
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
   shot("startup");
+  const startupScreenshotPresent = screenshotExists("startup");
+  console.log("RAMUS_STARTUP_SCREENSHOT_EVIDENCE=" + JSON.stringify({
+    present: startupScreenshotPresent,
+    path: startupScreenshotPresent ? "ramus-evidence/startup.jpg" : null,
+    sizeBytes: startupScreenshotPresent ? statSync("ramus-evidence/startup.jpg").size : 0,
+    sha256: startupScreenshotPresent ? sha256File("startup") : ""
+  }));
 
   // Fail at the true startup boundary and report the actual session snapshot
   // instead of cascading into misleading JOUER/game-mode errors.
