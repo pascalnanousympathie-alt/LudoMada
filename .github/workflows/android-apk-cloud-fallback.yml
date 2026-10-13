@@ -48,7 +48,7 @@ jobs:
         with:
           cmdline-tools-version: 12266719
           accept-android-sdk-licenses: true
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 emulator system-images;android-35;google_apis;x86_64"
 
       - name: Build, test, and compile instrumentation APK
         env:
@@ -60,6 +60,19 @@ jobs:
           ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Run instrumented UI tests on hosted Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
+          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 
       - name: Publish debug APK and instrumentation APK
         uses: actions/upload-artifact@v4
