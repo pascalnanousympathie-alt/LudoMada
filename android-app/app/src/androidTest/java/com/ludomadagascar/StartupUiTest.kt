@@ -14,6 +14,35 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+
+    @Test
+    fun premium_home_shader_smoke() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        context.getSharedPreferences("ludomada_settings", android.content.Context.MODE_PRIVATE)
+            .edit().putString("language", "fr").putInt("defaultEntryFee", 500).commit()
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        assertNotNull("Launch intent missing", intent)
+        intent!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        instrumentation.startActivitySync(intent)
+        val device = UiDevice.getInstance(instrumentation)
+        assertTrue(
+            "Premium Home did not render after PBR GLSL correction",
+            device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 12000)
+        )
+        // Give GLSurfaceView enough time to create the PBR, shadow, post and particle programs.
+        Thread.sleep(6000)
+        assertTrue(
+            "Premium Home disappeared after renderer initialization",
+            device.hasObject(By.desc("LudoMada Premium Home"))
+        )
+        val screenshot = File(instrumentation.context.cacheDir, "premium-home-glsl-smoke.png")
+        assertTrue("Could not capture the live Premium Home", device.takeScreenshot(screenshot))
+        assertTrue("Premium Home screenshot is empty", screenshot.exists() && screenshot.length() > 1000)
+    }
+
     @Test
     fun premium_home_exposes_and_navigates_primary_menus_and_options() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
