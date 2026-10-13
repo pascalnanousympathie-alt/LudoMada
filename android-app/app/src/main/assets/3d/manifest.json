@@ -7,16 +7,15 @@
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
     "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 3,
-    "glb_bytes": 846104,
-    "material_revision": 3,
+    "revision": 5,
+    "glb_bytes": 867800,
+    "material_revision": 4,
     "material_calibration": "PremiumMaterialLighting.Calibration",
-    "sha256": "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027",
+    "sha256": "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f",
     "delivery": {
-      "type": "higgsfield-media",
-      "media_id": "f77cf216-1a71-4b86-84b9-26339b96c4df",
-      "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb",
-      "verified_size_bytes": 846104
+      "type": "repo-bundled",
+      "path": "3d/ludomada-gameplay-rev5.glb",
+      "verified_size_bytes": 867800
     }
   },
   "board_geometry": {

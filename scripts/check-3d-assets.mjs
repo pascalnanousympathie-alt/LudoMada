@@ -16,8 +16,8 @@ const checks = [
   ["format", manifest.format === "glb/gltf2"],
   ["target", manifest.target === "android-realtime"],
   ["source provider", manifest.source_scene?.provider === "Higgsfield 3D Jutsu"],
-  ["source revision", manifest.source_scene?.revision === 3],
-  ["source GLB size recorded", manifest.source_scene?.glb_bytes === 846104],
+  ["source revision", manifest.source_scene?.revision === 5],
+  ["source GLB size recorded", manifest.source_scene?.glb_bytes === 867800],
   ["material calibration", manifest.source_scene?.material_calibration === "PremiumMaterialLighting.Calibration"],
   ["die metallic", manifest.assets?.die?.authoring_metallic === 1],
   ["die roughness", manifest.assets?.die?.authoring_roughness === 0.055],
@@ -30,7 +30,7 @@ const checks = [
   ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
 const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
-const expectedAsset = path.join(root, "ludomada-premium-3d-rev3.glb");
+const expectedAsset = path.join(root, "ludomada-gameplay-rev5.glb");
 const packagedBytes = fs.existsSync(expectedAsset) ? fs.statSync(expectedAsset).size : 0;
 const packagedSha256 = fs.existsSync(expectedAsset)
   ? createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
@@ -39,9 +39,9 @@ checks.push(["source tree bundle flag", manifest.asset_bundled_in_source_tree ==
 checks.push(["runtime loader explicit", manifest.runtime_loader === "GlbRuntimeLoader"]);
 checks.push(["runtime packaged", manifest.runtime_packaged === true]);
 checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) && manifest.runtime_hero_parts.includes("LM_Pawn_Tapered_Body") && manifest.runtime_hero_parts.includes("LM_Pawn_Spherical_Head") && manifest.runtime_hero_parts.includes("LM_Die_HydroChrome_Body")]);
-checks.push(["rev3 asset file present", fs.existsSync(expectedAsset)]);
-checks.push(["rev3 asset size", packagedBytes === 846104]);
-checks.push(["rev3 asset sha256", packagedSha256 === "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027"]);
+checks.push(["active rev5 asset file present", fs.existsSync(expectedAsset)]);
+checks.push(["active rev5 asset size", packagedBytes === 867800]);
+checks.push(["active rev5 asset sha256", packagedSha256 === "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f"]);
 const failed = checks.filter(([, ok]) => !ok);
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
