@@ -3,6 +3,7 @@ package com.ludomadagascar
 import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -13,7 +14,10 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import org.json.JSONArray
@@ -53,6 +57,7 @@ class LudoBoardView(
     private val diagnosticSingleFrame = BuildConfig.DEBUG && homePreview &&
         context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
             .getBoolean("single_home_frame", false)
+    @Volatile private var diagnosticPixelCopyRequested = false
 
     internal fun appendRuntimeEvidence(marker: String) {
         post {
@@ -144,6 +149,65 @@ class LudoBoardView(
             .put("phase", "PLAYING")
         player = 0
         animateState()
+    }
+
+    /**
+     * Hosted-emulator diagnostic only. Capture the composed Android window from inside
+     * the app; adb shell screencap crashes the software-GPU emulator after the PBR first
+     * frame. The normal renderer remains unchanged unless the debug-only preference is set.
+     */
+    internal fun requestDiagnosticWindowPixelCopy() {
+        if (!diagnosticSingleFrame || diagnosticPixelCopyRequested) return
+        diagnosticPixelCopyRequested = true
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_UNSUPPORTED api=" + Build.VERSION.SDK_INT)
+            return
+        }
+        val activity = findHostActivity(context)
+        if (activity == null) {
+            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_NO_ACTIVITY")
+            return
+        }
+        activity.window.decorView.postDelayed({
+            val decor = activity.window.decorView
+            val width = decor.width.coerceAtLeast(1)
+            val height = decor.height.coerceAtLeast(1)
+            val bitmap = runCatching {
+                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            }.getOrElse {
+                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_BITMAP_FAILED", it)
+                return@postDelayed
+            }
+            android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_REQUESTED size=" + width + "x" + height)
+            try {
+                PixelCopy.request(activity.window, bitmap, { result ->
+                    try {
+                        if (result == PixelCopy.SUCCESS) {
+                            val destination = File(activity.cacheDir, "live-premium-home-pixelcopy.png")
+                            destination.outputStream().use { output ->
+                                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                                    "Bitmap compression returned false"
+                                }
+                            }
+                            android.util.Log.i(
+                                "LudoMadaRender",
+                                "DIAGNOSTIC_PIXELCOPY_SAVED path=cache/live-premium-home-pixelcopy.png bytes=" +
+                                    destination.length()
+                            )
+                        } else {
+                            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_FAILED code=" + result)
+                        }
+                    } catch (error: Throwable) {
+                        android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_WRITE_FAILED", error)
+                    } finally {
+                        bitmap.recycle()
+                    }
+                }, Handler(Looper.getMainLooper()))
+            } catch (error: Throwable) {
+                bitmap.recycle()
+                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_REQUEST_FAILED", error)
+            }
+        }, 1200L)
     }
 
     fun isDiceRolling(): Boolean = diceRolling
@@ -1191,6 +1255,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
             }
             if (isFirstFrame) android.util.Log.i("LudoMadaRender","PBR_FIRST_DRAW homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight+" envParts="+envParts.size+" baobabParts="+baobabParts.size)
+            if (isFirstFrame && host.homePreview) host.requestDiagnosticWindowPixelCopy()
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             refreshCosmetics(now)
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
