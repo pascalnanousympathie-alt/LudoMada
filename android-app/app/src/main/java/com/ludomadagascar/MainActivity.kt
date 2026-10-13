@@ -714,8 +714,69 @@ class MainActivity : Activity() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
+        add(button("⚙ Paramètres",Color.rgb(37,93,196)){settings()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
+        bottomNav("profile")
+    }
+
+    private fun settings() {
+        page("settings","Paramètres")
+        sectionTitle("Préférences de l'application","Langue, musique et mise d'entrée par défaut")
+        val languageName=when(selectedLanguage){"mg"->"Malagasy";"en"->"English";else->"Français"}
+        add(card("Langue",languageName + " • préférence enregistrée sur cet appareil",royal),72,3,5)
+        add(button("🌐 Changer de langue",royal){languageDialog()},52,0,5)
+        val musicOn=music.enabled()
+        add(card("Ambiance musicale",if(musicOn)"Musique activée" else "Musique désactivée",emerald),70,3,5)
+        add(button(if(musicOn)"🔇 Désactiver la musique" else "🎵 Activer la musique",Color.rgb(70,82,100)){
+            music.toggle()
+            homeMusicEnabled=music.enabled()
+            updateMusicButton()
+            window.decorView.invalidate()
+            settings()
+        },52,0,8)
+
+        sectionTitle("Mise d'entrée par défaut","Ce choix est mémorisé sur cet appareil. Il ne prélève aucun argent.")
+        entryFees.chunked(3).forEach { fees ->
+            val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+            fees.forEach { fee ->
+                row.addView(button((if(fee==entryFee)"✓ " else "") + formatMGA(fee) + " Ar",
+                    if(fee==entryFee)emerald else royal) {
+                    setDefaultEntryFee(fee)
+                    Toast.makeText(this,"Mise par défaut : " + formatMGA(fee) + " Ar",Toast.LENGTH_SHORT).show()
+                    settings()
+                },LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(3),0,dp(3),0)})
+            }
+            add(row,52,0,6)
+        }
+
+        sectionTitle("Sécurité et paiements","Les prestataires sans contrat/API validé restent désactivés. Aucun dépôt/retrait réel n'est déclenché depuis ces réglages.")
+        add(card("MVola • Airtel Money • Orange Money • Binance Pay","OFF tant que les intégrations et autorisations de production ne sont pas confirmées.",Color.rgb(70,82,100)),84,3,6)
+        add(button("↻ Actualiser soldes et MLG",royal){
+            refreshAccountBalance()
+            refreshMlgSummary()
+            Toast.makeText(this,"Actualisation demandée.",Toast.LENGTH_SHORT).show()
+        },52,0,5)
+        add(button("Déconnexion",Color.rgb(165,48,58)){
+            AlertDialog.Builder(this)
+                .setTitle("Déconnexion")
+                .setMessage("Voulez-vous vraiment fermer cette session sur cet appareil ?")
+                .setNegativeButton("Annuler",null)
+                .setPositiveButton("Déconnexion"){_,_->
+                    clearSession()
+                    home()
+                }.show()
+        },52,0,5)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52,0,3)
+        bottomNav("profile")
+    }
+
+    fun setDefaultEntryFee(value:Int) {
+        if(value !in entryFees) return
+        entryFee=value
+        getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+            .edit().putInt("defaultEntryFee",value).apply()
+        window.decorView.invalidate()
     }
 
     private fun tutorials() {
