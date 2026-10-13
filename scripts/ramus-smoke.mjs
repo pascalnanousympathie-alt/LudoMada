@@ -204,53 +204,119 @@ function captureFailureDiagnostics() {
 }
 
 function tryLauncherDrawerLaunch() {
-  // If Ramus reports a launch as "busy", do not start another device immediately.
-  // Open Android's app drawer and tap the installed app as a distinct foreground path.
-  const swipe = allow("swipe", "0.5,0.92", "0.5,0.18", "--ms", "500", "--session", session);
-  if (!swipe.ok) return { home: null, diagnostic: { ok: false, step: "swipe-app-drawer", result: safeLaunchSummary(swipe.value) } };
-  waitStable(900);
+  const attempts = [];
 
-  const list = allow("snapshot", "--session", session, "--find", "LudoMada");
-  const item = list.ok
-    ? (list.value?.elements || []).find(e => /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")))
-    : null;
-  if (!item?.ref || list.value?.gen == null) {
-    const current = allow("snapshot", "--session", session);
-    const elements = current.ok
-      ? (current.value?.elements || []).slice(0, 30).map(e => ({
+  function snapshotState(label) {
+    shot(label);
+    const snapNow = allow("snapshot", "--session", session);
+    const elements = snapNow.ok
+      ? (snapNow.value?.elements || []).slice(0, 60).map(e => ({
           text: String(e.text || "").slice(0, 80),
-          contentDesc: String(e.contentDesc || "").slice(0, 80)
+          contentDesc: String(e.contentDesc || "").slice(0, 80),
+          clickable: Boolean(e.clickable),
+          ref: e.ref,
+          gen: snapNow.value?.gen
         }))
       : [];
-    return { home: null, diagnostic: { ok: false, step: "find-installed-app", snapshotOk: Boolean(list.ok), visibleElements: elements } };
+    return {
+      ok: snapNow.ok,
+      screen: snapNow.value?.screen || null,
+      count: snapNow.value?.count ?? elements.length,
+      elements,
+      value: snapNow.value
+    };
   }
 
-  let tapped = tapRef({ ref: item.ref, gen: list.value.gen });
-  if (!tapped.ok && tapped.value?.error === "stale_ref") {
-    waitStable(250);
-    const refreshed = allow("snapshot", "--session", session, "--find", "LudoMada");
-    const freshItem = refreshed.ok
-      ? (refreshed.value?.elements || []).find(e => /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")))
-      : null;
-    if (freshItem?.ref && refreshed.value?.gen != null) {
-      tapped = tapRef({ ref: freshItem.ref, gen: refreshed.value.gen });
-    }
-  }
-  if (!tapped.ok) {
-    return { home: null, diagnostic: { ok: false, step: "tap-installed-app", result: safeLaunchSummary(tapped.value) } };
+  function findApp(state) {
+    return (state?.elements || []).find(e =>
+      /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")) &&
+      e.ref && Number.isFinite(e.gen)
+    );
   }
 
-  for (let attempt = 0; attempt < 24; attempt++) {
-    waitStable(1000);
-    const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-    if (found.ok && found.value?.elements?.length) {
-      return {
-        home: found,
-        diagnostic: { ok: true, step: "launcher-drawer", attempts: attempt + 1, appLabel: "LudoMada" }
-      };
+  for (const [index, gesture] of [
+    ["drawer-swipe-bottom", ["0.5,0.975", "0.5,0.18", "700"]],
+    ["drawer-swipe-middle", ["0.5,0.88", "0.5,0.18", "700"]]
+  ].entries()) {
+    const swipe = allow("swipe", gesture[1][0], gesture[1][1], "--ms", gesture[1][2], "--session", session);
+    waitStable(700);
+    const shotName = index === 0 ? "launcher-drawer-swipe-a" : "launcher-drawer-swipe-b";
+    const state = snapshotState(shotName);
+    const item = findApp(state);
+    attempts.push({
+      step: gesture[0],
+      gesture: { from: gesture[1][0], to: gesture[1][1], ms: gesture[1][2] },
+      swipe: safeLaunchSummary(swipe.value),
+      snapshotOk: state.ok,
+      screen: state.screen,
+      count: state.count,
+      visible: state.elements.map(({text,contentDesc,clickable})=>({text,contentDesc,clickable})).slice(0,40),
+      screenshotCaptured: screenshotExists(shotName)
+    });
+    if (item) {
+      const tapped = tapRef({ ref: item.ref, gen: item.gen });
+      if (tapped.ok) {
+        for (let attempt = 0; attempt < 24; attempt++) {
+          waitStable(1000);
+          const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+          if (found.ok && found.value?.elements?.length) {
+            return { home: found, diagnostic: { ok: true, step: gesture[0], attempts, itemTap: safeLaunchSummary(tapped.value) } };
+          }
+        }
+      }
+      attempts[attempts.length-1].itemTap = safeLaunchSummary(tapped.value);
     }
   }
-  return { home: null, diagnostic: { ok: false, step: "wait-premium-home-after-drawer-tap", attempts: 24 } };
+
+  // The activity may already exist in Android's recent-task stack even when the
+  // launcher gesture or accessibility tree fails. Open Recents using its navbar
+  // hit target, inspect the accessibility tree, and reopen only a labeled app.
+  const recentTap = allow("tap", "0.758,0.976", "--session", session, "--force");
+  waitStable(700);
+  const recentState = snapshotState("launcher-recents-recovery");
+  const recentItem = findApp(recentState);
+  attempts.push({
+    step: "recent-apps",
+    tap: safeLaunchSummary(recentTap.value),
+    snapshotOk: recentState.ok,
+    screen: recentState.screen,
+    count: recentState.count,
+    visible: recentState.elements.map(({text,contentDesc,clickable})=>({text,contentDesc,clickable})).slice(0,40),
+    screenshotCaptured: screenshotExists("launcher-recents-recovery")
+  });
+  if (recentItem) {
+    let tapped = tapRef({ ref: recentItem.ref, gen: recentItem.gen });
+    if (!tapped.ok && tapped.value?.error === "stale_ref") {
+      waitStable(250);
+      const refreshed = allow("snapshot", "--session", session);
+      const state = refreshed.ok ? {
+        ok: true,
+        value: refreshed.value,
+        elements: (refreshed.value?.elements || []).map(e=>({...e,gen:refreshed.value.gen}))
+      } : {ok:false,value:refreshed.value,elements:[]};
+      const item = findApp(state);
+      if (item) tapped = tapRef({ref:item.ref,gen:item.gen});
+    }
+    attempts[attempts.length-1].itemTap = safeLaunchSummary(tapped.value);
+    if (tapped.ok) {
+      for (let attempt = 0; attempt < 24; attempt++) {
+        waitStable(1000);
+        const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (found.ok && found.value?.elements?.length) {
+          return { home: found, diagnostic: { ok: true, step: "recent-apps", attempts } };
+        }
+      }
+    }
+  }
+
+  return {
+    home: null,
+    diagnostic: {
+      ok: false,
+      step: "no-labeled-ludomada-entry-after-drawer-and-recents",
+      attempts
+    }
+  };
 }
 
 function waitForSessionEnded(sessionId, attempts = 8) {
