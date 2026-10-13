@@ -195,7 +195,7 @@ jobs:
         run: |
           set -o pipefail
           export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          /data/data/com.termux/files/usr/bin/timeout -k 10s 900s /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee "$RUNNER_TEMP/ramus-smoke.log"
+          /data/data/com.termux/files/usr/bin/timeout -k 10s 900s /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
 
       - name: Upload Ramus visual evidence and log
         if: always()
@@ -205,7 +205,7 @@ jobs:
           name: ludomada-ramus-release-gate-evidence-${{ github.run_id }}
           path: |
             ramus-evidence/**
-            ${{ runner.temp }}/ramus-smoke.log
+            ramus-smoke.log
           if-no-files-found: warn
           retention-days: 7
       - name: Legacy signing step (Gradle already signs release APK)
