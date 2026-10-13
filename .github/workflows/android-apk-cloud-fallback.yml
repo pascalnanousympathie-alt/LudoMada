@@ -1,0 +1,73 @@
+name: Android APK Cloud Fallback
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-apk-cloud-fallback.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-apk-cloud-fallback.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-cloud-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
+      - name: Build, test, and compile instrumentation APK
+        env:
+          ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+        run: |
+          set -eu
+          chmod +x gradlew
+          printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
+          ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Publish debug APK and instrumentation APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-cloud-validation-${{ github.sha }}
+          path: |
+            android-app/app/build/outputs/apk/debug/app-debug.apk
+            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-app/app/build/outputs/apk/debug/output-metadata.json
+          if-no-files-found: error
+          retention-days: 7
