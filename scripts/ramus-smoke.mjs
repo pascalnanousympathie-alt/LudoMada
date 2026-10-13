@@ -221,8 +221,7 @@ try {
       home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
       // If startup was already in flight, don't issue another launch until we've
       // given that launch time to settle. One retry is allowed after the bounded wait.
-      if (attempt === 8 && (!home.ok || !home.value?.elements?.length) &&
-          launchInfo?.error === "busy") {
+      if (attempt === 8 && (!home.ok || !home.value?.elements?.length)) {
         const retryLaunch = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
         launchInfo = retryLaunch.value || launchInfo;
       }
