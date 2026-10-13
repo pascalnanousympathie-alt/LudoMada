@@ -1,0 +1,94 @@
+name: Mada Commander production runtime watch
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/mada-commander-runtime-watch.yml"
+      - "tools/mada-commander-public-mcp/scripts/smoke-production.mjs"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mada-commander-runtime-watch
+  cancel-in-progress: true
+
+jobs:
+  production-canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check production health, MCP protocol, tool catalog and OAuth start
+        env:
+          MADA_BASES: "https://mada-commander-public-mcp.vercel.app,https://mada-commander-public-mcp-auto.vercel.app"
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+
+          const bases = process.env.MADA_BASES.split(",").map(value => value.trim()).filter(Boolean);
+          const expectedTools = [
+            "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status",
+            "mada_connection_help", "mada_workspace_list", "mada_workspace_read", "mada_workspace_write",
+            "mada_run_task", "mada_run_command", "mada_run_shell", "mada_opera_status",
+            "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action", "mada_mcp_integrations",
+            "mada_mcp_tools", "mada_mcp_call"
+          ];
+          const failures = [];
+          const check = async (label, action) => {
+            try { await action(); console.log("PASS " + label); }
+            catch (error) { failures.push(label); console.error("FAIL " + label + ": " + String(error?.message || error)); }
+          };
+          const get = async (base, route) => fetch(new URL(route, base), {
+            redirect: "manual",
+            cache: "no-store",
+            signal: AbortSignal.timeout(10000)
+          });
+          const rpc = async (base, message) => fetch(new URL("/mcp", base), {
+            method: "POST",
+            headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+            body: JSON.stringify(message),
+            cache: "no-store",
+            signal: AbortSignal.timeout(10000)
+          });
+
+          for (const base of bases) {
+            const label = new URL(base).hostname;
+            await check(label + " health", async () => {
+              const response = await get(base, "/api/health");
+              assert.equal(response.status, 200, "health HTTP " + response.status);
+              const health = await response.json();
+              assert.equal(health.ready, true, "health.ready was false");
+              assert.equal(health.checks?.databaseConfigured, true, "database is not configured");
+              assert.equal(health.checks?.schemaReady, true, "database schema is not ready");
+              assert.equal(health.checks?.googleOAuthConfigured, true, "Google OAuth configuration is incomplete");
+            });
+            await check(label + " MCP initialize and tools/list", async () => {
+              const initialized = await rpc(base, {
+                jsonrpc: "2.0", id: 1, method: "initialize",
+                params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mada-runtime-canary", version: "1.0" } }
+              });
+              assert.equal(initialized.status, 200, "initialize HTTP " + initialized.status);
+              const initBody = await initialized.json();
+              assert.equal(initBody.result?.serverInfo?.name, "mada-commander-public");
+              const listed = await rpc(base, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+              assert.equal(listed.status, 200, "tools/list HTTP " + listed.status);
+              const body = await listed.json();
+              assert.deepEqual(body.result?.tools?.map(tool => tool.name), expectedTools);
+            });
+            await check(label + " Google OAuth start", async () => {
+              const response = await get(base, "/oauth/google/start?purpose=dashboard");
+              assert.ok([302, 303, 307, 308].includes(response.status), "OAuth start HTTP " + response.status);
+              const location = response.headers.get("location") || "";
+              assert.equal(new URL(location).hostname, "accounts.google.com", "OAuth did not redirect to Google");
+            });
+          }
+          if (failures.length) {
+            console.error("Runtime watch failed " + failures.length + " check(s): " + failures.join(", "));
+            process.exitCode = 1;
+          } else {
+            console.log("Runtime watch passed for " + bases.length + " production endpoints.");
+          }
+          NODE
