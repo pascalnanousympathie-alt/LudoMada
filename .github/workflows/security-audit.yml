@@ -86,6 +86,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      security-events: write
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.7.0
     with:
       fail-on-vuln: false
@@ -97,6 +98,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      security-events: write
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0
     with:
       fail-on-vuln: false
