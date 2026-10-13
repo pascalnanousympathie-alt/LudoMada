@@ -130,13 +130,18 @@ export function redactSensitiveStructured(value, options = {}) {
       return input.map(item => visit(item, depth + 1));
     }
     if (typeof input === "object") {
-      const output = Object.create(null);
+      const output = {};
       for (const [key, child] of Object.entries(input)) {
         if (key.length > 256) {
           exceeded = true;
           break;
         }
-        output[key] = SENSITIVE_PROPERTY.test(key) ? "[REDACTED]" : visit(child, depth + 1);
+        Object.defineProperty(output, key, {
+          value: SENSITIVE_PROPERTY.test(key) ? "[REDACTED]" : visit(child, depth + 1),
+          enumerable: true,
+          configurable: true,
+          writable: true
+        });
       }
       return output;
     }
