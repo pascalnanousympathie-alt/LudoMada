@@ -237,18 +237,44 @@ try {
     // One bounded foreground launch, after the initial auto-launch had time
     // to settle. Do not retry "busy" in a tight loop.
     if (attempt === 15) {
-      // The APK is already installed, but Ramus may still have its initial launch
-      // request in flight while the device remains on the stock launcher. Use the
-      // documented same-session install/open path instead of another app-launch
-      // request, which returns "busy" while that request is pending. This reuses the
-      // active device and does not consume or create a second Ramus session.
-      const installed = allow("session", "install", "--session", session, apk);
+      const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
       launchInfo = {
-        sessionStart: safeLaunchSummary(started.value),
-        retryInstall: safeLaunchSummary(installed.value)
+        ...launchInfo,
+        retryLaunch: safeLaunchSummary(launched.value)
       };
       waitStable(1200);
-      captureStartupLogcat("after-retry-install");
+      captureStartupLogcat("after-retry-launch");
+    }
+  }
+
+  // The pinned workflow CLI is 0.1.13 and does not implement `session install`.
+  // If the original launch is still stuck after the one bounded foreground retry,
+  // end only the session created by this smoke, then allow one fresh APK-backed
+  // session to clear a wedged launch request. Never overlap sessions or loop forever.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-fresh-session");
+    const ended = allow("session", "end", "--session", session);
+    launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
+    if (ended.ok) {
+      waitStable(1200);
+      const restarted = allow("session", "start", "--apk", apk, "--wait");
+      launchInfo = { ...launchInfo, freshSessionStart: safeLaunchSummary(restarted.value) };
+      if (restarted.ok && restarted.value?.session) {
+        session = restarted.value.session;
+        home = null;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          waitStable(1000);
+          home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+          if (home.ok && home.value?.elements?.length) break;
+          if (attempt === 1) captureStartupLogcat("fresh-session-home-missing");
+          if (attempt === 12) {
+            const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+            launchInfo = { ...launchInfo, freshSessionRetryLaunch: safeLaunchSummary(launched.value) };
+            waitStable(1200);
+            captureStartupLogcat("fresh-session-after-retry-launch");
+          }
+        }
+      }
     }
   }
 
