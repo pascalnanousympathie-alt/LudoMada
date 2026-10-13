@@ -203,6 +203,72 @@ function captureFailureDiagnostics() {
   captureStartupLogcat("failure");
 }
 
+function tryLauncherDrawerLaunch() {
+  // If Ramus reports a launch as "busy", do not start another device immediately.
+  // Open Android's app drawer and tap the installed app as a distinct foreground path.
+  const swipe = allow("swipe", "0.5,0.92", "0.5,0.18", "--ms", "500", "--session", session);
+  if (!swipe.ok) return { home: null, diagnostic: { ok: false, step: "swipe-app-drawer", result: safeLaunchSummary(swipe.value) } };
+  waitStable(900);
+
+  const list = allow("snapshot", "--session", session, "--find", "LudoMada");
+  const item = list.ok
+    ? (list.value?.elements || []).find(e => /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")))
+    : null;
+  if (!item?.ref || list.value?.gen == null) {
+    const current = allow("snapshot", "--session", session);
+    const elements = current.ok
+      ? (current.value?.elements || []).slice(0, 30).map(e => ({
+          text: String(e.text || "").slice(0, 80),
+          contentDesc: String(e.contentDesc || "").slice(0, 80)
+        }))
+      : [];
+    return { home: null, diagnostic: { ok: false, step: "find-installed-app", snapshotOk: Boolean(list.ok), visibleElements: elements } };
+  }
+
+  let tapped = tapRef({ ref: item.ref, gen: list.value.gen });
+  if (!tapped.ok && tapped.value?.error === "stale_ref") {
+    waitStable(250);
+    const refreshed = allow("snapshot", "--session", session, "--find", "LudoMada");
+    const freshItem = refreshed.ok
+      ? (refreshed.value?.elements || []).find(e => /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")))
+      : null;
+    if (freshItem?.ref && refreshed.value?.gen != null) {
+      tapped = tapRef({ ref: freshItem.ref, gen: refreshed.value.gen });
+    }
+  }
+  if (!tapped.ok) {
+    return { home: null, diagnostic: { ok: false, step: "tap-installed-app", result: safeLaunchSummary(tapped.value) } };
+  }
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    waitStable(1000);
+    const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+    if (found.ok && found.value?.elements?.length) {
+      return {
+        home: found,
+        diagnostic: { ok: true, step: "launcher-drawer", attempts: attempt + 1, appLabel: "LudoMada" }
+      };
+    }
+  }
+  return { home: null, diagnostic: { ok: false, step: "wait-premium-home-after-drawer-tap", attempts: 24 } };
+}
+
+function waitForSessionEnded(sessionId, attempts = 8) {
+  // "status=ending" is asynchronous, not proof that the old device has been released.
+  // Probe the original session until Ramus confirms it is no longer addressable.
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    waitStable(1000);
+    const probe = allow("snapshot", "--session", sessionId);
+    if (!probe.ok) {
+      const message = JSON.stringify(probe.value || {});
+      if (/session[^\\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\\n]*session/i.test(message)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 let session = "";
 let success = false;
 let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
@@ -267,15 +333,28 @@ try {
     }
   }
 
-  // Last bounded recovery: if the same-session install/open path did not reach Home,
-  // end only the session created by this smoke and allow one fresh APK-backed session.
-  // This fallback remains sequential; it never overlaps sessions or retries forever.
+  // Last same-device recovery: an API-level launch can remain "busy" even though
+  // the Android launcher is visible. Try opening the installed app from the launcher
+  // UI before ending this test-owned session.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-launcher-drawer-recovery");
+    const drawer = tryLauncherDrawerLaunch();
+    launchInfo = { ...launchInfo, launcherDrawerRecovery: drawer.diagnostic };
+    if (drawer.home) home = drawer.home;
+    if (!home?.ok || !home.value?.elements?.length) captureStartupLogcat("after-launcher-drawer-recovery");
+  }
+
+  // Last bounded recovery: only create a fresh APK-backed session after Ramus confirms
+  // the prior test-owned session has actually ended. A response of "ending" is not
+  // terminal; overlapping it with another session causes further "busy" launch errors.
   if (!home?.ok || !home.value?.elements?.length) {
     captureStartupLogcat("before-fresh-session");
-    const ended = allow("session", "end", "--session", session);
+    const priorSession = session;
+    const ended = allow("session", "end", "--session", priorSession);
     launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
-    if (ended.ok) {
-      waitStable(1200);
+    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
+    if (terminal) {
       const restarted = allow("session", "start", "--apk", apk, "--wait");
       launchInfo = { ...launchInfo, freshSessionStart: safeLaunchSummary(restarted.value) };
       if (restarted.ok && restarted.value?.session) {
@@ -294,6 +373,15 @@ try {
           }
         }
       }
+    } else {
+      launchInfo = {
+        ...launchInfo,
+        freshSessionStart: {
+          error: "skipped_prior_session_not_terminal",
+          message: "Ramus has not confirmed that the previous session ended; avoid overlapping sessions.",
+          status: String(ended.value?.status || "unknown").slice(0, 80)
+        }
+      };
     }
   }
 
