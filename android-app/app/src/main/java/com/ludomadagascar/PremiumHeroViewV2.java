@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
@@ -17,6 +18,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final Button walletHit;
   private final Button walletHitAlt;
   private final TextView playA11y;
+  private final ArrayList<HomeTarget> homeTargets=new ArrayList<>();
+
+  private static final class HomeTarget {
+    final View view;
+    final float x,y,width,height;
+    HomeTarget(View view,float x,float y,float width,float height){
+      this.view=view;this.x=x;this.y=y;this.width=width;this.height=height;
+    }
+  }
   public PremiumHeroViewV2(Context c){
     super(c);
     setWillNotDraw(false);
@@ -126,12 +136,19 @@ public class PremiumHeroViewV2 extends FrameLayout {
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
     addView(playHitAlt,playAltLp);
+
+    // The Home artwork is drawn on a custom Canvas, so its visible controls need
+    // native accessibility nodes too. These transparent hit targets keep the
+    // real premium artwork unchanged while making every menu discoverable and
+    // directly testable by TalkBack, UIAutomator and Ramus.
+    addHomeActionTargets();
     post(()->{
       positionHomeBoard(homeBoard);
       homeBoard.configureHomePreview();
       positionWalletHit(walletHit, walletHitAlt);
       positionPlayHit(playHit,playHitAlt);
       positionPlayHit(playA11y,playHitAlt);
+      positionHomeTargets();
     });
   }
   private JSONObject homePreviewState(){
@@ -327,7 +344,55 @@ public class PremiumHeroViewV2 extends FrameLayout {
     positionHomeBoard(homeBoard);
     positionWalletHit(walletHit, walletHitAlt);
     positionPlayA11y(playA11y);
-    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+    positionHomeTargets();
+    if(getChildCount()>=3) positionPlayHit(getChildAt(5),getChildAt(6));
+  }
+
+  private void addHomeTargets(String description,float x,float y,float width,float height,Runnable action){
+    Button target=new Button(getContext());
+    target.setText(description);
+    target.setTextColor(Color.TRANSPARENT);
+    target.setBackgroundColor(Color.TRANSPARENT);
+    target.setPadding(0,0,0,0);
+    target.setMinWidth(0);target.setMinHeight(0);
+    target.setContentDescription(description);
+    target.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    target.setFocusable(true);target.setClickable(true);target.setAlpha(1f);
+    target.setOnClickListener(v->{if(action!=null)action.run();});
+    addView(target,new FrameLayout.LayoutParams(1,1));
+    homeTargets.add(new HomeTarget(target,x,y,width,height));
+  }
+
+  private void addHomeActionTargets(){
+    addHomeTargets("HOME_PROFILE_CHIP",52,43,468,72,()->call("profile"));
+    addHomeTargets("HOME_CREATE_ROOM",52,145,238,80,()->call("createGame"));
+    addHomeTargets("HOME_JOIN_ROOM",52,238,238,80,()->call("joinDialog"));
+    addHomeTargets("HOME_PROFILE",52,424,238,80,()->call("profile"));
+    addHomeTargets("HOME_MARKET",825,45,90,70,()->call("shop"));
+    addHomeTargets("HOME_WALLET_SHORTCUT",1096,56,68,48,()->call("wallet"));
+    addHomeTargets("HOME_MUSIC_TOGGLE",1164,56,64,48,()->call("toggleHomeMusic"));
+    addHomeTargets("HOME_TOURNAMENTS",1028,470,182,50,()->call("events"));
+    addHomeTargets("HOME_TUTORIALS",1028,528,182,50,()->call("tutorials"));
+    int[] fees={500,1000,2000,5000,10000,20000};
+    for(int i=0;i<fees.length;i++){
+      final int fee=fees[i];
+      addHomeTargets("HOME_ENTRY_FEE_"+fee,60+i*37,570,34,28,()->home.chooseEntryFee(fee));
+    }
+    positionHomeTargets();
+  }
+
+  private void positionHomeTargets(){
+    float W=getWidth(),H=getHeight();
+    if(W<=0||H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    if(sc<=0)return;
+    float ox=(W-1280f*sc)/2f,oy=(H-720f*sc)/2f;
+    for(HomeTarget target:homeTargets){
+      setHit(target.view,
+          Math.round(ox+target.x*sc),Math.round(oy+target.y*sc),
+          Math.max(1,Math.round(target.width*sc)),Math.max(1,Math.round(target.height*sc)));
+    }
   }
   private void positionPlayA11y(View v){
     float W=getWidth(),H=getHeight();
@@ -726,6 +791,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       return true;
     }
 
+    void chooseEntryFee(int value){fee=value;set("entryFee",value);invalidate();}
+
     private boolean hitHomeActions(float x,float y){
       if(y>=45&&y<115&&x>=52&&x<520){call("profile");return true;}
       if(y>=45&&y<115&&x>=1096&&x<1164){call("wallet");return true;}
@@ -740,7 +807,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=525&&y<585&&x>970){call("tutorials");return true;}
       if(y>=520&&y<650&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
-        int i=(int)((x-60)/37f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
+        int i=(int)((x-60)/37f);i=Math.max(0,Math.min(5,i));chooseEntryFee(fs[i]);return true;
       }
       return false;
     }
