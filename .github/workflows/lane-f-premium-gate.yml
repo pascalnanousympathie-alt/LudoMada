@@ -30,16 +30,15 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: ludomada-shared-ramus-fleet
-  cancel-in-progress: false
-
 jobs:
   premium-gate:
     # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
     # Cloud Fallback job instead of running a second Gradle build for the same SHA.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    concurrency:
+      group: ludomada-shared-ramus-fleet
+      cancel-in-progress: false
     steps:
       - name: Checkout exact merge candidate
         uses: actions/checkout@v4
