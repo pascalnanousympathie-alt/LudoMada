@@ -9,6 +9,7 @@ import {
   listAllowedMcpTools,
   callAllowedMcpTool
 } from "../lib/mcp-integrations.mjs";
+import { redactSensitiveStructured } from "../lib/security.mjs";
 
 async function makeConfig(t, servers) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "mada-mcp-"));
@@ -148,6 +149,143 @@ test("HTTP bridge negotiates an MCP session and sends session headers after init
     readOnlyTools: ["http_read"], requestHeaders: { Authorization: "placeholder" }, writeEnabled: false
   }]);
   await assert.rejects(() => listAllowedMcpTools("http-fixture", invalidHeaderFile), /only support the X-MCP-Toolsets header/);
+});
+
+
+test("structured MCP redaction recursively removes secret fields and fails closed on oversized or deep values", () => {
+  const original = {
+    ok: true,
+    nested: {
+      SUPABASE_SERVICE_ROLE_KEY: "service-role-value-must-not-escape",
+      refresh_token: "refresh-token-value-must-not-escape",
+      private_key: "private-key-value-must-not-escape",
+      custom_api_key: "custom-api-key-value-must-not-escape",
+      label: "kept"
+    },
+    items: [{ GITHUB_TOKEN: "github-token-value-must-not-escape", count: 3 }]
+  };
+  const safe = redactSensitiveStructured(original);
+  assert.equal(safe.ok, true);
+  assert.equal(safe.nested.label, "kept");
+  assert.equal(safe.nested.SUPABASE_SERVICE_ROLE_KEY, "[REDACTED]");
+  assert.equal(safe.nested.refresh_token, "[REDACTED]");
+  assert.equal(safe.nested.private_key, "[REDACTED]");
+  assert.equal(safe.nested.custom_api_key, "[REDACTED]");
+  assert.equal(safe.items[0].GITHUB_TOKEN, "[REDACTED]");
+  assert.equal(safe.items[0].count, 3);
+  assert.equal(original.nested.private_key, "private-key-value-must-not-escape");
+  assert.deepEqual(redactSensitiveStructured({ level1: { level2: { value: "deep" } } }, { maxDepth: 1 }), {
+    truncated: true,
+    note: "External MCP result exceeded the redaction safety limits."
+  });
+  assert.deepEqual(redactSensitiveStructured({ payload: "x".repeat(1200) }, { maxBytes: 256 }), {
+    truncated: true,
+    note: "External MCP result exceeded the redaction safety limits."
+  });
+});
+
+test("external MCP text and structured results never return nested secrets, JWTs, credentials, or PEM key blocks", async t => {
+  const oldMode = process.env.NODE_ENV;
+  process.env.NODE_ENV = "test";
+  t.after(() => {
+    if (oldMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = oldMode;
+  });
+
+  const secrets = {
+    serviceRole: "service-role-value-must-not-escape",
+    refreshToken: "refresh-token-value-must-not-escape",
+    privateMaterial: "FAKE_PRIVATE_KEY_MATERIAL_MUST_NOT_ESCAPE",
+    apiKey: "custom-api-key-value-must-not-escape",
+    githubToken: "ghp_" + "0123456789abcdefghijklmnopqrstuv",
+    supabaseToken: "sb_" + "secret_" + "0123456789abcdef012345",
+    jwt: "eyJhbGciOiJIUzI1NiJ9" + "." + "eyJzdWIiOiJ1c2VyIn0" + "." + "signaturelong0123456789",
+    dbPassword: "db-password-must-not-escape",
+    httpsPassword: "url-password-must-not-escape",
+    bearerToken: "BearerTokenValueMustNotEscape012345"
+  };
+  const dbUrl = "postgres://fixture:" + secrets.dbPassword + "@db.example.test:5432/app";
+  const urlWithUserInfo = "https://alice:" + secrets.httpsPassword + "@example.test/path";
+  const pem = "-----BEGIN RSA PRIVATE KEY-----\n" + secrets.privateMaterial + "\n-----END RSA PRIVATE KEY-----";
+  const structured = {
+    ok: true,
+    note: "safe-field-is-preserved",
+    settings: {
+      SUPABASE_SERVICE_ROLE_KEY: secrets.serviceRole,
+      refresh_token: secrets.refreshToken,
+      private_key: pem,
+      custom_api_key: secrets.apiKey,
+      database_url: dbUrl
+    },
+    array: [{ GITHUB_TOKEN: secrets.githubToken, label: "safe-array-label" }]
+  };
+  const textResult = [
+    "secret=" + secrets.serviceRole,
+    "token=" + secrets.refreshToken,
+    "privateKey=" + pem,
+    "api_key=" + secrets.apiKey,
+    "GitHub=" + secrets.githubToken,
+    "Supabase=" + secrets.supabaseToken,
+    "JWT=" + secrets.jwt,
+    "database=" + dbUrl,
+    "URL=" + urlWithUserInfo,
+    "Authorization: Bearer " + secrets.bearerToken
+  ].join("\n");
+
+  const server = http.createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk.toString();
+    const msg = body ? JSON.parse(body) : {};
+    if (msg.method === "notifications/initialized") { res.writeHead(202); res.end(); return; }
+    res.setHeader("content-type", "application/json");
+    if (msg.method === "initialize") {
+      res.setHeader("mcp-session-id", "redaction-fixture-session");
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {
+        protocolVersion: "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "redaction-fixture", version: "1.0" }
+      }}));
+    } else if (msg.method === "tools/list") {
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: { tools: [
+        { name: "redaction_read", description: "Return fixture data", inputSchema: { type: "object", properties: {}, additionalProperties: false } }
+      ] }}));
+    } else if (msg.method === "tools/call") {
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {
+        content: [{ type: "text", text: textResult }],
+        structuredContent: structured,
+        isError: false
+      }}));
+    } else {
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: msg.id, result: {} }));
+    }
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => new Promise(resolve => server.close(resolve)));
+  const address = server.address();
+  const file = await makeConfig(t, [{
+    id: "redaction-fixture",
+    label: "Redaction fixture",
+    transport: "http",
+    enabled: true,
+    url: "http://127.0.0.1:" + address.port + "/mcp",
+    allowedTools: ["redaction_read"],
+    readOnlyTools: ["redaction_read"],
+    writeEnabled: false
+  }]);
+
+  const result = await callAllowedMcpTool("redaction-fixture", "redaction_read", {}, file);
+  const serialized = JSON.stringify(result);
+  for (const secret of Object.values(secrets)) assert.ok(!serialized.includes(secret), "secret leaked: " + secret.slice(0, 12));
+  assert.ok(!serialized.includes(dbUrl));
+  assert.ok(!serialized.includes(urlWithUserInfo));
+  assert.ok(!serialized.includes(pem));
+  assert.equal(result.structuredContent.note, "safe-field-is-preserved");
+  assert.equal(result.structuredContent.settings.SUPABASE_SERVICE_ROLE_KEY, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.refresh_token, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.private_key, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.custom_api_key, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.database_url, "[REDACTED]");
+  assert.equal(result.structuredContent.array[0].GITHUB_TOKEN, "[REDACTED]");
+  assert.equal(result.structuredContent.array[0].label, "safe-array-label");
+  assert.match(result.content[0].text, /REDACTED/);
 });
 
 test("configuration rejects shell commands and world-readable config files", async t => {
