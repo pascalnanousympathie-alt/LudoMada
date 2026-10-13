@@ -58,10 +58,10 @@ jobs:
           mobsf_key="$(openssl rand -hex 32)"
           echo "::add-mask::$mobsf_key"
           printf 'MOBSF_API_KEY=%s\n' "$mobsf_key" >> "$GITHUB_ENV"
-          docker pull opensecurity/mobile-security-framework-mobsf:latest
+          docker pull opensecurity/mobile-security-framework-mobsf:v4.5.2
           docker run --detach --name mobsf-ci --publish 127.0.0.1:8000:8000 \
             --env "MOBSF_API_KEY=$mobsf_key" \
-            opensecurity/mobile-security-framework-mobsf:latest
+            opensecurity/mobile-security-framework-mobsf:v4.5.2
           ready=0
           for attempt in $(seq 1 60); do
             if curl --silent --show-error --fail --max-time 3 "$MOBSF_BASE_URL/" >/dev/null; then
