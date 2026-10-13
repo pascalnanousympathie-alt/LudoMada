@@ -237,13 +237,18 @@ try {
     // One bounded foreground launch, after the initial auto-launch had time
     // to settle. Do not retry "busy" in a tight loop.
     if (attempt === 15) {
-      const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+      // The APK is already installed, but Ramus may still have its initial launch
+      // request in flight while the device remains on the stock launcher. Use the
+      // documented same-session install/open path instead of another app-launch
+      // request, which returns "busy" while that request is pending. This reuses the
+      // active device and does not consume or create a second Ramus session.
+      const installed = allow("session", "install", "--session", session, apk);
       launchInfo = {
         sessionStart: safeLaunchSummary(started.value),
-        retryLaunch: safeLaunchSummary(launched.value)
+        retryInstall: safeLaunchSummary(installed.value)
       };
       waitStable(1200);
-      captureStartupLogcat("after-retry-launch");
+      captureStartupLogcat("after-retry-install");
     }
   }
 
