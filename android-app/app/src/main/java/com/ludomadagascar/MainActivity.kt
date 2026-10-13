@@ -453,16 +453,6 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        android.util.Log.i("LudoMadaStartup", "MAIN_ON_START")
-    }
-
-    override fun onResume() {
-        super.onResume()
-        android.util.Log.i("LudoMadaStartup", "MAIN_ON_RESUME")
-    }
-
     private fun splash() {
         currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
         root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
@@ -665,6 +655,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_RESUME")
         updateExternalWalletStatus()
         if(::music.isInitialized && token.isNotBlank()) { refreshAccountBalance(); refreshMlgSummary() }
     }
@@ -2084,7 +2075,7 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
+    override fun onStart(){ super.onStart(); android.util.Log.i("LudoMadaStartup", "MAIN_ON_START"); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 
 }
