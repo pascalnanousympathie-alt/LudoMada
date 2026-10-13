@@ -78,11 +78,15 @@ jobs:
               const body = await listed.json();
               assert.deepEqual(body.result?.tools?.map(tool => tool.name), expectedTools);
             });
-            await check(label + " Google OAuth start", async () => {
-              const response = await get(base, "/oauth/google/start?purpose=dashboard");
-              assert.ok([302, 303, 307, 308].includes(response.status), "OAuth start HTTP " + response.status);
-              const location = response.headers.get("location") || "";
-              assert.equal(new URL(location).hostname, "accounts.google.com", "OAuth did not redirect to Google");
+            await check(label + " Google OAuth configuration and database path", async () => {
+              // Use a deliberately invalid MCP authorization transaction so the canary
+              // exercises configuration/rate-limit/database reads without creating OAuth
+              // state rows or pretending to complete a real user sign-in.
+              const response = await get(base, "/oauth/google/start?purpose=mcp&transaction_id=runtime-watch-invalid");
+              assert.equal(response.status, 400, "expected fail-closed invalid transaction response, got HTTP " + response.status);
+              const body = await response.json();
+              assert.equal(body.error, "invalid_request", "OAuth preflight returned an unexpected error");
+              assert.match(body.error_description || "", /authorization request expired/i);
             });
           }
           if (failures.length) {
