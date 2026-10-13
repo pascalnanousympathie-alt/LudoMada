@@ -462,7 +462,10 @@ test("Termux service installer is explicit, idempotent and prepares optional boo
   const installer = await fs.readFile(new URL("../scripts/install-termux-service.sh", import.meta.url), "utf8");
   const diagnostic = await fs.readFile(new URL("../scripts/check-termux-service.sh", import.meta.url), "utf8");
   assert.ok(installer.includes("sv-enable"));
+  assert.ok(installer.includes('export SVDIR="$PREFIX/var/service"'));
+  assert.ok(installer.includes('export LOGDIR="$PREFIX/var/log"'));
   assert.ok(installer.includes("~/.termux/boot") || installer.includes("BOOT_FILE"));
+  assert.ok(installer.includes('export SVDIR="$PREFIX/var/service"\nexport LOGDIR="$PREFIX/var/log"\ntermux-wake-lock'));
   assert.ok(installer.includes("refusing to overwrite an existing service"));
   assert.ok(diagnostic.includes("sv status"));
   assert.ok(diagnostic.includes('agent.mjs" status'));
