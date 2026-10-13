@@ -210,7 +210,7 @@ test("external MCP text and structured results never return nested secrets, JWTs
   const structured = {
     ok: true,
     note: "safe-field-is-preserved",
-    credentials: {
+    settings: {
       SUPABASE_SERVICE_ROLE_KEY: secrets.serviceRole,
       refresh_token: secrets.refreshToken,
       private_key: pem,
@@ -278,7 +278,7 @@ test("external MCP text and structured results never return nested secrets, JWTs
   assert.ok(!serialized.includes(urlWithUserInfo));
   assert.ok(!serialized.includes(pem));
   assert.equal(result.structuredContent.note, "safe-field-is-preserved");
-  assert.equal(result.structuredContent.credentials.SUPABASE_SERVICE_ROLE_KEY, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.SUPABASE_SERVICE_ROLE_KEY, "[REDACTED]");
   assert.equal(result.structuredContent.credentials.refresh_token, "[REDACTED]");
   assert.equal(result.structuredContent.credentials.private_key, "[REDACTED]");
   assert.equal(result.structuredContent.credentials.custom_api_key, "[REDACTED]");
