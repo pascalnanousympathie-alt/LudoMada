@@ -1109,10 +1109,21 @@ class LudoBoardView(
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
             rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
-            shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
+            android.util.Log.i("LudoMadaRender","PBR_INIT_SHADER_PROGRAMS_START")
+            shader=PbrShader(this)
+            android.util.Log.i("LudoMadaRender","PBR_INIT_PBR_SHADER_READY")
+            shadowShader=ShadowShader()
+            android.util.Log.i("LudoMadaRender","PBR_INIT_SHADOW_SHADER_READY")
+            postShader=PostShader()
+            android.util.Log.i("LudoMadaRender","PBR_INIT_POST_SHADER_READY")
+            particleShader=ParticleShader()
+            android.util.Log.i("LudoMadaRender","PBR_INIT_PARTICLE_SHADER_READY")
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);heroRing=ringMesh(64,1.02f,0.72f)
+            android.util.Log.i("LudoMadaRender","PBR_INIT_STATIC_MESHES_READY")
 
+            android.util.Log.i("LudoMadaRender","PBR_INIT_TEXTURES_START")
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture();envBarkTex=loadAssetTexture("environment/textures/bark_diff_2k.jpg");envBarkNormalTex=loadAssetTexture("environment/textures/bark_nor_gl_2k.jpg");envBarkRoughTex=loadAssetTexture("environment/textures/bark_rough_2k.jpg");envDirtTex=loadAssetTexture("environment/textures/dirt_diff_2k.jpg");envDirtNormalTex=loadAssetTexture("environment/textures/dirt_nor_gl_2k.jpg");envDirtRoughTex=loadAssetTexture("environment/textures/dirt_rough_2k.jpg");envSkyTex=loadAssetTexture("environment/textures/safari_sunset_2k.jpg");envGrassTex=loadAssetTexture("environment/textures/grass_diff_2k.jpg");envGrassNormalTex=loadAssetTexture("environment/textures/grass_nor_gl_2k.jpg");envGrassRoughTex=loadAssetTexture("environment/textures/grass_rough_2k.jpg")
+            android.util.Log.i("LudoMadaRender","PBR_INIT_TEXTURES_READY")
             glbParts=runCatching{
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
@@ -1167,10 +1178,12 @@ class LudoBoardView(
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
+            val isFirstFrame = lastFrameNanos == 0L
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
             }
+            if (isFirstFrame) android.util.Log.i("LudoMadaRender","PBR_FIRST_DRAW homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight+" envParts="+envParts.size+" baobabParts="+baobabParts.size)
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             refreshCosmetics(now)
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
