@@ -196,7 +196,7 @@ try {
   }
 
   session = started.value.session;
-  console.log(\`Ramus session: \${session}\`);
+  console.log(`Ramus session: ${session}`);
   waitStable(1200);
 
   const installed = allow("session", "install", "--session", session, apk);
