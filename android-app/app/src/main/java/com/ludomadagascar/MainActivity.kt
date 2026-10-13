@@ -1456,7 +1456,23 @@ class MainActivity : Activity() {
         var assets=emptyList<String>()
         var rates=JSONObject()
         var selected=""
+        var direction=0
         lateinit var dialog: AlertDialog
+        fun recalculateQuote():Boolean {
+            val rate=info.tag as? Double ?: 0.0
+            if(rate<=0.0)return false
+            return if(direction==0){
+                val amount=crypto.text.toString().replace(',', '.').toDoubleOrNull() ?: return false
+                if(amount<=0.0)return false
+                mga.setText(formatDecimal(amount*rate))
+                true
+            }else{
+                val amount=mga.text.toString().replace(',', '.').toDoubleOrNull() ?: return false
+                if(amount<=0.0)return false
+                crypto.setText(formatDecimal(amount/rate))
+                true
+            }
+        }
         fun applyAsset(asset:String){
             selected=asset.uppercase()
             assetButton.text="Asset crypto: $selected"
@@ -1465,22 +1481,27 @@ class MainActivity : Activity() {
             info.text=if(rate>0) "1 $selected = ${formatDecimal(rate)} Ar" else "Taux non configuré pour $selected."
         }
         assetButton.setOnClickListener{
-            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->applyAsset(assets[which])}.setNegativeButton("Aoka",null).show()
+            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->
+                applyAsset(assets[which])
+                recalculateQuote()
+            }.setNegativeButton("Aoka",null).show()
         }
         convert.setOnClickListener{
-            val rateHolder=info.tag as? Double ?: 0.0
-            if(rateHolder<=0) Toast.makeText(this,"Taux crypto non disponible.",Toast.LENGTH_LONG).show()
-            else Toast.makeText(this,"Conversion active avec le taux serveur. Aucun solde n’est crédité ici.",Toast.LENGTH_LONG).show()
+            if(!recalculateQuote()) {
+                Toast.makeText(this,"Entrez un montant positif et choisissez un taux serveur valide.",Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this,"Devis calculé avec le taux serveur. Aucun fonds n’est transféré; les paiements restent OFF.",Toast.LENGTH_LONG).show()
+            }
         }
         dialog=AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
             .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
-                val rateHolder=info.tag as? Double ?: 0.0
-                if(rateHolder>0){
-                    if(which==0){val v=crypto.text.toString().toDoubleOrNull()?:0.0;mga.setText(if(v>0)formatDecimal(v*rateHolder) else "")}
-                    else{val v=mga.text.toString().toDoubleOrNull()?:0.0;crypto.setText(if(v>0)formatDecimal(v/rateHolder) else "")}
-                }
+                direction=which
+                recalculateQuote()
             }
-            .setPositiveButton("CONVERTIR"){_,_->Toast.makeText(this,"Conversion calculée avec le taux serveur. Aucun solde n’est crédité sans provider actif.",Toast.LENGTH_LONG).show()}
+            .setPositiveButton("CALCULER LE DEVIS"){_,_->
+                if(!recalculateQuote()) Toast.makeText(this,"Montant ou taux indisponible.",Toast.LENGTH_LONG).show()
+                else Toast.makeText(this,"Devis calculé; aucun dépôt, retrait ou swap réel n’a été exécuté.",Toast.LENGTH_LONG).show()
+            }
             .setNegativeButton("Aoka",null).create()
         dialog.show()
         get("/api/payments/config"){j->
