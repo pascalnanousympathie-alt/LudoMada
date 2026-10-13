@@ -31,7 +31,6 @@ permissions:
   actions: read
 
 concurrency:
-  # All Lane F workflows share Ramus's remote emulator fleet.
   group: ludomada-shared-ramus-fleet
   cancel-in-progress: false
 
