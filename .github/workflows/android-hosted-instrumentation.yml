@@ -1,0 +1,100 @@
+name: Android Hosted Startup Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/hosted-android-startup-diagnostic-20261013
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-hosted-instrumentation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ludomada-hosted-instrumentation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  startup-test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+    defaults:
+      run:
+        working-directory: android-app
+    steps:
+      - name: Checkout exact diagnostic head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            android-app/*.gradle.kts
+            android-app/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Set up Android SDK and emulator image
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 build-tools;36.0.0 emulator system-images;android-35;google_apis;x86_64"
+
+      - name: Configure SDK path and compile test APKs
+        run: |
+          set -eu
+          chmod +x gradlew
+          printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+          ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Run StartupUiTest on a hosted Android emulator and preserve device diagnostics
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
+          script: |
+            set +e
+            cd android-app
+            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace > "$RUNNER_TEMP/ludomada-connected-tests.log" 2>&1
+            test_exit=$?
+            cat "$RUNNER_TEMP/ludomada-connected-tests.log"
+            mkdir -p "$RUNNER_TEMP/ludomada-device-diag"
+            adb logcat -d -v threadtime > "$RUNNER_TEMP/ludomada-device-diag/logcat.txt" 2>&1 || true
+            adb shell dumpsys activity activities > "$RUNNER_TEMP/ludomada-device-diag/activities.txt" 2>&1 || true
+            adb shell dumpsys activity top > "$RUNNER_TEMP/ludomada-device-diag/activity-top.txt" 2>&1 || true
+            adb shell dumpsys package com.ludomadagascar > "$RUNNER_TEMP/ludomada-device-diag/package.txt" 2>&1 || true
+            adb shell dumpsys window windows > "$RUNNER_TEMP/ludomada-device-diag/windows.txt" 2>&1 || true
+            exit "$test_exit"
+
+      - name: Upload instrumentation reports and Android device diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-startup-diagnostics-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/ludomada-connected-tests.log
+            ${{ runner.temp }}/ludomada-device-diag/**
+            android-app/app/build/reports/androidTests/connected/debug/**
+            android-app/app/build/outputs/androidTest-results/connected/debug/**
+            android-app/app/build/reports/tests/testDebugUnitTest/**
+          if-no-files-found: warn
+          retention-days: 7
