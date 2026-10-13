@@ -40,31 +40,39 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.desc("OFFLINE_2_PLAYERS")))
 
+        assertTrue(device.hasObject(By.desc("OFFLINE_3_PLAYERS")))
+        assertTrue(device.hasObject(By.desc("OFFLINE_4_PLAYERS")))
         device.findObject(By.desc("OFFLINE_2_PLAYERS")).click()
-        assertTrue(device.wait(Until.hasObject(By.desc("GAME_DICE_ROLL")), 5000))
-        assertTrue(device.hasObject(By.textContains("Joueur 1/")))
+        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_2P")), 8000))
+        assertTrue("Gameplay must expose the dice HUD action", device.hasObject(By.desc("TOUCHEZ_LE_DE")))
 
+        // Exercise the real roll callback without asserting a synthetic pawn button: pawns are
+        // hit-tested against projected 3D geometry in LudoBoardView rather than separate Views.
         var gotSix = false
-        repeat(24) {
-            assertTrue("Dice button must remain reachable", device.hasObject(By.desc("GAME_DICE_ROLL")))
-            device.findObject(By.desc("GAME_DICE_ROLL")).click()
-            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
+        for (attempt in 0 until 24) {
+            val dice = device.findObject(By.desc("TOUCHEZ_LE_DE"))
+            assertNotNull("Dice HUD action must remain available", dice)
+            dice.click()
+            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 900)) {
                 gotSix = true
-                return@repeat
+                break
             }
             device.wait(Until.hasObject(By.textContains("Joueur ")), 1200)
-            Thread.sleep(250)
+            Thread.sleep(200)
         }
-        assertTrue("Dice should produce a reachable six within retries", gotSix)
+        assertTrue("Dice action should reach a six within retries", gotSix)
 
-        assertTrue(device.hasObject(By.desc("GAME_PAWN_1")))
-        device.findObject(By.desc("GAME_PAWN_1")).click()
-        assertTrue(
-            "A six gives the player another turn after the pawn move",
-            device.wait(Until.hasObject(By.textContains("Rejouez")), 1800)
-        )
+        device.findObject(By.desc("MENU_JEU")).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_3_PLAYERS")), 3000))
+        device.findObject(By.desc("OFFLINE_3_PLAYERS")).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_3P")), 8000))
 
-        val file = File("/sdcard/Download/ludomada-startup-offline.png")
+        device.findObject(By.desc("MENU_JEU")).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_4_PLAYERS")), 3000))
+        device.findObject(By.desc("OFFLINE_4_PLAYERS")).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_4P")), 8000))
+
+        val file = File(instrumentation.context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
     }
