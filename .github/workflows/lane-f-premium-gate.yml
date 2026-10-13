@@ -75,14 +75,6 @@ jobs:
             const headSha = pr?.head?.sha || context.sha;
             const mergeSha = context.sha;
             const expectedName = `LudoMada-premium-gles3-debug-${mergeSha}`;
-            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-              owner,
-              repo,
-              workflow_id: "android-apk-cloud-fallback.yml",
-              branch,
-              status: "completed",
-              per_page: 100
-            });
             // Cloud Fallback and Lane F start from the same PR event. Poll for the
             // matching artifact rather than failing simply because Gradle is still building.
             for (let attempt = 1; attempt <= 30; attempt++) {
