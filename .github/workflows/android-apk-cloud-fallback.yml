@@ -48,20 +48,47 @@ jobs:
           accept-android-sdk-licenses: true
           packages: platform-tools platforms;android-35 build-tools;35.0.0
 
-      - name: Build and unit test
+      - name: Build debug and instrumentation APKs, and run JVM unit tests
         env:
           ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
         run: |
           set -eu
           chmod +x gradlew
-          ./gradlew test assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 
-      - name: Publish APK artifact
+      - name: Audit Android source policy
+        working-directory: .
+        run: python3 scripts/android-release-audit.py
+
+      - name: Validate 3D asset manifest and mobile budgets
+        working-directory: .
+        run: |
+          set -eu
+          node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
+
+      - name: Verify current GLB and textures are packaged into debug APK
+        working-directory: .
+        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Scan debug and instrumentation APKs for known embedded credentials
+        run: |
+          set -eu
+          python3 scripts/android-release-audit.py app/build/outputs/apk/debug/app-debug.apk
+          python3 scripts/android-release-audit.py app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Check Ramus test script syntax
+        working-directory: .
+        run: node --check scripts/ramus-smoke.mjs
+
+      - name: Publish verified APK and instrumentation artifact
         uses: actions/upload-artifact@v4
         with:
           name: LudoMada-premium-gles3-debug-${{ github.sha }}
           path: |
             android-app/app/build/outputs/apk/debug/app-debug.apk
             android-app/app/build/outputs/apk/debug/output-metadata.json
+            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: error
