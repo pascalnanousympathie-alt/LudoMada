@@ -31,6 +31,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   public PremiumHeroViewV2(Context c){
     super(c);
+    android.util.Log.i("LudoMadaStartup", "HERO_CONSTRUCTOR_ENTER");
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
@@ -43,7 +44,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
+    android.util.Log.i("LudoMadaStartup", "HERO_HOME_VIEW_CREATED");
     homeBoard=new LudoBoardView(c,null,null,true);
+    android.util.Log.i("LudoMadaStartup", "HERO_GL_SURFACE_CREATED");
     // Home preview is a real full-screen 3D scene surface; keep it behind the
     // vector UI overlay so the environment itself is never a bitmap/screenshot.
     homeBoard.setZOrderOnTop(false);
@@ -145,13 +148,21 @@ public class PremiumHeroViewV2 extends FrameLayout {
     // directly testable by TalkBack, UIAutomator and Ramus.
     addHomeActionTargets();
     post(()->{
-      positionHomeBoard(homeBoard);
-      homeBoard.configureHomePreview();
-      positionWalletHit(walletHit, walletHitAlt);
-      positionPlayHit(playHit,playHitAlt);
-      positionPlayHit(playA11y,playHitAlt);
-      positionHomeTargets();
+      android.util.Log.i("LudoMadaStartup", "HERO_LAYOUT_POST_ENTER");
+      try {
+        positionHomeBoard(homeBoard);
+        homeBoard.configureHomePreview();
+        positionWalletHit(walletHit, walletHitAlt);
+        positionPlayHit(playHit,playHitAlt);
+        positionPlayHit(playA11y,playHitAlt);
+        positionHomeTargets();
+        android.util.Log.i("LudoMadaStartup", "HERO_LAYOUT_POST_READY");
+      } catch (Throwable t) {
+        android.util.Log.e("LudoMadaStartup", "HERO_LAYOUT_POST_FAILED", t);
+        throw t;
+      }
     });
+    android.util.Log.i("LudoMadaStartup", "HERO_CONSTRUCTOR_READY");
   }
   private JSONObject homePreviewState(){
     try{
