@@ -74,20 +74,90 @@ export function escapeHtml(value) {
   })[c]);
 }
 
+const SENSITIVE_PROPERTY = /(?:^|[_\-.])(?:authorization|access[_-]?token|refresh[_-]?token|client[_-]?secret|secret|api[_-]?key|private[_-]?key|service[_-]?role[_-]?key|token|password|pairing[_-]?code|cookie|database[_-]?(?:url|uri)|connection[_-]?string|credentials?|key)(?:$|[_\-.])/i;
+const REDACTION_LIMIT_MARKER = Object.freeze({
+  truncated: true,
+  note: "External MCP result exceeded the redaction safety limits."
+});
+
 export function redactSensitive(value) {
-  let text = typeof value === "string" ? value : JSON.stringify(value ?? "");
-  text = text
+  let text;
+  try {
+    text = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  } catch {
+    return "[REDACTED_UNSERIALIZABLE_VALUE]";
+  }
+  return text
+    .replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/gi, "[REDACTED_PRIVATE_KEY]")
+    .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi, match => match.split(/\s+/, 1)[0] + " [REDACTED]")
     .replace(
-      /(["']?(?:authorization|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret(?:[_ -]?(?:key|token))?|api[_ -]?key|private[_ -]?key|password|pairing[_ -]?code|cookie|database[_ -]?(?:url|uri)|connection[_ -]?string|credential(?:s)?|token)["']?\s*[:=]\s*)(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,"'&}]+))/gi,
-      (_match, prefix, doubleQuoted, singleQuoted) =>
-        prefix + (doubleQuoted !== undefined ? '"[REDACTED]"' : singleQuoted !== undefined ? "'[REDACTED]'" : "[REDACTED]")
+      /(["']?[A-Za-z0-9_.-]*(?:authorization|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|secret|api[_ -]?key|private[_ -]?key|service[_ -]?role[_ -]?key|database[_ -]?(?:url|uri)|connection[_ -]?string|credential(?:s)?|pairing[_ -]?code|cookie|password|token|(?:^|[_-])key)[A-Za-z0-9_.-]*["']?\s*[:=]\s*)(?:"([^"\r\n]*)"|'([^'\r\n]*)'|([^\s,"'&}]+))/gi,
+      (_match, prefix, doubleQuoted, singleQuoted) => {
+        if (doubleQuoted !== undefined) return prefix + '"[REDACTED]"';
+        if (singleQuoted !== undefined) return prefix + "'[REDACTED]'";
+        return prefix + "[REDACTED]";
+      }
     )
-    .replace(/^([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY|DATABASE_URL|DATABASE_URI|CONNECTION_STRING|CREDENTIALS?|AUTHORIZATION|COOKIE)[A-Z0-9_]*\s*=\s*).+$/gim, "$1[REDACTED]")
+    .replace(/^([A-Z][A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|(?:API|PRIVATE|SERVICE_ROLE)?_?KEY|DATABASE_URL|DATABASE_URI|CONNECTION_STRING|CREDENTIALS?|AUTHORIZATION|COOKIE)[A-Z0-9_]*\s*=\s*).+$/gim, "$1[REDACTED]")
     .replace(/\b(?:postgres(?:ql)?|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED_CONNECTION_STRING]")
-    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{16,})\b/g, "[REDACTED_TOKEN]")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]");
-  return text.slice(0, 6000);
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/@]+@/gi, "$1[REDACTED]@")
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{16,}|npm_[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})\b/gi, "[REDACTED_TOKEN]")
+    .replace(/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_JWT]")
+    .slice(0, 6000);
 }
+
+export function redactSensitiveStructured(value, options = {}) {
+  const maxDepth = Number.isSafeInteger(options.maxDepth) ? Math.max(1, Math.min(options.maxDepth, 24)) : 16;
+  const maxNodes = Number.isSafeInteger(options.maxNodes) ? Math.max(1, Math.min(options.maxNodes, 20_000)) : 10_000;
+  const maxBytes = Number.isSafeInteger(options.maxBytes) ? Math.max(256, Math.min(options.maxBytes, 1_000_000)) : 500_000;
+  let nodes = 0;
+  let exceeded = false;
+
+  const visit = (input, depth) => {
+    nodes += 1;
+    if (nodes > maxNodes || depth > maxDepth) {
+      exceeded = true;
+      return null;
+    }
+    if (input === null || typeof input === "boolean") return input;
+    if (typeof input === "number") return Number.isFinite(input) ? input : "[REDACTED_NONFINITE_NUMBER]";
+    if (typeof input === "string") return redactSensitive(input);
+    if (Array.isArray(input)) {
+      if (input.length > maxNodes) {
+        exceeded = true;
+        return null;
+      }
+      return input.map(item => visit(item, depth + 1));
+    }
+    if (typeof input === "object") {
+      const output = {};
+      for (const [key, child] of Object.entries(input)) {
+        if (key.length > 256) {
+          exceeded = true;
+          break;
+        }
+        Object.defineProperty(output, key, {
+          value: SENSITIVE_PROPERTY.test(key) ? "[REDACTED]" : visit(child, depth + 1),
+          enumerable: true,
+          configurable: true,
+          writable: true
+        });
+      }
+      return output;
+    }
+    return "[REDACTED_UNSUPPORTED_VALUE]";
+  };
+
+  try {
+    const safe = visit(value, 0);
+    if (exceeded) return { ...REDACTION_LIMIT_MARKER };
+    if (Buffer.byteLength(JSON.stringify(safe), "utf8") > maxBytes) return { ...REDACTION_LIMIT_MARKER };
+    return safe;
+  } catch {
+    return { ...REDACTION_LIMIT_MARKER };
+  }
+}
+
 export function setSecurityHeaders(res) {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "no-referrer");
