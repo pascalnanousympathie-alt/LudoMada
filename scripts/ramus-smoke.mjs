@@ -472,6 +472,48 @@ try {
     console.log("TRIAL→OFFLINE MENU PASS");
   }
 
+  // Exercise every offline player-count option on the cloud Android emulator.
+  // These are the same real UI choices users select; no game-state or wallet APIs are mocked.
+  for (const mode of [2, 3]) {
+    const selector = allow("snapshot", "--session", session, "--find", `OFFLINE_${mode}_PLAYERS`);
+    if (!selector.ok || !selector.value?.elements?.length) {
+      throw new Error(`OFFLINE_${mode}_PLAYERS selector missing`);
+    }
+    const tapped = allow("tap", selector.value.elements[0].ref, "--gen", String(selector.value.gen), "--session", session);
+    if (!tapped.ok) throw new Error(`OFFLINE_${mode}_PLAYERS tap failed: ` + JSON.stringify(tapped.value));
+    waitStable(1600);
+    const boardMarker = `GAMEPLAY_3D_OFFLINE_${mode}P`;
+    if (!hasText(boardMarker)) throw new Error(`Offline ${mode}-player 3D board did not open`);
+    console.log(`${mode}-PLAYER GLES3 BOARD ENTRY PASS`);
+    shot(`board-${mode}p`);
+
+    // Prove the gameplay HUD can invoke the real dice-roll callback. Tokens are
+    // hit-tested by projected 3D geometry; there is no separate fake pawn button.
+    if (mode === 2) {
+      let gotSix = false;
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const dice = findRef("TOUCHEZ_LE_DE");
+        run("tap", dice.ref, "--gen", String(dice.gen), "--session", session);
+        if (waitForSix(1200)) {
+          gotSix = true;
+          break;
+        }
+        waitStable(350);
+      }
+      if (!gotSix) throw new Error("Dice HUD did not reach a six within 24 Ramus rolls");
+      console.log("2-PLAYER REAL DICE ROLL PASS");
+    }
+
+    const menu = findRef("MENU_JEU");
+    const menuTap = allow("tap", menu.ref, "--gen", String(menu.gen), "--session", session);
+    if (!menuTap.ok) throw new Error("MENU_JEU tap failed after offline " + mode + "P: " + JSON.stringify(menuTap.value));
+    waitStable(900);
+    offlineMenu = allow("snapshot", "--session", session, "--find", "OFFLINE_4_PLAYERS");
+    if (!offlineMenu.ok || !offlineMenu.value?.elements?.length) {
+      throw new Error("Offline player selector did not reopen from " + mode + "P gameplay");
+    }
+  }
+
   const offlineFour = offlineMenu.value.elements[0];
   const offlineFourTap = allow("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);
   if (!offlineFourTap.ok) console.log("OFFLINE_4P TAP CALLBACK DEFERRED: " + JSON.stringify(offlineFourTap.value));
