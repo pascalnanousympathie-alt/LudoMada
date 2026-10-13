@@ -42,6 +42,14 @@ checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) &&
 checks.push(["active rev5 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["active rev5 asset size", packagedBytes === 867800]);
 checks.push(["active rev5 asset sha256", packagedSha256 === "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f"]);
+
+const marketAsset = path.join(root, manifest.market_library?.asset?.split("/").pop() || "ludomada-gameplay-market-v6.glb");
+const marketBytes = fs.existsSync(marketAsset) ? fs.statSync(marketAsset).size : 0;
+const marketSha = fs.existsSync(marketAsset) ? createHash("sha256").update(fs.readFileSync(marketAsset)).digest("hex") : "";
+checks.push(["market library declared", manifest.market_library?.revision === 6]);
+checks.push(["market library asset present", fs.existsSync(marketAsset)]);
+checks.push(["market library size", marketBytes === 7934184]);
+checks.push(["market library sha256", marketSha === "c87a4444b1fe4736615a580fba5e1bb3427c1f23e5a431f118ab229a3885bb06"]);
 const failed = checks.filter(([, ok]) => !ok);
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
@@ -52,7 +60,8 @@ console.log(JSON.stringify({
   sourceScene: manifest.source_scene,
   board: manifest.board_geometry,
   packagedAssets: packagedFiles,
-  rev3Asset: { present: fs.existsSync(expectedAsset), bytes: packagedBytes, sha256: packagedSha256 },
+  activeGameplayAsset: { present: fs.existsSync(expectedAsset), bytes: packagedBytes, sha256: packagedSha256 },
+  marketAsset: { present: fs.existsSync(marketAsset), bytes: marketBytes, sha256: marketSha },
   oversizedAssets: oversized,
   passed: checks.length - failed.length,
   total: checks.length,

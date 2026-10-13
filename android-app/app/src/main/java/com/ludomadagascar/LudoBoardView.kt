@@ -1057,6 +1057,11 @@ class LudoBoardView(
         private val lastDiceFx=LongArray(4)
         private val boardTop=0.20f
         private val pawnScale=0.62f
+        private var cosmeticBoardId="royal"
+        private var cosmeticDieId="chrome"
+        private var cosmeticPawnId="classic"
+        private var cosmeticVfxId="heroic"
+        private var lastCosmeticRefresh=0L
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
@@ -1150,6 +1155,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
             }
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
+            refreshCosmetics(now)
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
@@ -1229,6 +1235,7 @@ class LudoBoardView(
                 if(!homePreview)drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
                 if(!homePreview && boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
+                    drawCosmeticBoardAccents(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
                         val xz=host.display[pi][ti]
@@ -1274,6 +1281,7 @@ class LudoBoardView(
             }
             if(!homePreview && boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
+                drawCosmeticBoardAccents(false)
                 drawHomePawnSlots(false)
             }else{
                 drawMesh(cube,identityAt(0f,-0.42f,0f,4.75f,0.35f,4.75f),floatArrayOf(0.32f,0.10f,0.035f,1f),0.34f,0.18f,1f,0f,1,false)
@@ -1295,6 +1303,28 @@ class LudoBoardView(
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
             if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
         }
+        private fun refreshCosmetics(now:Long){
+            if(now-lastCosmeticRefresh<180_000_000L)return
+            lastCosmeticRefresh=now
+            cosmeticBoardId=CosmeticCatalog.selected(host.context,CosmeticCatalog.BOARD_KEY,"royal")
+            cosmeticDieId=CosmeticCatalog.selected(host.context,CosmeticCatalog.DIE_KEY,"chrome")
+            cosmeticPawnId=CosmeticCatalog.selected(host.context,CosmeticCatalog.PAWN_KEY,"classic")
+            cosmeticVfxId=CosmeticCatalog.selected(host.context,CosmeticCatalog.VFX_KEY,"heroic")
+        }
+
+        private fun styleColor(color:Int, factor:Float):Int =
+            Color.rgb(
+                (Color.red(color)*factor).toInt().coerceIn(0,255),
+                (Color.green(color)*factor).toInt().coerceIn(0,255),
+                (Color.blue(color)*factor).toInt().coerceIn(0,255)
+            )
+
+        private fun vfxColor(primary:Boolean):Int = when(cosmeticVfxId){
+            "ember" -> if(primary) Color.rgb(255,102,32) else Color.rgb(255,210,92)
+            "frost" -> if(primary) Color.rgb(76,214,255) else Color.rgb(204,246,255)
+            else -> if(primary) Color.rgb(255,195,48) else Color.rgb(238,245,255)
+        }
+
         private fun drawGameplayBackdrop(){
             drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),floatArrayOf(0.025f,0.095f,0.24f,1f),0.72f,0.04f,1f,0f,0,false)
         }
@@ -1312,12 +1342,49 @@ class LudoBoardView(
             "LM_Path_Green"->rgba(Color.rgb(49,165,91))
             "LM_Path_Gold"->rgba(Color.rgb(237,179,44))
             "LM_Path_Blue"->rgba(Color.rgb(57,111,219))
-            "LM_Path_Ivory"->floatArrayOf(0.93f,0.86f,0.69f,1f)
-            "LM_Path_Dark"->floatArrayOf(0.065f,0.070f,0.075f,1f)
-            "LM_Board_Felt"->floatArrayOf(0.29f,0.18f,0.10f,1f)
-            "LM_Gold_Frame"->floatArrayOf(0.72f,0.46f,0.14f,1f)
-            "LM_Table_Lacquer"->floatArrayOf(0.34f,0.13f,0.035f,1f)
+            "LM_Path_Ivory"->when(cosmeticBoardId) {
+                "obsidian"->floatArrayOf(0.70f,0.71f,0.75f,1f)
+                "sapphire"->floatArrayOf(0.84f,0.89f,0.96f,1f)
+                else->floatArrayOf(0.93f,0.86f,0.69f,1f)
+            }
+            "LM_Path_Dark"->when(cosmeticBoardId) {
+                "sapphire"->floatArrayOf(0.035f,0.060f,0.12f,1f)
+                else->floatArrayOf(0.065f,0.070f,0.075f,1f)
+            }
+            "LM_Board_Felt"->when(cosmeticBoardId) {
+                "obsidian"->floatArrayOf(0.065f,0.075f,0.095f,1f)
+                "sapphire"->floatArrayOf(0.055f,0.14f,0.27f,1f)
+                "ruby"->floatArrayOf(0.28f,0.035f,0.045f,1f)
+                else->floatArrayOf(0.29f,0.18f,0.10f,1f)
+            }
+            "LM_Gold_Frame"->when(cosmeticBoardId) {
+                "obsidian"->floatArrayOf(0.60f,0.65f,0.72f,1f)
+                else->floatArrayOf(0.72f,0.46f,0.14f,1f)
+            }
+            "LM_Table_Lacquer"->when(cosmeticBoardId) {
+                "obsidian"->floatArrayOf(0.025f,0.032f,0.055f,1f)
+                "sapphire"->floatArrayOf(0.025f,0.075f,0.18f,1f)
+                "ruby"->floatArrayOf(0.38f,0.025f,0.022f,1f)
+                else->floatArrayOf(0.34f,0.13f,0.035f,1f)
+            }
             else->floatArrayOf(0.82f,0.78f,0.70f,1f)
+        }
+
+        private fun drawCosmeticBoardAccents(shadowPass:Boolean){
+            val edgeX=3.72f
+            val edgeZ=3.72f
+            val points=arrayOf(floatArrayOf(-edgeX,-edgeZ),floatArrayOf(edgeX,-edgeZ),floatArrayOf(-edgeX,edgeZ),floatArrayOf(edgeX,edgeZ))
+            val accent=when(cosmeticBoardId){
+                "obsidian" -> Color.rgb(210,220,236)
+                "sapphire" -> Color.rgb(246,201,78)
+                "ruby" -> Color.rgb(255,211,128)
+                else -> Color.rgb(250,202,84)
+            }
+            for(p in points){
+                val m=identityAt(p[0],boardTop+0.12f,p[1],0.10f,0.055f,0.10f)
+                if(shadowPass) drawShadowMesh(sphere,m)
+                else drawMesh(sphere,m,rgba(accent),0.12f,0.82f,1f,0.025f,4,false)
+            }
         }
 
         private fun drawAuthoredBoard(shadowPass:Boolean){
@@ -1336,9 +1403,13 @@ class LudoBoardView(
                     mn=="LM_Board_Felt"->0.55f
                     else->0.34f
                 }
-                val metallic=if(mn=="LM_Gold_Frame")0.88f else 0.06f
+                val metallic=when{
+                    mn=="LM_Gold_Frame"->if(cosmeticBoardId=="obsidian")0.82f else 0.88f
+                    mn=="LM_Table_Lacquer"->if(cosmeticBoardId=="obsidian")0.28f else 0.10f
+                    else->0.06f
+                }
                 val albedo=when{
-                    mn=="LM_Table_Lacquer"->woodTex
+                    mn=="LM_Table_Lacquer"->if(cosmeticBoardId=="obsidian")0 else woodTex
                     mn=="LM_Path_Ivory"->boardTex
                     else->0
                 }
@@ -1459,13 +1530,30 @@ class LudoBoardView(
             drawEnvironmentGlb(false)
         }
 
+        private fun pawnCosmeticBaseColor():Int = when(cosmeticPawnId){
+            "chrome" -> Color.rgb(226,232,240)
+            "onyx" -> Color.rgb(28,32,42)
+            "emerald" -> Color.rgb(42,118,88)
+            "sapphire" -> Color.rgb(64,102,164)
+            "royal" -> Color.rgb(170,126,52)
+            else -> Color.rgb(176,150,112)
+        }
+
+        /**
+         * Player identity is deliberately isolated to the upper collar/neck band.
+         * The sculpted pawn body/head keep the selected cosmetic's own material,
+         * so two opponents can equip the same pawn without degrading its finish.
+         */
         private fun drawPawn(x:Float,y:Float,z:Float,color:Int,active:Boolean,pi:Int,ti:Int){
             if(active && isLegalPawn(pi,ti)){
                 val pulse=(0.42f+0.06f*sin(System.nanoTime()/180_000_000.0).toFloat()).coerceIn(0.34f,0.50f)
                 drawMesh(disk,identityAt(x,boardTop+0.022f,z,pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.16f,0.88f),0.08f,0.52f,1f,0.035f,4,true)
             }
+
+            val styleColor=pawnCosmeticBaseColor()
             val body=glbParts["LM_Pawn_Tapered_Body"]
             val head=glbParts["LM_Pawn_Spherical_Head"]
+
             if(body!=null && head!=null){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
                 val elastic=LudoMotionPhysics.elasticOut(b)
@@ -1476,6 +1564,27 @@ class LudoBoardView(
                 val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
                 val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
                 val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                val rough=when(cosmeticPawnId){
+                    "chrome"->0.13f
+                    "onyx"->0.20f
+                    "emerald"->0.18f
+                    "sapphire"->0.20f
+                    else->0.24f
+                }
+                val metal=when(cosmeticPawnId){
+                    "chrome"->0.78f
+                    "onyx"->0.62f
+                    "emerald"->0.58f
+                    "sapphire"->0.56f
+                    else->0.38f
+                }
+                val emission=when(cosmeticPawnId){
+                    "chrome"->0.010f
+                    "emerald"->0.008f
+                    "sapphire"->0.006f
+                    else->0.004f
+                }
+
                 listOf(
                     "LM_Pawn_Underside_Insert",
                     "LM_Pawn_Base_Weighted",
@@ -1484,14 +1593,70 @@ class LudoBoardView(
                     "LM_Pawn_Spherical_Head"
                 ).forEach { name ->
                     glbParts[name]?.let { part ->
-                        val model=heroPawnModel(part.transform,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
-                        val pm=PremiumMaterialLighting.pawn(color)
-                        drawMesh(part.mesh,model,rgba(color),pm.roughness,pm.metallic,pm.ao,pm.emission,5,false)
+                        val model=heroPawnModel(
+                            part.transform,x,
+                            y+PremiumVisualMotion.landingBounce(b),
+                            z,sx,sy,swayZ,swayX
+                        )
+                        // Only the upper collar carries the player color.
+                        // Everything else stays on the selected cosmetic finish.
+                        val renderColor=if(name=="LM_Pawn_Collar") color else styleColor
+                        drawMesh(
+                            part.mesh,
+                            model,
+                            rgba(renderColor),
+                            rough,
+                            metal,
+                            1f,
+                            emission + if(name=="LM_Pawn_Collar") 0.003f else 0f,
+                            5,
+                            false
+                        )
                     }
                 }
             }else{
-                drawMesh(pawnBody,pawnModel(x,y,z,pi,ti),rgba(color),0.22f,0.04f,1f,0.015f,3,false)
-                drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(color),0.18f,0.05f,1f,0.018f,3,false)
+                val rough=when(cosmeticPawnId){
+                    "chrome"->0.13f
+                    "onyx"->0.20f
+                    else->0.22f
+                }
+                val metal=when(cosmeticPawnId){
+                    "chrome"->0.78f
+                    "onyx"->0.62f
+                    "emerald","sapphire"->0.56f
+                    else->0.38f
+                }
+                drawMesh(
+                    pawnBody,
+                    pawnModel(x,y,z,pi,ti),
+                    rgba(styleColor),
+                    rough,metal,1f,0.012f,3,false
+                )
+                drawMesh(
+                    sphere,
+                    pawnHeadModel(x,y,z,pi,ti),
+                    rgba(styleColor),
+                    rough,metal,1f,0.014f,3,false
+                )
+                // Fallback path: the identity marker is still only a collar/neck band.
+                drawMesh(
+                    heroRing,
+                    identityAt(x,y+0.43f,z,0.27f,0.065f,0.27f),
+                    rgba(color,0.98f),
+                    0.16f,0.62f,1f,0.018f,4,false
+                )
+            }
+
+            // Cosmetic crown/ring accents stay tied to the cosmetic style,
+            // never to player identity.
+            if(cosmeticPawnId=="chrome" || cosmeticPawnId=="royal" || cosmeticPawnId=="emerald" || cosmeticPawnId=="sapphire"){
+                val accent=when(cosmeticPawnId){
+                    "emerald" -> Color.rgb(255,196,72)
+                    "sapphire" -> Color.rgb(206,230,255)
+                    else -> Color.rgb(255,211,104)
+                }
+                drawMesh(heroRing,identityAt(x,y+0.80f,z,0.34f,0.62f,0.34f),rgba(accent,0.92f),0.10f,0.72f,1f,0.02f,4,true)
+                drawMesh(sphere,identityAt(x,y+0.98f,z,0.085f,0.11f,0.085f),rgba(accent),0.10f,0.78f,1f,0.05f,4,false)
             }
         }
 
@@ -1561,32 +1726,48 @@ class LudoBoardView(
             if(active){
                 val now=System.nanoTime()
                 val pulse=(0.77f+0.05f*sin(now/170_000_000.0).toFloat()).coerceIn(0.70f,0.84f)
-                drawMesh(disk,identityAt(p[0],boardTop+0.11f,p[2],pulse,1f,pulse),floatArrayOf(0.96f,0.74f,0.15f,0.46f),0.10f,0.66f,1f,0.025f,4,true)
+                val activeFx=vfxColor(true)
+                val activeFxSoft=vfxColor(false)
+                drawMesh(disk,identityAt(p[0],boardTop+0.11f,p[2],pulse,1f,pulse),rgba(activeFx,0.46f),0.10f,0.66f,1f,0.025f,4,true)
                 val energy=(1f-diceAnim).coerceIn(0f,1f)
                 val ringScale=0.92f+0.28f*(0.5f+0.5f*sin(now/105_000_000.0).toFloat())
-                drawMesh(heroRing,identityAt(p[0],boardTop+0.105f,p[2],ringScale,1f,ringScale),floatArrayOf(1f,0.72f,0.14f,0.30f+0.45f*energy),0.08f,0.35f,1f,0.24f*energy,4,true)
+                drawMesh(heroRing,identityAt(p[0],boardTop+0.105f,p[2],ringScale,1f,ringScale),rgba(activeFx,0.30f+0.45f*energy),0.08f,0.35f,1f,0.24f*energy,4,true)
                 val ring2=0.76f+0.22f*energy
-                drawMesh(heroRing,identityAt(p[0],boardTop+0.11f,p[2],ring2,1f,ring2),floatArrayOf(0.95f,0.96f,1f,0.14f+0.20f*energy),0.06f,0.25f,1f,0.12f*energy,4,true)
+                drawMesh(heroRing,identityAt(p[0],boardTop+0.11f,p[2],ring2,1f,ring2),rgba(activeFxSoft,0.14f+0.20f*energy),0.06f,0.25f,1f,0.12f*energy,4,true)
             }
             val glbDie=glbParts["LM_Die_HydroChrome_Body"]
+            val dieColor:FloatArray
+            val dieRough:Float
+            val dieMetal:Float
+            val dieEmission:Float
+            when(cosmeticDieId){
+                "obsidian"->{dieColor=floatArrayOf(0.055f,0.065f,0.085f,1f);dieRough=0.085f;dieMetal=0.92f;dieEmission=0.018f}
+                "ruby"->{dieColor=floatArrayOf(0.62f,0.07f,0.09f,1f);dieRough=0.075f;dieMetal=0.88f;dieEmission=0.020f}
+                "emerald"->{dieColor=floatArrayOf(0.04f,0.46f,0.29f,1f);dieRough=0.075f;dieMetal=0.88f;dieEmission=0.018f}
+                else->{dieColor=floatArrayOf(0.98f,0.99f,1.0f,1f);dieRough=PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS;dieMetal=PremiumMaterialLighting.Calibration.CHROME_METALLIC;dieEmission=0.012f}
+            }
             if(glbDie!=null){
                 drawMesh(
                     glbDie.mesh,
                     heroDieModel(glbDie.transform,pi,p[0],p[1]+0.38f,p[2],0.52f),
-                    floatArrayOf(0.98f,0.99f,1.0f,1f),
-                    PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS,
-                    PremiumMaterialLighting.Calibration.CHROME_METALLIC,
+                    dieColor,
+                    dieRough,
+                    dieMetal,
                     0.99f,
-                    0.012f,
+                    dieEmission,
                     4,
                     false
                 )
             }else{
-                drawMesh(roundedBox,die,floatArrayOf(0.98f,0.99f,1.0f,1f),0.055f,1.0f,1f,0.045f,4,false)
+                drawMesh(roundedBox,die,dieColor,dieRough,dieMetal,1f,dieEmission,4,false)
             }
             val pip=0.20f
             val positions=when(dieValue(pi)){1->arrayOf(0f to 0f);2->arrayOf(-pip to -pip,pip to pip);3->arrayOf(-pip to -pip,0f to 0f,pip to pip);4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip);5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip);else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)}
-            for((px,pz)in positions){val pm=identityAt(px,0.51f,pz,0.065f,0.028f,0.065f);val c=FloatArray(16);Matrix.multiplyMM(c,0,die,0,pm,0);drawMesh(pips,c,floatArrayOf(0.045f,0.052f,0.06f,1f),0.16f,0.74f,1f,0f,4,false)}
+            val pipColor=when(cosmeticDieId){
+                "obsidian"->floatArrayOf(0.92f,0.93f,0.96f,1f)
+                else->floatArrayOf(0.045f,0.052f,0.06f,1f)
+            }
+            for((px,pz)in positions){val pm=identityAt(px,0.51f,pz,0.065f,0.028f,0.065f);val c=FloatArray(16);Matrix.multiplyMM(c,0,die,0,pm,0);drawMesh(pips,c,pipColor,0.16f,0.74f,1f,0f,4,false)}
         }
         private fun heroDieModel(partTransform:FloatArray,pi:Int,x:Float,y:Float,z:Float,scale:Float):FloatArray{
             val t=if(pi==player)diceAnim else 1f
@@ -1629,7 +1810,7 @@ class LudoBoardView(
             dustVel[slot*3]=cos(a)*(0.25f+0.22f*energy)
             dustVel[slot*3+1]=0.55f+0.55f*energy
             dustVel[slot*3+2]=sin(a)*(0.25f+0.22f*energy)
-            val c=if(n%2==0)Color.rgb(255,206,72)else Color.rgb(235,241,255)
+            val c=if(n%2==0)vfxColor(true)else vfxColor(false)
             dustColor[slot*4]=Color.red(c)/255f;dustColor[slot*4+1]=Color.green(c)/255f;dustColor[slot*4+2]=Color.blue(c)/255f;dustColor[slot*4+3]=0.92f
             dustSize[slot]=5.5f+(slot%3)*1.8f
         }
@@ -1744,6 +1925,7 @@ class LudoBoardView(
             Matrix.scaleM(modelScratch,0,sx,sy,sz);return modelScratch.clone()
         }
         private fun rgba(c:Int)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,1f)
+        private fun rgba(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
         private fun colorFromInt(c:Int,a:Float)=floatArrayOf(Color.red(c)/255f,Color.green(c)/255f,Color.blue(c)/255f,a.coerceIn(0f,1f))
         private fun zoneColorInt(i:Int)=when(i){0->Color.rgb(219,59,66);1->Color.rgb(48,165,92);2->Color.rgb(239,186,46);else->Color.rgb(59,112,219)}
         private fun cubeMesh(): Mesh {

@@ -39,6 +39,7 @@ android { namespace="com.ludomadagascar"; compileSdk=35; buildToolsVersion="36.0
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // Reown is a truly optional runtime. Do not place it on compileOnly in the
     // standard APK because Android's AAR metadata checker still evaluates that
     // configuration and recent Reown artifacts require newer compileSdk/AGP.

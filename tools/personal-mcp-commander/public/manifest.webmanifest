@@ -1,0 +1,13 @@
+{
+  "name":"LudoMada Commander",
+  "short_name":"Commander",
+  "description":"LudoMada Termux control panel",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#071019",
+  "theme_color":"#071019",
+  "lang":"fr",
+  "icons":[
+    {"src":"/commander-icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
