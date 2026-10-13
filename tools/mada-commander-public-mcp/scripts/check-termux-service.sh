@@ -1,11 +1,16 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -u
 
+export PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 EXPECTED_PREFIX="/data/data/com.termux/files/usr"
-if [[ "${PREFIX:-}" != "$EXPECTED_PREFIX" ]]; then
+if [[ "$PREFIX" != "$EXPECTED_PREFIX" ]]; then
   echo "ERROR: run this script inside Termux on the Android device." >&2
   exit 2
 fi
+# Make checks use the actual Termux runit directories, not inherited /var/service values.
+export SVDIR="$PREFIX/var/service"
+export LOGDIR="$PREFIX/var/log"
+export PATH="$PREFIX/bin:$PATH"
 
 PACKAGE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_NAME="mada-commander"
