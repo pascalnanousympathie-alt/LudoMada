@@ -396,6 +396,15 @@ class MainActivity : Activity() {
         gameModeOverlay = null
     }
 
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (gameModeOverlay != null) {
+            dismissGameModeOverlay()
+            return
+        }
+        super.onBackPressed()
+    }
+
     private fun gameModeDialog() {
         android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
