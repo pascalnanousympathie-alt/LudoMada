@@ -187,44 +187,35 @@ try {
   mkdirSync("ramus-evidence", { recursive: true });
 
   // Ramus is shared by parallel project checks. Never terminate, wait for, or reuse
-  // any session from the global list; only own and later end this run's returned session.
-  // If capacity is unavailable, fail safely rather than disrupting another agent.
-  const started = allow("session", "start", "--apk", apk, "--wait");
-  // Do not fall back to some unrelated active session if Ramus cannot allocate one.
+  // Allocate a blank device first, then explicitly install/open the exact APK.
+  // "session start --apk" can leave the device on the Android launcher while its
+  // automatic launch remains in-flight; subsequent app launch calls then return "busy".
+  const started = allow("session", "start", "--wait");
   if (!started.ok || !started.value?.session) {
     throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
   }
 
   session = started.value.session;
-  console.log(`Ramus session: ${session}`);
+  console.log(\`Ramus session: \${session}\`);
   waitStable(1200);
 
-  // A session start may itself be launching the package. Observe the session first;
-  // issuing a second concurrent launch returns Ramus "busy" and is not a test failure.
-  let home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  let launchInfo = { skipped: true, reason: "Home already visible" };
-  if (!home.ok || !home.value?.elements?.length) {
-    // Ramus may allocate the emulator while Android is still on its launcher.
-    // Use the exact application ID, then poll this session until the real Home is visible.
-    const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-    launchInfo = launched.value || { error: "empty_launch_result" };
-    if (!launched.ok && launched.value?.error !== "busy") {
-      waitStable(1000);
-      home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-      if (!home.ok || !home.value?.elements?.length) {
-        throw new Error("Ramus could not launch com.ludomadagascar: " + JSON.stringify(launched.value));
-      }
-    }
+  const installed = allow("session", "install", "--session", session, apk);
+  let launchInfo = { install: installed.value || null };
+  if (!installed.ok) {
+    throw new Error("Ramus could not install/open the exact LudoMada APK: " + JSON.stringify(installed.value || {}));
+  }
 
-    for (let attempt = 0; attempt < 12 && (!home.ok || !home.value?.elements?.length); attempt++) {
-      waitStable(700);
-      home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-      // If startup was already in flight, don't issue another launch until we've
-      // given that launch time to settle. One retry is allowed after the bounded wait.
-      if (attempt === 8 && (!home.ok || !home.value?.elements?.length)) {
-        const retryLaunch = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-        launchInfo = retryLaunch.value || launchInfo;
-      }
+  let home = null;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    waitStable(900);
+    home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+    if (home.ok && home.value?.elements?.length) break;
+
+    // The install command is expected to open the package. If the first install
+    // completed but Home remains absent, perform exactly one foreground launch.
+    if (attempt === 12) {
+      const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+      launchInfo = { install: installed.value || null, retryLaunch: launched.value || null };
     }
   }
 
@@ -238,8 +229,8 @@ try {
   shot("startup");
 
   // Fail at the true startup boundary and report the actual session snapshot
-  // instead of cascading into misleading JOUER/game-mode failures.
-  if (!startup?.ok || !home.ok || !home.value?.elements?.length) {
+  // instead of cascading into misleading JOUER/game-mode errors.
+  if (!startup?.ok || !home?.ok || !home.value?.elements?.length) {
     const current = allow("snapshot", "--session", session, "--include-offscreen");
     const elements = current.ok
       ? (current.value?.elements || []).slice(0, 40).map(e => ({
@@ -249,12 +240,12 @@ try {
         }))
       : [];
     console.error("RAMUS_STARTUP_DIAGNOSTIC=" + JSON.stringify({
-      launch: launchInfo,
+      installLaunch: launchInfo,
       snapshotOk: Boolean(startup?.ok),
       screen: startup?.value?.screen || null,
       visibleElements: elements
     }));
-    throw new Error("LudoMada Premium Home did not open after the bounded startup/launch wait; inspect startup screenshot and Android crash/device logs");
+    throw new Error("LudoMada Premium Home did not open after explicit APK install and bounded launch wait; inspect the attached startup screenshot and diagnostics");
   }
 
   // Screenshot 1 is the Home reference. The current app intentionally starts here.
