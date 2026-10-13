@@ -1,0 +1,114 @@
+name: MobSF APK Security Analysis
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobsf-apk-audit-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-scan:
+    name: Build APK and run MobSF static analysis
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      ANDROID_HOME: ${{ env.ANDROID_HOME }}
+      MOBSF_BASE_URL: http://127.0.0.1:8000
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 35 build packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build debug APK
+        run: |
+          cd android-app
+          printf 'sdk.dir=%s\\n' "$ANDROID_HOME" > local.properties
+          chmod +x ./gradlew || true
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Locate and preserve debug APK
+        env:
+          ANDROID_DIR: "android-app"
+        run: |
+          set -euo pipefail
+          apk="$(find "$ANDROID_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
+          test -n "$apk"
+          cp "$apk" "$RUNNER_TEMP/mobsf-target.apk"
+          echo "MOBSF_APK_PATH=$RUNNER_TEMP/mobsf-target.apk" >> "$GITHUB_ENV"
+          echo "Found debug APK; file size: $(du -h "$RUNNER_TEMP/mobsf-target.apk" | cut -f1)"
+
+      - name: Start isolated MobSF scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          mobsf_key="$(openssl rand -hex 32)"
+          echo "::add-mask::$mobsf_key"
+          printf 'MOBSF_API_KEY=%s\n' "$mobsf_key" >> "$GITHUB_ENV"
+          docker pull opensecurity/mobile-security-framework-mobsf:latest
+          docker run --detach --name mobsf-ci --publish 127.0.0.1:8000:8000 \
+            --env "MOBSF_API_KEY=$mobsf_key" \
+            opensecurity/mobile-security-framework-mobsf:latest
+          ready=0
+          for attempt in $(seq 1 60); do
+            if curl --silent --show-error --fail --max-time 3 "$MOBSF_BASE_URL/" >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+
+      - name: Upload APK and run MobSF static scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=(-H "Authorization: $MOBSF_API_KEY" -H "X-Mobsf-Api-Key: $MOBSF_API_KEY")
+          curl --silent --show-error --fail-with-body "${headers[@]}" \
+            -F "file=@$MOBSF_APK_PATH" "$MOBSF_BASE_URL/api/v1/upload" \
+            --output mobsf-upload.json
+          scan_hash="$(jq -er '.hash' mobsf-upload.json)"
+          scan_file="$(jq -er '.file_name' mobsf-upload.json)"
+          curl --silent --show-error --fail-with-body -X POST "${headers[@]}" \
+            --data-urlencode "scan_type=apk" \
+            --data-urlencode "file_name=$scan_file" \
+            --data-urlencode "hash=$scan_hash" \
+            "$MOBSF_BASE_URL/api/v1/scan" --output mobsf-report.json
+          jq -e 'type == "object"' mobsf-report.json >/dev/null
+          score="$(jq -r '.security_score // "n/a"' mobsf-report.json)"
+          cvss="$(jq -r '.average_cvss // "n/a"' mobsf-report.json)"
+          echo "MobSF static scan returned a report. security_score=$score average_cvss=$cvss"
+          curl --silent --show-error --fail-with-body -X POST "${headers[@]}" \
+            --data-urlencode "hash=$scan_hash" \
+            "$MOBSF_BASE_URL/api/v1/download_pdf" --output mobsf-report.pdf || true
+
+      - name: Upload APK and MobSF reports
+        if: always() && hashFiles('mobsf-report.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobsf-apk-audit
+          path: |
+            ${{ env.MOBSF_APK_PATH }}
+            mobsf-upload.json
+            mobsf-report.json
+            mobsf-report.pdf
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stop MobSF scanner
+        if: always()
+        run: docker rm -f mobsf-ci >/dev/null 2>&1 || true
