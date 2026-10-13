@@ -128,7 +128,7 @@ sv restart mada-commander
 tail -n 80 "$PREFIX/var/log/sv/mada-commander/current"
 ```
 
-A current heartbeat is considered connected for 90 seconds. Server-side runtime monitoring runs every 15 minutes and checks both production aliases for health, MCP initialization, the expected 18-tool catalog, and that Google sign-in starts with a redirect to Google's authorization endpoint. It does not pretend to complete an actual user consent or token exchange; those require a dedicated end-to-end test account/approval path.
+A current heartbeat is considered connected for 90 seconds. Server-side runtime monitoring runs every 15 minutes and checks both production aliases for health, MCP initialization, the expected 18-tool catalog, and that the Google OAuth configuration/database path fails closed for a deliberately invalid authorization transaction. The canary does not create persistent OAuth state rows and does not pretend to complete an actual user consent or token exchange; those require a dedicated end-to-end test account/approval path.
 
 OAuth server failures now include a generated `x-request-id` and a redacted route-stage event. Use that ID to correlate a failure in Vercel logs. Never add OAuth codes, tokens, cookies, client secrets, or full callback URLs to logs or issue reports.
 
