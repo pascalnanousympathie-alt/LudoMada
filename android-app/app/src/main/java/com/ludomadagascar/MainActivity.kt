@@ -660,7 +660,7 @@ class MainActivity : Activity() {
             "offline" -> offlineMenu()
             "room" -> home()
             "lobby" -> home()
-            "profile", "wallet", "history", "social", "events", "tutorials", "settings" -> home()
+            "profile", "wallet", "history", "social", "events", "friends", "tutorials", "settings" -> home()
             else -> super.onBackPressed()
         }
     }
@@ -724,26 +724,70 @@ class MainActivity : Activity() {
     }
 
     private fun events() {
-        page("events","Événements")
-        add(card("Défi de la semaine","Parties spéciales et objectifs à suivre.",gold),88,3,8)
-        add(premiumTile("✦","Prochain challenge","Bientôt disponible",gold){Toast.makeText(this,"Événement en préparation.",Toast.LENGTH_SHORT).show()},76,3,5)
-        add(premiumTile("♛","Classement","Voir les meilleurs joueurs",royal){Toast.makeText(this,"Classement bientôt disponible.",Toast.LENGTH_SHORT).show()},76,3,8)
+        page("events","Classement")
+        sectionTitle("Défi hebdomadaire","Victoires en ligne sur les 7 derniers jours • calculé depuis le ledger MLG")
+        status=label("Maka ny classement...",13f,false,Color.rgb(88,99,116))
+        status.setPadding(dp(5),dp(8),dp(5),dp(8))
+        add(status,-2,0,5)
+        add(button("↻ Actualiser le classement",Color.rgb(37,93,196)){loadWeeklyLeaderboard()},52)
+        add(button("🎲 Jouer en ligne",Color.rgb(35,150,84)){lobby()},52)
+        add(button("📚 Tutoriels",Color.rgb(126,82,188)){tutorials()},52)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        loadWeeklyLeaderboard()
+    }
+
+    private fun loadWeeklyLeaderboard() {
+        if (!::status.isInitialized || currentScreen!="events") return
+        if (token.isBlank()) {
+            status.text="Connexion requise pour consulter le classement hebdomadaire."
+            return
+        }
+        status.text="Maka ny classement serveur..."
+        get("/api/mlg/leaderboard?period=week"){j->
+            val rows=j.optJSONArray("items")
+            val rendered=if(rows==null || rows.length()==0) {
+                "Tsy mbola misy victoire en ligne tao anatin'ny 7 andro.\n\nMankanesa ao amin'ny Jouer en ligne raha te handray anjara."
+            } else buildString {
+                for(i in 0 until minOf(rows.length(),25)) {
+                    val item=rows.optJSONObject(i) ?: continue
+                    append("#").append(item.optInt("rank",i+1)).append("  ")
+                    append(item.optString("username","Joueur")).append("\n")
+                    append(item.optInt("wins",0)).append(" victoire(s) • ")
+                    append(item.optString("earnedMLG","0")).append(" MLG gagnés\n\n")
+                }
+            }
+            runOnUiThread {
+                if(currentScreen=="events" && ::status.isInitialized) status.text=rendered
+            }
+        }
     }
 
     private fun social() {
         page("social","Social")
-        sectionTitle("Social","Retrouver tes amis et tes parties")
-        add(premiumTile("♟","Amis","Invitations et joueurs récents",Color.rgb(126,82,188)){Toast.makeText(this,"Fonction sociale en préparation.",Toast.LENGTH_SHORT).show()},78,3,5)
-        add(premiumTile("◉","Inviter","Partager une room",royal){joinDialog()},78,3,5)
-        add(premiumTile("★","Défis","Jouer",emerald){lobby()},78,3,8)
-        val referralCard=card("Parrainage","Invite un nouvel ami • toi = +100 MLG • 1 MLG = 1 MGA",Color.rgb(126,82,188))
+        sectionTitle("Social","Parrainage, invitations et parties avec d'autres joueurs")
+        add(premiumTile("♟","Amis & invitations","Partager un code ou rejoindre une room",Color.rgb(126,82,188)){friendsHub()},78,3,5)
+        add(premiumTile("◉","Partager mon code","Inviter un nouveau joueur • +100 MLG selon les règles",royal){shareReferralCode()},78,3,5)
+        add(premiumTile("★","Jouer en ligne","Créer ou rejoindre une partie",emerald){lobby()},78,3,8)
+        val referralCard=card("Parrainage","Invite un nouvel ami • récompense serveur de +100 MLG • 1 MLG = 1 MGA",Color.rgb(126,82,188))
         add(referralCard,82,6,5)
         val referralActions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         referralActions.addView(button("↗ Inviter",Color.rgb(37,93,196)){shareReferralCode()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(4),0)})
         referralActions.addView(button("🎟 Entrer un code",Color.rgb(126,82,188)){claimReferralDialog()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(4),0,0,0)})
         add(referralActions,52,0,6)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        bottomNav("social")
+        refreshMlgSummary()
+    }
+
+    private fun friendsHub() {
+        page("friends","Amis & invitations")
+        sectionTitle("Amis & invitations","Actions disponibles reliées au compte et au serveur")
+        add(card("Parrainage","Partage ton code ou saisis celui d'un autre joueur. La récompense est validée côté serveur.",Color.rgb(126,82,188)),86,3,7)
+        add(button("↗ Partager mon code",Color.rgb(37,93,196)){shareReferralCode()},52)
+        add(button("🎟 Entrer un code de parrainage",Color.rgb(126,82,188)){claimReferralDialog()},52)
+        add(button("🔑 Rejoindre une room",Color.rgb(70,82,100)){joinDialog()},52)
+        add(button("🌐 Jouer en ligne",Color.rgb(35,150,84)){lobby()},52)
+        add(button("← Social",Color.rgb(70,82,100)){social()},52)
         bottomNav("social")
         refreshMlgSummary()
     }

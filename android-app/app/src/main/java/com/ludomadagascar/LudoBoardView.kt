@@ -48,6 +48,22 @@ class LudoBoardView(
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
     private lateinit var renderer: GameplayRenderer
+    private var rendererMode: String = "UNINITIALIZED"
+
+    internal fun appendRuntimeEvidence(marker: String) {
+        post {
+            val parts = contentDescription?.toString().orEmpty()
+                .split("|")
+                .filter { it.isNotBlank() }
+                .toMutableList()
+            if (parts.none { it.startsWith("RENDERER=") }) parts.add("RENDERER=" + rendererMode)
+            val key = marker.substringBefore("|").substringBefore(":").substringBefore("=")
+            if (parts.none { it.substringBefore("|").substringBefore(":").substringBefore("=") == key }) {
+                parts.add(marker)
+            }
+            contentDescription = parts.joinToString("|")
+        }
+    }
     private var gameAudio: SpatialGameAudio? = null
     private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
     private fun smokeMarker(value:String) {
@@ -85,6 +101,7 @@ class LudoBoardView(
         // Only the actual reported GLES capability decides whether the premium renderer is selected.
         val emulator = isLikelyEmulator()
         val gles3 = gles3Available
+        rendererMode = if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK"
         smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + emulator)
         setEGLContextClientVersion(if (gles3) 3 else 2)
         if (homePreview) {
@@ -605,12 +622,12 @@ class LudoBoardView(
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
-                    host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_OK" }
+                    host.appendRuntimeEvidence("GLB_RUNTIME_LOAD_OK")
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
-                host.post { host.contentDescription = "GAMEPLAY_3D_OFFLINE_4P|GLB_RUNTIME_LOAD_FALLBACK" }
+                host.appendRuntimeEvidence("GLB_RUNTIME_LOAD_FALLBACK")
                 emptyMap()
             }
         }
@@ -1100,24 +1117,24 @@ class LudoBoardView(
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
-                    host.post { host.contentDescription = "GLB_RUNTIME_LOAD_OK" }
+                    host.appendRuntimeEvidence("GLB_RUNTIME_LOAD_OK")
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
-                host.post { host.contentDescription = "GLB_RUNTIME_LOAD_FALLBACK|" + it.javaClass.simpleName + ":" + (it.message ?: "no-message").take(180) }
+                host.appendRuntimeEvidence("GLB_RUNTIME_LOAD_FALLBACK|" + it.javaClass.simpleName + ":" + (it.message ?: "no-message").take(180))
                 emptyMap()
             }
             boardParts=runCatching{
                 GlbRuntimeLoader(host.context).loadBoardParts().also{
                     android.util.Log.i("LudoMadaRender","BOARD_GLB_RUNTIME_LOAD_OK parts="+it.size)
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","BOARD_GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
-                    host.post { host.contentDescription = "GAMEPLAY_AUTHORED_BOARD_GLB_OK|parts="+it.size }
+                    host.appendRuntimeEvidence("BOARD_GLB_RUNTIME_LOAD_OK|parts="+it.size)
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","BOARD_GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","BOARD_GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
-                host.post { host.contentDescription = "GAMEPLAY_AUTHORED_BOARD_GLB_FALLBACK|" + it.javaClass.simpleName }
+                host.appendRuntimeEvidence("BOARD_GLB_RUNTIME_LOAD_FALLBACK|" + it.javaClass.simpleName)
                 emptyMap()
             }
             envParts=runCatching{

@@ -599,6 +599,50 @@ app.get("/api/mlg/history",auth,async(req:any,res)=>{
   }
 });
 
+app.get("/api/mlg/leaderboard",auth,async(req:any,res)=>{
+  const period=String(req.query?.period??"week").trim().toLowerCase();
+  if(period!=="week") return res.status(400).json({error:"Unsupported leaderboard period"});
+  const startsAt=new Date(Date.now()-7*24*60*60*1000);
+  try{
+    const grouped=await prisma.mlgLedgerEntry.groupBy({
+      by:["userId"],
+      where:{type:"EARN_VICTORY",createdAt:{gte:startsAt}},
+      _count:{userId:true},
+      _sum:{amount:true},
+      orderBy:[
+        {_count:{userId:"desc"}},
+        {_sum:{amount:"desc"}},
+        {userId:"asc"}
+      ],
+      take:25
+    });
+    const userIds=grouped.map((row:any)=>row.userId);
+    const users=userIds.length
+      ? await prisma.user.findMany({where:{id:{in:userIds}},select:{id:true,username:true}})
+      : [];
+    const usernameById=new Map(users.map((user:any)=>[user.id,user.username]));
+    const ranked=grouped.flatMap((row:any)=>{
+      const username=usernameById.get(row.userId);
+      if(typeof username!=="string") return [];
+      return [{
+        userId:row.userId,
+        username,
+        wins:row._count.userId,
+        earnedMLG:(row._sum.amount??0n).toString()
+      }];
+    }).map((row:any,index:number)=>({rank:index+1,...row}));
+    return res.json({
+      period:"week",
+      windowDays:7,
+      startsAt:startsAt.toISOString(),
+      items:ranked
+    });
+  }catch(e:any){
+    console.error("MLG_LEADERBOARD_ERROR",{message:e?.message,requestId:req.requestId,userId:req.userId});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
 app.post("/api/mlg/referral/claim",auth,mlgReferralRateLimit,async(req:any,res)=>{
   const code=z.object({
     referralCode:z.string().trim().min(4).max(16).regex(/^[A-Z0-9_-]+$/i)

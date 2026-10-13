@@ -138,46 +138,13 @@ try {
   rmSync("ramus-evidence", { recursive: true, force: true });
   mkdirSync("ramus-evidence", { recursive: true });
 
-  const preflight = allow("session", "list");
-  if (preflight.ok && Array.isArray(preflight.value?.sessions)) {
-    for (const s of preflight.value.sessions) {
-      const sid = s?.session || s?.id;
-      if (sid && ["active", "assigned", "requested"].includes(s?.status || s?.state)) {
-        allow("session", "end", "--session", sid);
-      }
-    }
-  }
-  if (!process.env.RAMUS_API_KEY) {
-    const trialResult = runCli("trial");
-    if (!trialResult.ok) {
-      throw new Error(JSON.stringify(trialResult.value));
-    }
-    trialEnsured = true;
-  }
-
-  // Session slots can stay occupied briefly after an earlier session enters "ending".
-  // Poll until the capacity slot is actually released before starting the fresh session.
-  for (let cleanupAttempt = 1; cleanupAttempt <= 12; cleanupAttempt++) {
-    const live = allow("session", "list");
-    const busy = live.ok && Array.isArray(live.value?.sessions) &&
-      live.value.sessions.some(s => ["active", "assigned", "requested", "ending"].includes(s?.status || s?.state));
-    if (!busy) break;
-    const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
-    spawnSync(sleepBin, ["5"], { stdio: "ignore" });
-  }
-
-  let started = allow("session", "start", "--apk", apk, "--wait");
+  // Ramus is shared by parallel project checks. Never terminate, wait for, or reuse
+  // any session from the global list; only own and later end this run's returned session.
+  // If capacity is unavailable, fail safely rather than disrupting another agent.
+  const started = allow("session", "start", "--apk", apk, "--wait");
+  // Do not fall back to some unrelated active session if Ramus cannot allocate one.
   if (!started.ok || !started.value?.session) {
-    const live = allow("session", "list");
-    const existing = live.ok && Array.isArray(live.value?.sessions)
-      ? live.value.sessions.find(s => ["active", "assigned", "requested"].includes(s?.status || s?.state))
-      : null;
-    if (existing?.session || existing?.id) {
-      started = { ok: true, value: { session: existing.session || existing.id } };
-    }
-  }
-  if (!started.ok || !started.value?.session) {
-    throw new Error(JSON.stringify(started.value || { error: "session_start_failed" }));
+    throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
   }
 
   session = started.value.session;
@@ -472,6 +439,60 @@ try {
     console.log("TRIAL→OFFLINE MENU PASS");
   }
 
+  // Exercise every offline player-count option on the cloud Android emulator.
+  // These are the same real UI choices users select; no game-state or wallet APIs are mocked.
+  for (const mode of [2, 3]) {
+    const selector = allow("snapshot", "--session", session, "--find", `OFFLINE_${mode}_PLAYERS`);
+    if (!selector.ok || !selector.value?.elements?.length) {
+      throw new Error(`OFFLINE_${mode}_PLAYERS selector missing`);
+    }
+    const tapped = allow("tap", selector.value.elements[0].ref, "--gen", String(selector.value.gen), "--session", session);
+    if (!tapped.ok) throw new Error(`OFFLINE_${mode}_PLAYERS tap failed: ` + JSON.stringify(tapped.value));
+    waitStable(1600);
+    const boardMarker = `GAMEPLAY_3D_OFFLINE_${mode}P`;
+    if (!hasText(boardMarker)) throw new Error(`Offline ${mode}-player 3D board did not open`);
+    let modeGlbLoaded = false;
+    for (let probe = 0; probe < 8; probe++) {
+      if (hasText("GLB_RUNTIME_LOAD_OK")) { modeGlbLoaded = true; break; }
+      waitStable(350);
+    }
+    if (!modeGlbLoaded) throw new Error(`GLB runtime failed for ${mode}-player board`);
+    if (!hasText("RENDERER=GLES3_PBR")) {
+      const diag = allow("snapshot", "--session", session, "--include-offscreen");
+      if (diag.ok) console.log("RENDERER_DIAGNOSTIC=" + JSON.stringify((diag.value?.elements || []).filter(e => String(e.text || e.contentDesc || "").includes("RENDERER="))));
+      throw new Error(`Expected native GLES3/PBR renderer for ${mode}-player board`);
+    }
+    console.log(`${mode}-PLAYER GLES3/PBR BOARD + GLB PASS`);
+    shot(`board-${mode}p`);
+
+    // Prove the gameplay HUD can invoke the real dice-roll callback. Tokens are
+    // hit-tested by projected 3D geometry; there is no separate fake pawn button.
+    if (mode === 2) {
+      let gotSix = false;
+      for (let attempt = 0; attempt < 24; attempt++) {
+        const dice = findRef("TOUCHEZ_LE_DE");
+        run("tap", dice.ref, "--gen", String(dice.gen), "--session", session);
+        waitStable(1000);
+        if (hasText("Dé: 6")) {
+          gotSix = true;
+          break;
+        }
+        waitStable(350);
+      }
+      if (!gotSix) throw new Error("Dice HUD did not reach a six within 24 Ramus rolls");
+      console.log("2-PLAYER REAL DICE ROLL PASS");
+    }
+
+    const menu = findRef("MENU_JEU");
+    const menuTap = allow("tap", menu.ref, "--gen", String(menu.gen), "--session", session);
+    if (!menuTap.ok) throw new Error("MENU_JEU tap failed after offline " + mode + "P: " + JSON.stringify(menuTap.value));
+    waitStable(900);
+    offlineMenu = allow("snapshot", "--session", session, "--find", "OFFLINE_4_PLAYERS");
+    if (!offlineMenu.ok || !offlineMenu.value?.elements?.length) {
+      throw new Error("Offline player selector did not reopen from " + mode + "P gameplay");
+    }
+  }
+
   const offlineFour = offlineMenu.value.elements[0];
   const offlineFourTap = allow("tap", offlineFour.ref, "--gen", String(offlineMenu.value.gen), "--session", session);
   if (!offlineFourTap.ok) console.log("OFFLINE_4P TAP CALLBACK DEFERRED: " + JSON.stringify(offlineFourTap.value));
@@ -492,7 +513,8 @@ try {
     waitStable(350);
   }
   if(!glbRuntimeOk){ const diag=allow("snapshot","--session",session,"--include-offscreen"); if(diag.ok) console.log("GLB_RUNTIME_DIAGNOSTIC="+JSON.stringify((diag.value?.elements||[]).filter(e=>String(e.text||e.contentDesc||"").includes("GLB_RUNTIME_LOAD")))); throw new Error("Runtime GLB did not report GLB_RUNTIME_LOAD_OK on gameplay SurfaceView"); }
-  console.log("GLB_RUNTIME_LOAD PASS");
+  if (!hasText("RENDERER=GLES3_PBR")) throw new Error("4-player board did not select the required native GLES3/PBR renderer");
+  console.log("GLB_RUNTIME_LOAD + NATIVE_GLES3_PBR PASS");
   console.log("HOME/LOGIN→OFFLINE PASS");
   console.log("4-PLAYER GAMEPLAY ENTRY PASS");
   shot("board-4p");
@@ -512,8 +534,14 @@ try {
   // block on a remote accessibility snapshot even after the required evidence is done.
   console.log("ONLINE LOBBY CHECK SKIPPED: unauthenticated CI is outside the visual release gate");
 
-  if (!screenshotExists("home-a") && !screenshotExists("startup")) {
-    console.log("HOME SCREENSHOT EVIDENCE SKIPPED: screenshot transport unavailable");
+  if (process.env.RAMUS_CAPTURE === "1") {
+    const requiredShots = ["startup", "home-a", "home-b", "board-2p", "board-3p", "board-4p"];
+    const missingShots = requiredShots.filter(name => !screenshotExists(name));
+    if (missingShots.length) {
+      throw new Error("Required Ramus visual evidence missing: " + missingShots.join(", "));
+    }
+    const evidence = Object.fromEntries(requiredShots.map(name => [name, sha256File(name)]));
+    console.log("RAMUS_VISUAL_EVIDENCE_PASS=" + JSON.stringify(evidence));
   }
   success = true;
   console.log("RAMUS_SMOKE_PASS");
