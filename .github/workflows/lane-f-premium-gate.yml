@@ -39,6 +39,8 @@ jobs:
     concurrency:
       group: ludomada-shared-ramus-fleet
       cancel-in-progress: false
+    env:
+      RELEASE_MAX_RUNTIME: "39600"
     steps:
       - name: Checkout exact merge candidate
         uses: actions/checkout@v4
