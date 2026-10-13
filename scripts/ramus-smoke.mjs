@@ -138,14 +138,29 @@ try {
   rmSync("ramus-evidence", { recursive: true, force: true });
   mkdirSync("ramus-evidence", { recursive: true });
 
+  // Never stop or reuse a Ramus session unless its app identity clearly matches LudoMada.
+  // Several parallel project checks can share the same Ramus account/API key.
+  const isLudoMadaSession = (s) => {
+    const identity = JSON.stringify(s || {}).toLowerCase();
+    return identity.includes("com.ludomadagascar") || identity.includes("ludomada");
+  };
   const preflight = allow("session", "list");
+  const endedLudoSessions = [];
   if (preflight.ok && Array.isArray(preflight.value?.sessions)) {
+    let unrelatedActive = 0;
     for (const s of preflight.value.sessions) {
       const sid = s?.session || s?.id;
-      if (sid && ["active", "assigned", "requested"].includes(s?.status || s?.state)) {
-        allow("session", "end", "--session", sid);
+      const state = s?.status || s?.state;
+      if (!sid || !["active", "assigned", "requested"].includes(state)) continue;
+      if (!isLudoMadaSession(s)) {
+        unrelatedActive++;
+        continue;
       }
+      const ended = allow("session", "end", "--session", sid);
+      if (ended.ok) endedLudoSessions.push(sid);
+      else console.error("Could not end previous LudoMada Ramus session:", JSON.stringify(ended.value));
     }
+    console.log("RAMUS_UNRELATED_SESSIONS_PRESERVED=" + unrelatedActive);
   }
   if (!process.env.RAMUS_API_KEY) {
     const trialResult = runCli("trial");
@@ -155,29 +170,22 @@ try {
     trialEnsured = true;
   }
 
-  // Session slots can stay occupied briefly after an earlier session enters "ending".
-  // Poll until the capacity slot is actually released before starting the fresh session.
-  for (let cleanupAttempt = 1; cleanupAttempt <= 12; cleanupAttempt++) {
+  // Wait only for LudoMada sessions this run explicitly ended. Other apps' sessions
+  // must never block, be re-used, or be terminated by this smoke test.
+  for (let cleanupAttempt = 1; cleanupAttempt <= 12 && endedLudoSessions.length; cleanupAttempt++) {
     const live = allow("session", "list");
-    const busy = live.ok && Array.isArray(live.value?.sessions) &&
-      live.value.sessions.some(s => ["active", "assigned", "requested", "ending"].includes(s?.status || s?.state));
-    if (!busy) break;
+    const pending = live.ok && Array.isArray(live.value?.sessions) &&
+      live.value.sessions.some(s => endedLudoSessions.includes(s?.session || s?.id) &&
+        ["active", "assigned", "requested", "ending"].includes(s?.status || s?.state));
+    if (!pending) break;
     const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
     spawnSync(sleepBin, ["5"], { stdio: "ignore" });
   }
 
-  let started = allow("session", "start", "--apk", apk, "--wait");
+  const started = allow("session", "start", "--apk", apk, "--wait");
+  // Do not fall back to some unrelated active session if Ramus cannot allocate one.
   if (!started.ok || !started.value?.session) {
-    const live = allow("session", "list");
-    const existing = live.ok && Array.isArray(live.value?.sessions)
-      ? live.value.sessions.find(s => ["active", "assigned", "requested"].includes(s?.status || s?.state))
-      : null;
-    if (existing?.session || existing?.id) {
-      started = { ok: true, value: { session: existing.session || existing.id } };
-    }
-  }
-  if (!started.ok || !started.value?.session) {
-    throw new Error(JSON.stringify(started.value || { error: "session_start_failed" }));
+    throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
   }
 
   session = started.value.session;
