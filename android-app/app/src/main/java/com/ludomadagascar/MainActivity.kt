@@ -421,6 +421,13 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        selectedLanguage=when(getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE).getString("language","fr")){
+            "mg"->"mg"
+            "en"->"en"
+            else->"fr"
+        }
+        entryFee=getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+            .getInt("defaultEntryFee",500).takeIf { it in entryFees } ?: 500
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
         // Premium Home is the first screen; authenticated state is restored in the background
@@ -988,8 +995,14 @@ class MainActivity : Activity() {
 
     private fun languageDialog() {
         val languages=arrayOf("Malagasy", "Français", "English")
-        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";else->"en"};
-            recreate();Toast.makeText(this,"${languages[which]}",Toast.LENGTH_SHORT).show();d.dismiss()
+        val selectedIndex=when(selectedLanguage){"mg"->0;"fr"->1;else->2}
+        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,selectedIndex){d,which->
+            selectedLanguage=when(which){0->"mg";1->"fr";else->"en"}
+            getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+                .edit().putString("language",selectedLanguage).apply()
+            d.dismiss()
+            recreate()
+            Toast.makeText(this,languages[which],Toast.LENGTH_SHORT).show()
         }.setNegativeButton("Fermer",null).show()
     }
 
