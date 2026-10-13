@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 
-const [,, glbPath = "android-app/app/src/main/assets/3d/ludomada-premium-3d-rev3.glb",
+const [,, glbPath = "android-app/app/src/main/assets/3d/ludomada-gameplay-rev5.glb",
   loaderPath = "android-app/app/src/main/java/com/ludomadagascar/GlbRuntimeLoader.kt"] = process.argv;
 
 if (!fs.existsSync(glbPath)) throw new Error(`GLB not found: ${glbPath}`);
@@ -46,16 +46,23 @@ if (!hasMatrix && !hasRotation) {
 const loader = fs.readFileSync(loaderPath, "utf8");
 const loaderHandlesMatrix = loader.includes('optJSONArray("matrix")');
 const loaderHandlesRotation = loader.includes('optJSONArray("rotation")');
+const runtimeUsesThisAsset =
+  loader.includes('loadParts("3d/ludomada-gameplay-rev5.glb")');
+if (!runtimeUsesThisAsset) {
+  throw new Error("GlbRuntimeLoader no longer routes gameplay hero/board parts through the active rev5 GLB");
+}
 if (!loaderHandlesMatrix || !loaderHandlesRotation) {
   throw new Error("GlbRuntimeLoader does not preserve both glTF matrix and quaternion rotation transforms");
 }
 
 const report = {
+  activeRuntimeAsset: glbPath,
   glbBytes: bytes.length,
   dieNode: die.name,
   transformEncoding: hasMatrix ? "matrix" : "quaternion",
   loaderHandlesMatrix,
   loaderHandlesRotation,
+  runtimeUsesThisAsset,
   expected: true
 };
 
