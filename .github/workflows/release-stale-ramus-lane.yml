@@ -1,0 +1,80 @@
+name: Release stale Ramus queue slot
+
+on:
+  push:
+    branches:
+      - ops/release-stale-ramus-slot-20261013
+    paths:
+      - ".github/workflows/release-stale-ramus-lane.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel-stale-queued-lane:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - name: Verify exact stale run and release only if it has never been assigned
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target=38412439452
+          expected_sha=6477cc163bf95b71bb0f4977bfb31d2450ce2b81
+          expected_branch=feat/tripo-assets-batch-a-20261007
+
+          run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${target}")"
+          name="$(jq -r '.name // ""' <<<"$run_json")"
+          state="$(jq -r '.status // ""' <<<"$run_json")"
+          sha="$(jq -r '.head_sha // ""' <<<"$run_json")"
+          branch="$(jq -r '.head_branch // ""' <<<"$run_json")"
+          created="$(jq -r '.created_at // ""' <<<"$run_json")"
+
+          if [[ "$name" != "Lane F Premium Visual Gate" || "$state" != "queued" || "$sha" != "$expected_sha" || "$branch" != "$expected_branch" || -z "$created" ]]; then
+            echo "SAFE_SKIP: run no longer matches the exact expected queued Tripo run."
+            echo "state=$state branch=$branch sha=$sha"
+            exit 0
+          fi
+
+          created_epoch="$(date -u -d "$created" +%s)"
+          now_epoch="$(date -u +%s)"
+          age_seconds=$((now_epoch - created_epoch))
+          if (( age_seconds < 600 )); then
+            echo "SAFE_SKIP: queued run is not yet 10 minutes old (age=${age_seconds}s)."
+            exit 0
+          fi
+
+          jobs_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${target}/jobs?per_page=20")"
+          safe_jobs="$(jq '[.jobs[] | select(.status == "queued" and ((.runner_name // "") == "") and ((.steps // []) | length == 0))] | length' <<<"$jobs_json")"
+          total_jobs="$(jq '.jobs | length' <<<"$jobs_json")"
+
+          if [[ "$total_jobs" -lt 1 || "$safe_jobs" -ne "$total_jobs" ]]; then
+            echo "SAFE_SKIP: at least one job is not provably unstarted; no cancellation attempted."
+            jq -c '[.jobs[] | {name,status,conclusion,runner_name,started_at,steps_count:((.steps // [])|length)}]' <<<"$jobs_json"
+            exit 0
+          fi
+
+          echo "Verified stale queued run: id=$target age_seconds=$age_seconds branch=$branch sha=$sha"
+          echo "Every job is queued, has no runner, and has no executed steps; requesting cancellation of this run only."
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/runs/${target}/cancel"
+
+          for attempt in $(seq 1 12); do
+            sleep 2
+            updated="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${target}")"
+            current_state="$(jq -r '.status // ""' <<<"$updated")"
+            current_conclusion="$(jq -r '.conclusion // ""' <<<"$updated")"
+            if [[ "$current_state" == "completed" && "$current_conclusion" == "cancelled" ]]; then
+              echo "STALE_QUEUED_LANE_RELEASED=true"
+              exit 0
+            fi
+            if [[ "$current_state" == "in_progress" || "$current_state" == "completed" ]]; then
+              echo "Run transitioned; current state=$current_state conclusion=$current_conclusion"
+              exit 1
+            fi
+          done
+
+          echo "Cancel request submitted; terminal status not observed in the bounded polling window."
+          exit 1
