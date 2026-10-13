@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { redactSensitive } from "./security.mjs";
+import { redactSensitive, redactSensitiveStructured } from "./security.mjs";
 
 const CONFIG_FILE = path.join(os.homedir(), ".config", "mada-commander", "mcp-integrations.json");
 const ALLOWED_COMMANDS = new Set(["github-mcp-server", "npx", "node", "python", "python3", "uvx", "uv", "docker", "bun", "deno"]);
@@ -337,17 +337,24 @@ async function callConfiguredServer(server, action, toolName, args) {
     const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
     if (Buffer.byteLength(JSON.stringify(input), "utf8") > MAX_ARGUMENT_BYTES) throw new Error("MCP tool arguments exceed 32 KB.");
     const response = await client.request("tools/call", { name: toolName, arguments: input }, 90_000);
-    const safe = {};
+    const safe = { content: [] };
+    let contentBytes = 0;
     if (Array.isArray(response.content)) {
-      safe.content = response.content.slice(0, 30).filter(item => item && item.type === "text")
-        .map(item => ({ type: "text", text: redactSensitive(String(item.text || "").slice(0, 20_000)) }));
-    } else safe.content = [];
+      for (const item of response.content.slice(0, 30)) {
+        if (!item || item.type !== "text") continue;
+        const text = redactSensitive(String(item.text || "").slice(0, 20_000));
+        const bytes = Buffer.byteLength(text, "utf8");
+        if (contentBytes + bytes > MAX_RESPONSE_BYTES) {
+          safe.content.push({ type: "text", text: "[External MCP result truncated: safety limit reached.]" });
+          break;
+        }
+        contentBytes += bytes;
+        safe.content.push({ type: "text", text });
+      }
+    }
     safe.isError = response.isError === true;
     if (response.structuredContent !== undefined) {
-      const structured = redactSensitive(JSON.stringify(response.structuredContent));
-      if (Buffer.byteLength(structured, "utf8") <= MAX_RESPONSE_BYTES) {
-        try { safe.structuredContent = JSON.parse(structured); } catch { safe.structuredContent = { text: structured.slice(0, 20_000) }; }
-      } else safe.structuredContent = { truncated: true, note: "External MCP result exceeded the safety limit." };
+      safe.structuredContent = redactSensitiveStructured(response.structuredContent, { maxBytes: MAX_RESPONSE_BYTES });
     }
     output = { serverId: server.id, toolName, isError: safe.isError, content: safe.content, ...(safe.structuredContent === undefined ? {} : { structuredContent: safe.structuredContent }) };
   };
