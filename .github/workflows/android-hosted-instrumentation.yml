@@ -6,6 +6,7 @@ on:
     branches:
       - ci/hosted-android-startup-diagnostic-20261013
       - ci/hosted-android-startup-diagnostic-v2-20261013
+      - ci/hosted-android-startup-diagnostic-v3-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
@@ -71,6 +72,17 @@ jobs:
           # Keep userdata below the hosted-runner free-space ceiling: 5G avoids the
           # emulator's implicit 6G partition request that exceeded available disk.
           disk-size: 5G
+          # Normalize the AVD property after the action appends disk-size; avoid a duplicate profile default overriding 5G.
+          pre-emulator-launch-script: |
+            set -eu
+            cfg="$HOME/.android/avd/test.avd/config.ini"
+            echo "AVD disk setting before normalization:"
+            grep '^disk.dataPartition.size=' "$cfg" || true
+            sed -i '/^disk\.dataPartition\.size=/d' "$cfg"
+            printf 'disk.dataPartition.size=5G\n' >> "$cfg"
+            test "$(grep -c '^disk.dataPartition.size=' "$cfg")" -eq 1
+            echo "AVD disk setting after normalization:"
+            grep '^disk.dataPartition.size=' "$cfg"
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
