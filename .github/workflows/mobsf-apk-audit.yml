@@ -16,7 +16,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      ANDROID_HOME: ${{ env.ANDROID_HOME }}
       MOBSF_BASE_URL: http://127.0.0.1:8000
     steps:
       - name: Checkout
@@ -48,8 +47,8 @@ jobs:
           set -euo pipefail
           apk="$(find "$ANDROID_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
           test -n "$apk"
-          cp "$apk" "$RUNNER_TEMP/mobsf-target.apk"
-          echo "MOBSF_APK_PATH=$RUNNER_TEMP/mobsf-target.apk" >> "$GITHUB_ENV"
+          cp "$apk" "$GITHUB_WORKSPACE/mobsf-target.apk"
+          echo "MOBSF_APK_PATH=$GITHUB_WORKSPACE/mobsf-target.apk" >> "$GITHUB_ENV"
           echo "Found debug APK; file size: $(du -h "$RUNNER_TEMP/mobsf-target.apk" | cut -f1)"
 
       - name: Start isolated MobSF scanner
@@ -102,7 +101,7 @@ jobs:
         with:
           name: mobsf-apk-audit
           path: |
-            ${{ env.MOBSF_APK_PATH }}
+            mobsf-target.apk
             mobsf-upload.json
             mobsf-report.json
             mobsf-report.pdf
