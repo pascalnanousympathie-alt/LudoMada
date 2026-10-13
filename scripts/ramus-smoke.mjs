@@ -130,6 +130,54 @@ function sha256File(name) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
+function redactDiagnosticText(value) {
+  return String(value || "")
+    .replace(/(Bearer\\s+)[A-Za-z0-9._~+\\/-]+=*/gi, "$1[REDACTED]")
+    .replace(/((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|password|authorization|cookie|nonce)\\s*[=:]\\s*)[^,;\\s}]+/gi, "$1[REDACTED]");
+}
+
+function captureFailureDiagnostics() {
+  if (!session) return;
+
+  // Capture the exact failing session before cleanup, not a global/latest emulator.
+  const screen = allow("snapshot", "--session", session, "--include-offscreen");
+  if (screen.ok) {
+    const elements = (screen.value?.elements || []).slice(0, 50).map(e => ({
+      text: String(e.text || "").slice(0, 100),
+      contentDesc: String(e.contentDesc || "").slice(0, 100),
+      clickable: Boolean(e.clickable),
+      focused: Boolean(e.focused)
+    }));
+    console.error("RAMUS_FAILURE_SCREEN=" + JSON.stringify({
+      screen: screen.value?.screen || null,
+      elements
+    }));
+  } else {
+    console.error("RAMUS_FAILURE_SCREEN_ERROR=" + JSON.stringify(screen.value || {}));
+  }
+
+  // Keep failure evidence even when the main visual capture is disabled or failed.
+  const evidencePath = "ramus-evidence/failure.jpg";
+  const screenshot = allow("screenshot", "--session", session, "--out", evidencePath, "--max-width", "1400");
+  if (!screenshot.ok) console.error("RAMUS_FAILURE_SCREENSHOT_ERROR=" + JSON.stringify(screenshot.value || {}));
+
+  // Ramus logcat is available in trial mode. Filter down to app-start/crash/system
+  // diagnostics and redact credential-shaped fields before writing to GitHub Actions.
+  const logs = allow("logcat", "--limit", "200", "--session", session);
+  if (!logs.ok) {
+    console.error("RAMUS_FAILURE_LOGCAT_ERROR=" + JSON.stringify(logs.value || {}));
+    return;
+  }
+  const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
+  const decoded = raw.replace(/\\\\n/g, "\\n");
+  const lines = decoded.split(/\\r?\\n/);
+  const relevant = lines.filter(line =>
+    /FATAL EXCEPTION|AndroidRuntime|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process: com\\.ludomadagascar|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|ActivityManager/i.test(line)
+  );
+  const excerpt = (relevant.length ? relevant : lines).slice(-80).join("\\n");
+  console.error("RAMUS_FAILURE_LOGCAT=" + redactDiagnosticText(excerpt).slice(-12000));
+}
+
 let session = "";
 let success = false;
 let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
@@ -577,6 +625,13 @@ try {
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
+  if (session && !success) {
+    try {
+      captureFailureDiagnostics();
+    } catch (diagnosticError) {
+      console.error("RAMUS_FAILURE_DIAGNOSTIC_ERROR=" + redactDiagnosticText(diagnosticError?.message || diagnosticError).slice(0, 2000));
+    }
+  }
   if (session && (success || process.env.RAMUS_KEEP_ON_FAIL !== "1")) {
     const ended = allow("session", "end", "--session", session);
     if (!ended.ok) console.error("session end:", JSON.stringify(ended.value));
