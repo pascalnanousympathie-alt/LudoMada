@@ -35,12 +35,16 @@ if ! command -v sv-enable >/dev/null 2>&1 || [[ ! -x "$PREFIX/share/termux-servi
   exit 2
 fi
 
-mkdir -p "$SERVICE_DIR" "$SERVICE_DIR/log"
+if [[ -e "$SERVICE_DIR" && ! -d "$SERVICE_DIR" ]]; then
+  echo "ERROR: service path exists but is not a directory: $SERVICE_DIR" >&2
+  exit 3
+fi
 if [[ -e "$RUN_FILE" ]] && ! grep -qF "$AGENT_FILE" "$RUN_FILE"; then
   echo "ERROR: refusing to overwrite an existing service that does not point to this Mada Commander agent:" >&2
   echo "  $RUN_FILE" >&2
   exit 3
 fi
+mkdir -p "$SERVICE_DIR" "$SERVICE_DIR/log"
 
 shell_quote() {
   local value="$1"
@@ -58,11 +62,6 @@ shell_quote() {
 } > "$RUN_FILE"
 chmod 700 "$RUN_FILE"
 ln -sfn "$PREFIX/share/termux-services/svlogger" "$LOG_RUN"
-
-if [[ -e "$PREFIX/var/service/$SERVICE_NAME" && ! -L "$PREFIX/var/service/$SERVICE_NAME" ]]; then
-  echo "ERROR: $PREFIX/var/service/$SERVICE_NAME exists as a real directory; inspect it before replacing anything." >&2
-  exit 3
-fi
 
 mkdir -p "$HOME/.termux/boot"
 cat > "$BOOT_FILE" <<'BOOT'
