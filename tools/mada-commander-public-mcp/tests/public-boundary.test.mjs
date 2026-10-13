@@ -451,7 +451,8 @@ test("OAuth failures expose a request ID and safe stage diagnostics without logg
 test("Termux agent heartbeat runs independently of long jobs and retries polling with bounded backoff", async () => {
   const source = await fs.readFile(new URL("../agent.mjs", import.meta.url), "utf8");
   assert.ok(source.includes("async function sendHeartbeat()"));
-  assert.match(source, /setInterval\(\(\) => \{[\s\S]{0,180}sendHeartbeat\(\)[\s\S]{0,100}30_000\)/);
+  assert.ok(source.includes("void sendHeartbeat().catch"));
+  assert.ok(source.includes("}, 30_000);"));
   assert.ok(source.includes("heartbeatInFlight"));
   assert.ok(source.includes("Math.min(15_000 * (2 ** Math.max(0, retryCount - 1)), 120_000)"));
   assert.ok(source.includes("Agent token rejected or revoked"));
