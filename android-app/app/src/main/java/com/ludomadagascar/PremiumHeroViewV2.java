@@ -235,10 +235,15 @@ public class PremiumHeroViewV2 extends FrameLayout {
     final float safeSc=sc>0f?sc:1f;
     final float ox=(W-1280f*safeSc)/2f, oy=(H-720f*safeSc)/2f;
     final float lx=(x-ox)/safeSc, ly=(y-oy)/safeSc;
+    // On a real landscape device, trust the physical view coordinates. Trying
+    // rotated coordinates for every ordinary touch can turn a 3D board tap
+    // into an accidental menu action. Rotated mappings are only meaningful if
+    // Android actually reports this view in portrait bounds.
+    if(W>=H)return new float[][]{{lx,ly}};
     final float nx=x/W, ny=y/H;
     final float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
     final float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
-    return new float[][]{{lx,ly},{lxCW,lyCW},{lxCCW,lyCCW}};
+    return new float[][]{{lxCW,lyCW},{lxCCW,lyCCW}};
   }
 
   private boolean isHomeActionTouch(float x,float y){
