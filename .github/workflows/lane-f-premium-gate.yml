@@ -5,10 +5,13 @@ on:
   push:
     branches:
       - feat/google-signin-real
+      - feat/ludomada-product-clean-20261013
     paths:
       - "android-app/**"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-glb-runtime-transform.mjs"
+      - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
@@ -17,21 +20,28 @@ on:
       - "android-app/**"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-glb-runtime-transform.mjs"
+      - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ludomada-lane-f-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   premium-gate:
-    runs-on: [self-hosted, linux, ARM64]
+    # Ramus is a remote emulator. Do not serialize this evidence run behind the phone's
+    # self-hosted Termux runner; the APK build and instrumented tests have a separate gate.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
-    concurrency:
-      group: ludomada-lane-f-${{ github.head_ref || github.ref_name }}
-      cancel-in-progress: true
     env:
-      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
-      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
-      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       RELEASE_MAX_RUNTIME: "39600"
     steps:
       - name: Checkout exact PR source
@@ -42,18 +52,25 @@ jobs:
           clean: true
           path: _runs/${{ github.run_id }}
 
-      - name: Use Termux Node
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          mkdir -p "$HOME/.ci-node-bin"
-          cat > "$HOME/.ci-node-bin/node" <<'EOF'
-          #!/data/data/com.termux/files/usr/bin/sh
-          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
-          exec /data/data/com.termux/files/usr/bin/node "$@"
-          EOF
-          chmod +x "$HOME/.ci-node-bin/node"
-          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: _runs/${{ github.run_id }}/android-app/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: platform-tools platforms;android-35 build-tools;35.0.0
 
       - name: Strict premium source gate
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
@@ -68,34 +85,24 @@ jobs:
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
         run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
 
-      - name: Configure ARM64 AAPT2
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
-          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
-
-      - name: Build debug APK
+      - name: Build debug APK for Ramus
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
         run: |
           set -eu
           chmod +x gradlew
-          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=1 assembleDebug --console=plain --stacktrace
+          ./gradlew -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=2 assembleDebug --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Verify calibrated 3D asset is packaged in APK
+      - name: Verify current 3D assets are packaged in APK
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Install Ramus CLI
+      - name: Install pinned Ramus CLI
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          rm -rf "$RUNNER_TEMP/ramus-cli"
           mkdir -p "$RUNNER_TEMP/ramus-cli"
-          cp "$GITHUB_WORKSPACE/_runs/$GITHUB_RUN_ID/ci/vendor/ramus-cli-0.1.13.tgz" "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          cp ci/vendor/ramus-cli-0.1.13.tgz "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
           printf '%s  %s\n' "ae8e1ae1a0f60c066802cd38a0d49d2a793db9cfc01fb2e9db0f2abaaf8d74f9" "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" | sha256sum -c -
           tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
           test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
@@ -111,7 +118,7 @@ jobs:
           set -o pipefail
           timeout -k 10s 900s node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
 
-      - name: Upload Lane F evidence
+      - name: Upload Lane F screenshot and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
