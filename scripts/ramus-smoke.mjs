@@ -190,7 +190,7 @@ try {
   // Allocate a blank device first, then explicitly install/open the exact APK.
   // "session start --apk" can leave the device on the Android launcher while its
   // automatic launch remains in-flight; subsequent app launch calls then return "busy".
-  const started = allow("session", "start", "--wait");
+  const started = allow("session", "start", "--apk", apk, "--wait");
   if (!started.ok || !started.value?.session) {
     throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
   }
