@@ -29,7 +29,7 @@ PATTERNS = {
     "GITHUB_TOKEN": re.compile(rb"gh[pousr]_[A-Za-z0-9]{20,}"),
     "GITHUB_FINE_GRAINED_TOKEN": re.compile(rb"github_pat_[A-Za-z0-9_]{20,}"),
     "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY": re.compile(
-        rb'"private_key"\\s*:\\s*"-----BEGIN (?:RSA )?PRIVATE KEY-----'
+        rb'"private_key"\s*:\s*"-----BEGIN (?:RSA )?PRIVATE KEY-----'
     ),
 }
 SOURCE_SUFFIXES = {".kt", ".java", ".xml", ".gradle", ".kts", ".properties", ".json"}
