@@ -270,25 +270,73 @@ async function main() {
   if (command === "run") {
     const config = await readConfig();
     const once = args.includes("--once");
-    console.log("Mada Commander agent started. Allowed profiles: git_status, toolchain, inventory. Press Ctrl+C to stop.");
-    let lastHeartbeat = 0;
-    do {
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    let heartbeatInFlight = false;
+    let tokenRevoked = false;
+    let heartbeatTimer = null;
+    let retryCount = 0;
+
+    async function sendHeartbeat() {
+      if (heartbeatInFlight || tokenRevoked) return;
+      heartbeatInFlight = true;
       try {
-        if (Date.now() - lastHeartbeat > 30_000) {
-          await heartbeat(config);
-          lastHeartbeat = Date.now();
-        }
-        await processOneJob(config);
+        await heartbeat(config);
       } catch (error) {
-        console.error("Agent loop error:", error.message || "network_error");
-        if (String(error.message || "").includes("Agent token rejected or revoked")) {
-          console.error("This agent was revoked. Stop here and remove the local agent configuration if you no longer need it.");
-          break;
+        if (String(error?.message || "").includes("Agent token rejected or revoked")) {
+          tokenRevoked = true;
+          if (heartbeatTimer) clearInterval(heartbeatTimer);
         }
+        throw error;
+      } finally {
+        heartbeatInFlight = false;
       }
-      if (once) break;
-      await new Promise(resolve => setTimeout(resolve, 15_000));
-    } while (true);
+    }
+
+    console.log("Mada Commander agent started. Heartbeat runs independently every 30 seconds; approved jobs are polled every 15 seconds.");
+    try {
+      await sendHeartbeat();
+      console.log("Initial heartbeat confirmed.");
+    } catch (error) {
+      console.error("Initial heartbeat failed; the agent will retry while connectivity recovers:", error.message || "network_error");
+    }
+
+    if (!once) {
+      heartbeatTimer = setInterval(() => {
+        void sendHeartbeat().catch(error => {
+          if (!tokenRevoked) console.error("Agent heartbeat failed:", error.message || "network_error");
+        });
+      }, 30_000);
+    }
+
+    try {
+      do {
+        let pollFailed = false;
+        try {
+          await processOneJob(config);
+          retryCount = 0;
+        } catch (error) {
+          const message = String(error?.message || "network_error");
+          console.error("Agent loop error:", message);
+          if (message.includes("Agent token rejected or revoked")) {
+            tokenRevoked = true;
+            break;
+          }
+          pollFailed = true;
+          retryCount = Math.min(retryCount + 1, 4);
+        }
+
+        if (once || tokenRevoked) break;
+        // Recover from transient network/server failures without hammering the API.
+        // Heartbeats continue on their independent timer during this backoff.
+        const delayMs = pollFailed ? Math.min(15_000 * (2 ** Math.max(0, retryCount - 1)), 120_000) : 15_000;
+        await sleep(delayMs);
+      } while (!tokenRevoked);
+    } finally {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+    }
+    if (tokenRevoked) {
+      console.error("This agent was revoked or its token is no longer valid. Stop here and remove the local agent configuration if you no longer need it.");
+    }
     return;
   }
   usage();
