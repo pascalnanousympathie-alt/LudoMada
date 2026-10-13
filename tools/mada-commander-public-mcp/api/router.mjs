@@ -1246,6 +1246,7 @@ function cors(req, res, base, route) {
   if (!publicCrossOriginRoute) res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, Accept");
+  res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
   res.setHeader("Access-Control-Max-Age", "600");
   return true;
 }
@@ -1273,6 +1274,7 @@ export async function handleRequest(req, res) {
       "Access-Control-Allow-Origin": publicCrossOriginRoute ? "*" : (req.headers.origin || base),
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version, Accept",
+      "Access-Control-Expose-Headers": "X-Request-Id",
       "Access-Control-Max-Age": "600",
       ...(publicCrossOriginRoute ? {} : { "Vary": "Origin" })
     } : {};
