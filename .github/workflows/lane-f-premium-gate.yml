@@ -31,8 +31,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: ludomada-lane-f-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: ludomada-shared-ramus-fleet
+  cancel-in-progress: false
 
 jobs:
   premium-gate:
