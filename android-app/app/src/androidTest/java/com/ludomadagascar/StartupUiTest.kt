@@ -56,7 +56,7 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        val file = File(context.cacheDir, "ludomada-startup-offline.png")
+        val file = File(instrumentation.context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
     }
