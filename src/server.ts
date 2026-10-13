@@ -1,7 +1,7 @@
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { randomInt, randomUUID, createHash } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { PrismaClient, PaymentMethod, TransactionType } from "@prisma/client";
@@ -20,6 +20,7 @@ import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
+import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -178,12 +179,19 @@ app.use((req:any,res,next)=>{
 
 
 
-const authRateLimit = rateLimit({
+const AUTH_RATE_LIMIT_DISABLED = ["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase());
+
+const authRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
   windowMs: 15 * 60_000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req:any) => req.path + ":" + String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"),
+  // Use Express's normalized client IP instead of trusting the raw X-Forwarded-For
+  // header supplied by the caller. In production trust proxy is pinned to the
+  // Railway edge proxy above, so req.ip is the canonical rate-limit key.
+  keyGenerator: (req:any) => req.path + ":" + ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
   message: { error: "Too many authentication attempts" }
 });
 
@@ -246,7 +254,7 @@ app.get("/ready",async(_req,res)=>{
   }
 });
 
-if (process.env.NODE_ENV !== "loadtest") {
+if (!["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase())) {
   app.use(rateLimit({
     windowMs: 60_000,
     max: 120,
@@ -255,7 +263,72 @@ if (process.env.NODE_ENV !== "loadtest") {
   }));
 }
 
-app.post("/api/auth/register",async(req,res)=>{
+app.post("/api/auth/google/challenge",authRateLimit,async(_req,res)=>{
+  try{
+    const audience=(process.env.GOOGLE_WEB_CLIENT_ID??"").trim();
+    if(!audience) return res.status(503).json({error:"GOOGLE_AUTH_NOT_CONFIGURED"});
+    const now=new Date();
+    await prisma.googleAuthChallenge.deleteMany({where:{expiresAt:{lt:now}}});
+    const nonce=newGoogleNonce();
+    await prisma.googleAuthChallenge.create({data:{nonceHash:hashGoogleNonce(nonce),expiresAt:new Date(Date.now()+5*60_000)}});
+    return res.json({nonce,expiresInSeconds:300,serverClientId:(process.env.GOOGLE_WEB_CLIENT_ID??"").trim()});
+  }catch(e:any){
+    console.error("GOOGLE CHALLENGE ERROR:",{name:e?.name,message:e?.message});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.post("/api/auth/google",authRateLimit,async(req,res)=>{
+  try{
+    const b=z.object({idToken:z.string().min(100).max(10000),nonce:z.string().min(20).max(256)}).parse(req.body);
+    const audience=(process.env.GOOGLE_WEB_CLIENT_ID??"").trim();
+    if(!audience) return res.status(503).json({error:"GOOGLE_AUTH_NOT_CONFIGURED"});
+
+    const challenge=await prisma.googleAuthChallenge.findUnique({where:{nonceHash:hashGoogleNonce(b.nonce)}});
+    if(!challenge || challenge.consumedAt || challenge.expiresAt<=new Date()) return res.status(401).json({error:"Invalid Google sign-in challenge"});
+
+    const identity=await verifyGoogleIdToken(b.idToken,audience,b.nonce);
+    const consumed=await prisma.googleAuthChallenge.updateMany({
+      where:{id:challenge.id,consumedAt:null,expiresAt:{gt:new Date()}},
+      data:{consumedAt:new Date()}
+    });
+    if(consumed.count!==1) return res.status(401).json({error:"Invalid Google sign-in challenge"});
+
+    let user=await prisma.user.findUnique({where:{googleSub:identity.sub}});
+    if(!user){
+      const emailMatch=await prisma.user.findFirst({where:{email:{equals:identity.email,mode:"insensitive"}}});
+      if(emailMatch) return res.status(409).json({error:"GOOGLE_EMAIL_ALREADY_REGISTERED"});
+    }
+
+    if(!user){
+      const passwordHash=await bcrypt.hash(randomUUID(),12);
+      user=await prisma.user.create({data:{
+        username:googleUsername(identity.email,identity.sub),
+        email:identity.email,
+        googleSub:identity.sub,
+        passwordHash,
+        wallet:{create:{}}
+      }});
+    }else if(!user.googleSub){
+      user=await prisma.user.update({where:{id:user.id},data:{googleSub:identity.sub}});
+    }
+
+    const refresh=refreshToken();
+    await prisma.refreshSession.create({data:{userId:user.id,tokenHash:hashToken(refresh),expiresAt:new Date(Date.now()+REFRESH_DAYS*86400000)}});
+    const access=issueAccessToken(user.id,"PLAYER",JWT_SECRET);
+    await audit(prisma,{auth:{sub:user.id},requestId:req.get("X-Request-ID")??randomUUID(),headers:req.headers,socket:req.socket},"AUTH_GOOGLE");
+    return res.json({accessToken:access,refreshToken:refresh,user:{id:user.id,username:user.username}});
+  }catch(e:any){
+    if(e instanceof z.ZodError) return res.status(400).json({error:"Invalid request"});
+    if(e?.message==="GOOGLE_EMAIL_NOT_VERIFIED") return res.status(401).json({error:"Google account email is not verified"});
+    if(e?.message==="GOOGLE_TOKEN_INVALID") return res.status(401).json({error:"Invalid Google credential"});
+    if(e?.code==="P2002") return res.status(409).json({error:"Google account already linked"});
+    console.error("GOOGLE AUTH ERROR:",{name:e?.name,code:e?.code,message:e?.message,requestId:req.get("X-Request-ID")});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.post("/api/auth/register",authRateLimit,async(req,res)=>{
   try {
     const b=z.object({username:z.string().min(3).max(32).regex(/^[A-Za-z0-9_]+$/),password:z.string().min(10).max(128),email:z.string().email().optional(),phoneNumber:z.string().min(7).max(20).regex(/^\+?[0-9() .-]+$/).optional()}).parse(req.body);
     const hash=await bcrypt.hash(b.password,12);
@@ -411,7 +484,9 @@ app.get("/api/wallet",auth,async(req:any,res)=>{
   res.json({balanceMGA:(w?.balance??0n).toString()});
 });
 
-const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional()});
+const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional(),cryptoCurrency:z.string().trim().regex(/^[A-Z0-9]{2,12}$/).transform(v=>v.toUpperCase()).optional()}).superRefine((v,ctx)=>{
+  if(v.cryptoCurrency && v.method!==PaymentMethod.BINANCE) ctx.addIssue({code:z.ZodIssueCode.custom,path:["cryptoCurrency"],message:"cryptoCurrency is only valid with BINANCE"});
+});
 
 app.get("/api/payments/config",auth,async(_req,res)=>{
   res.json(paymentConfig());
@@ -435,7 +510,10 @@ async function reconcilePayment(txId:string){
   if(!tx || tx.status!=="PENDING" || !tx.providerReference) return tx;
   const provider=providerFor(tx.method);
   if(!provider.enabled()) return tx;
-  const pr=await provider.query(tx.providerReference,{expectedAmountMGA:tx.amount,customerPhone:tx.customerPhone||undefined,type:tx.type});
+  const storedPayload=tx.providerPayload as any;
+  const cryptoCurrency=typeof storedPayload?.__ludomada?.cryptoCurrency === "string" ? storedPayload.__ludomada.cryptoCurrency : undefined;
+  const cryptoRate=Number(storedPayload?.__ludomada?.mgaRate);
+  const pr=await provider.query(tx.providerReference,{expectedAmountMGA:tx.amount,customerPhone:tx.customerPhone||undefined,type:tx.type,cryptoCurrency,cryptoRate:Number.isFinite(cryptoRate) && cryptoRate>0 ? cryptoRate : undefined});
   return prisma.$transaction(async(t)=>{
     const current=await t.transaction.findUnique({where:{id:txId}});
     if(!current || current.status!=="PENDING") return current;
@@ -460,7 +538,9 @@ app.get("/api/payments/:transactionId",auth,async(req:any,res)=>{
   const tx=await prisma.transaction.findFirst({where:{id:req.params.transactionId,userId:req.userId}});
   if(!tx) return res.status(404).json({error:"Transaction not found"});
   const reconciled=tx.status==="PENDING" ? await reconcilePayment(tx.id) : tx;
-  res.json({transactionId:reconciled?.id,status:reconciled?.status,method:reconciled?.method,amountMGA:reconciled?.amount.toString(),reference:reconciled?.reference,providerReference:reconciled?.providerReference,providerStatus:reconciled?.providerStatus});
+  const statusPayload:any=reconciled?.providerPayload as any;
+  const cryptoCurrency=typeof statusPayload?.__ludomada?.cryptoCurrency === "string" ? statusPayload.__ludomada.cryptoCurrency : undefined;
+  res.json({transactionId:reconciled?.id,status:reconciled?.status,method:reconciled?.method,amountMGA:reconciled?.amount.toString(),reference:reconciled?.reference,providerReference:reconciled?.providerReference,providerStatus:reconciled?.providerStatus,cryptoCurrency});
 });
 
 app.post("/api/payments/:method/webhook",async(req:any,res)=>{
@@ -514,7 +594,8 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
       if(
         existing.type!==TransactionType.DEPOSIT ||
         existing.amount!==amount ||
-        existing.method!==p.data.method
+        existing.method!==p.data.method ||
+        (p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency && String((existing.providerPayload as any)?.__ludomada?.cryptoCurrency || "").toUpperCase()!==p.data.cryptoCurrency)
       ){
         return res.status(409).json({
           error:"IDEMPOTENCY_KEY_CONFLICT"
@@ -536,13 +617,14 @@ app.post("/api/wallet/deposit",auth,async(req:any,res)=>{
         amount,
         customerPhone:p.data.customerPhone,
         idempotencyKey:key,
-        status:"PENDING"
+        status:"PENDING",
+        providerPayload:p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency ? {__ludomada:{cryptoCurrency:p.data.cryptoCurrency}} : undefined
       }
     });
 
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
-      const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone});
+      const pr=await provider.create({transactionId:tx.id,amountMGA:amount,method:p.data.method,type:TransactionType.DEPOSIT,customerPhone:p.data.customerPhone,cryptoCurrency:p.data.cryptoCurrency});
       if(!pr.accepted){
         await prisma.transaction.update({where:{id:tx.id},data:{status:"FAILED",providerStatus:pr.providerStatus,providerPayload:pr.raw as any}});
         await audit(prisma,req,"WALLET_DEPOSIT_REJECTED",{transactionId:tx.id,amount:p.data.amountMGA,method:p.data.method,errorCode:pr.errorCode});
@@ -649,7 +731,8 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
       if(
         existing.type!==TransactionType.WITHDRAWAL ||
         existing.amount!==amount ||
-        existing.method!==p.data.method
+        existing.method!==p.data.method ||
+        (p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency && String((existing.providerPayload as any)?.__ludomada?.cryptoCurrency || "").toUpperCase()!==p.data.cryptoCurrency)
       ){
         return res.status(409).json({
           error:"IDEMPOTENCY_KEY_CONFLICT"
@@ -679,7 +762,8 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
           amount,
           customerPhone:p.data.customerPhone,
           idempotencyKey:key,
-          status:"PENDING"
+          status:"PENDING",
+          providerPayload:p.data.method===PaymentMethod.BINANCE && p.data.cryptoCurrency ? {__ludomada:{cryptoCurrency:p.data.cryptoCurrency}} : undefined
         }
       });
 
@@ -709,7 +793,7 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
 
     const provider=providerFor(p.data.method);
     if(provider.enabled()){
-      const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone});
+      const pr=await provider.create({transactionId:r.id,amountMGA:amount,method:p.data.method,type:TransactionType.WITHDRAWAL,customerPhone:p.data.customerPhone,cryptoCurrency:p.data.cryptoCurrency});
       if(!pr.accepted){
         await prisma.$transaction(async(tx)=>{
           const current=await tx.transaction.findUnique({where:{id:r.id}});
@@ -815,7 +899,7 @@ app.post("/api/wallet/withdraw",auth,async(req:any,res)=>{
 
 app.get("/api/wallet/transactions",auth,async(req:any,res)=>{
   const rows=await prisma.transaction.findMany({where:{userId:req.userId},orderBy:{createdAt:"desc"},take:100});
-  res.json(rows.map(r=>({...r,amount:r.amount.toString(),fee:r.fee.toString()})));
+  res.json(rows.map(r=>{const payload:any=r.providerPayload as any;const cryptoCurrency=typeof payload?.__ludomada?.cryptoCurrency === "string" ? payload.__ludomada.cryptoCurrency : undefined;return {...r,amount:r.amount.toString(),fee:r.fee.toString(),cryptoCurrency};}));
 });
 
 /*

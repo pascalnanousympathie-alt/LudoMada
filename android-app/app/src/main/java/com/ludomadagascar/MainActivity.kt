@@ -2,6 +2,7 @@ package com.ludomadagascar
 
 import android.app.*
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
 import android.view.*
@@ -15,8 +16,18 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import kotlin.concurrent.thread
+import androidx.credentials.CredentialManager
+import androidx.credentials.CredentialManagerCallback
+import androidx.credentials.CustomCredential
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 
 class MainActivity : Activity() {
+    // Build gate recovery marker: no runtime/gameplay behavior change.
     private val apiBase = BuildConfig.API_BASE_URL
     private val entryFees = listOf(500, 1000, 2000, 5000, 10000, 20000)
     private var entryFee = 500
@@ -26,12 +37,14 @@ class MainActivity : Activity() {
     private var state: JSONObject? = null; private var currentScreen = ""
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
+    private var externalWalletView: TextView? = null
     private var selectedLanguage = "fr"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
-    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
+    private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var movePending = false
+    private val credentialManager by lazy { CredentialManager.create(this) }
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
@@ -45,6 +58,12 @@ class MainActivity : Activity() {
     }
     private fun add(v:View, h:Int=-2, top:Int=7, bottom:Int=7) {
         root.addView(v, LinearLayout.LayoutParams(-1, if(h==-1) -1 else dp(h)).apply { setMargins(0,dp(top),0,dp(bottom)) })
+    }
+    // Game screens use a physical-height design scale. Using dp here would multiply every
+    // control by the emulator density and starve the board viewport on 720px-high devices.
+    private fun gamePx(v:Int):Int = (v.toFloat() * resources.displayMetrics.heightPixels / 720f).toInt().coerceAtLeast(1)
+    private fun addGame(v:View, h:Int, top:Int=4, bottom:Int=4) {
+        root.addView(v, LinearLayout.LayoutParams(-1,gamePx(h)).apply { setMargins(0,gamePx(top),0,gamePx(bottom)) })
     }
     private val navy = Color.rgb(8,24,54)
     private val royal = Color.rgb(24,92,210)
@@ -64,9 +83,20 @@ class MainActivity : Activity() {
     }
     private fun page(name:String, title:String): LinearLayout {
         currentScreen=name
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        val gameSurface=(name=="board" || name=="offline")
         val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+            orientation=LinearLayout.VERTICAL
+            setPadding(dp(if(gameSurface)12 else 20),dp(if(gameSurface)10 else 18),dp(if(gameSurface)12 else 20),dp(if(gameSurface)14 else 20))
+            background=if(gameSurface)
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(8,32,63),Color.rgb(12,69,101),Color.rgb(7,29,56)))
+            else
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+        }
+        content.setOnApplyWindowInsetsListener { v,insets ->
+            val bottom=insets.systemWindowInsetBottom.coerceAtLeast(0)
+            v.setPadding(dp(if(name=="board" || name=="offline")12 else 20),dp(if(name=="board" || name=="offline")10 else 18),dp(if(name=="board" || name=="offline")12 else 20),dp(if(name=="board" || name=="offline")14 else 20)+bottom)
+            insets
         }
         root=content
         if(name=="board" || name=="offline") setContentView(root)
@@ -74,21 +104,29 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
-        addTopBar(title)
+        content.requestApplyInsets()
+        // Gameplay must use the full landscape viewport: the supplied reference has no bulky
+        // application header covering the 3D tabletop. Non-game screens keep the premium top bar.
+        if (!gameSurface) addTopBar(title)
         return content
     }
 
     private fun addTopBar(title:String) {
         val bar=LinearLayout(this).apply {
-            gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(7),dp(8),dp(7))
-            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.argb(248,255,255,255),Color.argb(236,246,250,255))).apply{
-                cornerRadius=dp(22).toFloat(); setStroke(dp(1),Color.rgb(223,231,241))
-            }; elevation=dp(4).toFloat()
+            gravity=Gravity.CENTER_VERTICAL; setPadding(dp(8),dp(6),dp(8),dp(6))
+            background=if(currentScreen=="board" || currentScreen=="offline")
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(0xD9174168.toInt(),0xB80A2D50.toInt())).apply{
+                    cornerRadius=dp(20).toFloat(); setStroke(dp(1),0x6697D6FF)
+                }
+            else
+                GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.argb(248,255,255,255),Color.argb(236,246,250,255))).apply{
+                    cornerRadius=dp(22).toFloat(); setStroke(dp(1),Color.rgb(223,231,241))
+                }; elevation=dp(4).toFloat()
         }
         bar.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(46),dp(46)))
         val wrap=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,0,0)}
-        wrap.addView(label("LudoMada",18f,true,royal))
-        wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,Color.rgb(104,116,134)))
+        wrap.addView(label("LudoMada",18f,true,if(currentScreen=="board" || currentScreen=="offline") Color.WHITE else royal))
+        wrap.addView(label(title.uppercase(Locale.getDefault()),11f,true,if(currentScreen=="board" || currentScreen=="offline") 0xD8CFEAFF.toInt() else Color.rgb(104,116,134)))
         bar.addView(wrap,LinearLayout.LayoutParams(0,-2,1f))
         val balanceBox=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(8),dp(3),dp(8),dp(3))
@@ -158,6 +196,206 @@ class MainActivity : Activity() {
         root.addView(row,LinearLayout.LayoutParams(-1,dp(66)).apply{setMargins(0,dp(10),0,0)})
     }
 
+    private fun musicIconButton(): Button = Button(this).apply {
+        text = if (music.enabled()) "🎵" else "🔇"
+        textSize = 22f
+        isAllCaps = false
+        gravity = Gravity.CENTER
+        setTextColor(Color.WHITE)
+        setPadding(0,0,0,0)
+        minimumWidth = 0
+        minimumHeight = 0
+        minWidth = 0
+        minHeight = 0
+        contentDescription = if (music.enabled()) "MUSIC_TOGGLE: activée" else "MUSIC_TOGGLE: désactivée"
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        isFocusable = true
+        isClickable = true
+        background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.rgb(31,52,84), Color.rgb(12,29,55))
+        ).apply {
+            cornerRadius = dp(18).toFloat()
+            setStroke(dp(1), 0x66FFFFFF)
+        }
+        elevation = dp(5f).toFloat()
+        setOnTouchListener { v,e ->
+            when(e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> v.animate().scaleX(.92f).scaleY(.92f).setDuration(70L).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(110L).start()
+            }
+            false
+        }
+        setOnClickListener {
+            music.toggle()
+            updateMusicButton()
+        }
+    }
+
+
+    private fun gameplayPlayerCard(index:Int, accent:Int, frame:FrameLayout, leftSide:Boolean, topSide:Boolean, players:Int) {
+        val enabled = index < players
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(7), dp(6), dp(10), dp(6))
+            alpha = if (enabled) 1f else 0.42f
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.argb(235, 8, 16, 25), Color.argb(214, 26, 31, 40))
+            ).apply {
+                cornerRadius = dp(21).toFloat()
+                setStroke(dp(2), accent)
+            }
+            elevation = dp(7f).toFloat()
+        }
+        val avatar = TextView(this).apply {
+            text = "J" + (index + 1)
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(accent)
+                setStroke(dp(2), Color.WHITE)
+            }
+        }
+        card.addView(avatar, LinearLayout.LayoutParams(dp(43), dp(43)))
+        val info = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(9), 0, 0, 0)
+        }
+        info.addView(TextView(this).apply {
+            text = "Joueur " + (index + 1)
+            textSize = 13.5f
+            setTextColor(Color.WHITE)
+            setTypeface(null, android.graphics.Typeface.BOLD)
+        })
+        info.addView(TextView(this).apply {
+            text = if (!enabled) "En attente" else if (index == offlineTurn) "♛  Vous" else "○  ○  ○  ○"
+            textSize = 10.5f
+            setTextColor(if (index == offlineTurn && enabled) accent else 0xFFD9DEE6.toInt())
+            setPadding(0, dp(2), 0, 0)
+        })
+        card.addView(info, LinearLayout.LayoutParams(dp(112), -2))
+        val lp = FrameLayout.LayoutParams(dp(176), dp(56))
+        lp.gravity = (if (leftSide) Gravity.START else Gravity.END) or (if (topSide) Gravity.TOP else Gravity.BOTTOM)
+        lp.setMargins(dp(18), if (topSide) dp(84) else dp(14), dp(18), if (topSide) dp(14) else dp(92))
+        frame.addView(card, lp)
+    }
+
+    private fun addGameplayHud(frame:FrameLayout, players:Int) {
+        val logo = BrandLogoView(this).apply { contentDescription = "LudoMada" }
+        frame.addView(logo, FrameLayout.LayoutParams(dp(205), dp(70)).apply {
+            gravity = Gravity.TOP or Gravity.START
+            setMargins(dp(18), dp(10), 0, 0)
+        })
+
+        status = label("●  Joueur " + (offlineTurn + 1) + " • Votre tour", 17f, true, Color.WHITE)
+        status.gravity = Gravity.CENTER
+        status.setPadding(dp(16), dp(7), dp(16), dp(7))
+        status.background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(0xE60A1421.toInt(), 0xE61D1C23.toInt())
+        ).apply {
+            cornerRadius = dp(22).toFloat()
+            setStroke(dp(2), gold)
+        }
+        status.elevation = dp(8f).toFloat()
+        status.contentDescription = "VOTRE_TOUR"
+        frame.addView(status, FrameLayout.LayoutParams(dp(285), dp(52)).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            topMargin = dp(18)
+        })
+
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        fun control(symbol:String, desc:String, tint:Int, action:(()->Unit)? = null) = TextView(this).apply {
+            text = symbol
+            textSize = 21f
+            setTextColor(tint)
+            gravity = Gravity.CENTER
+            contentDescription = desc
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0xD90B1422.toInt())
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(6f).toFloat()
+            if (action != null) setOnClickListener { action() }
+        }
+        controls.addView(control("🔊", "SON", gold) { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("⚙", "PARAMETRES", gold), LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("☰", "MENU_JEU", gold) { offlineMenu() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        frame.addView(controls, FrameLayout.LayoutParams(dp(170), dp(54)).apply {
+            gravity = Gravity.TOP or Gravity.END
+            topMargin = dp(10)
+            rightMargin = dp(12)
+        })
+
+        val playerColors = intArrayOf(
+            Color.rgb(57, 191, 91),
+            Color.rgb(238, 191, 39),
+            Color.rgb(234, 61, 57),
+            Color.rgb(57, 113, 230)
+        )
+        gameplayPlayerCard(0, playerColors[0], frame, true, true, players)
+        gameplayPlayerCard(1, playerColors[1], frame, false, true, players)
+        gameplayPlayerCard(2, playerColors[2], frame, true, false, players)
+        gameplayPlayerCard(3, playerColors[3], frame, false, false, players)
+
+        val hint = TextView(this).apply {
+            text = "🎲  Touchez le dé\npour lancer"
+            textSize = 14.5f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setPadding(dp(17), 0, dp(18), 0)
+            contentDescription = "TOUCHEZ_LE_DE"
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xE6111723.toInt(), 0xE51B1A21.toInt())
+            ).apply {
+                cornerRadius = dp(20).toFloat()
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(7f).toFloat()
+            setOnClickListener {
+                offlineHost?.let { h -> if (!h.isDiceRolling()) offlineRoll(h) }
+            }
+        }
+        frame.addView(hint, FrameLayout.LayoutParams(dp(238), dp(68)).apply {
+            gravity = Gravity.BOTTOM or Gravity.START
+            leftMargin = dp(18)
+            bottomMargin = dp(16)
+        })
+
+        val turnBadge = TextView(this).apply {
+            text = "♛  " + (offlineTurn + 1) + "/" + players + "\nTour"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xE607121E.toInt(), 0xE51B1A21.toInt())
+            ).apply {
+                cornerRadius = dp(17).toFloat()
+                setStroke(dp(2), gold)
+            }
+            elevation = dp(7f).toFloat()
+            contentDescription = "TOUR_" + (offlineTurn + 1) + "_SUR_" + players
+        }
+        frame.addView(turnBadge, FrameLayout.LayoutParams(dp(108), dp(62)).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            rightMargin = dp(18)
+            bottomMargin = dp(16)
+        })
+    }
+
     private val sessionPrefs by lazy { getSharedPreferences("ludomada_session", Context.MODE_PRIVATE) }
 
     private fun saveSession() {
@@ -181,9 +419,12 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
-        val hasSession = restoreSession()
-        if (hasSession && token.isNotBlank()) home() else splash()
+        // Premium Home is the first screen; authenticated state is restored in the background
+        // and reused by Home/Wallet/online actions when present.
+        restoreSession()
+        home()
     }
 
     private fun splash() {
@@ -192,40 +433,170 @@ class MainActivity : Activity() {
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
         add(label("Joue • Gagne • Profite",15f,false,Color.rgb(88,99,116)),28,0,8)
         add(label("Jeu en ligne + hors-ligne",13f,true,Color.rgb(15,79,199)),30,0,12)
-        root.postDelayed({login()},700)
+        root.postDelayed({home()},700)
     }
 
     private fun login() {
         currentScreen="login"
-        root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
-        root.background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(5,23,55),Color.rgb(11,70,145),Color.rgb(3,27,67)))
+        // Landscape-first login: everything important stays above the fold so Ramus and the user can reach offline play.
+        root=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(18),dp(14),dp(18),dp(14))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(4,18,44),Color.rgb(19,75,143),Color.rgb(7,34,74)))
+        }
         setContentView(root)
-        val brand=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL}
-        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(104),dp(104)))
-        brand.addView(label("LudoMada",27f,true,Color.WHITE))
-        brand.addView(label("Le Ludo malagasy, en ligne ou hors-ligne",12f,false,Color.argb(217,233,243,255)))
-        add(brand,152,0,7)
-        add(label("2–4 joueurs  •  mises dès 500 Ar",12f,true,Color.WHITE),25,1,4)
-        status=label("",12f,false,Color.rgb(255,181,188));add(status,28,0,4)
-        val fieldBg=Color.argb(235,255,255,255)
-        val u=EditText(this).apply{hint="Nom, email ou mobile";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
-        val p=EditText(this).apply{hint="Mot de passe";textSize=15f;setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142));inputType=129;background=shape(fieldBg,18f,0x55FFFFFF);setPadding(dp(16),0,dp(16),0);setSingleLine(true)}
-        add(u,52,5,5);add(p,52,5,9)
-        add(button("Se connecter",Color.rgb(28,118,246)){if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())},53,4,6)
-        add(button("Créer un compte",Color.rgb(16,170,119)){registerDialog()},53,4,5)
-        add(button("G  Créer un compte avec Google",Color.rgb(245,247,251)){googleSignup()},50,3,5)
-        add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
-        val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
-        add(secure,28,2,3)
-        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
+
+        val brand=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER
+            setPadding(dp(12),dp(4),dp(18),dp(4))
+        }
+        brand.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(122),dp(122)).apply{bottomMargin=dp(6)})
+        brand.addView(label("LudoMada",29f,true,Color.WHITE).apply{gravity=Gravity.CENTER})
+        brand.addView(label("Joue • Gagne • Grandis",13f,false,Color.argb(235,246,249,255)).apply{gravity=Gravity.CENTER})
+        brand.addView(label("2–4 joueurs  •  mises dès 500 Ar",11f,true,Color.rgb(255,198,55)).apply{
+            gravity=Gravity.CENTER
+            setPadding(dp(4),dp(10),dp(4),0)
+        })
+        brand.addView(label("Jeu en ligne + hors-ligne",11f,false,Color.argb(220,235,243,255)).apply{
+            gravity=Gravity.CENTER
+            setPadding(dp(4),dp(6),dp(4),0)
+        })
+        val offlineCard=TextView(this).apply{
+            text="👥 Jouer hors-ligne"
+            textSize=12.5f
+            setTypeface(null,android.graphics.Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity=Gravity.CENTER
+            contentDescription="Jouer hors-ligne"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isClickable=true
+            isFocusable=true
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(83,99,122),Color.rgb(48,61,80))).apply{
+                cornerRadius=dp(16).toFloat()
+                setStroke(dp(1),0x55FFFFFF)
+            }
+            elevation=dp(5).toFloat()
+            setOnClickListener{offlineMenu()}
+        }
+        brand.addView(offlineCard,LinearLayout.LayoutParams(dp(235),dp(46)).apply{topMargin=dp(14)})
+        root.addView(brand,LinearLayout.LayoutParams(0,-1,.40f))
+
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            setPadding(dp(16),dp(8),dp(8),dp(4))
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xB80B2144.toInt(),0x98264D7B.toInt())).apply{
+                cornerRadius=dp(24).toFloat()
+                setStroke(dp(1),0x557EB8FF)
+            }
+            elevation=dp(7).toFloat()
+        }
+        panel.addView(label("CONNEXION",18f,true,Color.WHITE).apply{gravity=Gravity.CENTER},LinearLayout.LayoutParams(-1,dp(28)))
+        status=label("",10.5f,false,Color.rgb(255,181,188)).apply{gravity=Gravity.CENTER}
+        panel.addView(status,LinearLayout.LayoutParams(-1,dp(22)).apply{topMargin=dp(1)})
+        val fieldBg=Color.argb(238,255,255,255)
+        val u=EditText(this).apply{
+            hint="Nom, email ou mobile";textSize=14f
+            setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142))
+            background=shape(fieldBg,16f,0x55FFFFFF);setPadding(dp(15),0,dp(15),0);setSingleLine(true)
+        }
+        val p=EditText(this).apply{
+            hint="Mot de passe";textSize=14f
+            setTextColor(Color.rgb(24,38,58));setHintTextColor(Color.rgb(115,126,142))
+            inputType=129;background=shape(fieldBg,16f,0x55FFFFFF);setPadding(dp(15),0,dp(15),0);setSingleLine(true)
+        }
+        panel.addView(u,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(4)})
+        panel.addView(p,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(6)})
+
+        fun actionButton(text:String,accent:Int,action:(()->Unit))=button(text,accent,action).apply{
+            minHeight=dp(46);textSize=12.5f
+        }
+        panel.addView(actionButton("Se connecter",Color.rgb(28,118,246)){
+            if(validAuth(u,p))auth("/api/auth/login",u.text.toString().trim(),p.text.toString())
+        },LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(8)})
+        panel.addView(actionButton("Créer un compte",Color.rgb(16,170,119)){registerDialog()},
+            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        panel.addView(actionButton("G  Continuer avec Google",Color.rgb(88,106,132)){googleSignup()},
+            LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(5)})
+        // Offline action is exposed from the left brand column so its accessibility bounds remain inside the landscape viewport.
+        panel.addView(label("Paiements sécurisés côté serveur",9.5f,false,Color.argb(205,255,255,255)).apply{gravity=Gravity.CENTER},
+            LinearLayout.LayoutParams(-1,dp(20)).apply{topMargin=dp(3)})
+        val loginMusicRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.END or Gravity.CENTER_VERTICAL
+            addView(musicIconButton(),LinearLayout.LayoutParams(dp(46),dp(46)))
+        }
+        musicButton=loginMusicRow.getChildAt(0) as Button
+        panel.addView(loginMusicRow,LinearLayout.LayoutParams(-1,dp(46)).apply{topMargin=dp(1)})
+        root.addView(panel,LinearLayout.LayoutParams(0,-1,.60f))
     }
 
     private fun googleSignup() {
-        AlertDialog.Builder(this)
-            .setTitle("Google")
-            .setMessage("Ny connexion Google dia mbola tsy configurée amin'ny serveur LudoMada. Ampiasao aloha Nom/email/mobile + mot de passe.")
-            .setPositiveButton("AOKA", null)
-            .show()
+        status.text="Fanamarinana Google..."
+        post("/api/auth/google/challenge",JSONObject(),null,{j->
+            val nonce=j.optString("nonce")
+            val clientId=j.optString("serverClientId").trim()
+            if(nonce.isBlank() || clientId.isBlank()){
+                status.text="Google Sign-In tsy mbola configuré amin'ny serveur."
+                return@post
+            }
+            val option=GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(false)
+                .setServerClientId(clientId)
+                .setAutoSelectEnabled(false)
+                .setNonce(nonce)
+                .build()
+            val request=GetCredentialRequest.Builder()
+                .addCredentialOption(option)
+                .build()
+            credentialManager.getCredentialAsync(
+                this,request,CancellationSignal(),mainExecutor,
+                object:CredentialManagerCallback<GetCredentialResponse,GetCredentialException>{
+                    override fun onResult(result:GetCredentialResponse){
+                        val credential=result.credential
+                        if(credential is CustomCredential && credential.type==GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL){
+                            try{
+                                val googleCredential=GoogleIdTokenCredential.createFrom(credential.data)
+                                finishGoogleSignIn(googleCredential.idToken,nonce)
+                            }catch(_:GoogleIdTokenParsingException){
+                                status.text="Google: credential invalide."
+                            }
+                        }else{
+                            status.text="Google: type de credential non supporté."
+                        }
+                    }
+                    override fun onError(e:GetCredentialException){
+                        status.text="Google: "+(e.message ?: "connexion annulée")
+                    }
+                }
+            )
+        },{msg->status.text=msg})
+    }
+
+    private fun finishGoogleSignIn(idToken:String,nonce:String) {
+        if(idToken.isBlank() || nonce.isBlank()){
+            status.text="Google: credential manquante."
+            return
+        }
+        status.text="Validation du compte Google..."
+        post("/api/auth/google",JSONObject().put("idToken",idToken).put("nonce",nonce),null,{j->
+            token=j.optString("accessToken")
+            refreshToken=j.optString("refreshToken")
+            val usr=j.optJSONObject("user")
+            userId=usr?.optString("id").orEmpty()
+            username=usr?.optString("username").orEmpty()
+            if(token.isBlank() || refreshToken.isBlank() || userId.isBlank()){
+                status.text="Google: session serveur invalide."
+            }else{
+                saveSession()
+                home()
+            }
+        },{msg->status.text=msg})
     }
 
     private fun registerDialog() {
@@ -258,6 +629,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        updateExternalWalletStatus()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
     }
 
@@ -276,9 +648,53 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onBackPressed() {
+        if(modeOverlay!=null){
+            dismissGameModeOverlay()
+            return
+        }
+        when (currentScreen) {
+            "offlineMenu" -> home()
+            "offline" -> offlineMenu()
+            "room" -> home()
+            "lobby" -> home()
+            "profile", "wallet", "history", "social", "events", "tutorials", "settings" -> home()
+            else -> super.onBackPressed()
+        }
+    }
+
+    private fun smokeMarker(value:String) {
+        if (!BuildConfig.DEBUG) return
+        runCatching {
+            getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                .edit().putString("last_marker", value).apply()
+        }
+        android.util.Log.i("LudoMadaSmoke", "MARKER=$value")
+    }
+
+    private fun smokeLastMarker(): String =
+        if (!BuildConfig.DEBUG) "" else runCatching {
+            getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                .getString("last_marker", "") ?: ""
+        }.getOrDefault("")
+
     private fun home() {
         currentScreen="home"
-        setContentView(PremiumHeroViewV2(this))
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        // Re-assert landscape after returning from login/offline navigation; cloud Android surfaces can retain portrait bounds.
+        window.decorView.post { requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor=Color.TRANSPARENT
+        window.navigationBarColor=Color.TRANSPARENT
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+        ) and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
+        window.setBackgroundDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(3,12,36),Color.rgb(57,18,67))))
+        val hero = PremiumHeroViewV2(this)
+        if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
+        setContentView(hero)
         refreshAccountBalance()
     }
 
@@ -297,7 +713,11 @@ class MainActivity : Activity() {
         add(card("2 • Lancer le dé","Chaque lancer est validé côté serveur.",emerald),82,3,5)
         add(card("3 • Déplacer un pion","Choisis un pion autorisé après le dé.",Color.rgb(126,82,188)),82,3,5)
         add(card("4 • Gagner","La partie et le portefeuille sont réconciliés côté serveur.",gold),82,3,8)
-        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        val lobbyHomeButton=button("← Accueil",Color.rgb(70,82,100)){home()}.apply{
+            contentDescription="Accueil"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        add(lobbyHomeButton,52)
     }
 
     private fun events() {
@@ -335,7 +755,57 @@ class MainActivity : Activity() {
         }.setNegativeButton("Fermer",null).show()
     }
 
-    private fun wallet() {
+    private fun paymentTile(title:String,subtitle:String,logo:String,accent:Int,action:(()->Unit)):LinearLayout{
+        val box=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(8),dp(8),dp(8),dp(8));isClickable=true;isFocusable=true
+            background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.WHITE,Color.rgb(232,239,249))).apply{cornerRadius=dp(19).toFloat();setStroke(dp(1),Color.rgb(207,220,237))}
+            elevation=dp(7).toFloat();contentDescription="$title • $subtitle";importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES;setOnClickListener{action()}
+            setOnTouchListener{v,e->when(e.actionMasked){MotionEvent.ACTION_DOWN->v.animate().translationY(dp(1).toFloat()).scaleX(.985f).scaleY(.985f).setDuration(70L).start();MotionEvent.ACTION_UP,MotionEvent.ACTION_CANCEL->v.animate().translationY(0f).scaleX(1f).scaleY(1f).setDuration(120L).start()};false}
+        }
+        val mark=TextView(this).apply{text=logo;textSize=17f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD);setTextColor(Color.WHITE);contentDescription="$title logo";importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES;background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(accent,darker(accent))).apply{cornerRadius=dp(14).toFloat();setStroke(dp(1),0x66FFFFFF)}}
+        box.addView(mark,LinearLayout.LayoutParams(dp(52),dp(52)))
+        val tx=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(10),0,dp(4),0)}
+        tx.addView(label(title,14.5f,true,Color.rgb(24,41,65)))
+        tx.addView(label(subtitle,10.5f,false,Color.rgb(98,112,132)),LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(2)})
+        box.addView(tx,LinearLayout.LayoutParams(0,-2,1f));box.addView(label("›",25f,true,Color.rgb(138,151,170)))
+        return box
+    }
+
+    private fun connectWallets() {
+        if (!BuildConfig.REOWN_ENABLED) {
+            Toast.makeText(this, "Connect Wallet: REOWN_PROJECT_ID mbola tsy configuré.", Toast.LENGTH_LONG).show()
+            return
+        }
+        runCatching {
+            val klass = Class.forName("com.ludomadagascar.ReownWalletActivity")
+            startActivity(Intent(this, klass))
+        }.onFailure {
+            Toast.makeText(this, "Connect Wallet: Reown indisponible.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun updateExternalWalletStatus() {
+        if (!BuildConfig.REOWN_ENABLED) {
+            externalWalletView?.text = "Wallet externe: configuration requise"
+            return
+        }
+        runCatching {
+            val bridge = Class.forName("com.ludomadagascar.ReownRuntime")
+            val summary = bridge.getMethod("accountSummary").invoke(null) as? String ?: ""
+            if (summary.isNotBlank()) {
+                externalWalletView?.text = "Connecté • " + summary
+                externalWalletView?.setTextColor(Color.rgb(21,139,92))
+            } else {
+                externalWalletView?.text = "Wallet externe: non connecté"
+                externalWalletView?.setTextColor(Color.rgb(97,110,128))
+            }
+        }.onFailure {
+            externalWalletView?.text = "Wallet externe: prêt à connecter"
+            externalWalletView?.setTextColor(Color.rgb(97,110,128))
+        }
+    }
+
+    fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
         walletBalanceView=label("— Ar",27f,true,Color.rgb(35,150,84));walletBalanceView!!.gravity=Gravity.CENTER
@@ -343,17 +813,60 @@ class MainActivity : Activity() {
         balanceCard.addView(label("SOLDE MGA",10f,true,Color.rgb(105,116,132)),LinearLayout.LayoutParams(-1,dp(20)))
         balanceCard.addView(walletBalanceView,LinearLayout.LayoutParams(-1,dp(45)))
         add(balanceCard,82,6,8)
+        add(paymentTile("Connect Wallet","Wallets externes • Reown AppKit","↗",royal){connectWallets()},76,3,4)
+        externalWalletView = label("Wallet externe: non connecté", 12f, true, Color.rgb(97,110,128)).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            background = shape(Color.rgb(242,247,253), 16f, Color.rgb(215,226,240))
+            contentDescription = "CONNECTED_EXTERNAL_WALLET"
+        }
+        add(externalWalletView!!, 42, 0, 6)
         val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        actions.addView(button("➕ Dépôt",Color.rgb(35,150,84)){pay(true)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
-        actions.addView(button("➖ Retrait",Color.rgb(210,55,65)){pay(false)},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
+        actions.addView(button("🔗 Connect Wallet",Color.rgb(37,93,196)){connectWallets()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
+        actions.addView(button("⇄ Conversion Crypto",Color.rgb(35,150,84)){cryptoDialog()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
         add(actions,52)
-        add(button("💠 Binance Pay / Crypto — Conversion",Color.rgb(45,105,210)){cryptoDialog()},52)
+        sectionTitle("Paiements disponibles","Choisis un service pour ouvrir son parcours sécurisé.")
+        val payRow1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        payRow1.addView(paymentTile("MVola","DÉSACTIVÉ • reste OFF","mV",Color.rgb(28,111,224)){Toast.makeText(this,"MVola reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        payRow1.addView(paymentTile("Airtel Money","DÉSACTIVÉ • reste OFF","AIR",Color.rgb(205,40,55)){Toast.makeText(this,"Airtel Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(payRow1,72,0,0)
+        val payRow2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        payRow2.addView(paymentTile("Orange Money","DÉSACTIVÉ • reste OFF","O",Color.rgb(247,133,18)){Toast.makeText(this,"Orange Money reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        payRow2.addView(paymentTile("Binance Pay","DÉSACTIVÉ • Binance Pay OFF","B",Color.rgb(25,44,74)){Toast.makeText(this,"Binance Pay reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(payRow2,72,0,6)
+        sectionTitle("Crypto-actifs","Actifs séparés de Binance Pay • connexion externe sans balance fictive")
+        add(label("USDT et ETH peuvent utiliser un wallet externe EVM. BTC, SOL et TRX restent affichés sans balance fictive tant que leur connecteur natif n’est pas configuré.", 11f, false, Color.rgb(102,114,132)), -2, 0, 4)
+        val cr1=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        cr1.addView(paymentTile("Tether / USDT","Wallet externe • actif","₮",Color.rgb(38,145,105)){connectWallets()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        cr1.addView(paymentTile("Bitcoin / BTC","Asset actif • connecteur natif requis","₿",Color.rgb(242,145,28)){Toast.makeText(this,"BTC: le connecteur wallet natif Bitcoin n’est pas encore configuré. Binance Pay reste OFF.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(cr1,72,0,0)
+        val cr2=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        cr2.addView(paymentTile("Ethereum / ETH","Wallet externe • actif","Ξ",Color.rgb(76,92,150)){connectWallets()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        cr2.addView(paymentTile("Solana / SOL","Asset actif • connecteur natif requis","SOL",Color.rgb(95,62,155)){Toast.makeText(this,"SOL: le connecteur wallet natif Solana n’est pas encore configuré. Binance Pay reste OFF.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(cr2,72,0,0)
+        val cr3=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        cr3.addView(paymentTile("Tron / TRX","Asset actif • connecteur natif requis","TRX",Color.rgb(210,48,58)){Toast.makeText(this,"TRX: le connecteur wallet natif TRON n’est pas encore configuré. Binance Pay reste OFF.",Toast.LENGTH_LONG).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(0,dp(3),dp(4),dp(3))})
+        cr3.addView(paymentTile("Binance Pay","DÉSACTIVÉ • séparé des wallets externes","B",Color.rgb(25,44,74)){Toast.makeText(this,"Binance Pay reste désactivé.",Toast.LENGTH_SHORT).show()},LinearLayout.LayoutParams(0,dp(72),1f).apply{setMargins(dp(4),dp(3),0,dp(3))})
+        add(cr3,72,0,6)
         add(button("📜 Historique",Color.rgb(70,82,100)){history()},52);add(button("↻ Havaozina",Color.rgb(37,93,196)){loadWallet()},52);add(button("⌂ Accueil",Color.rgb(55,65,80)){home()},52)
         bottomNav("wallet")
         loadWallet()
     }
 
     private fun loadWallet() {
+        // Wallet UI remains reachable from Premium Home even before authentication.
+        // Never fabricate a balance and never turn an unauthenticated 401 into a login redirect.
+        if(token.isBlank()){
+            accountBalanceMGA=0L
+            runOnUiThread{
+                topBalanceView?.text="— Ar"
+                if(currentScreen=="wallet"){
+                    status.text="Connexion requise pour afficher le solde."
+                    walletBalanceView?.text="— Ar"
+                }
+            }
+            return
+        }
         get("/api/wallet"){j->
             val value=j.optString("balanceMGA").toLongOrNull() ?: 0L
             accountBalanceMGA=value
@@ -373,36 +886,134 @@ class MainActivity : Activity() {
         add(button("↻ Havaozina",Color.rgb(37,93,196)){loadHistory()},52);add(button("← Wallet",Color.rgb(70,82,100)){wallet()},52);loadHistory()
     }
 
-    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}\n")}}}} }
+    private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
-    private fun pay(deposit:Boolean) {
-        val amount=EditText(this).apply { hint="Montant (Ar)";inputType=2;setPadding(dp(12),0,dp(12),0) }
-        val contact=EditText(this).apply { hint="Téléphone ou identifiant (si requis)";inputType=1;setPadding(dp(12),0,dp(12),0) }
-        val methods=arrayOf("MVola","Airtel Money","Orange Money","Binance Pay / Crypto")
-        val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
-        box.addView(amount,LinearLayout.LayoutParams(-1,dp(52)));box.addView(contact,LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(6)})
-        box.addView(label("Méthodes: MVola • Airtel Money • Orange Money • Binance Pay/Crypto. Le serveur refuse automatiquement tout provider non activé; aucun crédit fictif.",11f,false,Color.rgb(95,107,125)).apply{setPadding(dp(2),dp(8),dp(2),0)})
-        AlertDialog.Builder(this).setTitle(if(deposit)"Dépôt" else "Retrait").setView(box).setSingleChoiceItems(methods,0,null)
-            .setPositiveButton("Hanohy"){d,_->val a=amount.text.toString().toLongOrNull()?:0;val selected=(d as AlertDialog).listView.checkedItemPosition.coerceIn(0,3);if(!deposit && selected==0){Toast.makeText(this,"MVola retrait: API non supportée par le provider actuel.",Toast.LENGTH_LONG).show();return@setPositiveButton};val method=arrayOf("MVOLA","AIRTEL_MONEY","ORANGE_MONEY","BINANCE")[selected];if(a>0)post(if(deposit)"/api/wallet/deposit" else "/api/wallet/withdraw",JSONObject().put("amountMGA",a).put("method",method).apply{if(contact.text.isNotBlank())put("customerPhone",contact.text.toString().trim())},UUID.randomUUID().toString(),{status.text=if(deposit)"Dépôt envoyé: PENDING" else "Retrait envoyé: PENDING";loadWallet()},{msg->status.text=msg})}
-            .setNegativeButton("Aoka",null).show()
+    private var modeOverlay: FrameLayout? = null
+
+    private fun dismissGameModeOverlay() {
+        modeOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        modeOverlay=null
     }
 
-    private fun gameModeDialog() {
-        AlertDialog.Builder(this).setTitle("Choisissez le mode")
-            .setItems(arrayOf("🌐 En ligne — Joueurs réels","👥 Hors-ligne — 2 à 4 joueurs")){_,which->if(which==0)lobby() else offlineMenu()}
-            .setNegativeButton("Aoka",null).show()
+    fun gameModeDialog() {
+        android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
+        dismissGameModeOverlay()
+        val host=findViewById<ViewGroup>(android.R.id.content) ?: run {
+            android.util.Log.e("LudoMada","GAME_MODE_NO_CONTENT_ROOT")
+            return
+        }
+        val overlay=FrameLayout(this).apply{
+            setBackgroundColor(Color.argb(150,0,0,0))
+            isClickable=true
+            isFocusable=true
+            contentDescription="GAME_MODE_DIALOG"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            descendantFocusability=ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val panel=LinearLayout(this).apply{
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22),dp(18),dp(22),dp(18))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))
+            ).apply{
+                cornerRadius=dp(24).toFloat()
+                setStroke(dp(1),0x66EDB734)
+            }
+            elevation=dp(18).toFloat()
+            isClickable=false
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
+            gravity=Gravity.CENTER
+            contentDescription="Choisissez le mode"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
+        }
+        panel.addView(title,LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(label("La partie se joue directement depuis la scène 3D.",11f,false,0xB8FFFFFF.toInt()).apply{
+            gravity=Gravity.CENTER
+        },LinearLayout.LayoutParams(-1,dp(28)))
+        val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){
+            dismissGameModeOverlay()
+            offlineMenu()
+        }.apply{
+            contentDescription="MODE_OFFLINE"
+            isFocusable=true
+            isClickable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        val online=button("🌐  En ligne — Joueurs réels",gold){
+            dismissGameModeOverlay()
+            lobby()
+        }.apply{
+            contentDescription="MODE_ONLINE"
+            isFocusable=true
+            isClickable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
+        panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
+        overlay.addView(panel,FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),
+            dp(210),
+            Gravity.CENTER
+        ))
+        overlay.setOnClickListener{ dismissGameModeOverlay() }
+        host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
+        modeOverlay=overlay
+        android.util.Log.i("LudoMada","GAME_MODE_OVERLAY_ADDED")
+        overlay.post{
+            offline.requestFocus()
+            offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        }
     }
-
     private fun cryptoDialog() {
         if(token.isBlank()){login();return}
-        val crypto=EditText(this).apply{hint="Montant crypto (0.1 / 0.5 / 1 / 2 / 5)";inputType=8194;setPadding(dp(12),0,dp(12),0)}
+        val crypto=EditText(this).apply{hint="Montant crypto";inputType=8194;setPadding(dp(12),0,dp(12),0)}
         val mga=EditText(this).apply{hint="Montant MGA";inputType=2;setPadding(dp(12),0,dp(12),0)}
-        val info=label("Récupération du taux serveur…",11f,false,Color.rgb(95,107,125))
+        val assetButton=Button(this).apply{isAllCaps=false;text="Asset: chargement…";setTextColor(Color.WHITE);background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(38,102,185),Color.rgb(24,53,94))).apply{cornerRadius=dp(16).toFloat()}}
+        val info=label("Lecture de la configuration crypto serveur…",11f,false,Color.rgb(95,107,125))
+        val external=label(
+            if(BuildConfig.REOWN_ENABLED) "Wallet externe: Reown AppKit prêt — connecte ton wallet EVM."
+            else "Wallet externe: REOWN_PROJECT_ID manquant dans cette build.",
+            10.5f,false,Color.rgb(95,107,125)
+        )
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(8),0,dp(8),0)}
+        box.addView(assetButton,LinearLayout.LayoutParams(-1,dp(50)).apply{bottomMargin=dp(7)})
         box.addView(crypto,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
         box.addView(mga,LinearLayout.LayoutParams(-1,dp(52)).apply{bottomMargin=dp(7)})
-        box.addView(info,LinearLayout.LayoutParams(-1,dp(42)))
-        AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
+        box.addView(info,LinearLayout.LayoutParams(-1,dp(46)))
+        box.addView(external,LinearLayout.LayoutParams(-1,dp(54)))
+        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        val connect=button("🔗 Connecter Wallet",Color.rgb(37,93,196)){connectWallets()}
+        val convert=button("⇄ Conversion",Color.rgb(35,150,84)){}
+        actions.addView(connect,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(4),0)})
+        actions.addView(convert,LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(4),dp(4),0,0)})
+        box.addView(actions,LinearLayout.LayoutParams(-1,dp(58)))
+        var assets=emptyList<String>()
+        var rates=JSONObject()
+        var selected=""
+        lateinit var dialog: AlertDialog
+        fun applyAsset(asset:String){
+            selected=asset.uppercase()
+            assetButton.text="Asset crypto: $selected"
+            val rate=rates.optDouble(selected,0.0)
+            info.tag=rate
+            info.text=if(rate>0) "1 $selected = ${formatDecimal(rate)} Ar" else "Taux non configuré pour $selected."
+        }
+        assetButton.setOnClickListener{
+            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->applyAsset(assets[which])}.setNegativeButton("Aoka",null).show()
+        }
+        convert.setOnClickListener{
+            val rateHolder=info.tag as? Double ?: 0.0
+            if(rateHolder<=0) Toast.makeText(this,"Taux crypto non disponible.",Toast.LENGTH_LONG).show()
+            else Toast.makeText(this,"Conversion active avec le taux serveur. Aucun solde n’est crédité ici.",Toast.LENGTH_LONG).show()
+        }
+        dialog=AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
             .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
                 val rateHolder=info.tag as? Double ?: 0.0
                 if(rateHolder>0){
@@ -411,15 +1022,78 @@ class MainActivity : Activity() {
                 }
             }
             .setPositiveButton("CONVERTIR"){_,_->Toast.makeText(this,"Conversion calculée avec le taux serveur. Aucun solde n’est crédité sans provider actif.",Toast.LENGTH_LONG).show()}
-            .setNegativeButton("Aoka",null).show()
+            .setNegativeButton("Aoka",null).create()
+        dialog.show()
         get("/api/payments/config"){j->
-            val b=j.optJSONObject("BINANCE");val rate=b?.optDouble("mgaRate",0.0)?:0.0;val cur=b?.optString("currency","CRYPTO")?:"CRYPTO";info.tag=rate
-            runOnUiThread{info.text=if(rate>0) "Taux: 1 $cur = ${formatDecimal(rate)} Ar • Provider ${if(b?.optBoolean("enabled",false)==true) "ACTIF" else "non activé"}" else "Taux crypto non configuré sur le serveur. Provider non activé."}
+            val b=j.optJSONObject("BINANCE")
+            val arr=b?.optJSONArray("currencies")
+            assets=(0 until (arr?.length()?:0)).mapNotNull{arr?.optString(it)?.trim()?.uppercase()?.takeIf{v->v.isNotBlank()}}
+            rates=b?.optJSONObject("rates")?:JSONObject()
+            val enabled=b?.optBoolean("enabled",false)==true
+            runOnUiThread{
+                if(assets.isNotEmpty()) applyAsset(assets.first()) else {assetButton.text="Crypto: aucun asset configuré";info.text="Aucun crypto-actif avec rate serveur n’est configuré."}
+                external.text = when {
+                    !BuildConfig.REOWN_ENABLED -> "Wallet externe: REOWN_PROJECT_ID manquant dans cette build."
+                    enabled -> "Wallet externe: Reown AppKit actif. Binance Pay serveur reste une voie séparée."
+                    else -> "Wallet externe: Reown AppKit actif. Binance Pay serveur reste OFF."
+                }
+            }
         }
     }
+
     private fun formatDecimal(v:Double):String = String.format(java.util.Locale.US,"%.8f",v).trimEnd('0').trimEnd('.')
     private fun lobby() {
         page("lobby","Lalao")
+        val lobbyMusicRow=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            contentDescription="Ambiance musicale"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        lobbyMusicRowRef=lobbyMusicRow
+        lobbyMusicRow.addView(label("Ambiance musicale",13f,true,Color.rgb(88,99,116)),LinearLayout.LayoutParams(0,dp(52),1f))
+
+        musicButton=musicIconButton()
+
+        // Stable automation target: identity never changes with state/locale.
+        musicA11yButton=Button(this).apply{
+            text=""
+            setTextColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)
+            contentDescription="LOBBY_MUSIC_TOGGLE"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable=true
+            isClickable=true
+            minWidth=0
+            minHeight=0
+            setOnClickListener{
+                music.toggle()
+                updateMusicButton()
+            }
+        }
+
+        // Non-clickable state probe for deterministic Ramus assertions.
+        musicStateA11y=TextView(this).apply{
+            text=if(music.enabled()) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+            textSize=1f
+            setTextColor(Color.WHITE)
+            alpha=0.01f
+            contentDescription=text
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+
+        val musicSlot=FrameLayout(this).apply{
+            addView(musicButton,FrameLayout.LayoutParams(dp(52),dp(52)))
+            addView(musicA11yButton,FrameLayout.LayoutParams(dp(52),dp(52)))
+            val stateLp=FrameLayout.LayoutParams(dp(3),dp(3))
+            stateLp.leftMargin=dp(1); stateLp.topMargin=dp(1)
+            addView(musicStateA11y,stateLp)
+        }
+        lobbyMusicRow.addView(musicSlot,LinearLayout.LayoutParams(dp(52),dp(52)))
+        add(lobbyMusicRow,52,0,5)
+
+        updateMusicButton()
+
         add(card("Choisir la mise","500 • 1 000 • 2 000 • 5 000 • 10 000 • 20 000 Ar",Color.rgb(37,93,196)))
         status=label("Safidio ny vola hilalaovana.",14f,false,Color.rgb(88,99,116));add(status)
         val rows=listOf(entryFees.take(3),entryFees.drop(3))
@@ -458,11 +1132,17 @@ class MainActivity : Activity() {
 
     private fun room() {
         page("room","Room")
-        add(card("Mise","$entryFee Ar",Color.rgb(37,93,196)))
-        add(card("Prize pool","$entryFee Ar × joueurs",Color.rgb(235,170,25)))
-        add(label("Game ID: $gameId",13f,false,Color.rgb(88,99,116)))
-        status=label("Miandry mpilalao...",15f,true,Color.rgb(37,93,196));add(status)
-        add(button("↻ Havaozina",Color.rgb(37,93,196)){refreshLobby()},52);add(button("← Lalao",Color.rgb(70,82,100)){gameId="";lobby()},52)
+        sectionTitle("Room de jeu","Prépare ta partie avant le lancement")
+        add(card("MISE","$entryFee Ar",Color.rgb(37,93,196)),78,3,5)
+        add(card("JOUEURS","En attente • 2 à 4 joueurs",Color.rgb(126,82,188)),78,3,5)
+        add(label("CODE DE ROOM",12f,true,Color.rgb(88,99,116)),28,3,2)
+        add(card("$gameId","Partage ce code avec tes joueurs",Color.rgb(12,147,87)),74,3,6)
+        status=label("Connexion au lobby…",14f,true,Color.rgb(37,93,196));add(status,42,3,4)
+        val actions=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
+        actions.addView(button("↻ Actualiser",Color.rgb(37,93,196)){refreshLobby()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(0,0,dp(5),0)})
+        actions.addView(button("Quitter",Color.rgb(70,82,100)){gameId="";lobby()},LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(5),0,0,0)})
+        add(actions,52,3,8)
+        add(card("Lancement automatique","La partie démarre dès que 2 joueurs sont présents. État et portefeuille restent validés côté serveur.",Color.rgb(235,170,25)),82,3,8)
         refreshLobby()
     }
 
@@ -484,33 +1164,77 @@ class MainActivity : Activity() {
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
-        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)))
-        add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
-        add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
-        add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
-        add(button("← Accueil",Color.rgb(70,82,100)){home()},52)
+        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)),74,2,5)
+
+        // Compact 2×2 selector: all actions remain above the fold on landscape.
+        val row1=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
+        }
+        row1.addView(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)}.apply{
+            contentDescription="OFFLINE_2_PLAYERS"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,0,dp(5),dp(4))})
+        row1.addView(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)}.apply{
+            contentDescription="OFFLINE_3_PLAYERS"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),0,0,dp(4))})
+        add(row1,48,0,0)
+
+        val row2=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER
+        }
+        val offlineFourButton=button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)}.apply{
+            contentDescription="OFFLINE_4_PLAYERS"
+            isFocusable=true
+            isClickable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        row2.addView(offlineFourButton, LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(0,dp(4),dp(5),dp(5))})
+        val homeButton=button("← Accueil",Color.rgb(70,82,100)){home()}.apply{
+            contentDescription="Accueil"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        row2.addView(homeButton,
+            LinearLayout.LayoutParams(0,dp(48),1f).apply{setMargins(dp(5),dp(4),0,dp(5))})
+        add(row2,48,0,0)
     }
 
     private fun startOffline(players:Int) {
+        smokeMarker("OFFLINE_START:"+players)
+        android.util.Log.i("LudoMada","OFFLINE_START players="+players)
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
         offlineState=JSONObject().put("players",arr)
+        smokeMarker("OFFLINE_STATE_READY")
         offlineGame(players)
     }
 
     private fun offlineGame(players:Int) {
+        smokeMarker("OFFLINE_PAGE_BEFORE")
         page("offline","Ludo hors-ligne")
-        val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
-        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
-        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        host.animateState()
-        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
-    }
+        smokeMarker("OFFLINE_PAGE_AFTER")
+        smokeMarker("OFFLINE_BEFORE_BOARD_CTOR")
+        val host=LudoBoardView(this)
+        host.onRollTap={offlineRoll(host)}
+        host.onPawnTap={offlineMove(host,players,it)}
+        host.state=offlineState
+        host.player=offlineTurn
+        offlineHost=host
+        host.contentDescription="GAMEPLAY_3D_OFFLINE_" + players + "P"
+        host.importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        smokeMarker("OFFLINE_AFTER_BOARD_CTOR")
 
+        val frame=FrameLayout(this)
+        frame.setBackgroundColor(Color.rgb(7,16,25))
+        frame.addView(host,FrameLayout.LayoutParams(-1,-1))
+        root.addView(frame,LinearLayout.LayoutParams(-1,0,1f))
+        smokeMarker("OFFLINE_AFTER_BOARD_ADD")
+
+        addGameplayHud(frame,players)
+        host.animateState()
+        smokeMarker("OFFLINE_AFTER_ANIMATE")
+        smokeMarker("OFFLINE_DONE")
+    }
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
     private fun offlineCanMove(pos:Int,dice:Int):Boolean = if(dice !in 1..6) false else if(pos<0) dice==6 else pos+dice<=57
     private fun offlineHasLegalMove(playersState:org.json.JSONArray,dice:Int,player:Int):Boolean {
@@ -528,6 +1252,7 @@ class MainActivity : Activity() {
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
+        offlineState?.put("dice",offlineDice)
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
             offlineDice=0
@@ -562,7 +1287,7 @@ class MainActivity : Activity() {
                 }
             }
         }
-        offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        offlineDice=0;offlineState?.put("dice",0);host.state=offlineState;host.player=offlineTurn;host.animateState()
         val finished=(0 until minOf(4,ts.length())).all{ts.optJSONObject(it)?.optInt("pos",-1)==57}
         if(finished){
             offlineState?.put("phase","FINISHED")?.put("winnerId","offline-$offlineTurn")
@@ -576,11 +1301,8 @@ class MainActivity : Activity() {
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
-        val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        status=st;add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
-        val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        val host=LudoBoardView(this);host.onRollTap={roll()};host.onPawnTap={move(it)};boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        status=st
         updateBoard(host);root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
     }
 
@@ -611,7 +1333,17 @@ class MainActivity : Activity() {
             refreshState()
         },{msg->if(::status.isInitialized)status.text=msg})
     }
-    private fun move(i:Int){ requestMove(i) }
+    private fun move(i:Int){
+        val ps=state?.optJSONArray("players")
+        val pi=playerIndex()
+        val dice=state?.optInt("dice",0)?:0
+        val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(i)?.optInt("pos",-1)?:-1
+        if(pi !in 0..3 || dice !in 1..6 || (pos<0 && dice!=6) || (pos>=0 && pos+dice>57)){
+            if(::status.isInitialized) status.text="Tsy afaka mihetsika io pion io amin'ity dé ity."
+            return
+        }
+        requestMove(i)
+    }
 
     private fun showGameEntryLoading() {
         if(moveOverlay!=null) return
@@ -789,293 +1521,31 @@ class MainActivity : Activity() {
         }
     }
 
-    private inner class LudoBoardView(context:Context):View(context){
-        var state:JSONObject?=null;var player=-1;private val paints=Array(4){Paint(Paint.ANTI_ALIAS_FLAG)}
-        private val cols=intArrayOf(Color.rgb(218,60,65),Color.rgb(42,155,86),Color.rgb(232,178,34),Color.rgb(54,105,205))
-        private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
-        private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-        private var stateAnimator:android.animation.ValueAnimator?=null
-        private var diceRolling=false
-        private var dicePhase=0f
-        private val jumpLift=Array(4){FloatArray(4)}
-        init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
-        override fun onDraw(canvas:Canvas){
-            super.onDraw(canvas)
-            val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
-            val ox=(w-s)/2f; val oy=(h-s)/2f; val cell=s/15f
-            val board=Paint(Paint.ANTI_ALIAS_FLAG)
-            board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
-            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(24).toFloat(),dp(24).toFloat(),board)
-            board.clearShadowLayer(); board.shader=null
-            drawZone(canvas,ox,oy,0,0,Color.rgb(220,60,66),cell)
-            drawZone(canvas,ox,oy,9,0,Color.rgb(42,158,92),cell)
-            drawZone(canvas,ox,oy,0,9,Color.rgb(238,184,43),cell)
-            drawZone(canvas,ox,oy,9,9,Color.rgb(58,109,211),cell)
-            val pathPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(246,248,251);style=Paint.Style.FILL}
-            val pathStroke=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(222,228,236);style=Paint.Style.STROKE;strokeWidth=dp(0.8f).toFloat();setStrokeCap(Paint.Cap.ROUND)}
-            for((r,c) in visualPath()){drawCell(canvas,ox,oy,cell,r,c,pathPaint,pathStroke)}
-            val homePaints=arrayOf(
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55DC3C42},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x5542AE68},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55EEB82B},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x553A79D5}
-            )
-            for(i in 1..5){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[0])}
-            for(i in 9..13){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[1])}
-            for(i in 9..13){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[2])}
-            for(i in 1..5){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[3])}
-            val starCells=arrayOf(1 to 6,6 to 1,8 to 13,13 to 8)
-            for((r,c) in starCells){drawSafe(canvas,ox,oy,cell,r,c)}
-            drawCenter(canvas,ox,oy,cell)
-            drawDie(canvas,ox+7.5f*cell,oy+7.5f*cell,cell)
-            drawStartMarkers(canvas,ox,oy,cell)
-            drawTokens(canvas,ox,oy,cell)
+    // Gameplay rendering is implemented by the dedicated OpenGL ES scene in LudoBoardView.kt.
+    private fun musicLabel():String = if(music.enabled()) "Musique activée" else "Musique désactivée"
+    private fun updateMusicButton(){
+        val enabled=music.enabled()
+        val humanState=if(enabled) "Musique activée" else "Musique désactivée"
+        val stableState=if(enabled) "MUSIC_TOGGLE_ON" else "MUSIC_TOGGLE_OFF"
+        if(::musicButton.isInitialized){
+            musicButton.text=if(enabled) "🎵" else "🔇"
+            musicButton.contentDescription=humanState
         }
-        private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,color:Int,cell:Float){
-            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color}
-            outer.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x33000000)
-            c.drawRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,outer)
-            outer.clearShadowLayer()
-            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE}
-            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(12).toFloat(),dp(12).toFloat(),inner)
-            val shade=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x12000000}
-            c.drawRoundRect(ox+(r+1.15f)*cell,oy+(col+1.2f)*cell,ox+(r+4.85f)*cell,oy+(col+4.85f)*cell,dp(10).toFloat(),dp(10).toFloat(),shade)
-            val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            for((sx,sy) in sockets){
-                val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
-                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x17000000}
-                c.drawCircle(cx,cy,cell*.53f,ring)
-                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;alpha=120}
-                c.drawCircle(cx,cy,cell*.40f,hole)
-            }
+        musicA11yButton?.apply{
+            contentDescription="LOBBY_MUSIC_TOGGLE"
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
-
-        private fun drawTokens(c:Canvas,ox:Float,oy:Float,cell:Float){
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
-                val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
-                val lift=jumpLift[pi][ti]
-                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player)
-                if(pi==player && tokenCanMoveForUi(pi,ti)) drawLegalHint(c,ox+cc*cell,oy+(rr-lift)*cell,cell)
-            }
+        musicStateA11y?.apply{
+            text=stableState
+            contentDescription=stableState
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
-        private fun tokenCoord(pi:Int,ti:Int):FloatArray{
-            val fallback=arrayOf(
-                arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f),
-                arrayOf(10.8f to 1.8f,13.2f to 1.8f,10.8f to 4.2f,13.2f to 4.2f),
-                arrayOf(1.8f to 10.8f,4.2f to 10.8f,1.8f to 13.2f,4.2f to 13.2f),
-                arrayOf(10.8f to 10.8f,13.2f to 10.8f,10.8f to 13.2f,13.2f to 13.2f))
-            var rr=fallback[pi][ti].first;var cc=fallback[pi][ti].second
-            val ps=state?.optJSONArray("players");val ts=ps?.optJSONObject(pi)?.optJSONArray("tokens")
-            val pos=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            if(pos in 0..51){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-            else if(pos in 52..57){
-                val finish=arrayOf(
-                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f))
-                val k=(pos-52)*2;rr=finish[pi][k];cc=finish[pi][k+1]
-            }
-            return floatArrayOf(rr,cc)
+        lobbyMusicRowRef?.apply{
+            contentDescription="Ambiance musicale"
+            sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         }
-        fun animateState(){
-            val targets=Array(4){Array(4){FloatArray(2)}}
-            val oldPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-            val newPos=Array(4){IntArray(4){-1}}
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                targets[pi][ti][0]=q[0];targets[pi][ti][1]=q[1]
-                val ts=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")
-                newPos[pi][ti]=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(display[pi][ti][0].isNaN()){
-                    display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]
-                }
-                oldPos[pi][ti]=lastPos[pi][ti]
-                if(oldPos[pi][ti]==Int.MIN_VALUE) lastPos[pi][ti]=newPos[pi][ti]
-            }
-            stateAnimator?.cancel()
-            var maxSteps=0
-            for(pi in 0..3)for(ti in 0..3){
-                val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
-            }
-            val duration=maxSteps*125L+340L
-            stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
-                this.duration=duration
-                interpolator=android.view.animation.DecelerateInterpolator(1.5f)
-                addUpdateListener{va->
-                    val f=va.animatedValue as Float
-                    for(pi in 0..3)for(ti in 0..3){
-                        val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                        if(from>=0 && to>from){
-                            val span=(to-from).coerceAtLeast(1)
-                            val u=f*span
-                            val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
-                            val local=u-step
-                            jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
-                            val base=((pi*13)+from+step)%52
-                            val q1=visualPath()[base]
-                            val q2=visualPath()[(base+1)%52]
-                            display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
-                            display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
-                        }else if(f>=1f){
-                            jumpLift[pi][ti]=0f
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                        }
-                    }
-                    invalidate()
-                }
-                addListener(object:android.animation.AnimatorListenerAdapter(){
-                    override fun onAnimationEnd(animation:android.animation.Animator){
-                        for(pi in 0..3)for(ti in 0..3){
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                            jumpLift[pi][ti]=0f
-                            lastPos[pi][ti]=newPos[pi][ti]
-                        }
-                        invalidate()
-                    }
-                })
-                start()
-            }
-        }
-
-        private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
-            val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),stroke)
-        }
-        private fun drawSafe(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int){
-            val cx=ox+(col+.5f)*cell;val cy=oy+(r+.5f)*cell
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(205,211,221)}
-            c.drawCircle(cx,cy,cell*.28f,p);p.color=Color.WHITE;c.drawCircle(cx,cy,cell*.18f,p)
-            p.color=Color.rgb(159,170,187);val star=Path()
-            for(i in 0..9){val a=-Math.PI/2+i*Math.PI/5;val rad=if(i%2==0)cell*.27f else cell*.12f;val x=cx+(kotlin.math.cos(a)*rad).toFloat();val y=cy+(kotlin.math.sin(a)*rad).toFloat();if(i==0)star.moveTo(x,y)else star.lineTo(x,y)}
-            star.close();c.drawPath(star,p)
-        }
-        private fun drawCenter(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val pts=arrayOf(floatArrayOf(ox+6*cell,oy+6*cell,ox+9*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+6*cell,ox+9*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+9*cell,ox+6*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+6*cell,oy+9*cell,ox+6*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell))
-            for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
-            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
-            c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
-        }
-        private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val rolling=diceRolling
-            val phase=(System.currentTimeMillis()%900L)/900f
-            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val size=cell*1.34f
-            c.save()
-            val angle=if(rolling)(Math.sin(phase*Math.PI*4.0)*13.0).toFloat() else 0f
-            c.rotate(angle,cx,cy)
-            val die=Paint(Paint.ANTI_ALIAS_FLAG)
-            die.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x88000000)
-            die.shader=LinearGradient(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,Color.WHITE,Color.rgb(216,222,232),Shader.TileMode.CLAMP)
-            c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die)
-            die.clearShadowLayer();die.shader=null
-            die.style=Paint.Style.STROKE;die.strokeWidth=dp(1f).toFloat();die.color=Color.rgb(144,151,164);c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die);die.style=Paint.Style.FILL;die.color=Color.rgb(35,39,49)
-            val d=size*.23f
-            val pts=when(face){
-                1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)
-            }
-            for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
-            c.restore()
-        }
-        fun isDiceRolling():Boolean = diceRolling
-        fun startDiceAnimation(){
-            if(diceRolling)return
-            diceRolling=true;dicePhase=0f
-            val start=System.currentTimeMillis()
-            fun tick(){
-                if(!diceRolling)return
-                dicePhase=((System.currentTimeMillis()-start)/650f).coerceIn(0f,1f)
-                invalidate()
-                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},45L)
-            }
-            tick()
-        }
-        private fun drawStartMarkers(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val starts=arrayOf(6 to 1,1 to 8,8 to 13,13 to 6)
-            for(i in starts.indices){
-                val (r,col)=starts[i];val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i];alpha=90}
-                c.drawRoundRect(ox+col*cell+dp(1f),oy+r*cell+dp(1f),ox+(col+1)*cell-dp(1f),oy+(r+1)*cell-dp(1f),dp(4f).toFloat(),dp(4f).toFloat(),p)
-                val mark=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat()}
-                c.drawCircle(ox+(col+.5f)*cell,oy+(r+.5f)*cell,cell*.22f,mark)
-            }
-        }
-        private fun drawLegalHint(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xFFEBC348.toInt();style=Paint.Style.STROKE;strokeWidth=dp(2.2f).toFloat()}
-            c.drawCircle(cx,cy,cell*.39f,p)
-            p.style=Paint.Style.FILL; p.color=0x55EBC348
-            c.drawCircle(cx,cy,cell*.44f,p)
-        }
-        private fun tokenCanMoveForUi(pi:Int,ti:Int):Boolean{
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            if(pi!=activePlayer)return false
-            val dice=if(currentScreen=="offline") offlineDice else state?.optInt("dice",0)?:0
-            if(dice !in 1..6)return false
-            val ps=if(currentScreen=="offline") offlineState?.optJSONArray("players") else state?.optJSONArray("players")
-            val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            return if(pos<0) dice==6 else pos+dice<=57
-        }
-        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
-            val rad=cell*.31f
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
-            shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
-            val body=Paint(Paint.ANTI_ALIAS_FLAG)
-            body.shader=RadialGradient(cx-rad*.32f,cy-rad*.38f,rad*.95f,color,Color.rgb((Color.red(color)*.45f).toInt(),(Color.green(color)*.45f).toInt(),(Color.blue(color)*.45f).toInt()),Shader.TileMode.CLAMP)
-            c.drawCircle(cx,cy,rad,body);body.shader=null
-            if(active){val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.7f).toFloat()};c.drawCircle(cx,cy,rad+dp(2f),glow)}
-            val hi=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x99FFFFFF.toInt()};c.drawCircle(cx-rad*.30f,cy-rad*.34f,rad*.18f,hi)
-        }
-        private fun visualPath():List<Pair<Int,Int>>{
-            return listOf(
-                6 to 0,6 to 1,6 to 2,6 to 3,6 to 4,6 to 5,5 to 6,4 to 6,3 to 6,2 to 6,1 to 6,0 to 6,
-                0 to 7,0 to 8,1 to 8,2 to 8,3 to 8,4 to 8,5 to 8,6 to 9,6 to 10,6 to 11,6 to 12,6 to 13,6 to 14,
-                7 to 14,8 to 14,8 to 13,8 to 12,8 to 11,8 to 10,8 to 9,9 to 8,10 to 8,11 to 8,12 to 8,13 to 8,14 to 8,
-                14 to 7,14 to 6,13 to 6,12 to 6,11 to 6,10 to 6,9 to 6,8 to 5,8 to 4,8 to 3,8 to 2,8 to 1,8 to 0,7 to 0
-            )
-        }
-        override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
-            if(e.action==MotionEvent.ACTION_UP && player in 0..3){
-                val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
-                val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
-                if(touched>=0){
-                    performClick()
-                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else requestMove(touched)
-                    return true
-                }
-            }
-            return true
-        }
-        override fun performClick():Boolean{super.performClick();return true}
-        private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
-            val activeState=if(currentScreen=="offline") offlineState else state
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            val ps=activeState?.optJSONArray("players")
-            val tokens=ps?.optJSONObject(activePlayer)?.optJSONArray("tokens")
-            val fallback=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            var best=-1; var bestD2=Float.MAX_VALUE
-            for(ti in 0..3){
-                var rr=fallback[ti].first; var cc=fallback[ti].second
-                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(pos>=0){val q=visualPath()[(activePlayer*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-                val dx=x-(ox+cc*cell); val dy=y-(oy+rr*cell); val d2=dx*dx+dy*dy
-                if(d2<bestD2){bestD2=d2;best=ti}
-            }
-            return if(best>=0 && bestD2 <= (cell*0.82f)*(cell*0.82f)) best else -1
-        }
-        private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
     }
-    private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
-    private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
+
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 

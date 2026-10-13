@@ -49,7 +49,9 @@ export function requireRole(...roles:Role[]){
   };
 }
 export function clientIp(req:Request){
-  return String(req.headers["x-forwarded-for"]||req.socket.remoteAddress||"").split(",")[0].trim().slice(0,100);
+  // Express normalizes the client address according to its configured trust proxy.
+  // Do not trust a caller-controlled X-Forwarded-For header directly here.
+  return String(req.ip || req.socket.remoteAddress || "").trim().slice(0,100);
 }
 export async function audit(prisma:PrismaClient, req:any, action:string, metadata?:any){
   await prisma.auditLog.create({

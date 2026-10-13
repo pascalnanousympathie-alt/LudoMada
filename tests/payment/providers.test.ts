@@ -12,6 +12,7 @@ describe("payment providers", () => {
     delete process.env.MVOLA_PARTNER_NAME;
     delete process.env.MVOLA_TIMEOUT_MS;
     delete process.env.PAYMENTS_MVOLA_SANDBOX_ENABLED;
+    delete process.env.PAYMENTS_MVOLA_LIVE_ENABLED;
     delete process.env.PAYMENTS_AIRTEL_SANDBOX_ENABLED;
     delete process.env.AIRTEL_CLIENT_ID;
     delete process.env.AIRTEL_CLIENT_SECRET;
@@ -21,12 +22,17 @@ describe("payment providers", () => {
     delete process.env.AIRTEL_TIMEOUT_MS;
     delete process.env.AIRTEL_MESSAGE_SIGNING_ENABLED;
     delete process.env.AIRTEL_RELAY_TOKEN;
+    delete process.env.BINANCE_PAY_CERTIFICATE_SN;
+    delete process.env.BINANCE_PAY_API_SECRET;
+    delete process.env.BINANCE_PAY_CURRENCY;
+    delete process.env.BINANCE_PAY_MGA_RATE;
+    delete process.env.BINANCE_PAY_CURRENCIES;
+    delete process.env.BINANCE_PAY_MGA_RATES_JSON;
+    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
     process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
     process.env.BINANCE_PAY_API_SECRET = "test-secret";
     process.env.BINANCE_PAY_CURRENCY = "USDT";
     process.env.BINANCE_PAY_MGA_RATE = "5000";
-    delete process.env.PAYMENTS_MVOLA_LIVE_ENABLED;
-    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
   });
   afterEach(() => { global.fetch = oldFetch; });
 
@@ -35,6 +41,13 @@ describe("payment providers", () => {
     expect(providerFor(PaymentMethod.MVOLA).enabled()).toBe(false);
     expect(providerFor(PaymentMethod.AIRTEL_MONEY).enabled()).toBe(false);
     expect(providerFor(PaymentMethod.ORANGE_MONEY).enabled()).toBe(false);
+  });
+
+  test("Binance remains disabled with credentials until explicit live activation", () => {
+    process.env.BINANCE_PAY_CURRENCIES = "USDT,BTC,ETH,SOL,TRX";
+    process.env.BINANCE_PAY_MGA_RATES_JSON = JSON.stringify({ USDT: 5000, BTC: 500000000, ETH: 25000000, SOL: 1200000, TRX: 1800 });
+    delete process.env.PAYMENTS_BINANCE_LIVE_ENABLED;
+    expect(providerFor(PaymentMethod.BINANCE).enabled()).toBe(false);
   });
 
   test("MVola API-key configuration enables provider only with partner identity", () => {
@@ -104,6 +117,26 @@ describe("payment providers", () => {
     }) as any;
     await expect(providerFor(PaymentMethod.MVOLA).query("corr-2", { expectedAmountMGA: 500n, customerPhone: "0343500003", type: "DEPOSIT" })).resolves.toMatchObject({ accepted: true, settled: false, errorCode: "MVOLA_TRANSACTION_DETAILS_MISMATCH" });
     expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  test("Binance multi-crypto selection is server-configured and rate-bound", async () => {
+    process.env.BINANCE_PAY_CURRENCIES = "USDT,BTC,ETH,SOL,TRX";
+    process.env.BINANCE_PAY_MGA_RATES_JSON = JSON.stringify({ USDT: 5000, BTC: 500000000, ETH: 25000000, SOL: 1200000, TRX: 1800 });
+    process.env.BINANCE_PAY_CERTIFICATE_SN = "test-cert";
+    process.env.BINANCE_PAY_API_SECRET = "test-secret";
+    process.env.PAYMENTS_BINANCE_LIVE_ENABLED = "true";
+    const calls:any[]=[];
+    global.fetch = jest.fn(async (_url:any, init:any) => {
+      calls.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({ status:"SUCCESS", data:{ prepayId:"multi-crypto-1", status:"INITIAL", currency:JSON.parse(init.body).currency } }), {status:200});
+    }) as any;
+    const provider=providerFor(PaymentMethod.BINANCE);
+    expect(provider.enabled()).toBe(true);
+    await expect(provider.create({ transactionId:"multi-crypto-usdt", amountMGA:500n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"USDT" })).resolves.toMatchObject({accepted:true,providerReference:"multi-crypto-1"});
+    await expect(provider.create({ transactionId:"multi-crypto-btc", amountMGA:1000n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"BTC" })).resolves.toMatchObject({accepted:true,providerReference:"multi-crypto-1"});
+    await expect(provider.create({ transactionId:"multi-crypto-bad", amountMGA:500n, method:PaymentMethod.BINANCE, type:"DEPOSIT", cryptoCurrency:"DOGE" })).resolves.toMatchObject({accepted:false,errorCode:"BINANCE_CURRENCY_NOT_SUPPORTED"});
+    expect(calls[0].currency).toBe("USDT");
+    expect(calls[1].currency).toBe("BTC");
   });
 
   test("Binance webhook signature is verified safely", () => {

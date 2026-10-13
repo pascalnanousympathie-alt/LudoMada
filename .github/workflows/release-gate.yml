@@ -6,14 +6,14 @@ on:
     branches: [main]
 
 concurrency:
-  group: release-gate-${{ github.ref }}
-  cancel-in-progress: true
+  group: ludomada-self-hosted-arm64
+  cancel-in-progress: false
 
 jobs:
   backend-staging:
     runs-on: [self-hosted, linux, ARM64]
     env:
-      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
+      DATABASE_URL: postgresql://ludomada_test:ludomada_test@127.0.0.1:54329/ludomada_test?schema=staging
       NODE_ENV: staging
       PORT: 3101
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
@@ -23,14 +23,55 @@ jobs:
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       JWT_SECRET: "release-gate-${{ github.sha }}-staging"
     steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+      - name: Checkout source from local runner mirror
+        working-directory: .
+        run: |
+          set -eu
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
+      - name: Use Termux Node
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npm" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npm "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npx" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npx "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
       - run: node -v && npm -v
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
+      - name: Start isolated PostgreSQL
+        run: bash scripts/ensure-test-postgres.sh
+      - name: Prepare persistent dependencies
+        run: |
+          set -eu
+          source_dir="/data/data/com.termux/files/home/LudoMada/node_modules"
+          test -d "$source_dir"
+          expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
+          source_lock="$(sha256sum "/data/data/com.termux/files/home/LudoMada/package-lock.json" | awk '{print $1}')"
+          test "$expected_lock" = "$source_lock"
+          test -f "$source_dir/.package-lock.json"
+          if [ -L node_modules ] || [ -d node_modules ]; then
+            rm -rf node_modules
+          fi
+          ln -s "$source_dir" node_modules
+          node -e "require('@prisma/client'); require('jest'); require('typescript'); require('fs').accessSync('node_modules/prisma/build/index.js'); console.log('DEPS_CORE_OK')"
       - run: npm run db:generate
       - run: npm run db:migrate
       - run: npm run test:all
@@ -42,13 +83,9 @@ jobs:
           curl -fsS http://127.0.0.1:3101/health
       - name: Run staging load smoke
         run: npx artillery run loadtests/artillery/loadtest-health-80rps.yml
-      - name: Upload API log
+      - name: Save API log locally
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: staging-api-log
-          path: /tmp/ludomada-api.log
-          if-no-files-found: ignore
+        run: cp /tmp/ludomada-api.log "$HOME/LudoMada-staging-api.log" 2>/dev/null || true
 
   android-final:
     needs: backend-staging
@@ -62,13 +99,31 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
+      - name: Checkout source from local runner mirror
+        working-directory: .
+        run: |
+          set -eu
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p "$ANDROID_HOME/licenses"
+          cat > "$ANDROID_HOME/licenses/android-sdk-license" <<'EOF'
+          8933bad161af4178b1185d1a37fbf41ea5269c55
+          d56f5187479451eabf01fb78af6dfcb131a6481e
+          24333f8a63b6825ea9c5514f83c2829b004d1fee
+          EOF
+
       - name: Configure Android SDK path
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
+      - name: Configure ARM64 AAPT2
+        run: bash scripts/setup-termux-aapt2.sh
       - run: java -version
       - name: Prepare release signing (when secrets are configured)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
@@ -87,7 +142,7 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 clean assembleDebug assembleRelease test --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 clean assembleDebug assembleRelease test --stacktrace
           test -f app/build/outputs/apk/release/app-release-unsigned.apk || test -f app/build/outputs/apk/release/app-release.apk
           test -f app/build/outputs/apk/debug/app-debug.apk
 
@@ -138,26 +193,31 @@ jobs:
             sha256sum "$unsigned_apk"
             echo "RELEASE_SIGNED=false (configure GitHub signing secrets for a signed release)"
           fi
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LudoMada-release-apk
-          path: android-app/app/build/outputs/apk/release/*.apk
-          if-no-files-found: error
+      - name: Save release APK locally
+        run: |
+          set -eu
+          for apk in android-app/app/build/outputs/apk/release/*.apk; do test -s "$apk" && cp "$apk" "/sdcard/Download/$(basename "$apk")"; done
 
   android-emulator-smoke:
     if: ${{ false }}
     runs-on: [self-hosted, linux, ARM64]
     needs: android-final
     steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
+      - name: Checkout source from local runner mirror
+        working-directory: .
+        run: |
+          set -eu
+          src="/home/runner/ludomada-mirror.git"
+          test -d "$src"
+          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
+          rm -rf "$GITHUB_WORKSPACE"
+          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
+
       - run: java -version
       - name: Build instrumentation APKs
         working-directory: android-app
-        run: sh ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
+        run: bash ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
       - name: Emulator smoke test
         uses: reactivecircus/android-emulator-runner@v2
         with:

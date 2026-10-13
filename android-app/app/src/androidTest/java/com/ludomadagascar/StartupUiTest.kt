@@ -15,7 +15,7 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
     @Test
-    fun app_launches_premium_home_and_offline_game_flow_is_reachable() {
+    fun app_launches_premium_home_and_reaches_offline_game_flow() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
@@ -28,20 +28,26 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
-        assertTrue(device.wait(Until.hasObject(By.text("Se connecter")), 8000))
-        assertTrue(device.hasObject(By.text("Créer un compte")))
-        assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
-        device.findObject(By.text("👥 Jouer hors-ligne")).click()
+
+        // Premium Home is the first screen; authentication is only required for online actions.
+        assertTrue(device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 8000))
+        assertTrue("Premium Home must expose the primary play target", device.hasObject(By.desc("JOUER")))
+
+        device.findObject(By.desc("JOUER")).click()
+        assertTrue(device.wait(Until.hasObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")), 3000))
+
+        device.findObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")).click()
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
-        assertTrue(device.hasObject(By.text("👤 2 joueurs")))
-        device.findObject(By.text("👤 2 joueurs")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
+        assertTrue(device.hasObject(By.desc("OFFLINE_2_PLAYERS")))
+
+        device.findObject(By.desc("OFFLINE_2_PLAYERS")).click()
+        assertTrue(device.wait(Until.hasObject(By.desc("GAME_DICE_ROLL")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
         repeat(24) {
-            assertTrue("Dice button must remain reachable", device.hasObject(By.text("Lancer le dé")))
-            device.findObject(By.text("Lancer le dé")).click()
+            assertTrue("Dice button must remain reachable", device.hasObject(By.desc("GAME_DICE_ROLL")))
+            device.findObject(By.desc("GAME_DICE_ROLL")).click()
             if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
                 return@repeat
@@ -51,10 +57,12 @@ class StartupUiTest {
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
-        assertTrue(device.hasObject(By.text("Pion 1")))
-        device.findObject(By.text("Pion 1")).click()
-        assertTrue("A six gives the player another turn after the pawn move",
-            device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
+        assertTrue(device.hasObject(By.desc("GAME_PAWN_1")))
+        device.findObject(By.desc("GAME_PAWN_1")).click()
+        assertTrue(
+            "A six gives the player another turn after the pawn move",
+            device.wait(Until.hasObject(By.textContains("Rejouez")), 1800)
+        )
 
         val file = File("/sdcard/Download/ludomada-startup-offline.png")
         device.takeScreenshot(file)

@@ -1,0 +1,83 @@
+{
+  "schema": "ludomada-premium-3d-v2",
+  "units": "meters",
+  "format": "glb/gltf2",
+  "target": "android-realtime",
+  "runtime_packaged": true,
+  "source_scene": {
+    "provider": "Higgsfield 3D Jutsu",
+    "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 3,
+    "glb_bytes": 846104,
+    "material_revision": 3,
+    "material_calibration": "PremiumMaterialLighting.Calibration",
+    "sha256": "765646c3b285eff4dc50594a2a6f1705b62e5d60c79ab8a31dec3de0105de027",
+    "delivery": {
+      "type": "higgsfield-media",
+      "media_id": "f77cf216-1a71-4b86-84b9-26339b96c4df",
+      "url": "https://d2ol7oe51mr4n9.cloudfront.net/user_3KG73BUC5PU4V3lnELDg6OIFyF8/f77cf216-1a71-4b86-84b9-26339b96c4df.glb",
+      "verified_size_bytes": 846104
+    }
+  },
+  "board_geometry": {
+    "square_board_m": 5.05,
+    "table_m": 5.6,
+    "path_cells": 52,
+    "finish_cells": 24,
+    "home_plinths": 4,
+    "center_wedges": 4,
+    "topology": "matches current Android visualPath ordering"
+  },
+  "assets": {
+    "pawn": {
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head",
+        "underside"
+      ],
+      "pivot": "bottom-center",
+      "material": "lacquer-pbr"
+    },
+    "die": {
+      "parts": [
+        "body",
+        "pips"
+      ],
+      "pivot": "center",
+      "material": "hydro-chrome",
+      "authoring_metallic": 1,
+      "authoring_roughness": 0.055,
+      "clear_coat": 0.72,
+      "clear_coat_roughness": 0.055,
+      "pip_material": "LM_Die_Pip_Dark"
+    },
+    "table": {
+      "parts": [
+        "deep-base",
+        "recessed-board",
+        "gold-frame"
+      ],
+      "pivot": "center"
+    }
+  },
+  "mobile_budgets": {
+    "hero_glb_max_bytes": 8388608,
+    "prefer_shared_meshes": true,
+    "prefer_compressed_textures": true,
+    "prefer_lod_for_large_assets": true,
+    "avoid_external_texture_paths": true
+  },
+  "asset_bundled_in_source_tree": true,
+  "runtime_loader": "GlbRuntimeLoader",
+  "runtime_hero_parts": [
+    "LM_Pawn_Base_Weighted",
+    "LM_Pawn_Tapered_Body",
+    "LM_Pawn_Collar",
+    "LM_Pawn_Spherical_Head",
+    "LM_Pawn_Underside_Insert",
+    "LM_Die_HydroChrome_Body"
+  ],
+  "active_renderer": "native-gles3-premium"
+}

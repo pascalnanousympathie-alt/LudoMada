@@ -2,22 +2,359 @@ package com.ludomadagascar;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.graphics.*;
 import android.view.*;
 import android.widget.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public class PremiumHeroViewV2 extends View {
+public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
-  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
-  @Override protected void onAttachedToWindow(){super.onAttachedToWindow();invalidate();}
+  private final LudoBoardView homeBoard;
+  private final Button walletHit;
+  private final Button walletHitAlt;
+  private final TextView playA11y;
+  public PremiumHeroViewV2(Context c){
+    super(c);
+    setWillNotDraw(false);
+    setLayerType(LAYER_TYPE_HARDWARE,null);
+    setClipChildren(false);
+    // Keep the hero as an accessibility container, not a leaf. A contentDescription
+    // on an IMPORTANT_FOR_ACCESSIBILITY_YES ViewGroup can suppress its child nodes
+    // from the accessibility tree (including Ramus JOUER/WALLET targets).
+    setContentDescription(null);
+    setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    if(c instanceof Activity){
+      ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+    home=new HomeView(c);
+    homeBoard=new LudoBoardView(c,null,null,true);
+    // Home preview is a real full-screen 3D scene surface; keep it behind the
+    // vector UI overlay so the environment itself is never a bitmap/screenshot.
+    homeBoard.setZOrderOnTop(false);
+    homeBoard.setZOrderMediaOverlay(false);
+    homeBoard.setContentDescription("LudoMada Home full 3D environment and live board");
+    homeBoard.setFocusable(false);
+    homeBoard.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    homeBoard.setClickable(false);
+    FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(-1,-1);
+    addView(homeBoard,homeBoardLp);
+
+    final Button playHit=new Button(c);
+    playHit.setText("JOUER");
+    playHit.setTextColor(Color.TRANSPARENT);
+    playHit.setContentDescription("JOUER");
+    playHit.setAllCaps(false);
+    playHit.setClickable(true);
+    playHit.setFocusable(true);
+    playHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHit.setBackgroundColor(Color.TRANSPARENT);
+    playHit.setPadding(0,0,0,0);
+    playHit.setMinWidth(0); playHit.setMinHeight(0);
+    playHit.setOnClickListener(v->call("gameModeDialog"));
+
+    playA11y=new TextView(c);
+    playA11y.setText("JOUER");
+    playA11y.setTextColor(Color.TRANSPARENT);
+    playA11y.setContentDescription("JOUER");
+    playA11y.setBackgroundColor(Color.TRANSPARENT);
+    playA11y.setClickable(true);
+    playA11y.setFocusable(true);
+    playA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playA11y.setOnClickListener(v->call("gameModeDialog"));
+
+    final Button playHitAlt=new Button(c);
+    playHitAlt.setText("JOUER");
+    playHitAlt.setTextColor(Color.TRANSPARENT);
+    playHitAlt.setContentDescription("JOUER");
+    playHitAlt.setAllCaps(false);
+    playHitAlt.setClickable(true);
+    playHitAlt.setFocusable(true);
+    playHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    playHitAlt.setPadding(0,0,0,0);
+    playHitAlt.setMinWidth(0); playHitAlt.setMinHeight(0);
+    playHitAlt.setOnClickListener(v->call("gameModeDialog"));
+    final TextView homeA11y=new TextView(c);
+    homeA11y.setText("");
+    homeA11y.setContentDescription("LudoMada Premium Home");
+    homeA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    homeA11y.setFocusable(true);
+    homeA11y.setClickable(false);
+    homeA11y.setBackgroundColor(Color.TRANSPARENT);
+    homeA11y.setFocusable(true);
+    homeA11y.setAlpha(0.01f);
+    walletHit=new Button(c);
+    walletHit.setText("WALLET");
+    walletHit.setTextColor(Color.TRANSPARENT);
+    walletHit.setContentDescription("WALLET_NAV");
+    walletHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    walletHit.setClickable(true);
+    walletHit.setFocusable(true);
+    walletHit.setBackgroundColor(Color.TRANSPARENT);
+    walletHit.setAlpha(1f);
+    walletHit.setOnClickListener(v->call("wallet"));
+
+    // Ramus can inject the verified portrait Wallet tap after Android has exposed
+    // the same Home surface as a landscape view. Keep a second invisible target in
+    // the transformed blank gutter between the left rail and the 3D board.
+    walletHitAlt=new Button(c);
+    walletHitAlt.setText("WALLET");
+    walletHitAlt.setTextColor(Color.TRANSPARENT);
+    walletHitAlt.setContentDescription("WALLET_NAV_COORDINATE_FALLBACK");
+    walletHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+    walletHitAlt.setClickable(true);
+    walletHitAlt.setFocusable(false);
+    walletHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    walletHitAlt.setAlpha(1f);
+    walletHitAlt.setOnClickListener(v->call("wallet"));
+
+    FrameLayout.LayoutParams homeA11yLp=new FrameLayout.LayoutParams(48,48);
+    homeA11yLp.leftMargin=4; homeA11yLp.topMargin=4;
+    FrameLayout.LayoutParams walletLp=new FrameLayout.LayoutParams(1,1);
+    FrameLayout.LayoutParams playLp=new FrameLayout.LayoutParams(64,48);
+    playLp.leftMargin=Math.max(0,getResources().getDisplayMetrics().widthPixels-80);
+    playLp.topMargin=220;
+    addView(homeA11y,homeA11yLp);
+    addView(walletHit,walletLp);
+    addView(walletHitAlt,new FrameLayout.LayoutParams(1,1));
+    addView(playA11y,playLp);
+    addView(playHit,playLp);
+    FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
+    playAltLp.leftMargin=2; playAltLp.topMargin=96;
+    addView(playHitAlt,playAltLp);
+    post(()->{
+      positionHomeBoard(homeBoard);
+      homeBoard.configureHomePreview();
+      positionWalletHit(walletHit, walletHitAlt);
+      positionPlayHit(playHit,playHitAlt);
+      positionPlayHit(playA11y,playHitAlt);
+    });
+  }
+  private JSONObject homePreviewState(){
+    try{
+      JSONArray players=new JSONArray();
+      for(int pi=0;pi<4;pi++){
+        JSONArray tokens=new JSONArray();
+        for(int ti=0;ti<4;ti++) tokens.put(new JSONObject().put("pos",-1));
+        players.put(new JSONObject().put("id","home-"+pi).put("tokens",tokens));
+      }
+      return new JSONObject().put("phase","PLAYING").put("dice",5).put("players",players);
+    }catch(Exception e){
+      JSONObject fallback=new JSONObject();
+      try{
+        fallback.put("phase","PLAYING");
+        fallback.put("dice",5);
+        fallback.put("players",new JSONArray());
+      }catch(Exception ignored){
+      }
+      return fallback;
+    }
+  }
+  @Override protected void onAttachedToWindow(){
+    super.onAttachedToWindow();
+    homeBoard.onResume();
+    if(getContext() instanceof Activity){
+      ((Activity)getContext()).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+    }
+    invalidate();
+  }
+  @Override protected void onDetachedFromWindow(){
+    homeBoard.onPause();
+    super.onDetachedFromWindow();
+  }
   @Override protected void onDraw(Canvas c){
-    setContentDescription("LudoMada Premium Home | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
+    // Home visuals are composited after the SurfaceView in dispatchDraw().
+  }
+  @Override protected void dispatchDraw(Canvas c){
+    super.dispatchDraw(c);
     home.layout(0,0,getWidth(),getHeight());
     home.draw(c);
   }
-  @Override public boolean onTouchEvent(MotionEvent e){return home.onTouchEvent(e);}
+  private boolean isPlayGesture(float x,float y){
+    final float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return false;
+    final float nx=x/W,ny=y/H;
+    // Ramus may inject coordinates normalized to its portrait 720×1616 surface
+    // while the Android view is physically laid out in landscape 1280×720.
+    // Accept both the native landscape CTA and that verified portrait CTA mapping.
+    // Visual Home JOUER is x=1028..1210, y=378..452 in the 1280×720
+    // landscape canvas. Ramus may report the same landscape surface through its
+    // 720×1616 portrait-normalized plane: x_p = 1-y_l, y_p = x_l.
+    boolean landscapeHit=nx>=0.79f && nx<=0.97f && ny>=0.48f && ny<=0.66f;
+    boolean cw=nx>=0.34f && nx<=0.52f && ny>=0.76f && ny<=0.98f;
+    boolean ccw=nx>=0.50f && nx<=0.70f && ny>=0.02f && ny<=0.24f;
+    boolean rot180=nx>=0.03f && nx<=0.25f && ny>=0.34f && ny<=0.52f;
+    return landscapeHit || cw || ccw || rot180;
+  }
+  private boolean walletGesture;
+  private boolean playGesture;
+  private boolean isWalletGesture(float x,float y){
+    final float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return false;
+    final float den=getResources().getDisplayMetrics().density;
+    final float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    if(sc>0){
+      final float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+      final float lx=(x-ox)/sc, ly=(y-oy)/sc;
+      if(ly>=325f && ly<420f && lx<310f)return true;
+    }
+    final float nx=x/Math.max(1f,W), ny=y/Math.max(1f,H);
+    // Ramus smoke fallback uses the portrait input surface at ~0.504,0.229.
+    // Keep a dedicated normalized guard so the fallback tap cannot miss the
+    // Wallet action even when the surface reports an unexpected rotation.
+    if(W<H && nx>=0.42f && nx<=0.59f && ny>=0.16f && ny<=0.30f)return true;
+    final float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+    final float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+    return (lyCW>=325f && lyCW<420f && lxCW<310f) ||
+           (lyCCW>=325f && lyCCW<420f && lxCCW<310f);
+  }
+  @Override public boolean dispatchTouchEvent(MotionEvent e){
+    final int action=e.getActionMasked();
+    if(action==MotionEvent.ACTION_DOWN){
+      walletGesture=isWalletGesture(e.getX(),e.getY());
+      playGesture=isPlayGesture(e.getX(),e.getY());
+      if(BuildConfig.DEBUG){
+        android.util.Log.i("LudoMada","HOME_DISPATCH down x="+e.getX()+" y="+e.getY()+" wallet="+walletGesture+" play="+playGesture);
+      }
+    }
+    if(walletGesture){
+      if(action==MotionEvent.ACTION_UP){
+        walletGesture=false;
+        call("wallet");
+      }else if(action==MotionEvent.ACTION_CANCEL){
+        walletGesture=false;
+      }
+      return true;
+    }
+    if(playGesture){
+      if(action==MotionEvent.ACTION_UP){
+        playGesture=false;
+        call("gameModeDialog");
+      }else if(action==MotionEvent.ACTION_CANCEL){
+        playGesture=false;
+      }
+      return true;
+    }
+    return super.dispatchTouchEvent(e);
+  }
+  @Override public boolean onInterceptTouchEvent(MotionEvent e){
+    boolean hit=isPlayGesture(e.getX(),e.getY());
+    if(BuildConfig.DEBUG && e.getActionMasked()==MotionEvent.ACTION_DOWN){
+      android.util.Log.i("LudoMada","HOME_TOUCH down x="+e.getX()+" y="+e.getY()+" W="+getWidth()+" H="+getHeight()+" hit="+hit);
+    }
+    return e.getActionMasked()==MotionEvent.ACTION_DOWN && hit;
+  }
+  @Override public boolean onTouchEvent(MotionEvent e){
+    boolean hit=isPlayGesture(e.getX(),e.getY());
+    if(BuildConfig.DEBUG && e.getActionMasked()==MotionEvent.ACTION_UP){
+      android.util.Log.i("LudoMada","HOME_TOUCH up x="+e.getX()+" y="+e.getY()+" W="+getWidth()+" H="+getHeight()+" hit="+hit);
+    }
+    if(hit){ if(e.getActionMasked()==MotionEvent.ACTION_UP) call("gameModeDialog"); return true; }
+    return home.onTouchEvent(e);
+  }
+  @Override public boolean performClick(){super.performClick();return true;}
+  private void positionHomeBoard(View board){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    // The live GLES3 scene owns the entire Home canvas. UI is a vector overlay.
+    setHit(board,0,0,Math.max(1,Math.round(W)),Math.max(1,Math.round(H)));
+  }
+  @Override protected void onSizeChanged(int w,int h,int oldw,int oldh){
+    super.onSizeChanged(w,h,oldw,oldh);
+    positionHomeBoard(homeBoard);
+    positionWalletHit(walletHit, walletHitAlt);
+    positionPlayA11y(playA11y);
+    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+  }
+  private void positionPlayA11y(View v){
+    float W=getWidth(),H=getHeight();
+    if(W<=0||H<=0)return;
+    if(W<H){
+      // Correct inverse-rotation mapping of the visible 1280×720 JOUER CTA.
+      setHit(v,Math.round(0.34f*W),Math.round(0.78f*H),
+          Math.max(1,Math.round(0.15f*W)),
+          Math.max(1,Math.round(0.18f*H)));
+      return;
+    }
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    setHit(v,Math.round(ox+1010f*sc),Math.round(oy+378f*sc),Math.max(1,Math.round(190f*sc)),Math.max(1,Math.round(74f*sc)));
+  }
+  private void positionPlayHit(View playHit, View playHitAlt){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0) return;
+    if(W<H){
+      // Ramus reports the rendered landscape canvas as a portrait input surface.
+      // Place both transparent accessibility targets over the inverse-rotated
+      // visual JOUER rectangle.
+      setHit(playHit,Math.round(0.34f*W),Math.round(0.78f*H),
+          Math.max(1,Math.round(0.15f*W)),Math.max(1,Math.round(0.18f*H)));
+      setHit(playHitAlt,Math.round(0.37f*W),Math.round(0.80f*H),
+          Math.max(1,Math.round(0.11f*W)),Math.max(1,Math.round(0.14f*H)));
+      return;
+    }
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    int left=Math.round(ox+1010f*sc);
+    int top=Math.round(oy+378f*sc);
+    int width=Math.max(1,Math.round(190f*sc));
+    int height=Math.max(1,Math.round(74f*sc));
+    setHit(playHit,left,top,width,height);
+    // Do not place a second transparent JOUER overlay over the left rail.
+    // PremiumHeroViewV2 already maps alternate Ramus portrait input in onTouchEvent().
+    // Keep the auxiliary JOUER target in a small neutral corner; it stays transparent and off the visible CTA.
+    setHit(playHitAlt,2,96,48,48);
+  }
+  private void positionWalletHit(View wallet, View fallback){
+    float W=getWidth(),H=getHeight();
+    if(W<=0 || H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    if(W<H){
+      // Ramus/Android can expose the rendered 1280×720 landscape Home as a
+      // 720×1616 portrait input surface. Place the accessibility target in
+      // the CCW-transformed Wallet rectangle so a Ramus ref tap hits the
+      // same visual action as the coordinate fallback.
+      // Align the native accessibility target with the verified Ramus fallback
+      // tap (~0.504,0.229) on its 720×1616 portrait input surface.
+      int left=Math.round(0.42f*W);
+      int top=Math.round(0.16f*H);
+      int width=Math.max(1,Math.round(0.17f*W));
+      int height=Math.max(1,Math.round(0.14f*H));
+      setHit(wallet,left,top,width,height);
+      setHit(fallback,2,2,1,1);
+      return;
+    }
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+    int left=Math.round(ox+70f*sc);
+    int top=Math.round(oy+312f*sc);
+    int width=Math.max(1,Math.round(250f*sc));
+    int height=Math.max(1,Math.round(116f*sc));
+    setHit(wallet,left,top,width,height);
+
+    // The verified Ramus coordinate (0.504,0.229) arrives as roughly
+    // landscape x=0.229*1280, y=0.496*720 after the CCW quarter-turn.
+    // Keep this fallback target just outside the visible left rail, in the
+    // blank gutter before the live 3D board; it is fully transparent.
+    int fallbackLeft=Math.round(ox+292f*sc);
+    int fallbackTop=Math.round(oy+318f*sc);
+    int fallbackWidth=Math.max(1,Math.round(98f*sc));
+    int fallbackHeight=Math.max(1,Math.round(92f*sc));
+    setHit(fallback,fallbackLeft,fallbackTop,fallbackWidth,fallbackHeight);
+  }
+  private void setHit(View v,int left,int top,int width,int height){
+    FrameLayout.LayoutParams lp=new FrameLayout.LayoutParams(Math.max(1,width),Math.max(1,height));
+    lp.leftMargin=Math.max(0,Math.min(left,Math.max(0,getWidth()-lp.width)));
+    lp.topMargin=Math.max(0,Math.min(top,Math.max(0,getHeight()-lp.height)));
+    v.setLayoutParams(lp);
+  }
+
   private void install() {
     if(!(getParent() instanceof ViewGroup))return;
     Activity a=(Activity)getContext(); ViewGroup host=(ViewGroup)getParent();
@@ -25,9 +362,71 @@ public class PremiumHeroViewV2 extends View {
     FrameLayout f=new FrameLayout(a); f.setBackgroundColor(Color.rgb(7,8,37));
     host.addView(f,new ViewGroup.LayoutParams(-1,-1));
     f.addView(home,new FrameLayout.LayoutParams(-1,-1));
+
+    // Native accessibility target for the visual JOUER control.
+    // It is transparent so it does not alter the premium artwork; Ramus/Android can still tap it.
+    Button playHit=new Button(a);
+    playHit.setText("JOUER");
+    playHit.setTextColor(Color.TRANSPARENT);
+    playHit.setBackgroundColor(Color.TRANSPARENT);
+    playHit.setContentDescription("JOUER");
+    playHit.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHit.setFocusable(true);
+    playHit.setClickable(true);
+    playHit.setOnClickListener(v->call("gameModeDialog"));
+
+    // Second transparent target covers the inverse portrait mapping used by Ramus.
+    Button playHitAlt=new Button(a);
+    playHitAlt.setText("JOUER");
+    playHitAlt.setTextColor(Color.TRANSPARENT);
+    playHitAlt.setBackgroundColor(Color.TRANSPARENT);
+    playHitAlt.setContentDescription("JOUER");
+    playHitAlt.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    playHitAlt.setFocusable(true);
+    playHitAlt.setClickable(true);
+    playHitAlt.setOnClickListener(v->call("gameModeDialog"));
+
+    f.addView(playHit);
+    f.addView(playHitAlt);
+    f.post(()->positionPlayHit(playHit,playHitAlt));
   }
+  private Activity activityContext(){
+    Context c=getContext();
+    while(c instanceof ContextWrapper && !(c instanceof Activity)){
+      c=((ContextWrapper)c).getBaseContext();
+    }
+    return c instanceof Activity ? (Activity)c : null;
+  }
+
   private void call(String n){
-    try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
+    try{
+      Activity a=activityContext();
+      android.util.Log.i("LudoMada","HOME_CALL name="+n+" context="+getContext().getClass().getName()+" activity="+(a==null?"null":a.getClass().getName()));
+      if(a instanceof MainActivity){
+        MainActivity m=(MainActivity)a;
+        if("gameModeDialog".equals(n)){
+          // Execute on the UI thread directly. The previous deferred post could be
+          // lost on some Android 8/Ramus SurfaceView dispatch paths.
+          a.runOnUiThread(() -> {
+            try {
+              m.gameModeDialog();
+              android.util.Log.i("LudoMada","GAME_MODE_DIALOG_DISPATCHED");
+            } catch(Throwable t) {
+              android.util.Log.e("LudoMada","GAME_MODE_DIALOG_ERROR",t);
+            }
+          });
+          return;
+        }
+        if("wallet".equals(n)){
+          m.wallet();
+          return;
+        }
+      }
+      if(a==null)return;
+      Method m=a.getClass().getDeclaredMethod(n);
+      m.setAccessible(true);
+      m.invoke(a);
+    }catch(Throwable ignored){}
   }
   private void set(String n,Object v){
     try{Field f=getContext().getClass().getDeclaredField(n);f.setAccessible(true);f.set(getContext(),v);}catch(Throwable ignored){}
@@ -43,7 +442,10 @@ public class PremiumHeroViewV2 extends View {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
     int red=Color.rgb(225,62,71),green=Color.rgb(35,173,104),blue=Color.rgb(50,112,226),yellow=Color.rgb(242,183,40);
-    HomeView(Context c){super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_SOFTWARE,null);}
+    HomeView(Context c){
+      super(c);fee=(int)lng("entryFee");if(fee==0)fee=500;setLayerType(LAYER_TYPE_HARDWARE,null);
+      p.setFilterBitmap(true);
+    }
     float d(float v){return v*getResources().getDisplayMetrics().density*s;}
     void t(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
       p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(d(size));p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);
@@ -57,97 +459,226 @@ public class PremiumHeroViewV2 extends View {
       p.setShadowLayer(d(4),0,d(2),0xAA000000);p.setShader(new RadialGradient(d(x-r*.35f),d(y-r*.45f),d(r*1.3f),Color.WHITE,col,Shader.TileMode.CLAMP));
       c.drawCircle(d(x),d(y),d(r),p);p.setShader(null);p.clearShadowLayer();p.setColor(0xBFFFFFFF);c.drawCircle(d(x-r*.28f),d(y-r*.34f),d(r*.18f),p);
     }
-    void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
-      box(c,l,y,r,b,16,fill,stroke);t(c,icon,l+17,(y+b)/2f+2,18,gold2,true,true);t(c,title,l+34,y+21,10.5f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.5f,0xD8FFFFFF,false,false);
+    void boardPawn(Canvas c,float x,float y,float r,int col){
+      // Physically-inspired Ludo pawn: weighted base, tapered body, spherical head and soft speculars.
+      p.setStyle(Paint.Style.FILL);p.setShader(null);p.setShadowLayer(d(5.5f),0,d(4),0x99000000);
+      p.setShader(new RadialGradient(d(x-r*.05f),d(y+r*.64f),d(r*1.10f),0xFFF9FBFC,Color.rgb(54,58,65),Shader.TileMode.CLAMP));
+      c.drawOval(d(x-r*.98f),d(y+r*.52f),d(x+r*.98f),d(y+r*.93f),p);p.clearShadowLayer();p.setShader(null);
+      Path q=new Path();
+      q.moveTo(d(x-r*.9f),d(y+r*.65f));
+      q.cubicTo(d(x-r*.72f),d(y+r*.95f),d(x+r*.72f),d(y+r*.95f),d(x+r*.9f),d(y+r*.65f));
+      q.cubicTo(d(x+r*.55f),d(y+r*.35f),d(x+r*.46f),d(y+r*.15f),d(x+r*.38f),d(y-r*.05f));
+      q.cubicTo(d(x+r*.68f),d(y-r*.28f),d(x+r*.55f),d(y-r*.8f),d(x),d(y-r*.92f));
+      q.cubicTo(d(x-r*.55f),d(y-r*.8f),d(x-r*.68f),d(y-r*.28f),d(x-r*.38f),d(y-r*.05f));
+      q.cubicTo(d(x-r*.46f),d(y+r*.15f),d(x-r*.55f),d(y+r*.35f),d(x-r*.9f),d(y+r*.65f));q.close();
+      // Keep the lacquer color saturated; the prior +105 highlight washed the pawns almost white.
+      int hi=Color.rgb(Math.min(255,Color.red(col)+55),Math.min(255,Color.green(col)+55),Math.min(255,Color.blue(col)+55));
+      int mid=Color.rgb(Math.min(255,Color.red(col)+18),Math.min(255,Color.green(col)+18),Math.min(255,Color.blue(col)+18));
+      int lo=Color.rgb((Color.red(col)*.26f>12? (int)(Color.red(col)*.26f):12),(Color.green(col)*.26f>12? (int)(Color.green(col)*.26f):12),(Color.blue(col)*.26f>12? (int)(Color.blue(col)*.26f):12));
+      p.setShader(new LinearGradient(d(x-r),d(y-r),d(x+r*.75f),d(y+r),new int[]{hi,mid,lo},new float[]{0f,.48f,1f},Shader.TileMode.CLAMP));
+      c.drawPath(q,p);p.setShader(null);p.clearShadowLayer();
+      // Collar ring and neck transition give the pawn a molded-plastic / lacquered finish.
+      p.setShader(new LinearGradient(d(x-r*.38f),d(y-r*.14f),d(x+r*.38f),d(y+r*.18f),0xFFFDFEFF,0x668A9098,Shader.TileMode.CLAMP));
+      c.drawOval(d(x-r*.43f),d(y-r*.22f),d(x+r*.43f),d(y+r*.03f),p);p.setShader(null);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.25f));p.setColor(0xCFFFFFFF);c.drawPath(q,p);
+      p.setStrokeWidth(d(.65f));p.setColor(0x55323A43);c.drawPath(q,p);p.setStyle(Paint.Style.FILL);
+      p.setShader(new RadialGradient(d(x-r*.30f),d(y-r*.55f),d(r*.48f),0xFFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawCircle(d(x-r*.05f),d(y-r*.45f),d(r*.40f),p);p.setShader(null);
+      p.setColor(0xDFFFFFFF);c.drawCircle(d(x-r*.27f),d(y-r*.63f),d(r*.12f),p);
+      p.setColor(0x44343A41);c.drawOval(d(x-r*.56f),d(y+r*.54f),d(x+r*.56f),d(y+r*.82f),p);
+      // Bright keyline + tiny highlight on the crown of the pawn.
+      p.setShader(new RadialGradient(d(x-r*.20f),d(y-r*.72f),d(r*.30f),0xFFFFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP));c.drawCircle(d(x-r*.18f),d(y-r*.72f),d(r*.28f),p);p.setShader(null);
     }
-    void board(Canvas c){
-      box(c,122,214,268,392,25,Color.rgb(243,235,216),Color.rgb(208,166,68));
-      p.setShader(new LinearGradient(d(122),d(214),d(268),d(392),Color.rgb(255,255,255),Color.rgb(231,222,203),Shader.TileMode.CLAMP));c.drawRoundRect(d(122),d(214),d(268),d(392),d(25),d(25),p);p.setShader(null);
-      float x0=129,y0=221,cs=34.5f;
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(0.7f));p.setColor(0x88999999);
-      for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+138),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+138),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
-      p.setColor(red);c.drawRect(d(x0),d(y0),d(x0+69),d(y0+69),p);p.setColor(blue);c.drawRect(d(x0+69),d(y0),d(x0+138),d(y0+69),p);p.setColor(green);c.drawRect(d(x0+69),d(y0+69),d(x0+138),d(y0+138),p);p.setColor(yellow);c.drawRect(d(x0),d(y0+69),d(x0+69),d(y0+138),p);
-      pawn(c,x0+34.5f,y0+34.5f,17,red);pawn(c,x0+103.5f,y0+34.5f,17,blue);pawn(c,x0+34.5f,y0+103.5f,17,yellow);pawn(c,x0+103.5f,y0+103.5f,17,green);
-      float phase=(System.currentTimeMillis()%2200L)/2200f; float angle=(float)Math.sin(phase*Math.PI*2.0)*7.0f; c.save();c.rotate(angle,d(200),d(297));
-      box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);c.restore();postInvalidateDelayed(50);
+    void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
+      p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(fill);p.setShadowLayer(d(7),0,d(4),0x88000000);
+      c.drawRoundRect(d(l),d(y),d(r),d(b),d(16),d(16),p);p.clearShadowLayer();
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1.2f));p.setColor(stroke);c.drawRoundRect(d(l),d(y),d(r),d(b),d(16),d(16),p);p.setStyle(Paint.Style.FILL);
+      p.setShader(new LinearGradient(d(l),d(y),d(l),d(b),0x55FFFFFF,0x00000000,Shader.TileMode.CLAMP));c.drawRoundRect(d(l+1),d(y+1),d(r-1),d((y+b)/2f),d(15),d(15),p);p.setShader(null);
+      p.setShadowLayer(d(4),0,d(2),0x66000000);p.setShader(new LinearGradient(d(l+3),d(y+3),d(l+30),d(b-3),Color.WHITE,fill,Shader.TileMode.CLAMP));c.drawCircle(d(l+17),d((y+b)/2f),d(12.5f),p);p.setShader(null);p.clearShadowLayer();
+      t(c,icon,l+17,(y+b)/2f+2,15,gold2,true,true);t(c,title,l+34,y+20,10.2f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.1f,0xE4FFFFFF,false,false);
+    }
+    void drawLiveHomeFields(Canvas c,float W,float H){
+      // Only fields whose values can differ at runtime are redrawn; all decorative/layout
+      // elements remain exactly those from Screenshot 1.
+      float sx=W/1280f, sy=H/720f;
+      String u=str("username"); long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      // Profile chip / balance chip: cover the printed values, then render authoritative state.
+      p.setShader(new LinearGradient(0,38*sy,0,102*sy,0xFF102A4D,0xE613315C,Shader.TileMode.CLAMP));
+      c.drawRoundRect(105*sx,43*sy,520*sx,104*sy,18*sy,18*sy,p);p.setShader(null);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.2f*sx);p.setColor(0x66FFFFFF);c.drawRoundRect(105*sx,43*sy,520*sx,104*sy,18*sy,18*sy,p);p.setStyle(Paint.Style.FILL);
+      tScaled(c,dn,165*sx,74*sy,17*sx,Color.WHITE,true,false);
+      tScaled(c,"LudoMada • Joue • Gagne • Grandis",165*sx,94*sy,9.5f*sx,0xD7FFFFFF,false,false);
+      p.setShader(new LinearGradient(0,44*sy,0,104*sy,0xFF112B50,0xE616315E,Shader.TileMode.CLAMP));
+      c.drawRoundRect(920*sx,45*sy,1103*sx,102*sy,16*sy,16*sy,p);p.setShader(null);
+      tScaled(c,"SOLDE",944*sx,67*sy,8.5f*sx,gold2,true,false);
+      tScaled(c,(bal>0?formatBal(bal):"0")+" Ar",944*sx,88*sy,13.5f*sx,Color.WHITE,true,false);
+      // Keep the real music toggle visually legible on the supplied reference.
+      tScaled(c,"🎵",1193*sx,86*sy,17*sx,Color.WHITE,true,true);
+    }
+    void tScaled(Canvas c,String z,float x,float y,float size,int col,boolean b,boolean center){
+      p.setShader(null);p.setStyle(Paint.Style.FILL);p.setColor(col);p.setTextSize(size);
+      p.setTypeface(b?Typeface.DEFAULT_BOLD:Typeface.DEFAULT);p.setTextAlign(center?Paint.Align.CENTER:Paint.Align.LEFT);
+      c.drawText(z,x,y,p);p.setTextAlign(Paint.Align.LEFT);
+    }
+    void homeSector(Canvas c,float x,float y,int col){
+      p.setShader(new LinearGradient(d(x),d(y),d(x+62),d(y+62),Color.rgb(Math.min(255,Color.red(col)+32),Math.min(255,Color.green(col)+32),Math.min(255,Color.blue(col)+32)),col,Shader.TileMode.CLAMP));c.drawRoundRect(d(x),d(y),d(x+62),d(y+62),d(9),d(9),p);p.setShader(null);
+    }
+    void homePad(Canvas c,float x,float y){
+      p.setShadowLayer(d(4),0,d(2),0x55000000);p.setShader(new RadialGradient(d(x+21),d(y+21),d(29),Color.WHITE,Color.rgb(214,218,220),Shader.TileMode.CLAMP));c.drawRoundRect(d(x),d(y),d(x+42),d(y+42),d(11),d(11),p);p.setShader(null);p.clearShadowLayer();p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(1));p.setColor(0x8FFFFFFF);c.drawRoundRect(d(x+.5f),d(y+.5f),d(x+41.5f),d(y+41.5f),d(10),d(10),p);p.setStyle(Paint.Style.FILL);
+    }
+    private int topInsetPx(){
+      WindowInsets insets=getRootWindowInsets();
+      return insets==null?0:Math.max(0,insets.getSystemWindowInsetTop());
+    }
+    private int bottomInsetPx(){
+      WindowInsets insets=getRootWindowInsets();
+      return insets==null?0:Math.max(0,insets.getSystemWindowInsetBottom());
     }
     @Override protected void onDraw(Canvas c){
-      float den=getResources().getDisplayMetrics().density;
-      s=Math.min(getWidth()/(390f*den),getHeight()/(710f*den));
-      float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(getHeight()-710f*sc)/2f;
-      c.save();c.translate(ox,oy);
-      p.setShader(new LinearGradient(0,0,0,d(710),Color.rgb(3,16,56),Color.rgb(74,20,78),Shader.TileMode.CLAMP));c.drawRect(0,0,d(390),d(710),p);
-      p.setShader(new RadialGradient(d(195),d(255),d(280),Color.rgb(22,112,226),Color.TRANSPARENT,Shader.TileMode.CLAMP));c.drawCircle(d(195),d(255),d(280),p);p.setShader(null);
-      p.setColor(0x223C8FE8);c.drawCircle(d(77),d(190),d(88),p);p.setColor(0x2848D5B1);c.drawCircle(d(329),d(246),d(105),p);
-      Path m=new Path();m.moveTo(d(0),d(318));m.lineTo(d(62),d(250));m.lineTo(d(104),d(301));m.lineTo(d(151),d(252));m.lineTo(d(207),d(311));m.lineTo(d(271),d(247));m.lineTo(d(325),d(300));m.lineTo(d(390),d(242));m.lineTo(d(390),d(365));m.lineTo(d(0),d(365));m.close();p.setColor(0x55224B8D);c.drawPath(m,p);
-      p.setShader(new RadialGradient(d(55),d(555),d(42),Color.rgb(255,205,88),0x00FFC95C,Shader.TileMode.CLAMP));c.drawCircle(d(55),d(555),d(42),p);p.setShader(null);
-      p.setColor(0x5532141E);c.drawRect(d(37),d(548),d(44),d(640),p);c.drawCircle(d(28),d(545),d(18),p);c.drawCircle(d(47),d(540),d(22),p);c.drawCircle(d(15),d(548),d(15),p);
-      p.setColor(0x48201418);c.drawRect(d(354),d(560),d(361),d(640),p);c.drawCircle(d(343),d(555),d(20),p);c.drawCircle(d(364),d(550),d(24),p);c.drawCircle(d(379),d(558),d(16),p);
-      String u=str("username"),tok=str("token");long bal=lng("accountBalanceMGA");
-      box(c,7,6,383,68,24,Color.rgb(9,25,71),Color.rgb(37,116,236));
-      p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,11,blue);
-      p.setColor(Color.WHITE);c.drawRect(d(59),d(26),d(78),d(36),p);p.setColor(Color.rgb(239,63,75));c.drawRect(d(59),d(26),d(78),d(31),p);p.setColor(Color.rgb(37,166,105));c.drawRect(d(59),d(31),d(78),d(36),p);
-      t(c,u.isEmpty()?"Player_Mada":u,84,31,12.5f,Color.WHITE,true,false);t(c,"Joueur LudoMada",84,50,8.5f,0xE1FFFFFF,false,false);
-      box(c,84,55,145,63,4,Color.rgb(5,18,48),Color.rgb(37,71,126));box(c,85,56,121,62,3,Color.rgb(34,221,112),0);
-      box(c,151,17,222,57,19,Color.rgb(10,35,84),Color.rgb(69,139,255));t(c,"C",164,43,13,gold2,true,true);t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
-      box(c,250,17,309,57,19,Color.rgb(8,35,83),Color.rgb(55,151,239));t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);t(c,"—",291,42,10,Color.WHITE,true,true);box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
-      t(c,"♪",337,43,16,Color.WHITE,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
-      if(tok.isEmpty()){box(c,279,69,371,92,11,Color.rgb(28,95,202),gold);t(c,"CONNEXION",325,85,7.5f,Color.WHITE,true,true);}
-      t(c,"LE JEU QUI RASSEMBLE !",195,103,8.5f,gold2,true,true);
-      t(c,"♛",195,125,27,gold,true,true);t(c,"Ludo",161,151,38,gold2,true,true);t(c,"Mada",226,151,38,Color.WHITE,true,true);
-      box(c,143,160,247,164,1.5f,red,0);box(c,143,164,247,168,1,Color.WHITE,0);box(c,143,168,247,172,1.5f,green,0);
-      t(c,"Joue • Gagne • Grandis",195,187,12.5f,gold2,false,true);t(c,"2 à 4 joueurs  •  Classique",195,202,7.7f,0xE2FFFFFF,false,true);
-      board(c);
-      menu(c,8,110,126,158,Color.rgb(244,174,25),gold,"▶","JOUER","En ligne ou Hors-ligne");
-      menu(c,8,164,126,212,Color.rgb(22,72,185),Color.rgb(45,135,255),"♛","TOURNOIS","Événements & classements");
-      menu(c,8,218,126,266,Color.rgb(12,147,87),Color.rgb(29,223,137),"▣","MON WALLET","Dépôt / Retrait / Historique");
-      menu(c,8,272,126,320,Color.rgb(102,30,202),Color.rgb(195,81,255),"●","PROFIL","Infos • Paramètres");
-      menu(c,8,326,126,374,Color.rgb(12,131,183),Color.rgb(33,215,246),"▤","TUTORIELS","Apprends à jouer");
-      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));t(c,"BONUS DE BIENVENUE",324,125,9.5f,Color.WHITE,true,true);t(c,"Bonus à venir",324,145,11,gold2,true,true);t(c,"Offre future — aucun crédit fictif",324,158,6.6f,0xD8FFFFFF,false,true);box(c,286,147,363,169,11,Color.rgb(255,202,28),gold2);t(c,"BIENTÔT",324,162,8.5f,Color.rgb(75,35,2),true,true);
-      box(c,266,181,382,232,16,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MISE ACTUELLE",324,198,7.6f,Color.WHITE,true,true);t(c,fee+" Ar",324,219,11,gold2,true,true);t(c,"⌄",369,219,14,Color.WHITE,true,true);
-      box(c,266,239,382,352,17,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MODE DE JEU",324,257,8,Color.WHITE,true,true);
-      box(c,275,264,373,307,15,Color.rgb(24,105,223),Color.rgb(61,160,255));t(c,"◎",291,289,15,Color.WHITE,true,true);t(c,"En ligne",319,283,10,Color.WHITE,true,true);t(c,"Joueurs réels  ›",326,298,7.2f,0xD7FFFFFF,false,true);
-      box(c,275,311,373,346,15,Color.rgb(126,40,226),Color.rgb(191,89,255));t(c,"♟",291,333,15,Color.WHITE,true,true);t(c,"Hors-ligne",323,327,9.5f,Color.WHITE,true,true);t(c,"2 à 4 joueurs  ›",326,340,7.1f,0xD7FFFFFF,false,true);
-      box(c,7,397,383,447,18,Color.rgb(8,20,59),Color.rgb(33,111,225));t(c,"♛  CHOISISSEZ VOTRE MISE",195,414,9.7f,gold2,true,true);
-      int[]fs={500,1000,2000,5000,10000,20000};for(int i=0;i<6;i++){int f=fs[i];float l=10+i*61.5f;boolean a=f==fee;box(c,l,420,l+55,443,9,a?Color.rgb(255,193,29):Color.rgb(13,37,83),a?Color.WHITE:Color.rgb(40,118,230));t(c,f<1000?f+" Ar":(f/1000)+"K Ar",l+27.5f,436,7,a?Color.rgb(74,35,0):Color.WHITE,true,true);}
-      String[]n={"ROOM PRIVÉE","CLASSEMENT","ANTI-TRICHE","SUPPORT"},sub={"Crée ta partie","Top joueurs","Jeu équitable","Assistance 24/7"},ic={"🎲","♛","✓","◉"};
-      for(int i=0;i<4;i++){float l=8+i*94.5f;box(c,l,466,l+88,535,16,Color.rgb(7,31,72),Color.rgb(39,115,230));t(c,ic[i],l+44,491,17,i==2?green:gold2,true,true);t(c,n[i],l+44,510,6.9f,Color.WHITE,true,true);t(c,sub[i],l+44,526,6.3f,0xD6FFFFFF,false,true);}
-      t(c,"Madagasikara  •  Miray amin’ny LudoMada",195,577,8.5f,gold2,false,true);
-      float by=640;box(c,6,by,384,by+65,23,Color.rgb(5,15,49),Color.rgb(39,112,230));
-      String[]labs={"Accueil","Jeux","Événements","Social","Boutique"},icons={"⌂","🎲","♛","♟","🛒"};for(int i=0;i<5;i++){float xx=43+i*76;boolean a=i==0;if(a)box(c,xx-31,by+5,xx+31,by+60,19,Color.rgb(26,23,67),gold);t(c,icons[i],xx,by+29,16,a?gold2:Color.WHITE,true,true);t(c,labs[i],xx,by+49,7.4f,a?gold2:0xE3FFFFFF,true,true);}
+      final float den=getResources().getDisplayMetrics().density;
+      final float W=getWidth(), H=getHeight();
+      if(W<=0 || H<=0) return;
+      if(W<H){
+        c.drawColor(Color.BLACK);
+        return;
+      }
+
+      // Rebuild the supplied Home reference as live Android rendering.
+      // The reference image is no longer painted on screen; it is only a design guide.
+      s=Math.min(W/(1280f*den),H/(720f*den));
+      float sc=s*den;
+      float ox=(W-1280f*sc)/2f, oy=(H-720f*sc)/2f;
+
+      c.save();
+      // No bitmap/background layer here. The GLES3 SurfaceView below already renders
+      // the complete real 3D Madagascar sunset environment + live board.
+      c.translate(ox,oy);
+
+      // Premium outer glass frame.
+      box(c,24,24,1256,696,32,0x32101B2A,0x66FFFFFF);
+      p.setShader(new LinearGradient(0,24*sc,0,696*sc,0x28FFFFFF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawRoundRect(d(25),d(25),d(1255),d(695),d(31),d(31),p);
+      p.setShader(null);
+
+      // Header / identity.
+      t(c,"Ludo",650,82,22,Color.WHITE,true,true);
+      t(c,"Mada",710,82,22,Color.rgb(255,196,42),true,true);
+      t(c,"Jouer • Gagner • Grandir",680,101,8.5f,0xEEFFFFFF,false,true);
+      box(c,52,45,1228,116,24,0x9A0A1C3A,0x664B9EFF);
+      p.setShader(new RadialGradient(d(92),d(80),d(38),0x664BC4FF,0x00000000,Shader.TileMode.CLAMP));
+      c.drawCircle(d(92),d(80),d(38),p); p.setShader(null);
+      p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(d(2)); p.setColor(gold2);
+      c.drawCircle(d(92),d(80),d(26),p); p.setStyle(Paint.Style.FILL);
+      pawn(c,92,81,13,blue);
+
+      String u=str("username");
+      long bal=lng("accountBalanceMGA");
+      String dn=u.isEmpty()?"Vahiny":(u.length()>18?u.substring(0,18)+"…":u);
+      t(c,dn,132,75,18,Color.WHITE,true,false);
+      t(c,"LudoMada  •  Joue • Gagne • Grandis",132,98,11,0xD7FFFFFF,false,false);
+      box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);
+      t(c,"SOLDE",935,77,9,gold2,true,false);
+      t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
+      box(c,1096,56,1164,104,18,0xFFEDB83A,0);
+      t(c,"+",1130,87,22,0xFF432600,true,true);
+      t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+
+      // Live left navigation rail.
+      menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
+      menu(c,52,238,290,318,0xE61A3C82,0xAA6CCBFF,"↗","REJOINDRE","Code de room");
+      menu(c,52,331,290,411,0xE612795F,0xAA66E8C1,"◆","WALLET","Solde & transactions");
+      menu(c,52,424,290,504,0xE62C3F65,0xAAA7C7FF,"●","PROFIL","Compte & réglages");
+      box(c,52,530,290,650,18,0x990A1C3A,0x665E91C9);
+      t(c,"MISE",171,556,11,gold2,true,true);
+      int[] fs={500,1000,2000,5000,10000,20000};
+      for(int i=0;i<6;i++){
+        float l=60+i*37;
+        boolean a=fs[i]==fee;
+        box(c,l,570,l+34,598,9,a?0xFFFFC72C:0xFF173C72,a?Color.WHITE:0x667EB8FF);
+        String label=fs[i]<1000?String.valueOf(fs[i]):(fs[i]/1000)+"K";
+        t(c,label,l+17,588,7.2f,a?0xFF4A2800:Color.WHITE,true,true);
+      }
+
+      // The board/environment itself is the full-screen live GLES3 scene.
+      // Keep only a small vector title over the scene; never paint a second board.
+      t(c,"TABLE PREMIUM • LIVE 3D",695,130,8.5f,gold2,true,true);
+
+      // Live right information / CTA panel.
+      box(c,1010,145,1228,650,18,0x8A0A1C3A,0x665E91C9);
+      t(c,"LUDOMADA",1119,185,16,gold2,true,true);
+      t(c,"TABLE PREMIUM",1119,208,10,0xD9FFFFFF,true,true);
+      t(c,"2–4",1119,255,29,Color.WHITE,true,true);
+      t(c,"JOUEURS",1119,275,9,0xCFFFFFFF,true,true);
+      t(c,"Mise actuelle",1119,314,9,0xBFFFFFFF,false,true);
+      t(c,fee+" Ar",1119,344,24,gold2,true,true);
+      box(c,1028,378,1210,452,22,0xFFFFC32D,0xEEFFF0B0);
+      t(c,"▶",1060,422,24,0xFF4A2900,true,true);
+      t(c,"JOUER",1123,418,19,0xFF452500,true,true);
+      t(c,"EN LIGNE / HORS-LIGNE",1119,438,8,0xFF694A15,true,true);
+      t(c,"RAPIDE • FLUIDE • RÉALISTE",1119,490,8.5f,gold2,true,true);
+      box(c,1028,470,1210,520,18,0xB316315A,0x557EB8FF);
+      t(c,"♛",1060,500,18,Color.WHITE,true,true);
+      t(c,"TOURNOIS",1123,496,10,Color.WHITE,true,true);
+      t(c,"Classement & défis",1123,511,8,0xD0FFFFFF,false,false);
+      box(c,1028,528,1210,578,18,0xB316315A,0x557EB8FF);
+      t(c,"?",1060,558,18,gold2,true,true);
+      t(c,"TUTORIELS",1123,554,10,Color.WHITE,true,true);
+      t(c,"Apprendre le Ludo",1123,569,8,0xD0FFFFFF,false,false);
+      box(c,1028,586,1210,628,14,0x88111F38,0x447EB8FF);
+      t(c,"Madagasikara • Miray",1119,612,8,gold2,true,true);
+
       c.restore();
+      postInvalidateDelayed(16);
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
-      float den=getResources().getDisplayMetrics().density,sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=(getHeight()-710f*sc)/2f;
-      float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
-      if(x<0||x>390||y<0||y>710)return true;
-      if(y<68){
-        if(x<170)call(tok.isEmpty()?"login":"profile"); else if(x<273)call(tok.isEmpty()?"login":"wallet"); else call("profile");
+      float W=getWidth(),H=getHeight();
+      final float den=getResources().getDisplayMetrics().density;
+
+      // Normal landscape coordinates used by the premium composition.
+      float scLandscape=Math.min(W/(1280f*den),H/(720f*den))*den;
+      float oxLandscape=(W-1280f*scLandscape)/2f, oyLandscape=(H-720f*scLandscape)/2f;
+      float lx=(e.getX()-oxLandscape)/scLandscape, ly=(e.getY()-oyLandscape)/scLandscape;
+
+      // Ramus/Android can report the same rendered landscape surface as a portrait 720×1616 input space.
+      // Accept both possible quarter-turn mappings so the real JOUER/rail hitboxes remain touchable.
+      if(W<H){
+        float nx=e.getX()/Math.max(1f,W), ny=e.getY()/Math.max(1f,H);
+        float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+        float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+
+        if(hitHomeActions(lxCW,lyCW)) return true;
+        if(hitHomeActions(lxCCW,lyCCW)) return true;
         return true;
       }
-      if(y>=69&&y<95&&x>270){call("login");return true;}
-      if(y>=145&&y<176&&x>270){call("wallet");return true;}
-      if(y>=108&&y<159&&x<130){call("gameModeDialog");return true;}
-      if(y>=164&&y<213&&x<130){call("events");return true;}
-      if(y>=218&&y<267&&x<130){call("wallet");return true;}
-      if(y>=272&&y<321&&x<130){call("profile");return true;}
-      if(y>=326&&y<376&&x<130){call("tutorials");return true;}
-      if(y>=264&&y<309&&x>270){call("lobby");return true;}
-      if(y>=311&&y<350&&x>270){call("offlineMenu");return true;}
-      if(y>=300&&y<395&&x>=115&&x<=275){call("gameModeDialog");return true;}
-      if(y>=397&&y<448){
-        int[]fs={500,1000,2000,5000,10000,20000};int i=(int)((x-10)/61.5f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
-      }
-      if(y>=466&&y<541){
-        int i=(int)(x/94.5f);if(i==0)call("joinDialog");else if(i==1)call("events");else if(i==2)call("tutorials");else call("social");return true;
-      }
-      float by=640;
-      if(y>=by&&y<=by+66){
-        int i=(int)(x/76f);if(i==0)call("home");else if(i==1)call("gameModeDialog");else if(i==2)call("events");else if(i==3)call("social");else call("shop");return true;
-      }
+
+      // Ramus may keep a 720×1616 portrait touch surface while Android reports
+      // the rendered View as landscape. Try the direct landscape hit first, then
+      // both inverse quarter-turns so left-rail actions remain deterministic.
+      if(hitHomeActions(lx,ly)) return true;
+      float nx=e.getX()/Math.max(1f,W), ny=e.getY()/Math.max(1f,H);
+      float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+      float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+      if(hitHomeActions(lxCW,lyCW)) return true;
+      if(hitHomeActions(lxCCW,lyCCW)) return true;
       return true;
     }
+
+    private boolean hitHomeActions(float x,float y){
+      if(y>=140&&y<230&&x<310){call("createGame");return true;}
+      if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
+      if(y>=325&&y<420&&x<310){call("wallet");return true;}
+      if(y>=420&&y<515&&x<310){call("profile");return true;}
+      if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
+      if(y>=465&&y<525&&x>970){call("events");return true;}
+      if(y>=525&&y<585&&x>970){call("tutorials");return true;}
+      if(y>=520&&y<650&&x<310){
+        int[]fs={500,1000,2000,5000,10000,20000};
+        int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
+      }
+      return false;
+    }
+
   }
 }

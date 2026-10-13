@@ -1,0 +1,7 @@
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="fill">
+        <bitmap
+            android:src="@drawable/ludomada_launcher_v5"
+            android:gravity="fill" />
+    </item>
+</layer-list>

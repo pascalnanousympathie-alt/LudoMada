@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { PaymentMethod } from "@prisma/client";
-import { PaymentProvider, PaymentRequest, ProviderResult } from "./types";
+import { PaymentProvider, PaymentRequest, ProviderQueryContext, ProviderResult } from "./types";
 import { mvolaSandboxEnabled, providerLiveEnabled } from "./config";
 import { AirtelMoneyProvider } from "./airtel";
 
@@ -165,7 +165,26 @@ class MvolaProvider implements PaymentProvider {
 
 class BinancePayProvider implements PaymentProvider {
   method = PaymentMethod.BINANCE;
-  enabled() { return Boolean(providerLiveEnabled("BINANCE") && process.env.BINANCE_PAY_CERTIFICATE_SN?.trim() && process.env.BINANCE_PAY_API_SECRET?.trim() && process.env.BINANCE_PAY_CURRENCY?.trim() && process.env.BINANCE_PAY_MGA_RATE?.trim()); }
+  private currencies(): string[] {
+    const raw = process.env.BINANCE_PAY_CURRENCIES || process.env.BINANCE_PAY_CURRENCY || "";
+    return Array.from(new Set(raw.split(",").map(v => v.trim().toUpperCase()).filter(Boolean)));
+  }
+  private rates(): Record<string, number> {
+    const out: Record<string, number> = {};
+    try {
+      const parsed = JSON.parse(process.env.BINANCE_PAY_MGA_RATES_JSON || "{}");
+      if (parsed && typeof parsed === "object") for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) out[key.trim().toUpperCase()] = n;
+      }
+    } catch {}
+    const single = process.env.BINANCE_PAY_CURRENCY?.trim().toUpperCase();
+    const singleRate = Number(process.env.BINANCE_PAY_MGA_RATE);
+    if (single && Number.isFinite(singleRate) && singleRate > 0 && !out[single]) out[single] = singleRate;
+    return out;
+  }
+  private rateFor(currency: string): number { return this.rates()[currency] ?? 0; }
+  enabled() { return Boolean(providerLiveEnabled("BINANCE") && process.env.BINANCE_PAY_CERTIFICATE_SN?.trim() && process.env.BINANCE_PAY_API_SECRET?.trim() && this.currencies().some(c => this.rateFor(c) > 0)); }
   private sign(timestamp: string, nonce: string, body: string) { return crypto.createHmac("sha512", process.env.BINANCE_PAY_API_SECRET!).update(`${timestamp}\n${nonce}\n${body}\n`).digest("hex").toUpperCase(); }
   private async post(path: string, payload: unknown): Promise<{ ok: boolean; body: any; errorCode?: string }> {
     const body = JSON.stringify(payload), timestamp = Date.now().toString(), nonce = crypto.randomBytes(16).toString("hex");
@@ -178,13 +197,29 @@ class BinancePayProvider implements PaymentProvider {
     }
   }
   async create(r: PaymentRequest): Promise<ProviderResult> {
-    const merchantTradeNo = r.transactionId.replace(/[^A-Za-z0-9]/g, "").slice(0, 32), rate = Number(process.env.BINANCE_PAY_MGA_RATE), currency = String(process.env.BINANCE_PAY_CURRENCY).toUpperCase();
-    if (!merchantTradeNo || !Number.isFinite(rate) || rate <= 0 || !currency) return { accepted: false, errorCode: "BINANCE_CURRENCY_RATE_NOT_CONFIGURED" };
-    const amount = Number(r.amountMGA) / rate, response = await this.post("/binancepay/openapi/order", { merchantTradeNo, orderAmount: Number(amount.toFixed(8)), currency, description: `LudoMada ${merchantTradeNo}`, goodsType: "02" }), x = response.body;
+    const merchantTradeNo = r.transactionId.replace(/[^A-Za-z0-9]/g, "").slice(0, 32);
+    const currency = String(r.cryptoCurrency || process.env.BINANCE_PAY_CURRENCY || "").trim().toUpperCase();
+    const allowed = this.currencies();
+    const rate = this.rateFor(currency);
+    if (!merchantTradeNo || !currency || !allowed.includes(currency) || !Number.isFinite(rate) || rate <= 0) return { accepted: false, errorCode: "BINANCE_CURRENCY_NOT_SUPPORTED" };
+    const orderAmount = Number((Number(r.amountMGA) / rate).toFixed(8));
+    if (!Number.isFinite(orderAmount) || orderAmount <= 0) return { accepted: false, errorCode: "BINANCE_AMOUNT_NOT_VALID" };
+    const response = await this.post("/binancepay/openapi/order", { merchantTradeNo, orderAmount, currency, description: "LudoMada " + merchantTradeNo, goodsType: "02" });
+    const x = response.body;
     const accepted = response.ok && x?.status === "SUCCESS";
-    return { accepted, providerReference: x?.data?.prepayId, providerStatus: x?.data?.status, checkoutUrl: x?.data?.checkoutUrl, raw: x, errorCode: accepted ? undefined : response.errorCode || x?.code || "BINANCE_ORDER_REJECTED" };
+    return { accepted, providerReference: x?.data?.prepayId, providerStatus: x?.data?.status, checkoutUrl: x?.data?.checkoutUrl, raw: { ...x, __ludomada: { cryptoCurrency: currency, mgaRate: rate, amountMGA: r.amountMGA.toString(), orderAmount } }, errorCode: accepted ? undefined : response.errorCode || x?.code || "BINANCE_ORDER_REJECTED" };
   }
-  async query(providerReference: string): Promise<ProviderResult> { const response = await this.post("/binancepay/openapi/order/query", { prepayId: providerReference }), x = response.body, accepted = response.ok && x?.status === "SUCCESS", settled = accepted && x?.data?.status === "PAID"; return { accepted, settled, providerReference: x?.data?.transactionId || providerReference, providerStatus: x?.data?.status, raw: x, errorCode: accepted ? undefined : response.errorCode || x?.code || "BINANCE_QUERY_REJECTED" }; }
+  async query(providerReference: string, context?: ProviderQueryContext): Promise<ProviderResult> {
+    const response = await this.post("/binancepay/openapi/order/query", { prepayId: providerReference });
+    const x = response.body;
+    const accepted = response.ok && x?.status === "SUCCESS";
+    const providerCurrency = String(x?.data?.currency || "").toUpperCase();
+    const currencyMatches = !context?.cryptoCurrency || (!!providerCurrency && providerCurrency === context.cryptoCurrency.toUpperCase());
+    const providerAmount = Number(x?.data?.orderAmount ?? x?.data?.totalFee);
+    const amountMatches = !Number.isFinite(providerAmount) || !context?.expectedAmountMGA || !context?.cryptoRate || Math.abs(providerAmount - Number(context.expectedAmountMGA) / context.cryptoRate) <= 1e-8;
+    const settled = accepted && x?.data?.status === "PAID" && currencyMatches && amountMatches;
+    return { accepted, settled, providerReference: x?.data?.transactionId || providerReference, providerStatus: x?.data?.status, raw: x, errorCode: accepted && settled ? undefined : accepted && !currencyMatches ? "BINANCE_CURRENCY_MISMATCH" : accepted && !amountMatches ? "BINANCE_AMOUNT_MISMATCH" : accepted ? undefined : response.errorCode || x?.code || "BINANCE_QUERY_REJECTED" };
+  }
   verifyWebhook(headers: Record<string, string | undefined>, rawBody: string) {
     const ts = headers["binancepay-timestamp"], nonce = headers["binancepay-nonce"], sig = headers["binancepay-signature"];
     const timestamp = Number(ts);

@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'android-app/**'
-      - '.github/workflows/android-apk.yml'
+      - "android-app/**"
+      - "scripts/**"
+      - ".github/workflows/android-apk.yml"
 
 jobs:
   build:
     runs-on: [self-hosted, linux, ARM64]
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
       group: android-apk-${{ github.ref }}
       cancel-in-progress: true
@@ -20,22 +21,52 @@ jobs:
       JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     defaults:
       run:
-        working-directory: android-app
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout source from GitHub
+        uses: actions/checkout@v4
         with:
-          clean: false
+          ref: ${{ github.sha }}
           fetch-depth: 1
+          clean: true
+          path: _runs/${{ github.run_id }}
+
+      - name: Verify and repair checked-out sources
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          set -eu
+          git reset --hard "$GITHUB_SHA"
+          git clean -fdx
+          # Rehydrate the exact tracked tree from Git's object database. This protects the
+          # single self-hosted runner from a previously interrupted job leaving a partial tree.
+          git archive "$GITHUB_SHA" | tar -xf - -C "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          test -f android-app/settings.gradle.kts
+          test -f android-app/gradlew
+          test -f android-app/build.gradle.kts
+
+      - name: Accept Android SDK licenses
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          mkdir -p "$ANDROID_HOME/licenses"
+          cat > "$ANDROID_HOME/licenses/android-sdk-license" <<'EOF'
+          8933bad161af4178b1185d1a37fbf41ea5269c55
+          d56f5187479451eabf01fb78af6dfcb131a6481e
+          24333f8a63b6825ea9c5514f83c2829b004d1fee
+          EOF
+
       - name: Configure Android SDK path
-        working-directory: android-app
-        run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
-
-      - run: sh ./gradlew --version
-      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: LudoMadagascar-debug-apk
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
+        run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+      - name: Configure ARM64 AAPT2
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
+          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
+      - run: chmod +x gradlew
+      - run: bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=1 assembleDebug --console=plain --stacktrace
+      - run: |
+          set -eu
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          target="/sdcard/Download/LudoMada-premium-gles3-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$target"
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /sdcard/Download/LudoMada-premium-gles3-debug.sha256
 

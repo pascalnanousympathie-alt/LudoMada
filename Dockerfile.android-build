@@ -1,0 +1,56 @@
+# Temporary Android build/release service for LudoMada.
+# Kept separate from the production backend Dockerfile.
+FROM saschpe/android-sdk:35-jdk21.0.12_8
+
+USER root
+WORKDIR /workspace
+
+COPY android-app /workspace/android-app
+
+WORKDIR /workspace/android-app
+RUN printf "sdk.dir=%s\n" "$ANDROID_SDK_ROOT" > local.properties \
+    && chmod +x gradlew \
+    && ./gradlew --no-daemon -Dorg.gradle.workers.max=2 assembleDebug --stacktrace \
+    && test -s app/build/outputs/apk/debug/app-debug.apk
+
+# Minimal HTTP server using the JDK already present in the image.
+RUN cat > /opt/ApkServer.java <<'EOF'
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.*;
+import java.net.InetSocketAddress;
+import java.nio.file.*;
+
+public final class ApkServer {
+  public static void main(String[] args) throws Exception {
+    Path apk = Paths.get(args[0]);
+    int port = Integer.parseInt(System.getenv().getOrDefault("PORT", args.length > 1 ? args[1] : "8080"));
+    HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", port), 0);
+    server.createContext("/", (exchange) -> serve(exchange, apk));
+    server.start();
+    System.out.println("APK_SERVER_READY port=" + port + " file=" + apk);
+  }
+
+  private static void serve(HttpExchange exchange, Path apk) throws IOException {
+    String path = exchange.getRequestURI().getPath();
+    if (path.equals("/") || path.equals("/LudoMada-debug.apk")) {
+      long size = Files.size(apk);
+      exchange.getResponseHeaders().set("Content-Type", "application/vnd.android.package-archive");
+      exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"LudoMada-debug.apk\"");
+      exchange.sendResponseHeaders(200, size);
+      try (InputStream in = Files.newInputStream(apk); OutputStream out = exchange.getResponseBody()) {
+        in.transferTo(out);
+      }
+      return;
+    }
+    byte[] body = "LudoMada APK server is ready. Use /LudoMada-debug.apk".getBytes();
+    exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+    exchange.sendResponseHeaders(404, body.length);
+    try (OutputStream out = exchange.getResponseBody()) { out.write(body); }
+  }
+}
+EOF
+RUN javac /opt/ApkServer.java
+
+EXPOSE 8080
+CMD ["java","-cp","/opt","ApkServer","/workspace/android-app/app/build/outputs/apk/debug/app-debug.apk"]
