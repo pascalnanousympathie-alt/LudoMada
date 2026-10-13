@@ -449,24 +449,45 @@ async function handleOAuthAuthorize(req, res, url) {
   return redirect(res, start.toString());
 }
 
+async function traceOAuthStep(req, route, stage, operation) {
+  try {
+    return await operation();
+  } catch (error) {
+    const errorCode = typeof error?.code === "string" && /^[A-Z0-9_:-]{1,60}$/i.test(error.code)
+      ? error.code : "UNCLASSIFIED";
+    console.error("Mada Commander OAuth stage failed:", JSON.stringify({
+      requestId: String(req.madaRequestId || "missing").slice(0, 64),
+      route,
+      stage,
+      errorName: typeof error?.name === "string" ? error.name.slice(0, 60) : "Error",
+      errorCode,
+      statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : 500
+    }));
+    throw error;
+  }
+}
+
 async function handleGoogleStart(req, res, url) {
   if (req.method !== "GET") return jsonError(res, 405, "method_not_allowed");
-  requireDatabase();
+  await traceOAuthStep(req, "google-start", "database_ready", async () => requireDatabase());
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET || !process.env.MADA_PUBLIC_BASE_URL) {
     return jsonError(res, 503, "temporarily_unavailable", "Google OAuth credentials are not configured.");
   }
-  if (!await rateLimit(requesterKey(req, "google-start"), 10, 900)) return jsonError(res, 429, "rate_limited");
+  const rateAllowed = await traceOAuthStep(req, "google-start", "rate_limit", () => rateLimit(requesterKey(req, "google-start"), 10, 900));
+  if (!rateAllowed) return jsonError(res, 429, "rate_limited");
   const purpose = url.searchParams.get("purpose") === "mcp" ? "mcp" : "dashboard";
   const transactionId = url.searchParams.get("transaction_id") || null;
   if (purpose === "mcp") {
-    const txn = await query("SELECT transaction_id FROM mada_oauth_authorization_requests WHERE transaction_id = $1 AND expires_at > now() LIMIT 1", [transactionId]);
+    const txn = await traceOAuthStep(req, "google-start", "authorization_request_lookup", () =>
+      query("SELECT transaction_id FROM mada_oauth_authorization_requests WHERE transaction_id = $1 AND expires_at > now() LIMIT 1", [transactionId])
+    );
     if (!txn.rowCount) return jsonError(res, 400, "invalid_request", "The authorization request expired. Start the connection again.");
   }
   const state = randomToken(32);
-  await query(
+  await traceOAuthStep(req, "google-start", "google_state_insert", () => query(
     "INSERT INTO mada_google_states (state_hash, purpose, transaction_id, expires_at) VALUES ($1,$2,$3,now() + interval '15 minutes')",
     [hashToken(state), purpose, transactionId]
-  );
+  ));
   const base = getPublicBase();
   const redirectUri = base + "/oauth/google/callback";
   const google = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -494,7 +515,7 @@ async function handleGoogleCallback(req, res, url) {
   const stateRow = stateResult.rows[0];
   const base = getPublicBase();
   const redirectUri = base + "/oauth/google/callback";
-  const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+  const tokenResponse = await traceOAuthStep(req, "google-callback", "google_token_exchange", () => fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -505,16 +526,16 @@ async function handleGoogleCallback(req, res, url) {
       grant_type: "authorization_code"
     }),
     signal: AbortSignal.timeout(10_000)
-  });
+  }));
   const tokenPayload = await tokenResponse.json().catch(() => ({}));
   if (!tokenResponse.ok || !tokenPayload.access_token) {
     console.error("Google OAuth code exchange failed:", tokenResponse.status);
     return jsonError(res, 401, "access_denied", "Google could not verify this sign-in.");
   }
-  const profileResponse = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+  const profileResponse = await traceOAuthStep(req, "google-callback", "google_userinfo", () => fetch("https://openidconnect.googleapis.com/v1/userinfo", {
     headers: { authorization: "Bearer " + tokenPayload.access_token },
     signal: AbortSignal.timeout(10_000)
-  });
+  }));
   const profile = await profileResponse.json().catch(() => ({}));
   if (!profileResponse.ok || !profile.sub || !profile.email || profile.email_verified !== true) {
     return jsonError(res, 403, "access_denied", "A verified Google email is required.");
@@ -1225,6 +1246,7 @@ function cors(req, res, base, route) {
   if (!publicCrossOriginRoute) res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, Accept");
+  res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
   res.setHeader("Access-Control-Max-Age", "600");
   return true;
 }
@@ -1237,6 +1259,9 @@ async function serveStatic(res, file) {
 }
 
 export async function handleRequest(req, res) {
+  const requestId = crypto.randomUUID();
+  req.madaRequestId = requestId;
+  res.setHeader("x-request-id", requestId);
   const url = requestUrl(req);
   const route = routeFor(url);
   const base = publicBaseOrNull();
@@ -1249,6 +1274,7 @@ export async function handleRequest(req, res) {
       "Access-Control-Allow-Origin": publicCrossOriginRoute ? "*" : (req.headers.origin || base),
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version, Accept",
+      "Access-Control-Expose-Headers": "X-Request-Id",
       "Access-Control-Max-Age": "600",
       ...(publicCrossOriginRoute ? {} : { "Vary": "Origin" })
     } : {};
@@ -1289,7 +1315,13 @@ export async function handleRequest(req, res) {
     }
   } catch (error) {
     const status = Number(error?.statusCode) || (error?.code === "MADA_DB_NOT_CONFIGURED" ? 503 : 500);
-    if (status >= 500) console.error("Mada Commander public route failed:", route, String(error?.code || "INTERNAL_ERROR"));
+    if (status >= 500) console.error("Mada Commander public route failed:", JSON.stringify({
+      requestId: String(req.madaRequestId || "missing").slice(0, 64),
+      route,
+      errorName: typeof error?.name === "string" ? error.name.slice(0, 60) : "Error",
+      errorCode: typeof error?.code === "string" && /^[A-Z0-9_:-]{1,60}$/i.test(error.code) ? error.code : "INTERNAL_ERROR",
+      statusCode: status
+    }));
     return send(res, status, {
       error: status === 503 ? "service_not_configured" : status === 413 ? "payload_too_large" : "request_failed",
       error_description: status === 503 ? "Mada Commander public service configuration is incomplete." : status === 429 ? "Request rate limit reached." : "The request could not be completed."

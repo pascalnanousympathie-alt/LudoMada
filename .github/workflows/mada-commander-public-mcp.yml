@@ -41,6 +41,8 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Run security boundary audit and unit tests
         run: npm run verify
+      - name: Check Termux service helper syntax
+        run: bash -n scripts/install-termux-service.sh scripts/check-termux-service.sh
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Wait for the Git-linked main deployment to expose the current tool set
