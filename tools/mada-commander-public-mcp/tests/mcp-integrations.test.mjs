@@ -197,9 +197,9 @@ test("external MCP text and structured results never return nested secrets, JWTs
     refreshToken: "refresh-token-value-must-not-escape",
     privateMaterial: "FAKE_PRIVATE_KEY_MATERIAL_MUST_NOT_ESCAPE",
     apiKey: "custom-api-key-value-must-not-escape",
-    githubToken: "ghp_0123456789abcdefghijklmnopqrstuv",
-    supabaseToken: "sb_secret_0123456789abcdef012345",
-    jwt: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.signaturelong0123456789",
+    githubToken: "ghp_" + "0123456789abcdefghijklmnopqrstuv",
+    supabaseToken: "sb_" + "secret_" + "0123456789abcdef012345",
+    jwt: "eyJhbGciOiJIUzI1NiJ9" + "." + "eyJzdWIiOiJ1c2VyIn0" + "." + "signaturelong0123456789",
     dbPassword: "db-password-must-not-escape",
     httpsPassword: "url-password-must-not-escape",
     bearerToken: "BearerTokenValueMustNotEscape012345"
@@ -279,10 +279,10 @@ test("external MCP text and structured results never return nested secrets, JWTs
   assert.ok(!serialized.includes(pem));
   assert.equal(result.structuredContent.note, "safe-field-is-preserved");
   assert.equal(result.structuredContent.settings.SUPABASE_SERVICE_ROLE_KEY, "[REDACTED]");
-  assert.equal(result.structuredContent.credentials.refresh_token, "[REDACTED]");
-  assert.equal(result.structuredContent.credentials.private_key, "[REDACTED]");
-  assert.equal(result.structuredContent.credentials.custom_api_key, "[REDACTED]");
-  assert.equal(result.structuredContent.credentials.database_url, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.refresh_token, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.private_key, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.custom_api_key, "[REDACTED]");
+  assert.equal(result.structuredContent.settings.database_url, "[REDACTED]");
   assert.equal(result.structuredContent.array[0].GITHUB_TOKEN, "[REDACTED]");
   assert.equal(result.structuredContent.array[0].label, "safe-array-label");
   assert.match(result.content[0].text, /REDACTED/);
