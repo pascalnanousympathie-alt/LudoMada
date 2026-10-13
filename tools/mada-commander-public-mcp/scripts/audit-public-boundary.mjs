@@ -43,6 +43,11 @@ check("exactly eighteen scoped public tools are advertised", PUBLIC_TOOLS.length
 check("all public tools expose an output schema and explicit annotations", PUBLIC_TOOLS.every(t => t.outputSchema?.type === "object" && typeof t.annotations?.readOnlyHint === "boolean" && typeof t.annotations?.openWorldHint === "boolean" && typeof t.annotations?.destructiveHint === "boolean"));
 check("local MCP integration bridge supports stdio and HTTPS transports without shell execution", mcpIntegrations.includes('transport !== "stdio" && server.transport !== "http"') && mcpIntegrations.includes("shell: false") && mcpIntegrations.includes('redirect: "error"'));
 check("MCP tools are deny-by-default and write tools require explicit local opt-in", mcpIntegrations.includes("server.readOnlyTools") && mcpIntegrations.includes("server.writeEnabled ? server.allowedTools : server.readOnlyTools") && mcpIntegrations.includes("not explicitly allowlisted"));
+check("external MCP output redaction is recursive, fail-closed, and covered by nested-secret regression tests",
+  security.includes("export function redactSensitiveStructured") &&
+  mcpIntegrations.includes("redactSensitiveStructured(response.structuredContent") &&
+  integrationTests.includes("structured MCP redaction recursively") &&
+  integrationTests.includes("never return nested secrets"));
 check("MCP credentials are mapped by environment-variable names and never returned in integration status", mcpIntegrations.includes("requiredEnvNames") && mcpIntegrations.includes("missingEnvironmentVariables") && !/gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(await read("mcp-integrations.example.json")));
 check("MCP example integrations are all disabled, write-disabled, and contain only placeholders", integrationExample.version === 1 && integrationExample.servers.length >= 3 && integrationExample.servers.every(s => s.enabled === false && s.writeEnabled === false) && !/REPLACE_WITH_REAL|gh[pousr]_[A-Za-z0-9_]{20,}|sb_secret_[A-Za-z0-9_-]{20,}/.test(JSON.stringify(integrationExample)));
 const githubMcpExample = integrationExample.servers.find(s => s.id === "github");
