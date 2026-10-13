@@ -505,7 +505,8 @@ try {
       for (let attempt = 0; attempt < 24; attempt++) {
         const dice = findRef("TOUCHEZ_LE_DE");
         run("tap", dice.ref, "--gen", String(dice.gen), "--session", session);
-        if (waitForSix(1200)) {
+        waitStable(1000);
+        if (hasText("Dé: 6")) {
           gotSix = true;
           break;
         }
