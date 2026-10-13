@@ -430,6 +430,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_ENTER")
         selectedLanguage=when(getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE).getString("language","fr")){
             "mg"->"mg"
             "en"->"en"
@@ -442,7 +443,24 @@ class MainActivity : Activity() {
         // Premium Home is the first screen; authenticated state is restored in the background
         // and reused by Home/Wallet/online actions when present.
         restoreSession()
-        home()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_BEFORE_HOME")
+        try {
+            home()
+            android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_HOME_RETURNED")
+        } catch (t: Throwable) {
+            android.util.Log.e("LudoMadaStartup", "MAIN_ON_CREATE_HOME_FAILED", t)
+            throw t
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_START")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_RESUME")
     }
 
     private fun splash() {
@@ -699,6 +717,7 @@ class MainActivity : Activity() {
         }.getOrDefault("")
 
     private fun home() {
+        android.util.Log.i("LudoMadaStartup", "HOME_BUILD_ENTER")
         currentScreen="home"
         homeMusicEnabled = music.enabled()
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -713,11 +732,20 @@ class MainActivity : Activity() {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         ) and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
         window.setBackgroundDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(3,12,36),Color.rgb(57,18,67))))
-        val hero = PremiumHeroViewV2(this)
+        android.util.Log.i("LudoMadaStartup", "HOME_BEFORE_PREMIUM_HERO")
+        val hero = try {
+            PremiumHeroViewV2(this)
+        } catch (t: Throwable) {
+            android.util.Log.e("LudoMadaStartup", "HOME_PREMIUM_HERO_CONSTRUCTOR_FAILED", t)
+            throw t
+        }
+        android.util.Log.i("LudoMadaStartup", "HOME_PREMIUM_HERO_CONSTRUCTOR_READY")
         if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
         setContentView(hero)
+        android.util.Log.i("LudoMadaStartup", "HOME_CONTENT_VIEW_ATTACHED")
         refreshAccountBalance()
         refreshMlgSummary()
+        android.util.Log.i("LudoMadaStartup", "HOME_REFRESH_REQUESTS_ISSUED")
     }
 
     private fun profile() {
