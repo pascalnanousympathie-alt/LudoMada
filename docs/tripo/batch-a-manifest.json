@@ -1,0 +1,22 @@
+{
+  "schema": "ludomada-tripo-batch-a-v1",
+  "source": "Tripo 3D",
+  "export_format": "glb/gltf2",
+  "mobile_runtime": "GLES3/PBR",
+  "glb_pbr_note": "glTF 2.0 normally stores metallic and roughness together in a metallicRoughness texture; validator treats metallicRoughness as satisfying metallic+roughness.",
+  "assets": [
+    {"id":"die","file":"LM_Die_Premium_v2.glb","priority":"P0","max_triangles":20000,"required_maps":["baseColor","normal","roughness","metallic"]},
+    {"id":"die_pip_insert","file":"LM_Die_Pip_Insert.glb","priority":"P0-optional","max_triangles":2000,"required_maps":["baseColor","normal","roughness","metallic"]},
+    {"id":"table","file":"LM_Table_Premium.glb","priority":"P0","max_triangles":40000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"board_frame","file":"LM_Board_Frame_Detail.glb","priority":"P0","max_triangles":25000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"rock_01","file":"LM_Rock_01.glb","priority":"P1","max_triangles":8000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"rock_02","file":"LM_Rock_02.glb","priority":"P1","max_triangles":8000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"dry_branch_01","file":"LM_DryBranch_01.glb","priority":"P1","max_triangles":8000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"dry_branch_02","file":"LM_DryBranch_02.glb","priority":"P1","max_triangles":8000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"grass_01","file":"LM_Grass_Clump_01.glb","priority":"P1","max_triangles":6000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"shrub_01","file":"LM_Shrub_01.glb","priority":"P1","max_triangles":12000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"ground_cluster","file":"LM_GroundCluster_01.glb","priority":"P1","max_triangles":12000,"required_maps":["baseColor","normal","roughness"]},
+    {"id":"trophy","file":"LM_Trophy_LudoMada.glb","priority":"P2","max_triangles":15000,"required_maps":["baseColor","normal","roughness","metallic"]}
+  ],
+  "integration_rules":{"authoritative_gameplay_untouched":true,"replace_existing_assets_only_after_visual_ab_test":true,"target_directory":"android-app/app/src/main/assets/3d/tripo/batch-a/"}
+}
