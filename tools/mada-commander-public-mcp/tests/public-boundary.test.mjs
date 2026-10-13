@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import http from "node:http";
 import { createServer } from "node:http";
 import { PUBLIC_TOOLS, authChallenge, executePublicTool } from "../lib/tools.mjs";
@@ -431,4 +432,37 @@ test("Opera clicks are scheduled so navigations cannot tear down the CDP reply",
   assert.ok(source.includes('targetSocket.pathname.startsWith("/devtools/page/")'));
   assert.ok(source.includes("Unexpected Opera target debugging socket; connection refused."));
   assert.ok(source.includes("socket.send(JSON.stringify({ id: 1, method, params }))"));
+});
+
+
+test("OAuth failures expose a request ID and safe stage diagnostics without logging secret values", async () => {
+  const source = await fs.readFile(new URL("../api/router.mjs", import.meta.url), "utf8");
+  assert.ok(source.includes('res.setHeader("x-request-id", requestId)'));
+  assert.ok(source.includes("Mada Commander OAuth stage failed:"));
+  for (const stage of [
+    "database_ready", "rate_limit", "authorization_request_lookup", "google_state_insert",
+    "google_token_exchange", "google_userinfo"
+  ]) assert.ok(source.includes(stage), "missing safe OAuth stage: " + stage);
+  assert.ok(source.includes("requestId: String(req.madaRequestId"));
+  assert.ok(source.includes("errorCode"));
+  assert.ok(source.includes("statusCode"));
+});
+
+test("Termux agent heartbeat runs independently of long jobs and retries polling with bounded backoff", async () => {
+  const source = await fs.readFile(new URL("../agent.mjs", import.meta.url), "utf8");
+  assert.ok(source.includes("async function sendHeartbeat()"));
+  assert.match(source, /setInterval\(\(\) => \{[\s\S]{0,180}sendHeartbeat\(\)[\s\S]{0,100}30_000\)/);
+  assert.ok(source.includes("heartbeatInFlight"));
+  assert.ok(source.includes("Math.min(15_000 * (2 ** Math.max(0, retryCount - 1)), 120_000)"));
+  assert.ok(source.includes("Agent token rejected or revoked"));
+});
+
+test("Termux service installer is explicit, idempotent and prepares optional boot recovery", async () => {
+  const installer = await fs.readFile(new URL("../scripts/install-termux-service.sh", import.meta.url), "utf8");
+  const diagnostic = await fs.readFile(new URL("../scripts/check-termux-service.sh", import.meta.url), "utf8");
+  assert.ok(installer.includes("sv-enable"));
+  assert.ok(installer.includes("~/.termux/boot") || installer.includes("BOOT_FILE"));
+  assert.ok(installer.includes("refusing to overwrite an existing service"));
+  assert.ok(diagnostic.includes("sv status"));
+  assert.ok(diagnostic.includes('agent.mjs" status'));
 });
