@@ -10,6 +10,7 @@ on:
       - ci/hosted-android-startup-diagnostic-v4-20261013
       - ci/hosted-android-startup-diagnostic-v5-20261013
       - ci/hosted-android-startup-diagnostic-v6-20261013
+      - ci/ludomada-glsl-pbr-typefix-v7-20261013
     paths:
       - "android-app/**"
       - ".github/workflows/android-hosted-instrumentation.yml"
