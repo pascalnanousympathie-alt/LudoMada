@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private var walletBalanceView: TextView? = null
     private var externalWalletView: TextView? = null
     private var selectedLanguage = "fr"
+    private var settingsReturnScreen = "home"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
@@ -672,11 +673,12 @@ class MainActivity : Activity() {
             return
         }
         when (currentScreen) {
+            "settings" -> closeSettings()
             "offlineMenu" -> home()
             "offline" -> offlineMenu()
             "room" -> home()
             "lobby" -> home()
-            "profile", "wallet", "history", "social", "events", "friends", "tutorials", "settings" -> home()
+            "profile", "wallet", "history", "social", "events", "friends", "tutorials" -> home()
             else -> super.onBackPressed()
         }
     }
@@ -729,6 +731,7 @@ class MainActivity : Activity() {
     }
 
     private fun settings() {
+        if(currentScreen!="settings") settingsReturnScreen=currentScreen
         page("settings","Paramètres")
         sectionTitle("Préférences de l'application","Langue, musique et mise d'entrée par défaut")
         val languageName=when(selectedLanguage){"mg"->"Malagasy";"en"->"English";else->"Français"}
@@ -777,6 +780,25 @@ class MainActivity : Activity() {
         },52,0,5)
         add(button("← Accueil",Color.rgb(70,82,100)){home()},52,0,3)
         bottomNav("profile")
+    }
+
+    private fun closeSettings() {
+        val destination=settingsReturnScreen
+        settingsReturnScreen="home"
+        when(destination) {
+            "offline" -> offlineGame(offlinePlayers)
+            "board" -> showBoardEntry()
+            "lobby" -> lobby()
+            "room" -> room()
+            "profile" -> profile()
+            "wallet" -> wallet()
+            "social" -> social()
+            "friends" -> friendsHub()
+            "shop" -> shop()
+            "events" -> events()
+            "tutorials" -> tutorials()
+            else -> home()
+        }
     }
 
     fun setDefaultEntryFee(value:Int) {
