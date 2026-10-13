@@ -57,6 +57,16 @@ class StartupUiTest {
             )
         }
 
+        // JOUER must expose both functional modes; online opens the real stake lobby.
+        device.findObject(By.desc("JOUER")).click()
+        assertTrue("Game-mode screen did not open from Home", device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
+        assertTrue("Offline mode target missing", device.hasObject(By.desc("MODE_OFFLINE")))
+        assertTrue("Online mode target missing", device.hasObject(By.desc("MODE_ONLINE")))
+        device.findObject(By.desc("MODE_ONLINE")).click()
+        assertTrue("Online mode should open the stake lobby", device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
+        device.findObject(By.text("← Accueil")).click()
+        assertTrue("Stake lobby should return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
+
         // Entry fees are real selectable controls rather than decorative Canvas text.
         assertTrue("500 Ar should be selected on first launch", device.findObject(By.desc("HOME_ENTRY_FEE_500")).isSelected)
         device.findObject(By.desc("HOME_ENTRY_FEE_1000")).click()
@@ -94,6 +104,12 @@ class StartupUiTest {
         device.findObject(By.desc("HOME_PROFILE")).click()
         device.findObject(By.text("← Miverina")).click()
         assertTrue("Profile did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
+
+        device.findObject(By.desc("HOME_WALLET_SHORTCUT")).click()
+        assertTrue("Wallet menu did not open", device.wait(Until.hasObject(By.text("SOLDE MGA")), 5000))
+        assertTrue("Unauthenticated Wallet must not fabricate a balance", device.hasObject(By.text("— Ar")))
+        device.findObject(By.text("⌂ Accueil")).click()
+        assertTrue("Wallet did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
 
         device.findObject(By.desc("HOME_MARKET")).click()
         assertTrue("3D Market screen did not open", device.wait(Until.hasObject(By.text("Aperçu live 3D")), 5000))
