@@ -751,7 +751,7 @@ class MainActivity : Activity() {
         entryFees.chunked(3).forEach { fees ->
             val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
             fees.forEach { fee ->
-                row.addView(button((if(fee==entryFee)"✓ " else "") + formatMGA(fee) + " Ar",
+                row.addView(button((if(fee==entryFee)"✓ " else "") + formatMGA(fee.toLong()) + " Ar",
                     if(fee==entryFee)emerald else royal) {
                     setDefaultEntryFee(fee)
                     Toast.makeText(this,"Mise par défaut : " + formatMGA(fee) + " Ar",Toast.LENGTH_SHORT).show()
