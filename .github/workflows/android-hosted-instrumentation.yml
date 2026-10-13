@@ -67,6 +67,9 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
+          # Keep userdata below the hosted-runner free-space ceiling: 5G avoids the
+          # emulator's implicit 6G partition request that exceeded available disk.
+          disk-size: 5G
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
