@@ -184,6 +184,13 @@ class StartupUiTest {
         }
         assertTrue("Dice action should reach a six within retries", gotSix)
 
+        // Game HUD settings must be functional and return to the same offline match.
+        device.findObject(By.desc("PARAMETRES")).click()
+        assertTrue("Gameplay settings control did not open settings", device.wait(Until.hasObject(By.text("Préférences de l'application")), 3000))
+        device.pressBack()
+        assertTrue("Closing settings should restore the active 2P match", device.wait(Until.hasObject(By.descContains("GAMEPLAY_3D_OFFLINE_2P")), 8000))
+        assertTrue("Dice HUD must remain reachable after settings", device.hasObject(By.desc("TOUCHEZ_LE_DE")))
+
         device.findObject(By.desc("MENU_JEU")).click()
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_3_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_3_PLAYERS")).click()
