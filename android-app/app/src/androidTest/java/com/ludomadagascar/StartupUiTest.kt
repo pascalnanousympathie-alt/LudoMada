@@ -40,10 +40,22 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.desc("OFFLINE_2_PLAYERS")))
 
+        fun assertGameplayLoaded(players: Int) {
+            val modeMarker = "GAMEPLAY_3D_OFFLINE_${players}P"
+            assertTrue(
+                "${players}-player gameplay marker missing",
+                device.wait(Until.hasObject(By.descContains(modeMarker)), 8000)
+            )
+            assertTrue(
+                "${players}-player board GLB runtime did not load",
+                device.wait(Until.hasObject(By.descContains("GLB_RUNTIME_LOAD_OK")), 8000)
+            )
+        }
+
         assertTrue(device.hasObject(By.desc("OFFLINE_3_PLAYERS")))
         assertTrue(device.hasObject(By.desc("OFFLINE_4_PLAYERS")))
         device.findObject(By.desc("OFFLINE_2_PLAYERS")).click()
-        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_2P")), 8000))
+        assertGameplayLoaded(2)
         assertTrue("Gameplay must expose the dice HUD action", device.hasObject(By.desc("TOUCHEZ_LE_DE")))
 
         // Exercise the real roll callback without asserting a synthetic pawn button: pawns are
@@ -65,12 +77,12 @@ class StartupUiTest {
         device.findObject(By.desc("MENU_JEU")).click()
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_3_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_3_PLAYERS")).click()
-        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_3P")), 8000))
+        assertGameplayLoaded(3)
 
         device.findObject(By.desc("MENU_JEU")).click()
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_4_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_4_PLAYERS")).click()
-        assertTrue(device.wait(Until.hasObject(By.desc("GAMEPLAY_3D_OFFLINE_4P")), 8000))
+        assertGameplayLoaded(4)
 
         val file = File(instrumentation.context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
