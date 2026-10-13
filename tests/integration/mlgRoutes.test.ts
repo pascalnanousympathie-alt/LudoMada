@@ -295,4 +295,72 @@ describeDb("MLG HTTP route concurrency", () => {
     expect(second.response.status).toBe(409);
     expect(second.body.error).toBe("IDEMPOTENCY_KEY_CONFLICT");
   });
+  test("weekly leaderboard ranks real victory-ledger entries and is read-only", async () => {
+    const top = await register("leader-top");
+    const runnerUp = await register("leader-runner");
+    const outsideWindow = await register("leader-old");
+    const topUser = await prisma.user.findUnique({ where: { id: top.id }, select: { username: true } });
+    const runnerUser = await prisma.user.findUnique({ where: { id: runnerUp.id }, select: { username: true } });
+    const oldUser = await prisma.user.findUnique({ where: { id: outsideWindow.id }, select: { username: true } });
+    const now = Date.now();
+    const day = 24 * 60 * 60 * 1000;
+    const createVictory = (userId: string, daysAgo: number) =>
+      prisma.mlgLedgerEntry.create({
+        data: {
+          userId,
+          type: "EARN_VICTORY",
+          amount: 20n,
+          idempotencyKey: "leaderboard-test-" + randomUUID(),
+          createdAt: new Date(now - daysAgo * day)
+        }
+      });
+
+    await Promise.all([
+      createVictory(top.id, 1),
+      createVictory(top.id, 3),
+      createVictory(top.id, 9),
+      createVictory(runnerUp.id, 2),
+      createVictory(outsideWindow.id, 8),
+      createVictory(outsideWindow.id, 10)
+    ]);
+
+    const unauthenticated = await request("/api/mlg/leaderboard?period=week");
+    expect(unauthenticated.response.status).toBe(401);
+
+    const response = await request("/api/mlg/leaderboard?period=week", {
+      headers: authHeaders(top.token)
+    });
+    expect(response.response.status).toBe(200);
+    expect(response.body.period).toBe("week");
+    expect(response.body.windowDays).toBe(7);
+    expect(response.body.items).toHaveLength(2);
+    expect(response.body.items[0]).toMatchObject({
+      rank: 1,
+      username: topUser.username,
+      wins: 2,
+      earnedMLG: "40"
+    });
+    expect(response.body.items[1]).toMatchObject({
+      rank: 2,
+      username: runnerUser.username,
+      wins: 1,
+      earnedMLG: "20"
+    });
+    expect(response.body.items.some((row: any) => row.username === oldUser.username)).toBe(false);
+
+    const wallet = await prisma.wallet.findUnique({
+      where: { userId: top.id },
+      select: { mlgBalance: true, balance: true }
+    });
+    expect(wallet?.mlgBalance).toBe(0n);
+    expect(wallet?.balance).toBe(0n);
+
+    const unsupportedPeriod = await request("/api/mlg/leaderboard?period=all", {
+      headers: authHeaders(top.token)
+    });
+    expect(unsupportedPeriod.response.status).toBe(400);
+    expect(unsupportedPeriod.body.error).toBe("Unsupported leaderboard period");
+  });
+
+
 });
