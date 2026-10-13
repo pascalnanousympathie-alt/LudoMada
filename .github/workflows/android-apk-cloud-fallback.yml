@@ -74,6 +74,7 @@ jobs:
         run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Scan debug and instrumentation APKs for known embedded credentials
+        working-directory: .
         run: |
           set -eu
           python3 scripts/android-release-audit.py app/build/outputs/apk/debug/app-debug.apk
