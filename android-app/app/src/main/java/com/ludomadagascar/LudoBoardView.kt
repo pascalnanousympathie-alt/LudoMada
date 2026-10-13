@@ -49,6 +49,10 @@ class LudoBoardView(
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
     private lateinit var renderer: GameplayRenderer
     private var rendererMode: String = "UNINITIALIZED"
+    // Diagnostic-only throttle for hosted software-GPU screenshots; default stays continuous.
+    private val diagnosticSingleFrame = BuildConfig.DEBUG && homePreview &&
+        context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+            .getBoolean("single_home_frame", false)
 
     internal fun appendRuntimeEvidence(marker: String) {
         post {
@@ -117,7 +121,10 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        renderMode = if (homePreview && !diagnosticSingleFrame) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        if (diagnosticSingleFrame) {
+            android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_SINGLE_FRAME_ENABLED")
+        }
         isFocusable = !homePreview
         isClickable = !homePreview
         if (homePreview) post { configureHomePreview() }
