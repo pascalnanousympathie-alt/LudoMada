@@ -144,9 +144,9 @@ class StartupUiTest {
         assertTrue("Premium Home must expose the primary play target", device.hasObject(By.desc("JOUER")))
 
         device.findObject(By.desc("JOUER")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")), 3000))
+        assertTrue(device.wait(Until.hasObject(By.desc("MODE_OFFLINE")), 3000))
 
-        device.findObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")).click()
+        device.findObject(By.desc("MODE_OFFLINE")).click()
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.desc("OFFLINE_2_PLAYERS")))
 
