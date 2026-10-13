@@ -802,8 +802,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     }
 
     void chooseEntryFee(int value){
+      if(value!=500 && value!=1000 && value!=2000 && value!=5000 && value!=10000 && value!=20000)return;
       fee=value;
-      set("entryFee",value);
+      Activity activity=PremiumHeroViewV2.this.activityContext();
+      if(activity instanceof MainActivity)((MainActivity)activity).setDefaultEntryFee(value);
+      else set("entryFee",value);
       for(HomeTarget target:homeTargets){
         String description=String.valueOf(target.view.getContentDescription());
         if(description.startsWith("HOME_ENTRY_FEE_")){
