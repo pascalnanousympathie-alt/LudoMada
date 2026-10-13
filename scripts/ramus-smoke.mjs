@@ -261,7 +261,7 @@ function waitForSessionEnded(sessionId, attempts = 8) {
     const probe = allow("snapshot", "--session", sessionId);
     if (!probe.ok) {
       const message = JSON.stringify(probe.value || {});
-      if (/session[^\\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\\n]*session/i.test(message)) {
+      if (/session[^\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\n]*session/i.test(message)) {
         return true;
       }
     }
