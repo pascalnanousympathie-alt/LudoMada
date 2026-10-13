@@ -4,6 +4,20 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "android-app/**"
+      - "loadtests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/release-gate.yml"
+
+permissions:
+  contents: read
 
 concurrency:
   group: release-gate-${{ github.ref }}
@@ -11,73 +25,129 @@ concurrency:
 
 jobs:
   backend-staging:
-    runs-on: [self-hosted, linux, ARM64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ludomada_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ludomada_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
     env:
-      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ludomada_ci?schema=public
       NODE_ENV: staging
       PORT: 3101
-      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
-      NODE_OPTIONS: --max-old-space-size=256
-      npm_config_maxsockets: "1"
-      npm_config_jobs: "1"
+      NODE_OPTIONS: --max-old-space-size=768
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
-      JWT_SECRET: "release-gate-${{ github.sha }}-staging"
+      JWT_SECRET: release-gate-${{ github.sha }}-staging
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: false
           fetch-depth: 1
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
-      - run: node -v && npm -v
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund --omit=optional
-      - run: npm run db:generate
-      - run: npm run db:migrate
-      - run: npm run test:all
-      - run: npm run build
-      - name: Start staging API
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate Prisma client and migrate staging database
         run: |
-          nohup npm run start:prod > /tmp/ludomada-api.log 2>&1 &
-          for i in {1..30}; do curl -fsS http://127.0.0.1:3101/ready && break; sleep 2; done
+          set -eu
+          npm run db:generate
+          npm run db:migrate
+
+      - name: Run full backend test suite
+        run: npm run test:all
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Start staging API and verify readiness
+        run: |
+          set -eu
+          nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
+          ready=0
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3101/ready; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Staging API did not become ready"
+            tail -n 160 "$RUNNER_TEMP/ludomada-api.log" || true
+            exit 1
+          fi
           curl -fsS http://127.0.0.1:3101/health
+
       - name: Run staging load smoke
-        run: npx artillery run loadtests/artillery/loadtest-health-80rps.yml
+        run: npm exec -- artillery run loadtests/artillery/loadtest-health-80rps.yml
+
       - name: Upload API log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: staging-api-log
-          path: /tmp/ludomada-api.log
+          name: staging-api-log-${{ github.run_id }}
+          path: ${{ runner.temp }}/ludomada-api.log
           if-no-files-found: ignore
+          retention-days: 7
 
   android-final:
     needs: backend-staging
-    runs-on: [self-hosted, linux, ARM64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
     env:
-      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
-      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
-      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
     steps:
       - uses: actions/checkout@v4
         with:
-          clean: false
           fetch-depth: 1
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
       - name: Configure Android SDK path
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
-      - run: java -version
-      - name: Prepare release signing (when secrets are configured)
+
+      - name: Prepare release signing (only when all secrets are configured)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
         run: |
           set -eu
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ludomada-release.jks"
           test -s "$RUNNER_TEMP/ludomada-release.jks"
 
-      - name: Build final test APK
+      - name: Build debug, release, instrumentation APKs and unit tests
         working-directory: android-app
         env:
           LUDOMADA_SIGNING_STORE_FILE: ${{ runner.temp }}/ludomada-release.jks
@@ -87,35 +157,10 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 clean assembleDebug assembleRelease test --stacktrace
-          test -f app/build/outputs/apk/release/app-release-unsigned.apk || test -f app/build/outputs/apk/release/app-release.apk
-          test -f app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Legacy signing step (Gradle already signs release APK)
-        if: ${{ false }}
-        working-directory: android-app
-        env:
-          KEYSTORE_FILE: ${{ runner.temp }}/ludomada-release.jks
-        run: |
-          set -eu
-          unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
-          signed_apk="app/build/outputs/apk/release/app-release.apk"
-          apksigner="/data/data/com.termux/files/usr/bin/apksigner"
-          if [ ! -x "$apksigner" ]; then
-            apksigner="$(find "$ANDROID_HOME" -type f -name apksigner -print -quit)"
-          fi
-          test -n "$apksigner"
-          test -s "$KEYSTORE_FILE"
-          test -s "$unsigned_apk"
-          "$apksigner" sign \
-            --ks "$KEYSTORE_FILE" \
-            --ks-key-alias "$ANDROID_KEY_ALIAS" \
-            --ks-pass "env:ANDROID_KEYSTORE_PASSWORD" \
-            --key-pass "env:ANDROID_KEY_PASSWORD" \
-            --out "$signed_apk" \
-            "$unsigned_apk"
-          test -s "$signed_apk"
-          rm -f "$unsigned_apk"
+          ./gradlew clean test assembleDebug assembleDebugAndroidTest assembleRelease --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk || test -s app/build/outputs/apk/release/app-release.apk
 
       - name: Verify release artifact and signing state
         working-directory: android-app
@@ -123,50 +168,26 @@ jobs:
           set -eu
           release_apk="app/build/outputs/apk/release/app-release.apk"
           unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
-          apksigner="/data/data/com.termux/files/usr/bin/apksigner"
-          if [ ! -x "$apksigner" ]; then
-            apksigner="$(find "$ANDROID_HOME" -type f -name apksigner -print -quit)"
-          fi
-          test -n "$apksigner"
-          if [ "$ANDROID_KEYSTORE_BASE64" != "" ] && [ "$ANDROID_KEYSTORE_PASSWORD" != "" ] && [ "$ANDROID_KEY_ALIAS" != "" ] && [ "$ANDROID_KEY_PASSWORD" != "" ]; then
-            test -f "$release_apk"
+          apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          test -x "$apksigner"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            test -s "$release_apk"
             "$apksigner" verify --verbose --print-certs "$release_apk"
             sha256sum "$release_apk"
             echo "RELEASE_SIGNED=true"
           else
-            test -f "$unsigned_apk"
+            test -s "$unsigned_apk"
             sha256sum "$unsigned_apk"
             echo "RELEASE_SIGNED=false (configure GitHub signing secrets for a signed release)"
           fi
-      - name: Upload release APK
+
+      - name: Upload verified Android APKs
         uses: actions/upload-artifact@v4
         with:
-          name: LudoMada-release-apk
-          path: android-app/app/build/outputs/apk/release/*.apk
+          name: LudoMada-release-gate-${{ github.sha }}
+          path: |
+            android-app/app/build/outputs/apk/debug/app-debug.apk
+            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            android-app/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-
-  android-emulator-smoke:
-    if: ${{ false }}
-    runs-on: [self-hosted, linux, ARM64]
-    needs: android-final
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
-      - run: java -version
-      - name: Build instrumentation APKs
-        working-directory: android-app
-        run: sh ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
-      - name: Emulator smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          force-avd-creation: true
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: sh scripts/emulator-smoke.sh
+          retention-days: 7
