@@ -467,6 +467,8 @@ test("Termux service installer is explicit, idempotent and prepares optional boo
   assert.ok(installer.includes("~/.termux/boot") || installer.includes("BOOT_FILE"));
   assert.ok(installer.includes('export SVDIR="$PREFIX/var/service"\nexport LOGDIR="$PREFIX/var/log"\ntermux-wake-lock'));
   assert.ok(installer.includes("refusing to overwrite an existing service"));
+  assert.ok(diagnostic.includes('export SVDIR="$PREFIX/var/service"'));
+  assert.ok(diagnostic.includes('export LOGDIR="$PREFIX/var/log"'));
   assert.ok(diagnostic.includes("sv status"));
   assert.ok(diagnostic.includes('agent.mjs" status'));
 });
