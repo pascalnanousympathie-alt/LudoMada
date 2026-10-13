@@ -62,6 +62,9 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 it == "LM_Table_Deep_Base"
         }
 
+    fun loadMarketParts(): Map<String, Part> =
+        loadParts("3d/ludomada-gameplay-market-v6.glb") { it.startsWith("LM_MARKET_") }
+
     fun loadEnvironmentParts(): Map<String, Part> =
         loadParts("3d/ludomada-environment-final.glb") {
             it.startsWith("ENV_") && !it.startsWith("ENV_Baobab_")

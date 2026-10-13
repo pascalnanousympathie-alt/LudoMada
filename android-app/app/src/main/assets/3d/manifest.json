@@ -78,5 +78,32 @@
     "LM_Pawn_Underside_Insert",
     "LM_Die_HydroChrome_Body"
   ],
-  "active_renderer": "native-gles3-premium"
+  "active_renderer": "native-gles3-premium",
+  "market_library": {
+    "revision": 6,
+    "asset": "3d/ludomada-gameplay-market-v6.glb",
+    "boards": [
+      "LM_MARKET_BOARD_ROYAL",
+      "LM_MARKET_BOARD_OBSIDIAN",
+      "LM_MARKET_BOARD_SAPPHIRE",
+      "LM_MARKET_BOARD_RUBY"
+    ],
+    "dice": [
+      "LM_MARKET_DIE_MERCURY",
+      "LM_MARKET_DIE_OBSIDIAN",
+      "LM_MARKET_DIE_RUBY",
+      "LM_MARKET_DIE_EMERALD"
+    ],
+    "pawns": [
+      "LM_MARKET_PAWN_ROYAL_GOLD",
+      "LM_MARKET_PAWN_CHROME",
+      "LM_MARKET_PAWN_ONYX",
+      "LM_MARKET_PAWN_EMERALD",
+      "LM_MARKET_PAWN_SAPPHIRE"
+    ],
+    "notes": "Authored 3D showroom variants; selected gameplay remains compatible with the existing runtime loader.",
+    "bytes": 7934184,
+    "sha256": "c87a4444b1fe4736615a580fba5e1bb3427c1f23e5a431f118ab229a3885bb06",
+    "runtime_loader": "GlbRuntimeLoader.loadMarketParts"
+  }
 }

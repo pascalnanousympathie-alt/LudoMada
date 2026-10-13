@@ -21,6 +21,7 @@ import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
 import { googleUsername, hashGoogleNonce, newGoogleNonce, verifyGoogleIdToken } from "./googleAuth";
+import { MLG_VICTORY_REWARD, MLG_REFERRAL_REWARD, MLG_MIN_SWAP, MARKET_ITEMS, marketPrice, newReferralCode, referralLedgerKey } from "./mlgEconomy";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -68,13 +69,15 @@ async function prewarmPgPool() {
   });
 }
 
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
+if (!["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase())) {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 1000).unref();
+}
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
@@ -180,6 +183,34 @@ app.use((req:any,res,next)=>{
 
 
 const AUTH_RATE_LIMIT_DISABLED = ["test", "loadtest"].includes(String(process.env.NODE_ENV ?? "").toLowerCase());
+
+const mlgReferralRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
+      windowMs: 10 * 60_000,
+      max: 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req:any) =>
+        "mlg-referral:" +
+        String(req.userId || "anonymous") + ":" +
+        ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
+      message: { error: "Too many referral attempts; try again later" }
+    });
+
+const mlgMutationRateLimit = AUTH_RATE_LIMIT_DISABLED
+  ? (_req:any,_res:any,next:any) => next()
+  : rateLimit({
+      windowMs: 60_000,
+      max: 20,
+      standardHeaders: true,
+      legacyHeaders: false,
+      keyGenerator: (req:any) =>
+        "mlg-mutation:" +
+        String(req.userId || "anonymous") + ":" +
+        ipKeyGenerator(String(req.ip || req.socket?.remoteAddress || "unknown")),
+      message: { error: "Too many MLG mutation attempts; try again later" }
+    });
 
 const authRateLimit = AUTH_RATE_LIMIT_DISABLED
   ? (_req:any,_res:any,next:any) => next()
@@ -482,6 +513,380 @@ app.post("/api/auth/refresh",authRateLimit,async(req,res)=>{
 app.get("/api/wallet",auth,async(req:any,res)=>{
   const w=await prisma.wallet.findUnique({where:{userId:req.userId}});
   res.json({balanceMGA:(w?.balance??0n).toString()});
+});
+
+app.get("/api/mlg/summary",auth,async(req:any,res)=>{
+  try{
+    let user=await prisma.user.findUnique({
+      where:{id:req.userId},
+      select:{
+        id:true,
+        referralCode:true,
+        wallet:{select:{mlgBalance:true,balance:true}},
+        cosmeticOwnerships:{select:{category:true,itemId:true,priceMlg:true,purchasedAt:true},orderBy:{purchasedAt:"asc"}}
+      }
+    });
+    if(!user) return res.status(404).json({error:"User not found"});
+
+    if(!user.referralCode){
+      for(let i=0;i<5 && !user.referralCode;i++){
+        try{
+          const code=newReferralCode();
+          user=await prisma.user.update({
+            where:{id:req.userId},
+            data:{referralCode:code},
+            select:{
+              id:true,
+              referralCode:true,
+              wallet:{select:{mlgBalance:true,balance:true}},
+              cosmeticOwnerships:{select:{category:true,itemId:true,priceMlg:true,purchasedAt:true},orderBy:{purchasedAt:"asc"}}
+            }
+          });
+        }catch(e:any){
+          if(e?.code!=="P2002") throw e;
+        }
+      }
+    }
+
+    if(!user.referralCode) return res.status(503).json({error:"REFERRAL_CODE_UNAVAILABLE"});
+
+    const owned=new Set((user.cosmeticOwnerships||[]).map(x=>x.category+":"+x.itemId));
+    for(const item of MARKET_ITEMS){
+      if(item.priceMlg==="0") owned.add(item.category+":"+item.itemId);
+    }
+
+    return res.json({
+      currency:"MLG",
+      rateMGA:"1",
+      balanceMLG:(user.wallet?.mlgBalance??0n).toString(),
+      balanceMGA:(user.wallet?.balance??0n).toString(),
+      victoryRewardMLG:MLG_VICTORY_REWARD.toString(),
+      referralRewardMLG:MLG_REFERRAL_REWARD.toString(),
+      minimumSwapMLG:MLG_MIN_SWAP.toString(),
+      referralCode:user.referralCode,
+      ownedCosmetics:[...owned],
+      marketItems:MARKET_ITEMS
+    });
+  }catch(e:any){
+    console.error("MLG_SUMMARY_ERROR",{message:e?.message,requestId:req.requestId,userId:req.userId});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.get("/api/mlg/history",auth,async(req:any,res)=>{
+  try{
+    const [rows,wallet]=await Promise.all([
+      prisma.mlgLedgerEntry.findMany({
+        where:{userId:req.userId},
+        orderBy:{createdAt:"desc"},
+        take:50
+      }),
+      prisma.wallet.findUnique({where:{userId:req.userId},select:{mlgBalance:true}})
+    ]);
+    return res.json({
+      balanceMLG:(wallet?.mlgBalance??0n).toString(),
+      items:rows.map(x=>({
+      id:x.id,
+      type:x.type,
+      amountMLG:x.amount.toString(),
+      gameId:x.gameId,
+      metadata:x.metadata,
+      createdAt:x.createdAt.toISOString()
+    }))});
+  }catch(e:any){
+    console.error("MLG_HISTORY_ERROR",{message:e?.message,userId:req.userId});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.get("/api/mlg/leaderboard",auth,async(req:any,res)=>{
+  const period=String(req.query?.period??"week").trim().toLowerCase();
+  if(period!=="week") return res.status(400).json({error:"Unsupported leaderboard period"});
+  const startsAt=new Date(Date.now()-7*24*60*60*1000);
+  try{
+    const grouped=await prisma.mlgLedgerEntry.groupBy({
+      by:["userId"],
+      where:{type:"EARN_VICTORY",createdAt:{gte:startsAt}},
+      _count:{userId:true},
+      _sum:{amount:true},
+      orderBy:[
+        {_count:{userId:"desc"}},
+        {_sum:{amount:"desc"}},
+        {userId:"asc"}
+      ],
+      take:25
+    });
+    const userIds=grouped.map((row:any)=>row.userId);
+    const users=userIds.length
+      ? await prisma.user.findMany({where:{id:{in:userIds}},select:{id:true,username:true}})
+      : [];
+    const usernameById=new Map(users.map((user:any)=>[user.id,user.username]));
+    const ranked=grouped.flatMap((row:any)=>{
+      const username=usernameById.get(row.userId);
+      if(typeof username!=="string") return [];
+      return [{
+        userId:row.userId,
+        username,
+        wins:row._count.userId,
+        earnedMLG:(row._sum.amount??0n).toString()
+      }];
+    }).map((row:any,index:number)=>({rank:index+1,...row}));
+    return res.json({
+      period:"week",
+      windowDays:7,
+      startsAt:startsAt.toISOString(),
+      items:ranked
+    });
+  }catch(e:any){
+    console.error("MLG_LEADERBOARD_ERROR",{message:e?.message,requestId:req.requestId,userId:req.userId});
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+app.post("/api/mlg/referral/claim",auth,mlgReferralRateLimit,async(req:any,res)=>{
+  const code=z.object({
+    referralCode:z.string().trim().min(4).max(16).regex(/^[A-Z0-9_-]+$/i)
+  }).safeParse(req.body);
+  const idempotencyKey=String(req.headers["idempotency-key"]||"").trim();
+  if(!code.success || !idempotencyKey || idempotencyKey.length>128){
+    return res.status(400).json({error:"Invalid request or Idempotency-Key"});
+  }
+
+  try{
+    const normalized=code.data.referralCode.toUpperCase();
+    const result=await prisma.$transaction(async(tx)=>{
+      // The business idempotency key is derived from the immutable invitee id,
+      // not from a caller-controlled request key. This prevents retries with a
+      // fresh HTTP idempotency key from ever paying twice.
+      const ledgerKey=referralLedgerKey(req.userId);
+      const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey:ledgerKey}});
+      if(prior){
+        if(prior.type!=="EARN_REFERRAL") throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.inviteeId!==req.userId) throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+        return {
+          balanceMLG:(w?.mlgBalance??0n).toString(),
+          already:true,
+          inviterId:prior.userId
+        };
+      }
+
+      const inviter=await tx.user.findUnique({
+        where:{referralCode:normalized},
+        select:{id:true,username:true}
+      });
+      if(!inviter) throw new Error("REFERRAL_CODE_NOT_FOUND");
+      if(inviter.id===req.userId) throw new Error("REFERRAL_SELF_NOT_ALLOWED");
+
+      const already=await tx.referral.findUnique({where:{inviteeId:req.userId}});
+      if(already) throw new Error("REFERRAL_ALREADY_CLAIMED");
+
+      await tx.referral.create({
+        data:{
+          inviterId:inviter.id,
+          inviteeId:req.userId,
+          code:normalized,
+          rewardMlg:MLG_REFERRAL_REWARD
+        }
+      });
+
+      await tx.wallet.update({
+        where:{userId:inviter.id},
+        data:{mlgBalance:{increment:MLG_REFERRAL_REWARD}}
+      });
+      await tx.mlgLedgerEntry.create({
+        data:{
+          userId:inviter.id,
+          type:"EARN_REFERRAL",
+          amount:MLG_REFERRAL_REWARD,
+          idempotencyKey:ledgerKey,
+          metadata:{inviteeId:req.userId,code:normalized}
+        }
+      });
+
+      const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+      return {
+        balanceMLG:(w?.mlgBalance??0n).toString(),
+        already:false,
+        inviterId:inviter.id
+      };
+    }, { maxWait: 10_000, timeout: 15_000 });
+
+    await audit(prisma,req,"MLG_REFERRAL_CLAIM",{
+      inviterId:result.inviterId,
+      inviteeId:req.userId,
+      rewardMLG:result.already ? "0" : MLG_REFERRAL_REWARD.toString(),
+      already:result.already,
+      idempotencyKey
+    });
+
+    return res.json({
+      ok:true,
+      rewardMLG:result.already ? "0" : MLG_REFERRAL_REWARD.toString(),
+      balanceMLG:result.balanceMLG,
+      alreadyClaimed:result.already
+    });
+  }catch(e:any){
+    const status=
+      e?.message==="REFERRAL_CODE_NOT_FOUND" ? 404 :
+      e?.message==="REFERRAL_SELF_NOT_ALLOWED" ? 409 :
+      e?.message==="REFERRAL_ALREADY_CLAIMED" ? 409 :
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ? 409 :
+      e?.code==="P2002" ? 409 : 500;
+    if(status===500) console.error("MLG_REFERRAL_ERROR",{message:e?.message,userId:req.userId});
+    return res.status(status).json({error:status===500?"Internal server error":e.message});
+  }
+});
+
+app.post("/api/market/purchase",auth,mlgMutationRateLimit,async(req:any,res)=>{
+  const parsed=z.object({
+    category:z.enum(["board","die","pawn","vfx"]),
+    itemId:z.string().trim().min(1).max(64).regex(/^[a-z0-9_-]+$/i)
+  }).safeParse(req.body);
+  const idempotencyKey=String(req.headers["idempotency-key"]||"").trim();
+  if(!parsed.success || !idempotencyKey || idempotencyKey.length>128){
+    return res.status(400).json({error:"Invalid request or Idempotency-Key"});
+  }
+
+  const {category,itemId}=parsed.data;
+  const price=marketPrice(category,itemId);
+  if(price===null) return res.status(404).json({error:"MARKET_ITEM_NOT_FOUND"});
+
+  try{
+    const result=await prisma.$transaction(async(tx)=>{
+      const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey}});
+      if(prior){
+        if(prior.type!=="MARKET_PURCHASE" || prior.userId!==req.userId){
+          throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        }
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.category!==category || priorMeta.itemId!==itemId || priorMeta.priceMlg!==price.toString()){
+          throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+        }
+        const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+        return {balanceMLG:(w?.mlgBalance??0n).toString(),priceMlg:price.toString(),already:true};
+      }
+
+      const existing=await tx.cosmeticOwnership.findUnique({
+        where:{userId_category_itemId:{userId:req.userId,category,itemId}}
+      });
+      if(existing){
+        const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+        return {balanceMLG:(w?.mlgBalance??0n).toString(),priceMlg:existing.priceMlg.toString(),already:true};
+      }
+
+      if(price>0n){
+        const charged=await tx.wallet.updateMany({
+          where:{userId:req.userId,mlgBalance:{gte:price}},
+          data:{mlgBalance:{decrement:price}}
+        });
+        if(charged.count!==1) throw new Error("INSUFFICIENT_MLG");
+      }
+
+      await tx.cosmeticOwnership.create({
+        data:{userId:req.userId,category,itemId,priceMlg:price}
+      });
+
+      if(price>0n){
+        await tx.mlgLedgerEntry.create({
+          data:{
+            userId:req.userId,
+            type:"MARKET_PURCHASE",
+            amount:-price,
+            idempotencyKey,
+            metadata:{category,itemId,priceMlg:price.toString()}
+          }
+        });
+      }
+
+      const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+      return {balanceMLG:(w?.mlgBalance??0n).toString(),priceMlg:price.toString(),already:false};
+    }, { maxWait: 10_000, timeout: 15_000 });
+
+    return res.json({
+      ok:true,
+      category,itemId,
+      priceMLG:result.priceMlg,
+      chargedMLG:result.already ? "0" : result.priceMlg,
+      balanceMLG:result.balanceMLG,
+      alreadyOwned:result.already
+    });
+  }catch(e:any){
+    const status=
+      e?.message==="INSUFFICIENT_MLG" ||
+      e?.message==="IDEMPOTENCY_KEY_CONFLICT" ||
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ||
+      e?.code==="P2002" ? 409 : 500;
+    if(status===500) console.error("MARKET_PURCHASE_ERROR",{message:e?.message,userId:req.userId,category,itemId});
+    return res.status(status).json({error:status===500?"Internal server error":e.message});
+  }
+});
+
+app.post("/api/mlg/swap-to-mga",auth,mlgMutationRateLimit,async(req:any,res)=>{
+  const parsed=z.object({
+    amountMLG:z.number().int().positive().max(100_000_000)
+  }).safeParse(req.body);
+  const idempotencyKey=String(req.headers["idempotency-key"]||"").trim();
+  if(!parsed.success || !idempotencyKey || idempotencyKey.length>128){
+    return res.status(400).json({error:"Invalid request or Idempotency-Key"});
+  }
+
+  const amount=BigInt(parsed.data.amountMLG);
+  if(amount<MLG_MIN_SWAP) return res.status(409).json({error:"MLG_SWAP_MINIMUM_10000"});
+
+  try{
+    const result=await prisma.$transaction(async(tx)=>{
+      const prior=await tx.mlgLedgerEntry.findUnique({where:{idempotencyKey}});
+      if(prior){
+        if(prior.type!=="SWAP_TO_MGA" || prior.userId!==req.userId){
+          throw new Error("MLG_LEDGER_KEY_CONFLICT");
+        }
+        const priorMeta:any=prior.metadata ?? {};
+        if(priorMeta.amountMLG!==amount.toString() || priorMeta.rateMGA!=="1"){
+          throw new Error("IDEMPOTENCY_KEY_CONFLICT");
+        }
+        const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+        return {balanceMLG:(w?.mlgBalance??0n).toString(),balanceMGA:(w?.balance??0n).toString(),already:true};
+      }
+
+      const debited=await tx.wallet.updateMany({
+        where:{userId:req.userId,mlgBalance:{gte:amount}},
+        data:{mlgBalance:{decrement:amount},balance:{increment:amount}}
+      });
+      if(debited.count!==1) throw new Error("INSUFFICIENT_MLG");
+
+      await tx.mlgLedgerEntry.create({
+        data:{
+          userId:req.userId,
+          type:"SWAP_TO_MGA",
+          amount:-amount,
+          idempotencyKey,
+          metadata:{rateMGA:"1",amountMLG:amount.toString()}
+        }
+      });
+
+      const w=await tx.wallet.findUnique({where:{userId:req.userId}});
+      return {balanceMLG:(w?.mlgBalance??0n).toString(),balanceMGA:(w?.balance??0n).toString(),already:false};
+    }, { maxWait: 10_000, timeout: 15_000 });
+
+    return res.json({
+      ok:true,
+      rateMGA:"1",
+      swappedMLG:result.already ? "0" : amount.toString(),
+      creditedMGA:result.already ? "0" : amount.toString(),
+      balanceMLG:result.balanceMLG,
+      balanceMGA:result.balanceMGA
+    });
+  }catch(e:any){
+    const status=
+      e?.message==="INSUFFICIENT_MLG" ||
+      e?.message==="IDEMPOTENCY_KEY_CONFLICT" ||
+      e?.message==="MLG_LEDGER_KEY_CONFLICT" ||
+      e?.code==="P2002" ? 409 : 500;
+    if(status===500) console.error("MLG_SWAP_ERROR",{message:e?.message,userId:req.userId});
+    return res.status(status).json({error:status===500?"Internal server error":e.message});
+  }
 });
 
 const payment=z.object({amountMGA:z.number().int().positive().max(100_000_000),method:z.nativeEnum(PaymentMethod),customerPhone:z.string().trim().min(8).max(32).optional(),cryptoCurrency:z.string().trim().regex(/^[A-Z0-9]{2,12}$/).transform(v=>v.toUpperCase()).optional()}).superRefine((v,ctx)=>{
@@ -2094,14 +2499,19 @@ app.use((err:any,req:any,res:any,_next:any)=>{
     error:"Internal server error"
   });
 });
-async function startServer() {
+export async function startServer() {
   const server = app.listen(port, () => {
     console.log(`Ludo Mada V4 API listening on :${port}`);
   });
   return server;
 }
 
-const serverPromise = startServer();
+export { app, prisma, pool };
+
+const serverShouldStart = !["test", "loadtest"].includes(
+  String(process.env.NODE_ENV ?? "").toLowerCase()
+);
+const serverPromise = serverShouldStart ? startServer() : Promise.resolve(null);
 
 let shuttingDown = false;
 
@@ -2115,6 +2525,8 @@ async function shutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully`);
 
   const server = await serverPromise;
+
+  if (!server) return;
 
   server.close(async () => {
     try {

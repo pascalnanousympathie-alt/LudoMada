@@ -579,6 +579,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,910,56,1085,104,18,0xB313315C,0x557EB8FF);
       t(c,"SOLDE",935,77,9,gold2,true,false);
       t(c,bal>0?formatBal(bal)+" Ar":"0 Ar",935,96,15,Color.WHITE,true,false);
+      box(c,840,56,900,104,18,0xFF6E55B8,0xFFD7C8FF);
+      t(c,"◆",870,89,19,Color.WHITE,true,true);
       box(c,1096,56,1164,104,18,0xFFEDB83A,0);
       t(c,"+",1130,87,22,0xFF432600,true,true);
       t(c,"🎵",1195,88,18,Color.WHITE,true,true);
@@ -673,6 +675,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
       if(y>=465&&y<525&&x>970){call("events");return true;}
       if(y>=525&&y<585&&x>970){call("tutorials");return true;}
+      if(y>=45&&y<115&&x>=825&&x<915){call("shop");return true;}
       if(y>=520&&y<650&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
         int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
