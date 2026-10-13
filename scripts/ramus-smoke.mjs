@@ -136,6 +136,43 @@ function redactDiagnosticText(value) {
     .replace(/((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|password|authorization|cookie|nonce)\s*[=:]\s*)[^,;\s}]+/gi, "$1[REDACTED]");
 }
 
+function safeLaunchSummary(value) {
+  if (!value || typeof value !== "object") return null;
+  return {
+    error: typeof value.error === "string" ? value.error.slice(0, 180) : undefined,
+    message: typeof value.message === "string" ? value.message.slice(0, 240) : undefined,
+    status: typeof value.status === "string" ? value.status.slice(0, 80) : undefined,
+    session: typeof value.session === "string" ? value.session.slice(0, 80) : undefined,
+    idleTtlSec: Number.isFinite(value.idleTtlSec) ? value.idleTtlSec : undefined
+  };
+}
+
+function captureStartupLogcat(stage) {
+  if (!session) return;
+  const logs = allow("logcat", "--limit", "1000", "--session", session);
+  if (!logs.ok) {
+    console.error("RAMUS_STARTUP_LOGCAT_ERROR=" + JSON.stringify({
+      stage,
+      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240)
+    }));
+    return;
+  }
+
+  const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
+  // Ramus can return JSON log records concatenated in one string. Split at each
+  // record boundary so early AndroidRuntime/package errors are retained even if
+  // the emulator generates hundreds of unrelated system messages.
+  const decoded = raw.replace(/\\n/g, "\n");
+  const records = decoded
+    .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"/g, "\n")
+    .split(/\r?\n/);
+  const relevant = records.filter(line =>
+    /FATAL EXCEPTION|AndroidRuntime|com\.ludomadagascar|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process:|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|PackageManager|Launch timeout|force finishing/i.test(line)
+  );
+  const output = relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n");
+  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + (output || "NO_MATCHING_STARTUP_OR_CRASH_LINES"));
+}
+
 function captureFailureDiagnostics() {
   if (!session) return;
 
@@ -161,21 +198,9 @@ function captureFailureDiagnostics() {
   const screenshot = allow("screenshot", "--session", session, "--out", evidencePath, "--max-width", "1400");
   if (!screenshot.ok) console.error("RAMUS_FAILURE_SCREENSHOT_ERROR=" + JSON.stringify(screenshot.value || {}));
 
-  // Ramus logcat is available in trial mode. Filter down to app-start/crash/system
-  // diagnostics and redact credential-shaped fields before writing to GitHub Actions.
-  const logs = allow("logcat", "--limit", "200", "--session", session);
-  if (!logs.ok) {
-    console.error("RAMUS_FAILURE_LOGCAT_ERROR=" + JSON.stringify(logs.value || {}));
-    return;
-  }
-  const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
-  const decoded = raw.replace(/\\n/g, "\n");
-  const lines = decoded.split(/\r?\n/);
-  const relevant = lines.filter(line =>
-    /FATAL EXCEPTION|AndroidRuntime|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process: com\.ludomadagascar|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|ActivityManager/i.test(line)
-  );
-  const excerpt = (relevant.length ? relevant : lines).slice(-80).join("\n");
-  console.error("RAMUS_FAILURE_LOGCAT=" + redactDiagnosticText(excerpt).slice(-12000));
+  // Capture a larger, filtered slice; the immediate launch checkpoint below is
+  // the primary crash evidence because Android system logs can flood quickly.
+  captureStartupLogcat("failure");
 }
 
 let session = "";
@@ -197,7 +222,7 @@ try {
 
   session = started.value.session;
   console.log(`Ramus session: ${session}`);
-  let launchInfo = { sessionStart: started.value || null };
+  let launchInfo = { sessionStart: safeLaunchSummary(started.value) };
   let home = null;
 
   for (let attempt = 0; attempt < 24; attempt++) {
@@ -205,12 +230,20 @@ try {
     home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
     if (home.ok && home.value?.elements?.length) break;
 
+    // Capture the first startup failure immediately; waiting until cleanup lets
+    // launcher/system noise evict the original AndroidRuntime or package error.
+    if (attempt === 1) captureStartupLogcat("initial-home-missing");
+
     // One bounded foreground launch, after the initial auto-launch had time
     // to settle. Do not retry "busy" in a tight loop.
     if (attempt === 15) {
       const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-      launchInfo = { sessionStart: started.value || null, retryLaunch: launched.value || null };
-      waitStable(2500);
+      launchInfo = {
+        sessionStart: safeLaunchSummary(started.value),
+        retryLaunch: safeLaunchSummary(launched.value)
+      };
+      waitStable(1200);
+      captureStartupLogcat("after-retry-launch");
     }
   }
 
