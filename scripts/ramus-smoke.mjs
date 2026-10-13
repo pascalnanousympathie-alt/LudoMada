@@ -149,7 +149,7 @@ function safeLaunchSummary(value) {
 
 function captureStartupLogcat(stage) {
   if (!session) return;
-  const logs = allow("logcat", "--limit", "1000", "--session", session);
+  const logs = allow("logcat", "--limit", "200", "--session", session);
   if (!logs.ok) {
     console.error("RAMUS_STARTUP_LOGCAT_ERROR=" + JSON.stringify({
       stage,
