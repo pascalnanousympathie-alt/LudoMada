@@ -266,6 +266,35 @@ function tryLauncherDrawerLaunch() {
       }
       attempts[attempts.length-1].itemTap = safeLaunchSummary(tapped.value);
     }
+
+    // On the observed 720x1616 Ramus launcher, the installed LudoMada icon is
+    // visible in the screenshot but omitted from the accessibility tree. Use a
+    // single bounded coordinate tap only when that exact screen and evidence are
+    // present; never guess coordinates on an unknown launcher layout.
+    if (!item && index === 0 && state.screen === "720x1616" && screenshotExists(shotName)) {
+      const coordinateTap = allow("tap", "0.385,0.632", "--session", session, "--force");
+      attempts[attempts.length-1].coordinateTap = safeLaunchSummary(coordinateTap.value);
+      waitStable(900);
+      shot("launcher-ludomada-coordinate-tap");
+      for (let attempt = 0; attempt < 18; attempt++) {
+        waitStable(1000);
+        const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (found.ok && found.value?.elements?.length) {
+          return { home: found, diagnostic: { ok: true, step: "launcher-icon-coordinate", attempts } };
+        }
+        if (attempt === 4) captureStartupLogcat("after-coordinate-icon-tap");
+      }
+      const postTap = allow("snapshot", "--session", session);
+      attempts[attempts.length-1].coordinateTapScreen = postTap.ok ? {
+        screen: postTap.value?.screen || null,
+        count: postTap.value?.count ?? (postTap.value?.elements || []).length,
+        visible: (postTap.value?.elements || []).slice(0, 30).map(e => ({
+          text: String(e.text || "").slice(0, 80),
+          contentDesc: String(e.contentDesc || "").slice(0, 80)
+        }))
+      } : safeLaunchSummary(postTap.value);
+      attempts[attempts.length-1].coordinateTapScreenshotCaptured = screenshotExists("launcher-ludomada-coordinate-tap");
+    }
   }
 
   // The activity may already exist in Android's recent-task stack even when the
