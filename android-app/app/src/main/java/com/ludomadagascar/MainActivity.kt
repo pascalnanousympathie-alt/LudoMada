@@ -34,7 +34,7 @@ class MainActivity : Activity() {
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
     private var accountBalanceMGA: Long = 0L; private var mlgBalance: Long = 0L; private var topBalanceView: TextView? = null; private var walletMlgView: TextView? = null; private var referralCode = ""; private val ownedCosmetics = mutableSetOf<String>(); private val marketPrices = mutableMapOf<String,Long>()
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
-    private var state: JSONObject? = null; private var currentScreen = ""
+    private var state: JSONObject? = null; private var currentScreen = ""; private var homeMusicEnabled = true
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var externalWalletView: TextView? = null
@@ -683,6 +683,7 @@ class MainActivity : Activity() {
 
     private fun home() {
         currentScreen="home"
+        homeMusicEnabled = music.enabled()
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         // Re-assert landscape after returning from login/offline navigation; cloud Android surfaces can retain portrait bounds.
         window.decorView.post { requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -1893,6 +1894,16 @@ class MainActivity : Activity() {
                 }
             } catch(e:Exception){retryCount++;runOnUiThread{if(fail!=null)fail.invoke("Connexion tapaka. Averina... ($retryCount)") else if(::status.isInitialized)status.text="Connexion tapaka. Averina... ($retryCount)";if(currentScreen=="room")root.postDelayed({if(currentScreen=="room")refreshLobby()},minOf(15000L,3000L*retryCount))}}
         }
+    }
+
+    // Public bridge for the live Premium Home music icon rendered in the custom canvas.
+    // Music remains local/offline and toggling it never changes gameplay state.
+    fun toggleHomeMusic() {
+        if (!::music.isInitialized) return
+        music.toggle()
+        homeMusicEnabled = music.enabled()
+        updateMusicButton()
+        window.decorView.invalidate()
     }
 
     // Gameplay rendering is implemented by the dedicated OpenGL ES scene in LudoBoardView.kt.
