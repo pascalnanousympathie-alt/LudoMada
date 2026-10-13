@@ -187,9 +187,9 @@ try {
   mkdirSync("ramus-evidence", { recursive: true });
 
   // Ramus is shared by parallel project checks. Never terminate, wait for, or reuse
-  // Allocate a blank device first, then explicitly install/open the exact APK.
-  // "session start --apk" can leave the device on the Android launcher while its
-  // automatic launch remains in-flight; subsequent app launch calls then return "busy".
+  // Ramus session start requires an APK source and installs/launches it.
+  // Poll the Home screen before attempting a launch again: "busy" means the
+  // initial launch is still being processed, not that the app is healthy.
   const started = allow("session", "start", "--apk", apk, "--wait");
   if (!started.ok || !started.value?.session) {
     throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
@@ -197,25 +197,20 @@ try {
 
   session = started.value.session;
   console.log(`Ramus session: ${session}`);
-  waitStable(1200);
-
-  const installed = allow("session", "install", "--session", session, apk);
-  let launchInfo = { install: installed.value || null };
-  if (!installed.ok) {
-    throw new Error("Ramus could not install/open the exact LudoMada APK: " + JSON.stringify(installed.value || {}));
-  }
-
+  let launchInfo = { sessionStart: started.value || null };
   let home = null;
-  for (let attempt = 0; attempt < 20; attempt++) {
-    waitStable(900);
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    waitStable(1000);
     home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
     if (home.ok && home.value?.elements?.length) break;
 
-    // The install command is expected to open the package. If the first install
-    // completed but Home remains absent, perform exactly one foreground launch.
-    if (attempt === 12) {
+    // One bounded foreground launch, after the initial auto-launch had time
+    // to settle. Do not retry "busy" in a tight loop.
+    if (attempt === 15) {
       const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-      launchInfo = { install: installed.value || null, retryLaunch: launched.value || null };
+      launchInfo = { sessionStart: started.value || null, retryLaunch: launched.value || null };
+      waitStable(2500);
     }
   }
 
