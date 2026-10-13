@@ -484,7 +484,13 @@ try {
     waitStable(1600);
     const boardMarker = `GAMEPLAY_3D_OFFLINE_${mode}P`;
     if (!hasText(boardMarker)) throw new Error(`Offline ${mode}-player 3D board did not open`);
-    console.log(`${mode}-PLAYER GLES3 BOARD ENTRY PASS`);
+    let modeGlbLoaded = false;
+    for (let probe = 0; probe < 8; probe++) {
+      if (hasText("GLB_RUNTIME_LOAD_OK")) { modeGlbLoaded = true; break; }
+      waitStable(350);
+    }
+    if (!modeGlbLoaded) throw new Error(`GLB runtime failed for ${mode}-player board`);
+    console.log(`${mode}-PLAYER GLES3 BOARD + GLB PASS`);
     shot(`board-${mode}p`);
 
     // Prove the gameplay HUD can invoke the real dice-roll callback. Tokens are
@@ -554,8 +560,14 @@ try {
   // block on a remote accessibility snapshot even after the required evidence is done.
   console.log("ONLINE LOBBY CHECK SKIPPED: unauthenticated CI is outside the visual release gate");
 
-  if (!screenshotExists("home-a") && !screenshotExists("startup")) {
-    console.log("HOME SCREENSHOT EVIDENCE SKIPPED: screenshot transport unavailable");
+  if (process.env.RAMUS_CAPTURE === "1") {
+    const requiredShots = ["startup", "home-a", "home-b", "board-2p", "board-3p", "board-4p"];
+    const missingShots = requiredShots.filter(name => !screenshotExists(name));
+    if (missingShots.length) {
+      throw new Error("Required Ramus visual evidence missing: " + missingShots.join(", "));
+    }
+    const evidence = Object.fromEntries(requiredShots.map(name => [name, sha256File(name)]));
+    console.log("RAMUS_VISUAL_EVIDENCE_PASS=" + JSON.stringify(evidence));
   }
   success = true;
   console.log("RAMUS_SMOKE_PASS");
