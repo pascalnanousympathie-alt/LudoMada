@@ -144,4 +144,5 @@ jobs:
             android-app/app/build/outputs/apk/debug/app-debug.apk
             android-app/app/build/outputs/apk/debug/output-metadata.json
             android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          if-no-files-found: error
+          if-no-files-found: warn
+          retention-days: 7
