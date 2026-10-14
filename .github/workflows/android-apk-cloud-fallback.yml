@@ -113,9 +113,9 @@ jobs:
           heap-size: 512M
           sdcard-path-or-size: 256M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          # Use a single shell command and the exact config path observed in hosted-runner logs.
+          # A single command is required: each pre-launch input line is run in its own shell.
           pre-emulator-launch-script: >-
-            sed -i '/^disk\.dataPartition\.size=/d' /home/runner/.android/avd/test.avd/config.ini && printf 'disk.dataPartition.size=4096M\n' >> /home/runner/.android/avd/test.avd/config.ini && grep -q '^disk.dataPartition.size=4096M
+            sed -i '/^disk\.dataPartition\.size=/d' /home/runner/.android/avd/test.avd/config.ini && echo disk.dataPartition.size=4096M >> /home/runner/.android/avd/test.avd/config.ini && grep disk.dataPartition.size /home/runner/.android/avd/test.avd/config.ini
           script: |
             set +e
             cd android-app
