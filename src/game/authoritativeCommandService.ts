@@ -3,6 +3,7 @@ import { GameStateRepository } from "./gameStateRepository";
 import { appendGameEvent } from "./gameEventStore";
 import { rollDice, moveToken } from "./ludoEngine";
 import { randomInt } from "crypto";
+import { MLG_VICTORY_REWARD, victoryLedgerKey } from "../mlgEconomy";
 
 export class AuthoritativeCommandService {
   constructor(private prisma:PrismaClient, private repo=new GameStateRepository(prisma)) {}
@@ -221,6 +222,9 @@ export class AuthoritativeCommandService {
       if(result.finished) {
         const winnerId=state.winnerId;
         if(!winnerId) throw new Error("WINNER_NOT_SET");
+        // A finished move is produced by exactly one authoritative player.
+        // Refuse any inconsistent state before crediting the single winner reward.
+        if(winnerId!==userId) throw new Error("WINNER_ACTOR_MISMATCH");
 
         const game=await tx.game.findUnique({
           where:{id:gameId}
@@ -262,6 +266,37 @@ export class AuthoritativeCommandService {
           where:{userId:winnerId},
           data:{balance:{increment:game.prizePool}}
         });
+
+        // MLG is a separate reward currency. It is granted only from the
+        // server-authoritative online victory, never from client state.
+        const mlgPayoutKey=victoryLedgerKey(gameId);
+        const existingMlgReward=await tx.mlgLedgerEntry.findUnique({
+          where:{idempotencyKey:mlgPayoutKey}
+        });
+        if(!existingMlgReward){
+          await tx.wallet.update({
+            where:{userId:winnerId},
+            data:{mlgBalance:{increment:MLG_VICTORY_REWARD}}
+          });
+          await tx.mlgLedgerEntry.create({
+            data:{
+              userId:winnerId,
+              gameId,
+              type:"EARN_VICTORY",
+              amount:MLG_VICTORY_REWARD,
+              idempotencyKey:mlgPayoutKey,
+              metadata:{reason:"ONLINE_VICTORY_REWARD",rateMGA:"1"}
+            }
+          });
+          await appendGameEvent(
+            tx,
+            gameId,
+            state.stateVersion,
+            "MLG_REWARD_GRANTED",
+            winnerId,
+            {amountMLG:MLG_VICTORY_REWARD.toString(),reason:"ONLINE_VICTORY_REWARD"}
+          );
+        }
 
         await tx.transaction.create({
           data:{

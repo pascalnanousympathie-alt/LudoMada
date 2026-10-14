@@ -46,7 +46,11 @@ export class GameStateRepository {
           });
 
           return out;
-        },{isolationLevel:"ReadCommitted"});
+        },{
+          isolationLevel:"ReadCommitted",
+          maxWait:10_000,
+          timeout:15_000
+        });
       }catch(e:any){
         const errorText = String(e?.message ?? "");
 

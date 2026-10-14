@@ -142,10 +142,72 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 clean assembleDebug assembleRelease test --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" -Dorg.gradle.workers.max=2 clean assembleDebug assembleDebugAndroidTest assembleRelease test --stacktrace
           test -f app/build/outputs/apk/release/app-release-unsigned.apk || test -f app/build/outputs/apk/release/app-release.apk
           test -f app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Verify instrumentation test APK was built
+        working-directory: android-app
+        run: test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Audit Android manifest and source exposures
+        run: python3 scripts/android-release-audit.py
+
+      - name: Validate packaged 3D runtime asset contract
+        run: |
+          set -eu
+          export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          /data/data/com.termux/files/usr/bin/node scripts/check-3d-assets.mjs
+          /data/data/com.termux/files/usr/bin/node scripts/check-3d-optimization.mjs
+          /data/data/com.termux/files/usr/bin/node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Scan debug APK for embedded credentials
+        run: python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Scan release APK for embedded credentials and 3D assets
+        run: |
+          set -eu
+          release_apk="android-app/app/build/outputs/apk/release/app-release.apk"
+          if [ ! -s "$release_apk" ]; then
+            release_apk="android-app/app/build/outputs/apk/release/app-release-unsigned.apk"
+          fi
+          test -s "$release_apk"
+          python3 scripts/android-release-audit.py "$release_apk"
+          export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          /data/data/com.termux/files/usr/bin/node scripts/check-apk-3d-asset.mjs "$release_apk"
+
+      - name: Install Ramus CLI
+        run: |
+          set -eu
+          rm -rf "$RUNNER_TEMP/ramus-cli"
+          mkdir -p "$RUNNER_TEMP/ramus-cli"
+          curl -fsSL https://registry.npmjs.org/ramus-cli/-/ramus-cli-0.1.13.tgz -o "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
+          test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
+          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
+
+      - name: Run mandatory Ramus cloud Android smoke test before release
+        env:
+          HOME: /data/data/com.termux/files/home
+          RAMUS_APK: ${{ github.workspace }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
+          RAMUS_CAPTURE: "1"
+        run: |
+          set -o pipefail
+          export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          /data/data/com.termux/files/usr/bin/timeout -k 10s 900s /data/data/com.termux/files/usr/bin/node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
+
+      - name: Upload Ramus visual evidence and log
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: ludomada-ramus-release-gate-evidence-${{ github.run_id }}
+          path: |
+            ramus-evidence/**
+            ramus-smoke.log
+          if-no-files-found: warn
+          retention-days: 7
       - name: Legacy signing step (Gradle already signs release APK)
         if: ${{ false }}
         working-directory: android-app
@@ -197,36 +259,3 @@ jobs:
         run: |
           set -eu
           for apk in android-app/app/build/outputs/apk/release/*.apk; do test -s "$apk" && cp "$apk" "/sdcard/Download/$(basename "$apk")"; done
-
-  android-emulator-smoke:
-    if: ${{ false }}
-    runs-on: [self-hosted, linux, ARM64]
-    needs: android-final
-    steps:
-      - name: Checkout source from local runner mirror
-        working-directory: .
-        run: |
-          set -eu
-          src="/home/runner/ludomada-mirror.git"
-          test -d "$src"
-          git --git-dir="$src" cat-file -e "$GITHUB_SHA^{commit}"
-          rm -rf "$GITHUB_WORKSPACE"
-          git clone --no-hardlinks "$src" "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" checkout --detach "$GITHUB_SHA"
-
-      - run: java -version
-      - name: Build instrumentation APKs
-        working-directory: android-app
-        run: bash ./gradlew assembleDebug assembleDebugAndroidTest --stacktrace
-      - name: Emulator smoke test
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          force-avd-creation: true
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: sh scripts/emulator-smoke.sh
