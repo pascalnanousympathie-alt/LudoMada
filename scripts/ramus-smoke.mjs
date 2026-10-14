@@ -447,7 +447,12 @@ try {
     const priorSession = session;
     const ended = allow("session", "end", "--session", priorSession);
     launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
-    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    // Treat Ramus' explicit session_ended response as terminal confirmation.
+    // The provider may crash/retire a session before the end command reaches it;
+    // in that case ended.ok is false even though starting a replacement is safe.
+    const endSummary = JSON.stringify(ended.value || {});
+    const alreadyEnded = /session_ended|session\\s+.*is ended|no live successor/i.test(endSummary);
+    const terminal = alreadyEnded || (ended.ok && waitForSessionEnded(priorSession));
     launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
     if (terminal) {
       const restarted = allow("session", "start", "--apk", apk, "--wait");
