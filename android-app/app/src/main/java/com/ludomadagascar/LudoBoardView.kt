@@ -17,6 +17,7 @@ import android.view.MotionEvent
 import android.view.PixelCopy
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -168,36 +169,42 @@ class LudoBoardView(
      * the app; adb shell screencap crashes the software-GPU emulator after the PBR first
      * frame. The normal renderer remains unchanged unless the debug-only preference is set.
      */
-    internal fun requestDiagnosticWindowPixelCopy() {
+    internal fun requestDiagnosticSurfacePixelCopy() {
         if (!diagnosticSingleFrame || diagnosticPixelCopyRequested) return
         diagnosticPixelCopyRequested = true
-        android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SCHEDULING")
+        android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_SCHEDULING")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_UNSUPPORTED api=" + Build.VERSION.SDK_INT)
             return
         }
-        val activity = findHostActivity(context)
-        if (activity == null) {
-            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_NO_ACTIVITY")
+        val surface = holder.surface
+        if (!surface.isValid) {
+            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_INVALID")
             return
         }
-        activity.window.decorView.postDelayed({
-            android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_RUNNABLE")
-            val decor = activity.window.decorView
-            val width = decor.width.coerceAtLeast(1)
-            val height = decor.height.coerceAtLeast(1)
-            val bitmap = runCatching {
-                Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            }.getOrElse {
-                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_BITMAP_FAILED", it)
-                return@postDelayed
-            }
-            android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_REQUESTED size=" + width + "x" + height)
+        val captureWidth = width.coerceAtLeast(1)
+        val captureHeight = height.coerceAtLeast(1)
+        val bitmap = runCatching {
+            Bitmap.createBitmap(captureWidth, captureHeight, Bitmap.Config.ARGB_8888)
+        }.getOrElse {
+            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_BITMAP_FAILED", it)
+            return
+        }
+        // Do not depend on the Activity/UI thread: hosted software-GPU SurfaceSyncGroup
+        // stalls prevented decorView.postDelayed from ever running, even after GL render
+        // returned. PixelCopy callbacks and file I/O therefore use a dedicated HandlerThread.
+        val captureThread = HandlerThread("LudoMadaSurfacePixelCopy").apply { start() }
+        val captureHandler = Handler(captureThread.looper)
+        captureHandler.postDelayed({
+            android.util.Log.i(
+                "LudoMadaRender",
+                "DIAGNOSTIC_PIXELCOPY_SURFACE_REQUESTED size=" + captureWidth + "x" + captureHeight
+            )
             try {
-                PixelCopy.request(activity.window, bitmap, { result ->
+                PixelCopy.request(surface, bitmap, { result ->
                     try {
                         if (result == PixelCopy.SUCCESS) {
-                            val destination = File(activity.cacheDir, "live-premium-home-pixelcopy.png")
+                            val destination = File(context.cacheDir, "live-premium-home-surface.png")
                             destination.outputStream().use { output ->
                                 check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
                                     "Bitmap compression returned false"
@@ -205,21 +212,30 @@ class LudoBoardView(
                             }
                             android.util.Log.i(
                                 "LudoMadaRender",
-                                "DIAGNOSTIC_PIXELCOPY_SAVED path=cache/live-premium-home-pixelcopy.png bytes=" +
+                                "DIAGNOSTIC_PIXELCOPY_SURFACE_SAVED path=cache/live-premium-home-surface.png bytes=" +
                                     destination.length()
                             )
                         } else {
-                            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_FAILED code=" + result)
+                            android.util.Log.e(
+                                "LudoMadaRender",
+                                "DIAGNOSTIC_PIXELCOPY_SURFACE_FAILED code=" + result
+                            )
                         }
                     } catch (error: Throwable) {
-                        android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_WRITE_FAILED", error)
+                        android.util.Log.e(
+                            "LudoMadaRender",
+                            "DIAGNOSTIC_PIXELCOPY_SURFACE_WRITE_FAILED",
+                            error
+                        )
                     } finally {
                         bitmap.recycle()
+                        captureThread.quitSafely()
                     }
-                }, Handler(Looper.getMainLooper()))
+                }, captureHandler)
             } catch (error: Throwable) {
                 bitmap.recycle()
-                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_REQUEST_FAILED", error)
+                captureThread.quitSafely()
+                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_REQUEST_FAILED", error)
             }
         }, 1200L)
     }
@@ -1287,7 +1303,7 @@ class LudoBoardView(
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if (isFirstFrame) {
                 android.util.Log.i("LudoMadaRender","PBR_FRAME_RENDER_COMPLETE homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight)
-                if (host.homePreview) host.requestDiagnosticWindowPixelCopy()
+                if (host.homePreview) host.requestDiagnosticSurfacePixelCopy()
             }
         }
         private fun createSceneTargets(w:Int,h:Int){
