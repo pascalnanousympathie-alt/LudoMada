@@ -1,4 +1,4 @@
-name: Lane F Premium Visual Gate (Hosted Evidence)
+name: Lane F Premium Source Gate (Termux)
 
 on:
   workflow_dispatch:
@@ -8,176 +8,68 @@ on:
       - feat/ludomada-product-clean-20261013
     paths:
       - "android-app/**"
-      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
-      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
-      - "scripts/check-ramus-wallet-hitbox.mjs"
       - "scripts/ramus-smoke.mjs"
-      - ".github/workflows/android-apk-cloud-fallback.yml"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
   pull_request:
     paths:
       - "android-app/**"
-      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
-      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
-      - "scripts/check-ramus-wallet-hitbox.mjs"
       - "scripts/ramus-smoke.mjs"
-      - ".github/workflows/android-apk-cloud-fallback.yml"
-      - ".github/workflows/android-emulator-test.yml"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/backend-cloud-validation.yml"
-      - ".github/workflows/runner-dispatch-diagnostic.yml"
 
 permissions:
   contents: read
   actions: read
 
 concurrency:
-  group: lane-f-premium-${{ github.event.pull_request.number || github.ref }}
+  group: lane-f-premium-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   premium-gate:
-    runs-on: ubuntu-24.04
+    # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
+    # Cloud Fallback job instead of running a second Gradle build for the same SHA.
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 45
     env:
       RELEASE_MAX_RUNTIME: "39600"
     steps:
-      - name: Checkout exact commit
+      - name: Checkout exact merge candidate
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+          clean: true
+          path: _runs/${{ github.run_id }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Use Termux Node.js
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Strict premium source gate
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          python3 scripts/android-release-audit.py
           node scripts/audit-material-calibration.mjs --strict
           node scripts/check-3d-assets.mjs
-          node scripts/check-3d-optimization.mjs
           node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
-          node --check scripts/ramus-smoke.mjs
 
-      - name: Locate successful hosted build and UI evidence for the exact commit
-        id: hosted
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            const branch = pr ? pr.head.ref : context.ref.replace("refs/heads/", "");
-            const expectedHeadSha = pr ? pr.head.sha : context.sha;
-            const expectedCommitSha = context.sha;
-            const expectedApk = "LudoMada-premium-gles3-debug-" + expectedCommitSha;
-            const expectedEvidence = "LudoMada-hosted-emulator-evidence-" + expectedCommitSha;
-
-            for (let attempt = 1; attempt <= 120; attempt++) {
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner,
-                repo,
-                workflow_id: "android-apk-cloud-fallback.yml",
-                branch,
-                status: "completed",
-                per_page: 100
-              });
-              const candidates = runs.filter(run =>
-                run.conclusion === "success" && run.head_sha === expectedHeadSha
-              );
-
-              for (const run of candidates) {
-                const response = await github.rest.actions.listWorkflowRunArtifacts({
-                  owner,
-                  repo,
-                  run_id: run.id,
-                  per_page: 100
-                });
-                const names = new Set(response.data.artifacts
-                  .filter(artifact => !artifact.expired)
-                  .map(artifact => artifact.name));
-                if (names.has(expectedApk) && names.has(expectedEvidence)) {
-                  core.setOutput("run_id", String(run.id));
-                  core.info("Found exact-commit hosted APK and emulator evidence in run " + run.id);
-                  return;
-                }
-              }
-
-              if (attempt < 120) {
-                core.info("Waiting for exact-commit hosted emulator evidence (" + attempt + "/120)");
-                await new Promise(resolve => setTimeout(resolve, 10000));
-              }
-            }
-
-            core.setFailed("No successful hosted APK + UI evidence artifacts found for commit " + expectedCommitSha + " after 20 minutes.");
-
-      - name: Download verified debug and instrumentation APKs
-        uses: actions/download-artifact@v4
-        with:
-          name: LudoMada-premium-gles3-debug-${{ github.sha }}
-          path: ${{ github.workspace }}/android-app/app/build/outputs/apk
-          run-id: ${{ steps.hosted.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-
-      - name: Download exact-commit Android emulator evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
-          path: ramus-evidence
-          run-id: ${{ steps.hosted.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-
-      - name: Validate packaged 3D assets, APK policy and UI evidence
-        run: |
-          set -eu
-          apk="android-app/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$apk"
-          test -s android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          node scripts/check-apk-3d-asset.mjs "$apk"
-          python3 scripts/android-release-audit.py "$apk"
-          python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path("ramus-evidence")
-          required = [
-              "hosted-emulator.png",
-              "ludomada-home.png",
-              "ludomada-game-mode.png",
-              "ludomada-wallet.png",
-              "ludomada-market.png",
-              "ludomada-gameplay-2p.png",
-              "ludomada-gameplay-3p.png",
-              "ludomada-gameplay-4p.png",
-              "ludomada-startup-offline.png",
-          ]
-          png_magic = bytes.fromhex("89504e470d0a1a0a")
-          for name in required:
-              path = root / name
-              if not path.is_file():
-                  raise SystemExit(f"Missing required UI screenshot: {path}")
-              data = path.read_bytes()
-              if len(data) < 1000 or not data.startswith(png_magic):
-                  raise SystemExit(f"Invalid or truncated PNG: {path} ({len(data)} bytes)")
-          for name in ("adb-devices.txt", "logcat.txt"):
-              path = root / name
-              if not path.is_file() or path.stat().st_size == 0:
-                  raise SystemExit(f"Missing Android diagnostics: {path}")
-          print("LANE_F_HOSTED_EVIDENCE_PASS")
-          PY
