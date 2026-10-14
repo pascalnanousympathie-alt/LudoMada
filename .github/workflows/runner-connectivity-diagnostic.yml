@@ -1,0 +1,47 @@
+name: Temporary Runner Connectivity Diagnostic
+
+on:
+  push:
+    branches:
+      - diag/runner-connectivity-20261014
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hosted-standard:
+    name: GitHub-hosted ubuntu-24.04 allocation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Confirm hosted runner started
+        run: |
+          set -eu
+          echo HOSTED_STANDARD_RUNNER_START_OK
+          uname -sm
+          date -u
+
+  hosted-slim:
+    name: GitHub-hosted ubuntu-slim allocation
+    runs-on: ubuntu-slim
+    timeout-minutes: 3
+    steps:
+      - name: Confirm slim runner started
+        run: |
+          set -eu
+          echo HOSTED_SLIM_RUNNER_START_OK
+          uname -sm
+          date -u
+
+  termux-self-hosted:
+    name: Registered Termux ARM64 runner allocation
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 3
+    steps:
+      - name: Confirm self-hosted runner started
+        run: |
+          set -eu
+          echo SELF_HOSTED_ARM64_RUNNER_START_OK
+          uname -sm
+          date -u
