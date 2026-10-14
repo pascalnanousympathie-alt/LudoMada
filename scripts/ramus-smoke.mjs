@@ -71,6 +71,62 @@ function hasText(text) {
   const r = allow("snapshot", "--session", session, "--find", text);
   return !!(r.ok && r.value?.elements?.length);
 }
+function findSmokeMarker(prefix) {
+  const r = allow("snapshot", "--session", session, "--find", prefix);
+  if (!r.ok) return "";
+  for (const element of r.value?.elements || []) {
+    for (const source of [element.contentDesc, element.text]) {
+      const marker = String(source || "").split("|").find(part => part.startsWith(prefix));
+      if (marker) return marker;
+    }
+  }
+  return "";
+}
+function readOfflineSmokeState() {
+  const stateMarker = findSmokeMarker("OFFLINE_SMOKE_STATE=");
+  const positionsMarker = findSmokeMarker("OFFLINE_SMOKE_POSITIONS=");
+  const targetsMarker = findSmokeMarker("OFFLINE_SMOKE_TOKENS=");
+  const viewMarker = findSmokeMarker("OFFLINE_SMOKE_VIEW=");
+  if (!stateMarker || !positionsMarker || !targetsMarker || !viewMarker) return null;
+  const state = {};
+  for (const pair of stateMarker.slice("OFFLINE_SMOKE_STATE=".length).split(",")) {
+    const at = pair.indexOf("=");
+    if (at <= 0) continue;
+    const key = pair.slice(0, at);
+    const value = pair.slice(at + 1);
+    state[key] = ["players", "turn", "dice"].includes(key) ? Number(value) : value;
+  }
+  const positions = {};
+  for (const item of positionsMarker.slice("OFFLINE_SMOKE_POSITIONS=".length).split(";")) {
+    const at = item.indexOf(":");
+    if (at <= 0) continue;
+    positions[Number(item.slice(0, at))] = item.slice(at + 1).split(",").map(Number);
+  }
+  const targets = {};
+  for (const item of targetsMarker.slice("OFFLINE_SMOKE_TOKENS=".length).split(";")) {
+    const at = item.indexOf(":");
+    if (at <= 0) continue;
+    const tokenIndex = Number(item.slice(0, at));
+    const [raw = "", normalized = ""] = item.slice(at + 1).split("@");
+    const [px, py] = raw.split(",").map(Number);
+    const [x, y] = normalized.split(",").map(Number);
+    targets[tokenIndex] = { px, py, x, y };
+  }
+  const [viewWidth, viewHeight] = viewMarker.slice("OFFLINE_SMOKE_VIEW=".length).split("x").map(Number);
+  if (!Number.isFinite(state.players) || !Number.isFinite(state.turn) ||
+      !Number.isFinite(state.dice) || !positions[state.turn] ||
+      !Number.isFinite(viewWidth) || !Number.isFinite(viewHeight)) return null;
+  return { state, positions, targets, viewWidth, viewHeight };
+}
+function waitForOfflineSmokeState(predicate, attempts = 8) {
+  let result = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    result = readOfflineSmokeState();
+    if (result && predicate(result)) return result;
+    waitStable(250);
+  }
+  return result;
+}
 function findRef(text) {
   const r = snap(text);
   if (!r.elements?.length) throw new Error(`UI element not found: ${text}`);
@@ -835,6 +891,37 @@ try {
       }
       if (!gotSix) throw new Error("Dice HUD did not reach a six within 24 Ramus rolls");
       console.log("2-PLAYER REAL DICE ROLL PASS");
+
+      const beforeMove = waitForOfflineSmokeState(state => state.state.players === 2 && state.state.dice === 6, 12);
+      if (!beforeMove || beforeMove.state.dice !== 6) {
+        throw new Error("Offline DEBUG state did not report the successful six roll: " + JSON.stringify(beforeMove));
+      }
+      const turn = beforeMove.state.turn;
+      const beforePositions = beforeMove.positions[turn];
+      const tokenIndex = beforePositions.findIndex(pos => pos < 0 ? beforeMove.state.dice === 6 : pos + beforeMove.state.dice <= 57);
+      if (tokenIndex < 0) throw new Error("No legal pawn exists after a six: " + JSON.stringify(beforeMove));
+      const target = beforeMove.targets[tokenIndex];
+      if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) ||
+          !Number.isFinite(target.px) || !Number.isFinite(target.py) ||
+          target.px < 0 || target.py < 0 ||
+          target.px > beforeMove.viewWidth || target.py > beforeMove.viewHeight ||
+          target.x < 0 || target.x > 1 || target.y < 0 || target.y > 1) {
+        throw new Error("Projected pawn hit target is invalid for Ramus tap: " + JSON.stringify({target, view:[beforeMove.viewWidth,beforeMove.viewHeight]}));
+      }
+      const pawnTap = allow("tap", target.x.toFixed(4) + "," + target.y.toFixed(4), "--session", session, "--force");
+      if (!pawnTap.ok) throw new Error("Ramus could not tap projected legal pawn " + tokenIndex + ": " + JSON.stringify(pawnTap.value));
+      const afterMove = waitForOfflineSmokeState(state =>
+        state.state.players === 2 && Boolean(state.positions[turn]) &&
+        state.positions[turn][tokenIndex] !== beforePositions[tokenIndex],
+        12
+      );
+      if (!afterMove || afterMove.positions[turn][tokenIndex] === beforePositions[tokenIndex]) {
+        throw new Error("Real pawn hit did not change the offline token position: " + JSON.stringify({before:beforeMove,after:afterMove}));
+      }
+      if (afterMove.positions[turn][tokenIndex] !== 0 || afterMove.state.dice !== 0 || afterMove.state.turn !== turn) {
+        throw new Error("Six-roll pawn move did not enter position 0, clear the die, and preserve the extra turn: " + JSON.stringify(afterMove));
+      }
+      console.log("2-PLAYER REAL PAWN TOUCH/MOVE + SIX EXTRA-TURN PASS");
     }
 
     const menu = findRef("MENU_JEU");
@@ -877,10 +964,8 @@ try {
   if (screenshotExists("board-4p")) console.log("GAMEPLAY REFERENCE SCREENSHOT PASS");
   else console.log("GAMEPLAY REFERENCE SCREENSHOT SKIPPED: screenshot transport unavailable");
 
-  // Functional die/pawn interaction was already exercised in the earlier verified Ramus
-  // run (#360). Keep this visual-reference gate independent from Ramus coordinate transforms:
-  // capture the post-entry frame without probing dozens of guessed touch points.
-  console.log("PHYSICAL DIE/PAWN INTERACTION COVERED BY PRIOR VERIFIED RAMUS RUN");
+  // The current APK pawn movement is exercised above through a real projected pawn hit.
+  // Keep a post-entry reference shot as supplementary evidence for the 4P renderer.
   shot("board-after-physical-dice-pawn");
 
   // CI is intentionally unauthenticated here. Do not enter the optional online lobby

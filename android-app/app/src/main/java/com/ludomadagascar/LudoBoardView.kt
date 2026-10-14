@@ -64,6 +64,40 @@ class LudoBoardView(
             contentDescription = parts.joinToString("|")
         }
     }
+
+    /**
+     * DEBUG-only Ramus evidence: current offline rules state and the real projected pawn targets.
+     * This describes the existing hit-test geometry; it does not change gameplay input or rules.
+     */
+    internal fun updateOfflineSmokeEvidence(players: Int, turn: Int, dice: Int, positions: String, phase: String) {
+        if (!BuildConfig.DEBUG || homePreview || !::renderer.isInitialized) return
+        val viewWidth = max(1f, width.toFloat())
+        val viewHeight = max(1f, height.toFloat())
+        val projected = runCatching { renderer.projectedTokens(turn.coerceIn(0, 3)) }.getOrNull()
+        val targets = projected?.mapIndexed { index, point ->
+            val px = point[0]
+            val py = point[1]
+            val inputX = if (width < height) py / viewWidth else px / viewWidth
+            val inputY = if (width < height) (viewHeight - px) / viewHeight else py / viewHeight
+            "$index:$px,$py@$inputX,$inputY"
+        }?.joinToString(";") ?: "unavailable"
+        val parts = contentDescription?.toString().orEmpty()
+            .split("|")
+            .filter { it.isNotBlank() }
+            .filterNot {
+                it.startsWith("OFFLINE_SMOKE_STATE=") ||
+                    it.startsWith("OFFLINE_SMOKE_POSITIONS=") ||
+                    it.startsWith("OFFLINE_SMOKE_TOKENS=") ||
+                    it.startsWith("OFFLINE_SMOKE_VIEW=")
+            }
+            .toMutableList()
+        if (parts.none { it.startsWith("RENDERER=") }) parts.add("RENDERER=" + rendererMode)
+        parts.add("OFFLINE_SMOKE_STATE=players=$players,turn=$turn,dice=$dice,phase=$phase")
+        parts.add("OFFLINE_SMOKE_POSITIONS=$positions")
+        parts.add("OFFLINE_SMOKE_VIEW=${width}x${height}")
+        parts.add("OFFLINE_SMOKE_TOKENS=$targets")
+        contentDescription = parts.joinToString("|")
+    }
     private var gameAudio: SpatialGameAudio? = null
     private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
     private fun smokeMarker(value:String) {
