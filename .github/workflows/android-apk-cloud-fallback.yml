@@ -150,38 +150,3 @@ jobs:
             android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: warn
           retention-days: 7
- /home/runner/.android/avd/test.avd/config.ini && grep '^disk.dataPartition.size=' /home/runner/.android/avd/test.avd/config.ini
-          script: |
-            set +e
-            cd android-app
-            ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
-            test_exit=$?
-            cd "$GITHUB_WORKSPACE"
-            mkdir -p ramus-evidence
-            adb devices > ramus-evidence/adb-devices.txt 2>&1 || true
-            adb logcat -d -t 3000 > ramus-evidence/logcat.txt 2>&1 || true
-            adb exec-out screencap -p > ramus-evidence/hosted-emulator.png 2> ramus-evidence/screencap.err || true
-            for name in ludomada-home.png ludomada-game-mode.png ludomada-wallet.png ludomada-market.png ludomada-gameplay-2p.png ludomada-gameplay-3p.png ludomada-gameplay-4p.png ludomada-startup-offline.png; do
-              adb shell run-as com.ludomadagascar.test cat "cache/$name" > "ramus-evidence/$name" 2> "ramus-evidence/$name.err" || true
-            done
-            exit "$test_exit"
-
-      - name: Upload hosted emulator screenshots and logcat
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
-          path: ramus-evidence/
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Publish verified APK and instrumentation artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: LudoMada-premium-gles3-debug-${{ github.sha }}
-          path: |
-            android-app/app/build/outputs/apk/debug/app-debug.apk
-            android-app/app/build/outputs/apk/debug/output-metadata.json
-            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          if-no-files-found: warn
-          retention-days: 7
