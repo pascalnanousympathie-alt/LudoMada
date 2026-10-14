@@ -151,7 +151,7 @@ class MainActivity : Activity() {
             val b=TextView(this).apply{
                 text=pair.first + "\n" + pair.second;textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD)
                 setTextColor(if(key==active)royal else Color.rgb(102,113,130));setPadding(0,dp(4),0,dp(4))
-                setOnClickListener{when(key){"home"->home();"play"->gameModeDialog();"wallet"->wallet();"social"->social();"profile"->profile()}}
+                setOnClickListener{when(key){"home"->home();"play"->window.decorView.post { gameModeDialog() };"wallet"->wallet();"social"->social();"profile"->profile()}}
             }
             row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
         }
@@ -387,10 +387,113 @@ class MainActivity : Activity() {
             .setNegativeButton("Aoka",null).show()
     }
 
+    private var gameModeOverlay: FrameLayout? = null
+
+    private fun dismissGameModeOverlay() {
+        gameModeOverlay?.let { overlay ->
+            (overlay.parent as? ViewGroup)?.removeView(overlay)
+        }
+        gameModeOverlay = null
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (gameModeOverlay != null) {
+            dismissGameModeOverlay()
+            return
+        }
+        super.onBackPressed()
+    }
+
     private fun gameModeDialog() {
-        AlertDialog.Builder(this).setTitle("Choisissez le mode")
-            .setItems(arrayOf("🌐 En ligne — Joueurs réels","👥 Hors-ligne — 2 à 4 joueurs")){_,which->if(which==0)lobby() else offlineMenu()}
-            .setNegativeButton("Aoka",null).show()
+        android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_ENTER")
+        dismissGameModeOverlay()
+        val host = findViewById<ViewGroup>(android.R.id.content) ?: run {
+            android.util.Log.e("LudoMada", "GAME_MODE_NO_CONTENT_ROOT")
+            return
+        }
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.argb(150, 0, 0, 0))
+            isClickable = true
+            isFocusable = true
+            contentDescription = "GAME_MODE_DIALOG"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), dp(18), dp(22), dp(18))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(9, 24, 50), Color.rgb(17, 57, 96), Color.rgb(8, 29, 58))
+            ).apply {
+                cornerRadius = dp(24).toFloat()
+                setStroke(dp(1), 0x66EDB734)
+            }
+            elevation = dp(18).toFloat()
+            isClickable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val title = label("Choisissez le mode", 21f, true, Color.WHITE).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "Choisissez le mode"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable = true
+        }
+        panel.addView(title, LinearLayout.LayoutParams(-1, dp(34)))
+        panel.addView(
+            label("Choisissez comment commencer votre partie.", 12f, false, 0xB8FFFFFF.toInt()).apply {
+                gravity = Gravity.CENTER
+            },
+            LinearLayout.LayoutParams(-1, dp(28))
+        )
+        val offline = Button(this).apply {
+            text = "👥  Hors-ligne — 2 à 4 joueurs"
+            textSize = 15f
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            background = shape(Color.rgb(92, 82, 156), 16f)
+            contentDescription = "MODE_OFFLINE"
+            isFocusable = true
+            isClickable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setOnClickListener {
+                dismissGameModeOverlay()
+                offlineMenu()
+            }
+        }
+        val online = Button(this).apply {
+            text = "🌐  En ligne — Joueurs réels"
+            textSize = 15f
+            isAllCaps = false
+            setTextColor(Color.rgb(8, 29, 58))
+            background = shape(Color.rgb(237, 183, 52), 16f)
+            contentDescription = "MODE_ONLINE"
+            isFocusable = true
+            isClickable = true
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setOnClickListener {
+                dismissGameModeOverlay()
+                lobby()
+            }
+        }
+        panel.addView(offline, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
+        panel.addView(online, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
+        val panelWidth = minOf(dp(520), (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280)))
+        overlay.addView(
+            panel,
+            FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        )
+        overlay.setOnClickListener { dismissGameModeOverlay() }
+        host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        gameModeOverlay = overlay
+        android.util.Log.i("LudoMada", "GAME_MODE_OVERLAY_ADDED")
+        overlay.post {
+            offline.requestFocus()
+            offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        }
     }
 
     private fun cryptoDialog() {
