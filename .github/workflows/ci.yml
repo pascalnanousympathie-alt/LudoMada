@@ -130,8 +130,9 @@ jobs:
             --bind /system:/system \
             debian -- /bin/bash -lc '
               set -eu
+              H=/data/data/com.termux/files/home
               unset LD_LIBRARY_PATH
-              "$HOME/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x" --version
+              "$H/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x" --version
             '
           wrapper="$RUNNER_TEMP/prisma-schema-engine.sh"
           cat > "$wrapper" <<'PRISMA_WRAPPER_EOF'
@@ -145,8 +146,9 @@ jobs:
             --bind /system:/system \
             debian -- /bin/bash -lc '
               set -eu
+              H=/data/data/com.termux/files/home
               unset LD_LIBRARY_PATH
-              exec "$HOME/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x" "$@"
+              exec "$H/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x" "$@"
             ' prisma-schema-engine "$@"
           PRISMA_WRAPPER_EOF
           chmod 700 "$wrapper"
