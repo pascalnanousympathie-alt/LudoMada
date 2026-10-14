@@ -499,7 +499,7 @@ try {
   // both the screenshot snapshot and Home. Never overlap a possibly-live session.
   if (!startup?.ok) {
     const startupError = JSON.stringify(startup?.value || {});
-    const terminalSnapshot = /session_ended|session\\s+.*is ended|no live successor/i.test(startupError);
+    const terminalSnapshot = /session_ended|session\s+.*is ended|no live successor/i.test(startupError);
     if (terminalSnapshot) {
       console.warn("RAMUS_FINAL_SNAPSHOT_SESSION_ENDED=" + startupError.slice(0, 800));
       launchInfo = { ...launchInfo, finalSnapshotSessionEnded: startupError.slice(0, 800) };
