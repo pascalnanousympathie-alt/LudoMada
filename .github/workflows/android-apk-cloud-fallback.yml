@@ -133,7 +133,9 @@ jobs:
             adb devices > ramus-evidence/adb-devices.txt 2>&1 || true
             adb logcat -d -t 3000 > ramus-evidence/logcat.txt 2>&1 || true
             adb exec-out screencap -p > ramus-evidence/hosted-emulator.png 2> ramus-evidence/screencap.err || true
-            adb shell run-as com.ludomadagascar.test cat cache/ludomada-startup-offline.png > ramus-evidence/instrumentation-startup-offline.png 2> ramus-evidence/instrumentation-screenshot.err || true
+            for name in ludomada-home.png ludomada-game-mode.png ludomada-wallet.png ludomada-market.png ludomada-gameplay-2p.png ludomada-gameplay-3p.png ludomada-gameplay-4p.png ludomada-startup-offline.png; do
+              adb shell run-as com.ludomadagascar.test cat "cache/$name" > "ramus-evidence/$name" 2> "ramus-evidence/$name.err" || true
+            done
             exit "$test_exit"
 
       - name: Upload hosted emulator screenshot and logcat
