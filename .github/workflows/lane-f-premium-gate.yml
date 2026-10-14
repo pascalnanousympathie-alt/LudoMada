@@ -36,9 +36,6 @@ jobs:
     # Cloud Fallback job instead of running a second Gradle build for the same SHA.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    concurrency:
-      group: ludomada-shared-ramus-fleet
-      cancel-in-progress: false
     env:
       RELEASE_MAX_RUNTIME: "39600"
     steps:
@@ -76,6 +73,7 @@ jobs:
             const headSha = pr?.head?.sha || context.sha;
             const mergeSha = context.sha;
             const expectedName = `LudoMada-premium-gles3-debug-${mergeSha}`;
+            const evidenceName = `LudoMada-hosted-emulator-evidence-${mergeSha}`;
             // Cloud Fallback and Lane F start from the same PR event. Poll for the
             // matching artifact rather than failing simply because Gradle is still building.
             for (let attempt = 1; attempt <= 30; attempt++) {
@@ -98,9 +96,12 @@ jobs:
                 const artifact = listed.data.artifacts.find(item =>
                   !item.expired && item.name === expectedName
                 );
-                if (artifact) {
+                const evidence = listed.data.artifacts.find(item =>
+                  !item.expired && item.name === evidenceName
+                );
+                if (artifact && evidence) {
                   core.setOutput("run_id", String(run.id));
-                  core.info(`Using APK artifact ${artifact.name} from successful run ${run.id}`);
+                  core.info(`Using APK artifact ${artifact.name} and UI evidence ${evidence.name} from successful run ${run.id}`);
                   return;
                 }
               }
@@ -130,34 +131,54 @@ jobs:
           test -s android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Install pinned Ramus CLI
+      - name: Download hosted Android emulator UI evidence
+        uses: actions/download-artifact@v4
+        with:
+          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
+          path: ${{ github.workspace }}/_runs/${{ github.run_id }}/ramus-evidence
+          run-id: ${{ steps.apk-run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+
+      - name: Verify mandatory Home, mode, wallet, market and 2P/3P/4P screenshots
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          mkdir -p "$RUNNER_TEMP/ramus-cli"
-          cp ci/vendor/ramus-cli-0.1.13.tgz "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
-          printf '%s  %s\n' "ae8e1ae1a0f60c066802cd38a0d49d2a793db9cfc01fb2e9db0f2abaaf8d74f9" "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
-          test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
-          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('ramus-evidence')
+          required_pngs = [
+              'hosted-emulator.png',
+              'ludomada-home.png',
+              'ludomada-game-mode.png',
+              'ludomada-wallet.png',
+              'ludomada-market.png',
+              'ludomada-gameplay-2p.png',
+              'ludomada-gameplay-3p.png',
+              'ludomada-gameplay-4p.png',
+              'ludomada-startup-offline.png',
+          ]
+          png_magic = bytes.fromhex('89504e470d0a1a0a')
+          for name in required_pngs:
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f'Missing required UI screenshot: {path}')
+              data = path.read_bytes()
+              if len(data) < 1000 or not data.startswith(png_magic):
+                  raise SystemExit(f'Invalid or truncated PNG screenshot: {path} ({len(data)} bytes)')
+          for name in ('adb-devices.txt', 'logcat.txt'):
+              path = root / name
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise SystemExit(f'Missing Android diagnostics: {path}')
+          print('HOSTED_EMULATOR_EVIDENCE_PASS')
+          PY
 
-      - name: Ramus visual and interaction smoke
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        env:
-          RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
-          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
-          RAMUS_CAPTURE: "1"
-        run: |
-          set -o pipefail
-          timeout -k 10s 900s node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
-
-      - name: Upload Lane F screenshot and diagnostics
+      - name: Upload hosted emulator screenshots and diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ludomada-lane-f-${{ github.run_id }}
           path: |
-            _runs/${{ github.run_id }}/ramus-smoke.log
             _runs/${{ github.run_id }}/ramus-evidence
             _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: warn
