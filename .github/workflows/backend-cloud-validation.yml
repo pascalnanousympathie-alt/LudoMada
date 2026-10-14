@@ -1,6 +1,7 @@
 name: LudoMada Backend Cloud Validation
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths:
@@ -31,6 +32,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Shared hosted validation path for PR automation and manual dispatch.
   test:
     name: PostgreSQL integration, concurrency and typecheck
     runs-on: ubuntu-24.04
