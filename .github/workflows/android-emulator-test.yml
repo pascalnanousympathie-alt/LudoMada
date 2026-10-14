@@ -1,19 +1,9 @@
-name: Android UI Smoke (Free Termux Runner + Ramus)
+name: Android UI Smoke (Legacy Termux + Ramus, Manual Only)
 # Premium landscape visual/gameplay validation gate
 
 on:
+  # Manual fallback only; pull requests use the hosted Android emulator workflow.
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "android-app/**"
-      - "scripts/ramus-smoke.mjs"
-      - "scripts/setup-termux-aapt2.sh"
-      - "scripts/audit-material-calibration.mjs"
-      - "scripts/check-3d-assets.mjs"
-      - "scripts/check-3d-optimization.mjs"
-      - "scripts/check-apk-3d-asset.mjs"
-      - "scripts/check-ramus-wallet-hitbox.mjs"
-      - ".github/workflows/android-emulator-test.yml"
 
 jobs:
   emulator-test:
