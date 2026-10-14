@@ -76,7 +76,7 @@ jobs:
             const evidenceName = `LudoMada-hosted-emulator-evidence-${mergeSha}`;
             // Cloud Fallback and Lane F start from the same PR event. Poll for the
             // matching artifact rather than failing simply because Gradle is still building.
-            for (let attempt = 1; attempt <= 30; attempt++) {
+            for (let attempt = 1; attempt <= 120; attempt++) {
               const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
                 owner,
                 repo,
@@ -105,13 +105,13 @@ jobs:
                   return;
                 }
               }
-              if (attempt < 30) {
+              if (attempt < 120) {
                 core.info(`Waiting for exact-SHA Cloud Fallback artifact (${attempt}/30)`);
                 await new Promise(resolve => setTimeout(resolve, 10000));
               }
             }
             core.setFailed(
-              `No successful APK plus hosted UI evidence artifact found for head SHA ${headSha} after 5 minutes; inspect the Android Cloud Fallback run.`
+              `No successful APK plus hosted UI evidence artifact found for head SHA ${headSha} after 20 minutes; inspect the Android Cloud Fallback run.`
             );
 
       - name: Download verified debug and instrumentation APKs
