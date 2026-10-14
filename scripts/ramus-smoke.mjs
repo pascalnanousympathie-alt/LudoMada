@@ -451,7 +451,7 @@ try {
     // The provider may crash/retire a session before the end command reaches it;
     // in that case ended.ok is false even though starting a replacement is safe.
     const endSummary = JSON.stringify(ended.value || {});
-    const alreadyEnded = /session_ended|session\\s+.*is ended|no live successor/i.test(endSummary);
+    const alreadyEnded = /session_ended|session\s+.*is ended|no live successor/i.test(endSummary);
     const terminal = alreadyEnded || (ended.ok && waitForSessionEnded(priorSession));
     launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
     if (terminal) {
