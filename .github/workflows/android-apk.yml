@@ -1,12 +1,8 @@
-name: Build Ludo Madagascar APK
+name: Build Ludo Madagascar APK (Termux Manual Fallback)
 
 on:
+  # Manual fallback only; automatic builds use the hosted Android emulator workflow.
   workflow_dispatch:
-  push:
-    paths:
-      - "android-app/**"
-      - "scripts/**"
-      - ".github/workflows/android-apk.yml"
 
 jobs:
   build:

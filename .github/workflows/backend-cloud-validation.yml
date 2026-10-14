@@ -1,7 +1,8 @@
 name: LudoMada Backend Cloud Validation
 
 on:
-  # Manual hosted fallback only; automatic backend CI uses the Termux self-hosted runner.
+  # Reusable hosted PostgreSQL suite; workflow_dispatch allows direct diagnostics.
+  workflow_call:
   workflow_dispatch:
 
 permissions:

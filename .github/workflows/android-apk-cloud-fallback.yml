@@ -1,7 +1,43 @@
 name: Android APK Cloud Fallback
 
 on:
-  # Optional hosted fallback. The default no-cost path is the Termux self-hosted workflow.
+  # Automatic hosted Android build and emulator UI validation for source and CI changes.
+  push:
+    paths:
+      - "android-app/**"
+      - "scripts/android-release-audit.py"
+      - "scripts/ramus-smoke.mjs"
+      - "scripts/audit-material-calibration.mjs"
+      - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
+      - "scripts/check-glb-runtime-transform.mjs"
+      - "scripts/check-apk-3d-asset.mjs"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/android-apk-cloud-fallback.yml"
+      - ".github/workflows/android-emulator-test.yml"
+      - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
+      - ".github/workflows/runner-dispatch-diagnostic.yml"
+  pull_request:
+    paths:
+      - "android-app/**"
+      - "scripts/android-release-audit.py"
+      - "scripts/ramus-smoke.mjs"
+      - "scripts/audit-material-calibration.mjs"
+      - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
+      - "scripts/check-glb-runtime-transform.mjs"
+      - "scripts/check-apk-3d-asset.mjs"
+      - "scripts/check-ramus-wallet-hitbox.mjs"
+      - ".github/workflows/android-apk.yml"
+      - ".github/workflows/android-apk-cloud-fallback.yml"
+      - ".github/workflows/android-emulator-test.yml"
+      - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
+      - ".github/workflows/runner-dispatch-diagnostic.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +51,7 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     concurrency:
-      group: android-apk-cloud-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+      group: android-apk-cloud-${{ github.event.pull_request.head.ref || github.ref_name }}
       cancel-in-progress: true
     defaults:
       run:
