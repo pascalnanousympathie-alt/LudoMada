@@ -215,6 +215,101 @@ class StartupUiTest {
         }
         assertTrue("Dice action should reach a six within retries", gotSix)
 
+        // Read DEBUG-only, real game state from the existing 3D board accessibility node.
+        // The tap uses the same normalized projected-pawn coordinates as LudoBoardView.onTouchEvent.
+        fun offlineSmokeMarkers(): Map<String, String> {
+            val board = device.findObject(By.descContains("OFFLINE_SMOKE_STATE=")) ?: return emptyMap()
+            return board.contentDescription?.toString().orEmpty()
+                .split("|")
+                .mapNotNull { marker ->
+                    val separator = marker.indexOf('=')
+                    if (separator <= 0) null else marker.substring(0, separator) to marker.substring(separator + 1)
+                }
+                .toMap()
+        }
+        fun parseSmokeFields(raw: String?): Map<String, String> = raw.orEmpty()
+            .split(",")
+            .mapNotNull { field ->
+                val separator = field.indexOf('=')
+                if (separator <= 0) null else field.substring(0, separator) to field.substring(separator + 1)
+            }
+            .toMap()
+        fun smokePositions(markers: Map<String, String>, player: Int): List<Int> {
+            val playerRow = markers["OFFLINE_SMOKE_POSITIONS"]?.split(';')
+                ?.firstOrNull { it.startsWith("$player:") } ?: return emptyList()
+            return playerRow.substringAfter(':').split(',').mapNotNull { it.toIntOrNull() }
+        }
+
+        var beforeMarkers = emptyMap<String, String>()
+        var beforeState = emptyMap<String, String>()
+        var beforePositions = emptyList<Int>()
+        var turn = -1
+        for (attempt in 0 until 20) {
+            beforeMarkers = offlineSmokeMarkers()
+            beforeState = parseSmokeFields(beforeMarkers["OFFLINE_SMOKE_STATE"])
+            turn = beforeState["turn"]?.toIntOrNull() ?: -1
+            if (beforeState["players"] == "2" && beforeState["dice"] == "6" && turn >= 0) {
+                beforePositions = smokePositions(beforeMarkers, turn)
+                if (beforePositions.size == 4) break
+            }
+            Thread.sleep(250)
+        }
+        assertTrue("DEBUG state did not report a valid two-player six roll: $beforeState",
+            beforeState["players"] == "2" && beforeState["dice"] == "6" && turn >= 0)
+        assertTrue("Four token positions were not exposed: $beforeMarkers", beforePositions.size == 4)
+        val tokenIndex = beforePositions.indexOfFirst { position -> position == -1 || position >= 0 && position + 6 <= 57 }
+        assertTrue("No legal token found after six: $beforePositions", tokenIndex >= 0)
+
+        val targetEntry = beforeMarkers["OFFLINE_SMOKE_TOKENS"]?.split(';')
+            ?.firstOrNull { it.startsWith("$tokenIndex:") }
+            ?: throw AssertionError("Projected target for legal token $tokenIndex is missing: $beforeMarkers")
+        val targetParts = targetEntry.split('@')
+        assertTrue("Projected target coordinates are malformed: $targetEntry", targetParts.size == 2)
+        val scenePoint = targetParts[0].substringAfter(':').split(',')
+        val normalizedPoint = targetParts[1].split(',')
+        assertTrue("Scene point is malformed: $targetEntry", scenePoint.size == 2)
+        assertTrue("Normalized input point is malformed: $targetEntry", normalizedPoint.size == 2)
+        val sceneX = scenePoint[0].toFloatOrNull() ?: throw AssertionError("Invalid scene X: $targetEntry")
+        val sceneY = scenePoint[1].toFloatOrNull() ?: throw AssertionError("Invalid scene Y: $targetEntry")
+        val inputX = normalizedPoint[0].toFloatOrNull() ?: throw AssertionError("Invalid input X: $targetEntry")
+        val inputY = normalizedPoint[1].toFloatOrNull() ?: throw AssertionError("Invalid input Y: $targetEntry")
+        val viewDimensions = beforeMarkers["OFFLINE_SMOKE_VIEW"]?.split(',') ?: emptyList()
+        assertTrue("View and GL viewport dimensions are missing: $viewDimensions", viewDimensions.size == 2)
+        val sceneDimensions = viewDimensions[1].split('x')
+        assertTrue("GL viewport dimensions are malformed: $viewDimensions", sceneDimensions.size == 2)
+        val sceneWidth = sceneDimensions[0].toFloatOrNull() ?: -1f
+        val sceneHeight = sceneDimensions[1].toFloatOrNull() ?: -1f
+        assertTrue("Projected pawn is outside the GL viewport: $targetEntry / $viewDimensions",
+            sceneWidth > 0f && sceneHeight > 0f && sceneX in 0f..sceneWidth && sceneY in 0f..sceneHeight)
+        assertTrue("Pawn touch input must be normalized inside the board: $targetEntry",
+            inputX >= 0f && inputX < 1f && inputY >= 0f && inputY < 1f)
+
+        val boardView = device.findObject(By.descContains("OFFLINE_SMOKE_STATE="))
+            ?: throw AssertionError("3D board accessibility target disappeared before pawn tap")
+        val boardBounds = boardView.visibleBounds
+        assertTrue("3D board has no visible tappable bounds: $boardBounds", boardBounds.width() > 0 && boardBounds.height() > 0)
+        val tapX = boardBounds.left + (inputX * boardBounds.width()).toInt()
+        val tapY = boardBounds.top + (inputY * boardBounds.height()).toInt()
+        assertTrue("Ramus-equivalent tap fell outside the projected board bounds: $tapX,$tapY / $boardBounds",
+            tapX in boardBounds.left until boardBounds.right && tapY in boardBounds.top until boardBounds.bottom)
+        assertTrue("Touch on projected legal pawn was rejected", device.click(tapX, tapY))
+
+        var afterMarkers = emptyMap<String, String>()
+        var afterState = emptyMap<String, String>()
+        var afterPositions = emptyList<Int>()
+        for (attempt in 0 until 20) {
+            Thread.sleep(250)
+            afterMarkers = offlineSmokeMarkers()
+            afterState = parseSmokeFields(afterMarkers["OFFLINE_SMOKE_STATE"])
+            afterPositions = smokePositions(afterMarkers, turn)
+            if (afterPositions.size == 4 && afterPositions[tokenIndex] != beforePositions[tokenIndex]) break
+        }
+        assertTrue("Real pawn tap did not move its token: before=$beforePositions after=$afterPositions",
+            afterPositions.size == 4 && afterPositions[tokenIndex] == 0)
+        assertTrue("A six-roll pawn move must clear the die and preserve the extra turn: $afterState",
+            afterState["dice"] == "0" && afterState["turn"] == turn.toString())
+        captureEvidence("ludomada-gameplay-pawn-moved.png")
+
         // Game HUD settings must be functional and return to the same offline match.
         device.findObject(By.desc("PARAMETRES")).click()
         assertTrue("Gameplay settings control did not open settings", device.wait(Until.hasObject(By.text("Préférences de l'application")), 3000))
