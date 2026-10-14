@@ -123,14 +123,19 @@ jobs:
           set -eu
           engine="$HOME/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x"
           test -x "$engine"
-          # The self-hosted runner already runs inside the Debian proot rootfs.
-          # Do not nest proot-distro: it rejects recursive sessions and fails the job.
-          # Clear Termux's Bionic library override so the ARM64 glibc engine uses Debian libraries.
-          env -u LD_LIBRARY_PATH "$engine" --version
-          echo "PRISMA_SCHEMA_ENGINE_BINARY=$engine" >> "$GITHUB_ENV"
+          # The runner is Android/Termux ARM64 inside the existing Debian proot.
+          # Keep Termux libraries for the shim, but remove Bionic LD_LIBRARY_PATH for the Linux engine.
+          wrapper="$RUNNER_TEMP/prisma-schema-engine.sh"
+          cat > "$wrapper" <<EOF
+          #!/data/data/com.termux/files/usr/bin/bash
+          set -eu
+          exec /data/data/com.termux/files/usr/bin/env -u LD_LIBRARY_PATH "$engine" "\$@"
+          EOF
+          chmod 700 "$wrapper"
+          "$wrapper" --version
+          echo "PRISMA_SCHEMA_ENGINE_BINARY=$wrapper" >> "$GITHUB_ENV"
           echo "PRISMA_SCHEMA_ENGINE_TARGET=linux-arm64-openssl-3.0.x" >> "$GITHUB_ENV"
-          echo "PRISMA_ARM64_ENGINE_DIRECT_PASS"
-
+          echo "PRISMA_ARM64_ENGINE_WRAPPER_PASS"
       - name: Apply Prisma migrations
         run: node node_modules/prisma/build/index.js migrate deploy
       - name: Run backend tests
