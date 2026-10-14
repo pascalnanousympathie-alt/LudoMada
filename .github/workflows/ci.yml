@@ -1,14 +1,132 @@
-name: Ludo Mada V6.3 CI (hosted)
+name: Ludo Mada V6.3 CI (Free Termux Runner)
 
-# Manual entry point uses the same hosted backend validation as pull requests.
-# No self-hosted Termux runner is required.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "jest.config.cjs"
 
-permissions:
-  contents: read
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  backend-validation:
-    uses: ./.github/workflows/backend-cloud-validation.yml
-    secrets: inherit
+  test:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      NODE_OPTIONS: --max-old-space-size=512
+      npm_config_maxsockets: "1"
+      npm_config_jobs: "1"
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+    steps:
+      - name: Checkout source from GitHub
+        working-directory: ${{ github.workspace }}
+        env:
+          GIT_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          rm -rf "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          mkdir -p "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" init
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git -c credential.helper= -C "${{ github.workspace }}/_runs/${{ github.run_id }}" fetch --depth=1 "https://x-access-token:$GIT_AUTH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
+          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" checkout --detach "$GITHUB_SHA"
+
+      - name: Use Termux Node
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npm" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npm "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npx" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npx "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+          # Termux PostgreSQL binaries are dynamically linked; make its runtime library path available to later CI steps too.
+          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+
+      - name: Show toolchain
+        run: node -v && npm -v
+      - name: Show runner memory
+        run: |
+          free -h
+          awk '/MemTotal|MemAvailable|SwapTotal|SwapFree/ {print}' /proc/meminfo
+          df -h "$GITHUB_WORKSPACE"
+      - name: Prepare persistent dependencies
+        run: |
+          set -eu
+          source_dir="/data/data/com.termux/files/home/LudoMada/node_modules"
+          test -d "$source_dir"
+          expected_lock="$(sha256sum package-lock.json | awk '{print $1}')"
+          source_lock="$(sha256sum "/data/data/com.termux/files/home/LudoMada/package-lock.json" | awk '{print $1}')"
+          test "$expected_lock" = "$source_lock"
+          test -f "$source_dir/.package-lock.json"
+          if [ -L node_modules ] || [ -d node_modules ]; then
+            rm -rf node_modules
+          fi
+          ln -s "$source_dir" node_modules
+          node -e "require('@prisma/client'); require('jest'); require('typescript'); require('fs').accessSync('node_modules/prisma/build/index.js'); console.log('DEPS_CORE_OK')"
+      - name: Start isolated local PostgreSQL for integration and concurrency tests
+        run: |
+          set -eu
+          command -v initdb
+          command -v pg_ctl
+          command -v createdb
+          pg_data="$RUNNER_TEMP/ludomada-pg"
+          pg_sock="$RUNNER_TEMP/ludomada-pg-sock"
+          pg_port=55432
+          rm -rf "$pg_data" "$pg_sock"
+          mkdir -p "$pg_sock"
+          initdb -D "$pg_data" -A trust --no-locale >/dev/null
+          pg_ctl -D "$pg_data" -o "-p $pg_port -k $pg_sock" -l "$RUNNER_TEMP/ludomada-pg.log" start
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p "$pg_port" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          pg_isready -h 127.0.0.1 -p "$pg_port"
+          echo "LUDOMADA_PGDATA=$pg_data" >> "$GITHUB_ENV"
+          echo "LUDOMADA_PGSOCK=$pg_sock" >> "$GITHUB_ENV"
+          echo "LUDOMADA_PGPORT=$pg_port" >> "$GITHUB_ENV"
+          createdb -h "$pg_sock" -p "$pg_port" ludomada_test
+          echo "DATABASE_URL=postgresql://$(whoami)@127.0.0.1:$pg_port/ludomada_test" >> "$GITHUB_ENV"
+          echo "PG_POOL_MAX=20" >> "$GITHUB_ENV"
+
+      - name: Generate Prisma client
+        run: node node_modules/prisma/build/index.js generate
+      - name: Apply Prisma migrations
+        run: node node_modules/prisma/build/index.js migrate deploy
+      - name: Run backend tests
+        run: npm test -- --maxWorkers=2
+      - name: Build backend
+        run: npm run build
+
+      - name: Stop isolated local PostgreSQL
+        if: ${{ always() }}
+        run: |
+          set +e
+          if [ -n "${LUDOMADA_PGDATA:-}" ] && [ -f "$LUDOMADA_PGDATA/postmaster.pid" ]; then
+            pg_ctl -D "$LUDOMADA_PGDATA" stop -m fast
+          fi
