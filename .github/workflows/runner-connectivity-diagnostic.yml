@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - diag/runner-connectivity-20261014
+  pull_request:
+    branches:
+      - fix/ludomada-hosted-ui-and-ci-20261014
   workflow_dispatch:
 
 permissions:
