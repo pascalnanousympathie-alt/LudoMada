@@ -1,4 +1,4 @@
-name: Hosted Runner Dispatch Diagnostic
+name: Termux Self-Hosted Runner Diagnostic
 
 on:
   workflow_dispatch:
@@ -15,14 +15,14 @@ concurrency:
 
 jobs:
   probe:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 3
     steps:
       - name: Confirm hosted runner provisioned
         shell: bash
         run: |
           set -eu
-          echo "HOSTED_RUNNER_DISPATCH_PASS"
+          echo "TERMUX_SELF_HOSTED_RUNNER_PASS"
           echo "runner.os=$RUNNER_OS"
           echo "runner.arch=$RUNNER_ARCH"
           echo "run.id=$GITHUB_RUN_ID"
