@@ -32,8 +32,8 @@ permissions:
 
 jobs:
   premium-gate:
-    # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
-    # Cloud Fallback job instead of running a second Gradle build for the same SHA.
+    # Reuse the exact APK and UI screenshot evidence from the hosted Android emulator
+    # run. The gate checks the renderer assets and requires real screen captures.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -111,7 +111,7 @@ jobs:
               }
             }
             core.setFailed(
-              `No successful Cloud Fallback artifact named "${expectedName}" found for head SHA ${headSha} after 5 minutes; inspect the Android Cloud Fallback run.`
+              `No successful APK plus hosted emulator evidence artifacts found for head SHA ${headSha} after 5 minutes; inspect the Android Cloud Fallback run.`
             );
 
       - name: Download verified debug and instrumentation APKs
