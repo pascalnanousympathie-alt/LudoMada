@@ -113,6 +113,50 @@ jobs:
           heap-size: 512M
           sdcard-path-or-size: 256M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
+          # The action appends disk.dataPartition.size; replace any duplicate/default entry after AVD creation.
+          pre-emulator-launch-script: |
+            set -eu
+            avd_dir="${ANDROID_AVD_HOME:-$HOME/.android/avd}/test.avd"
+            config="$avd_dir/config.ini"
+            test -s "$config"
+            sed -i '/^disk\.dataPartition\.size=/d' "$config"
+            printf 'disk.dataPartition.size=4096M\n' >> "$config"
+            test "$(grep -c '^disk.dataPartition.size=4096M          script: |
+            set +e
+            cd android-app
+            ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            test_exit=$?
+            cd "$GITHUB_WORKSPACE"
+            mkdir -p ramus-evidence
+            adb devices > ramus-evidence/adb-devices.txt 2>&1 || true
+            adb logcat -d -t 3000 > ramus-evidence/logcat.txt 2>&1 || true
+            adb exec-out screencap -p > ramus-evidence/hosted-emulator.png 2> ramus-evidence/screencap.err || true
+            adb shell run-as com.ludomadagascar.test cat cache/ludomada-startup-offline.png > ramus-evidence/instrumentation-startup-offline.png 2> ramus-evidence/instrumentation-screenshot.err || true
+            exit "$test_exit"
+
+      - name: Upload hosted emulator screenshot and logcat
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
+          path: ramus-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Publish debug and instrumentation APK diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LudoMada-premium-gles3-debug-${{ github.sha }}
+          path: |
+            android-app/app/build/outputs/apk/debug/app-debug.apk
+            android-app/app/build/outputs/apk/debug/output-metadata.json
+            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          if-no-files-found: warn
+          retention-days: 7
+ "$config")" -eq 1
+            echo "AVD_DATA_PARTITION_SIZE_FIXED=4096M"
+            grep '^disk.dataPartition.size=' "$config"
           script: |
             set +e
             cd android-app
