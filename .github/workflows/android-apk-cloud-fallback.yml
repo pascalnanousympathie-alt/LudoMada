@@ -16,6 +16,8 @@ on:
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/android-apk-cloud-fallback.yml"
       - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
 
 permissions:
   contents: read

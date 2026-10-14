@@ -17,6 +17,8 @@ on:
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
   pull_request:
     paths:
       - "android-app/**"
@@ -29,6 +31,8 @@ on:
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
 
 permissions:
   contents: read
