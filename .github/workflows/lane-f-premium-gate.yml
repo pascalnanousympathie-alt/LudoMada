@@ -1,4 +1,4 @@
-name: Lane F Premium Source Gate
+name: Lane F Premium Source Gate (Termux)
 
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
   premium-gate:
     # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
     # Cloud Fallback job instead of running a second Gradle build for the same SHA.
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 45
     env:
       RELEASE_MAX_RUNTIME: "39600"
@@ -51,10 +51,18 @@ jobs:
           clean: true
           path: _runs/${{ github.run_id }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Use Termux Node.js
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Strict premium source gate
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
