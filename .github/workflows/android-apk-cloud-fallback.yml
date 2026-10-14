@@ -71,13 +71,11 @@ jobs:
           force-avd-creation: true
           disable-animations: true
           emulator-boot-timeout: 900
-          # Cap userdata partition below the runner's available disk budget.
           disk-size: 4096M
           ram-size: 2048M
           heap-size: 512M
           sdcard-path-or-size: 256M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          # The action appends disk.dataPartition.size; replace any duplicate/default entry after AVD creation.
           pre-emulator-launch-script: |
             set -eu
             avd_dir="${ANDROID_AVD_HOME:-$HOME/.android/avd}/test.avd"
@@ -85,7 +83,8 @@ jobs:
             test -s "$config"
             sed -i '/^disk\.dataPartition\.size=/d' "$config"
             printf 'disk.dataPartition.size=4096M\n' >> "$config"
-            test "$(grep -c '^disk.dataPartition.size=4096M          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            test "$(grep -c '^disk.dataPartition.size=4096M          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
+          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 
       - name: Publish debug APK and instrumentation APK
         uses: actions/upload-artifact@v4
@@ -100,6 +99,8 @@ jobs:
  "$config")" -eq 1
             echo "AVD_DATA_PARTITION_SIZE_FIXED=4096M"
             grep '^disk.dataPartition.size=' "$config"
+          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
           script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 
       - name: Publish debug APK and instrumentation APK
