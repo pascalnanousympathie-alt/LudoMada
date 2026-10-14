@@ -14,10 +14,8 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
-import android.view.PixelCopy
 import android.os.Build
 import android.os.Handler
-import android.os.HandlerThread
 import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -58,7 +56,6 @@ class LudoBoardView(
     private val diagnosticSingleFrame = BuildConfig.DEBUG && homePreview &&
         context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
             .getBoolean("single_home_frame", false)
-    @Volatile private var diagnosticPixelCopyRequested = false
 
     internal fun appendRuntimeEvidence(marker: String) {
         post {
@@ -169,76 +166,6 @@ class LudoBoardView(
      * the app; adb shell screencap crashes the software-GPU emulator after the PBR first
      * frame. The normal renderer remains unchanged unless the debug-only preference is set.
      */
-    internal fun requestDiagnosticSurfacePixelCopy() {
-        if (!diagnosticSingleFrame || diagnosticPixelCopyRequested) return
-        diagnosticPixelCopyRequested = true
-        android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_SCHEDULING")
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_UNSUPPORTED api=" + Build.VERSION.SDK_INT)
-            return
-        }
-        val surface = holder.surface
-        if (!surface.isValid) {
-            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_INVALID")
-            return
-        }
-        val captureWidth = width.coerceAtLeast(1)
-        val captureHeight = height.coerceAtLeast(1)
-        val bitmap = runCatching {
-            Bitmap.createBitmap(captureWidth, captureHeight, Bitmap.Config.ARGB_8888)
-        }.getOrElse {
-            android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_BITMAP_FAILED", it)
-            return
-        }
-        // Do not depend on the Activity/UI thread: hosted software-GPU SurfaceSyncGroup
-        // stalls prevented decorView.postDelayed from ever running, even after GL render
-        // returned. PixelCopy callbacks and file I/O therefore use a dedicated HandlerThread.
-        val captureThread = HandlerThread("LudoMadaSurfacePixelCopy").apply { start() }
-        val captureHandler = Handler(captureThread.looper)
-        captureHandler.postDelayed({
-            android.util.Log.i(
-                "LudoMadaRender",
-                "DIAGNOSTIC_PIXELCOPY_SURFACE_REQUESTED size=" + captureWidth + "x" + captureHeight
-            )
-            try {
-                PixelCopy.request(surface, bitmap, { result ->
-                    try {
-                        if (result == PixelCopy.SUCCESS) {
-                            val destination = File(context.cacheDir, "live-premium-home-surface.png")
-                            destination.outputStream().use { output ->
-                                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
-                                    "Bitmap compression returned false"
-                                }
-                            }
-                            android.util.Log.i(
-                                "LudoMadaRender",
-                                "DIAGNOSTIC_PIXELCOPY_SURFACE_SAVED path=cache/live-premium-home-surface.png bytes=" +
-                                    destination.length()
-                            )
-                        } else {
-                            android.util.Log.e(
-                                "LudoMadaRender",
-                                "DIAGNOSTIC_PIXELCOPY_SURFACE_FAILED code=" + result
-                            )
-                        }
-                    } catch (error: Throwable) {
-                        android.util.Log.e(
-                            "LudoMadaRender",
-                            "DIAGNOSTIC_PIXELCOPY_SURFACE_WRITE_FAILED",
-                            error
-                        )
-                    } finally {
-                        bitmap.recycle()
-                        captureThread.quitSafely()
-                    }
-                }, captureHandler)
-            } catch (error: Throwable) {
-                bitmap.recycle()
-                captureThread.quitSafely()
-                android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SURFACE_REQUEST_FAILED", error)
-            }
-        }, 1200L)
-    }
 
     fun isDiceRolling(): Boolean = diceRolling
 
@@ -1303,9 +1230,66 @@ class LudoBoardView(
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if (isFirstFrame) {
                 android.util.Log.i("LudoMadaRender","PBR_FRAME_RENDER_COMPLETE homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight)
-                if (host.homePreview) host.requestDiagnosticSurfacePixelCopy()
+                if (host.homePreview && host.diagnosticSingleFrame) captureDiagnosticGlBackBuffer(sceneWidth,sceneHeight)
             }
         }
+        /**
+         * Diagnostic-only readback of the current GLES default framebuffer, before GLSurfaceView
+         * performs its EGL buffer swap. PixelCopy(Surface) returned ERROR_SOURCE_NO_DATA even
+         * after onDrawFrame completed, and adb shell screencap disconnects the hosted emulator.
+         * Reading the backbuffer here avoids Surface/Window/ADB capture dependencies.
+         */
+        private fun captureDiagnosticGlBackBuffer(width:Int,height:Int) {
+            if (!host.diagnosticSingleFrame) return
+            val w=width.coerceAtLeast(1)
+            val h=height.coerceAtLeast(1)
+            android.util.Log.i("LudoMadaRender","DIAGNOSTIC_GL_READBACK_BEGIN size="+w+"x"+h)
+            var bitmap:Bitmap?=null
+            try {
+                val byteCount=w*h*4
+                val rgba=ByteBuffer.allocateDirect(byteCount).order(ByteOrder.nativeOrder())
+                GLES30.glFinish()
+                GLES30.glReadPixels(0,0,w,h,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,rgba)
+                val readError=GLES30.glGetError()
+                check(readError==GLES30.GL_NO_ERROR) {
+                    "glReadPixels failed with GL error 0x"+readError.toString(16)
+                }
+                val pixels=IntArray(w*h)
+                var visiblePixels=0
+                var hash=1
+                for (y in 0 until h) {
+                    val sourceY=h-1-y
+                    for (x in 0 until w) {
+                        val offset=(sourceY*w+x)*4
+                        val red=rgba.get(offset).toInt() and 0xff
+                        val green=rgba.get(offset+1).toInt() and 0xff
+                        val blue=rgba.get(offset+2).toInt() and 0xff
+                        val alpha=rgba.get(offset+3).toInt() and 0xff
+                        val argb=(alpha shl 24) or (red shl 16) or (green shl 8) or blue
+                        pixels[y*w+x]=argb
+                        if (alpha>16 && red+green+blue>80) visiblePixels++
+                        if (((x and 63)==0) && ((y and 31)==0)) hash=31*hash+argb
+                    }
+                }
+                bitmap=Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888)
+                val destination=File(host.context.cacheDir,"live-premium-home-glreadback.png")
+                destination.outputStream().use { output ->
+                    check(bitmap!!.compress(Bitmap.CompressFormat.PNG,100,output)) {
+                        "GL readback PNG compression returned false"
+                    }
+                }
+                android.util.Log.i(
+                    "LudoMadaRender",
+                    "DIAGNOSTIC_GL_READBACK_SAVED path=cache/live-premium-home-glreadback.png bytes="+
+                        destination.length()+" visiblePixels="+visiblePixels+" sampleHash="+hash+" size="+w+"x"+h
+                )
+            } catch (error:Throwable) {
+                android.util.Log.e("LudoMadaRender","DIAGNOSTIC_GL_READBACK_FAILED",error)
+            } finally {
+                bitmap?.recycle()
+            }
+        }
+
         private fun createSceneTargets(w:Int,h:Int){
             if(sceneFbo!=0){GLES30.glDeleteFramebuffers(1,intArrayOf(sceneFbo),0);GLES30.glDeleteTextures(1,intArrayOf(sceneColorTex),0);GLES30.glDeleteTextures(1,intArrayOf(sceneDepthTex),0)}
             val tex=IntArray(2);GLES30.glGenTextures(2,tex,0);sceneColorTex=tex[0];sceneDepthTex=tex[1]
