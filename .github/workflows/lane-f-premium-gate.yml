@@ -31,7 +31,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: lane-f-premium-${{ github.event.pull_request.number || github.ref }}
+  group: lane-f-premium-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
