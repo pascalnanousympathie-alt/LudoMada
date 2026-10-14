@@ -36,7 +36,7 @@ jobs:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     concurrency:
-      group: android-apk-cloud-${{ github.ref }}
+      group: android-apk-cloud-${{ github.event.pull_request.head.ref || github.ref_name }}
       cancel-in-progress: true
     defaults:
       run:
@@ -80,8 +80,11 @@ jobs:
         working-directory: .
         run: |
           set -eu
+          node scripts/audit-material-calibration.mjs --strict
           node scripts/check-3d-assets.mjs
           node scripts/check-3d-optimization.mjs
+          node scripts/check-glb-runtime-transform.mjs
+          node scripts/check-ramus-wallet-hitbox.mjs
 
       - name: Verify current GLB and textures are packaged into debug APK
         working-directory: .
@@ -132,6 +135,39 @@ jobs:
               adb shell run-as com.ludomadagascar.test cat "cache/$name" > "ramus-evidence/$name" 2> "ramus-evidence/$name.err" || true
             done
             exit "$test_exit"
+
+      - name: Verify mandatory Home, mode, wallet, market and 2P/3P/4P screenshots
+        working-directory: .
+        run: |
+          set -eu
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path('ramus-evidence')
+          required = [
+              'hosted-emulator.png',
+              'ludomada-home.png',
+              'ludomada-game-mode.png',
+              'ludomada-wallet.png',
+              'ludomada-market.png',
+              'ludomada-gameplay-2p.png',
+              'ludomada-gameplay-3p.png',
+              'ludomada-gameplay-4p.png',
+              'ludomada-startup-offline.png',
+          ]
+          png_magic = bytes.fromhex('89504e470d0a1a0a')
+          for name in required:
+              path = root / name
+              if not path.is_file():
+                  raise SystemExit(f'Missing required UI screenshot: {path}')
+              data = path.read_bytes()
+              if len(data) < 1000 or not data.startswith(png_magic):
+                  raise SystemExit(f'Invalid or truncated PNG: {path} ({len(data)} bytes)')
+          for name in ('adb-devices.txt', 'logcat.txt'):
+              path = root / name
+              if not path.is_file() or path.stat().st_size == 0:
+                  raise SystemExit(f'Missing Android diagnostics: {path}')
+          print('HOSTED_EMULATOR_EVIDENCE_PASS')
+          PY
 
       - name: Upload hosted emulator screenshots and logcat
         if: always()
