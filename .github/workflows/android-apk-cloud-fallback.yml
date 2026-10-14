@@ -117,7 +117,7 @@ jobs:
           # One command is intentional: this action runs each pre-launch line in a separate shell.
           # Normalize the generated AVD after creation to avoid duplicate settings and slow boot.
           pre-emulator-launch-script: >-
-            sed -i '/^disk\\.dataPartition\\.size=/d; /^hw\\.cpu\\.ncore=/d; /^hw\\.ramSize=/d; /^hw\\.heapSize=/d; /^hw\\.lcd\\.width=/d; /^hw\\.lcd\\.height=/d; /^hw\\.lcd\\.density=/d' /home/runner/.android/avd/test.avd/config.ini && printf 'hw.cpu.ncore=4\\nhw.ramSize=2048M\\nhw.heapSize=512M\\nhw.lcd.width=720\\nhw.lcd.height=1280\\nhw.lcd.density=320\\ndisk.dataPartition.size=3072M\\n' >> /home/runner/.android/avd/test.avd/config.ini && grep -E '^(hw.cpu.ncore|hw.ramSize|hw.heapSize|hw.lcd.width|hw.lcd.height|hw.lcd.density|disk.dataPartition.size)=' /home/runner/.android/avd/test.avd/config.ini
+            sed -i '/^disk\.dataPartition\.size=/d; /^hw\.cpu\.ncore=/d; /^hw\.ramSize=/d; /^hw\.heapSize=/d; /^hw\.lcd\.width=/d; /^hw\.lcd\.height=/d; /^hw\.lcd\.density=/d' /home/runner/.android/avd/test.avd/config.ini && printf 'hw.cpu.ncore=4\nhw.ramSize=2048M\nhw.heapSize=512M\nhw.lcd.width=720\nhw.lcd.height=1280\nhw.lcd.density=320\ndisk.dataPartition.size=3072M\n' >> /home/runner/.android/avd/test.avd/config.ini && grep -E '^(hw.cpu.ncore|hw.ramSize|hw.heapSize|hw.lcd.width|hw.lcd.height|hw.lcd.density|disk.dataPartition.size)=' /home/runner/.android/avd/test.avd/config.ini
           script: |
             set +e
             cd android-app
