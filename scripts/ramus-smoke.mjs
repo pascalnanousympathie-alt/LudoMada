@@ -164,7 +164,7 @@ try {
   // explicitly confirms the first session is terminal; never overlap live sessions.
   if (!startup?.ok) {
     const startupError = JSON.stringify(startup?.value || {});
-    const sessionEnded = /session_ended|session\\s+.*is ended|no live successor/i.test(startupError);
+    const sessionEnded = /session_ended|session\s+.*is ended|no live successor/i.test(startupError);
     if (sessionEnded) {
       console.warn("RAMUS_SESSION_ENDED_DURING_STARTUP=" + startupError.slice(0, 800));
       const restarted = allow("session", "start", "--apk", apk, "--wait");
