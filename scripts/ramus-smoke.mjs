@@ -130,6 +130,240 @@ function sha256File(name) {
   return createHash("sha256").update(readFileSync(file)).digest("hex");
 }
 
+function redactDiagnosticText(value) {
+  return String(value || "")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, "$1[REDACTED]")
+    .replace(/((?:access[_-]?token|refresh[_-]?token|client[_-]?secret|api[_-]?key|password|authorization|cookie|nonce)\s*[=:]\s*)[^,;\s}]+/gi, "$1[REDACTED]");
+}
+
+function safeLaunchSummary(value) {
+  if (!value || typeof value !== "object") return null;
+  return {
+    error: typeof value.error === "string" ? value.error.slice(0, 180) : undefined,
+    message: typeof value.message === "string" ? value.message.slice(0, 240) : undefined,
+    status: typeof value.status === "string" ? value.status.slice(0, 80) : undefined,
+    session: typeof value.session === "string" ? value.session.slice(0, 80) : undefined,
+    idleTtlSec: Number.isFinite(value.idleTtlSec) ? value.idleTtlSec : undefined
+  };
+}
+
+function captureStartupLogcat(stage) {
+  if (!session) return;
+  const logs = allow("logcat", "--limit", "200", "--session", session);
+  if (!logs.ok) {
+    console.error("RAMUS_STARTUP_LOGCAT_ERROR=" + JSON.stringify({
+      stage,
+      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240)
+    }));
+    return;
+  }
+
+  const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
+  // Ramus can return JSON log records concatenated in one string. Split at each
+  // record boundary so early AndroidRuntime/package errors are retained even if
+  // the emulator generates hundreds of unrelated system messages.
+  const decoded = raw.replace(/\\n/g, "\n");
+  const records = decoded
+    .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"\s*:)/g, "\n")
+    .split(/\r?\n/);
+  const relevant = records.filter(line =>
+    /FATAL EXCEPTION|AndroidRuntime|com\.ludomadagascar|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process:|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|PackageManager|Launch timeout|force finishing/i.test(line)
+  );
+  const output = relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n");
+  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + (output || "NO_MATCHING_STARTUP_OR_CRASH_LINES"));
+}
+
+function captureFailureDiagnostics() {
+  if (!session) return;
+
+  // Capture the exact failing session before cleanup, not a global/latest emulator.
+  const screen = allow("snapshot", "--session", session, "--include-offscreen");
+  if (screen.ok) {
+    const elements = (screen.value?.elements || []).slice(0, 50).map(e => ({
+      text: String(e.text || "").slice(0, 100),
+      contentDesc: String(e.contentDesc || "").slice(0, 100),
+      clickable: Boolean(e.clickable),
+      focused: Boolean(e.focused)
+    }));
+    console.error("RAMUS_FAILURE_SCREEN=" + JSON.stringify({
+      screen: screen.value?.screen || null,
+      elements
+    }));
+  } else {
+    console.error("RAMUS_FAILURE_SCREEN_ERROR=" + JSON.stringify(screen.value || {}));
+  }
+
+  // Keep failure evidence even when the main visual capture is disabled or failed.
+  const evidencePath = "ramus-evidence/failure.jpg";
+  const screenshot = allow("screenshot", "--session", session, "--out", evidencePath, "--max-width", "1400");
+  if (!screenshot.ok) console.error("RAMUS_FAILURE_SCREENSHOT_ERROR=" + JSON.stringify(screenshot.value || {}));
+
+  // Capture a larger, filtered slice; the immediate launch checkpoint below is
+  // the primary crash evidence because Android system logs can flood quickly.
+  captureStartupLogcat("failure");
+}
+
+function tryLauncherDrawerLaunch() {
+  const attempts = [];
+
+  function snapshotState(label) {
+    shot(label);
+    const snapNow = allow("snapshot", "--session", session);
+    const elements = snapNow.ok
+      ? (snapNow.value?.elements || []).slice(0, 60).map(e => ({
+          text: String(e.text || "").slice(0, 80),
+          contentDesc: String(e.contentDesc || "").slice(0, 80),
+          clickable: Boolean(e.clickable),
+          ref: e.ref,
+          gen: snapNow.value?.gen
+        }))
+      : [];
+    return {
+      ok: snapNow.ok,
+      screen: snapNow.value?.screen || null,
+      count: snapNow.value?.count ?? elements.length,
+      elements,
+      value: snapNow.value
+    };
+  }
+
+  function findApp(state) {
+    return (state?.elements || []).find(e =>
+      /LudoMada/i.test(String(e.text || "") + " " + String(e.contentDesc || "")) &&
+      e.ref && Number.isFinite(e.gen)
+    );
+  }
+
+  for (const [index, gesture] of [
+    ["drawer-swipe-bottom", ["0.5,0.975", "0.5,0.18", "700"]],
+    ["drawer-swipe-middle", ["0.5,0.88", "0.5,0.18", "700"]]
+  ].entries()) {
+    const swipe = allow("swipe", gesture[1][0], gesture[1][1], "--ms", gesture[1][2], "--session", session);
+    waitStable(700);
+    const shotName = index === 0 ? "launcher-drawer-swipe-a" : "launcher-drawer-swipe-b";
+    const state = snapshotState(shotName);
+    const item = findApp(state);
+    attempts.push({
+      step: gesture[0],
+      gesture: { from: gesture[1][0], to: gesture[1][1], ms: gesture[1][2] },
+      swipe: safeLaunchSummary(swipe.value),
+      snapshotOk: state.ok,
+      screen: state.screen,
+      count: state.count,
+      visible: state.elements.map(({text,contentDesc,clickable})=>({text,contentDesc,clickable})).slice(0,40),
+      screenshotCaptured: screenshotExists(shotName)
+    });
+    if (item) {
+      const tapped = tapRef({ ref: item.ref, gen: item.gen });
+      if (tapped.ok) {
+        for (let attempt = 0; attempt < 24; attempt++) {
+          waitStable(1000);
+          const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+          if (found.ok && found.value?.elements?.length) {
+            return { home: found, diagnostic: { ok: true, step: gesture[0], attempts, itemTap: safeLaunchSummary(tapped.value) } };
+          }
+        }
+      }
+      attempts[attempts.length-1].itemTap = safeLaunchSummary(tapped.value);
+    }
+
+    // On the observed 720x1616 Ramus launcher, the installed LudoMada icon is
+    // visible in the screenshot but omitted from the accessibility tree. Use a
+    // single bounded coordinate tap only when that exact screen and evidence are
+    // present; never guess coordinates on an unknown launcher layout.
+    if (!item && index === 0 && state.screen === "720x1616" && screenshotExists(shotName)) {
+      const coordinateTap = allow("tap", "0.385,0.632", "--session", session, "--force");
+      attempts[attempts.length-1].coordinateTap = safeLaunchSummary(coordinateTap.value);
+      waitStable(900);
+      shot("launcher-ludomada-coordinate-tap");
+      for (let attempt = 0; attempt < 18; attempt++) {
+        waitStable(1000);
+        const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (found.ok && found.value?.elements?.length) {
+          return { home: found, diagnostic: { ok: true, step: "launcher-icon-coordinate", attempts } };
+        }
+        if (attempt === 4) captureStartupLogcat("after-coordinate-icon-tap");
+      }
+      const postTap = allow("snapshot", "--session", session);
+      attempts[attempts.length-1].coordinateTapScreen = postTap.ok ? {
+        screen: postTap.value?.screen || null,
+        count: postTap.value?.count ?? (postTap.value?.elements || []).length,
+        visible: (postTap.value?.elements || []).slice(0, 30).map(e => ({
+          text: String(e.text || "").slice(0, 80),
+          contentDesc: String(e.contentDesc || "").slice(0, 80)
+        }))
+      } : safeLaunchSummary(postTap.value);
+      attempts[attempts.length-1].coordinateTapScreenshotCaptured = screenshotExists("launcher-ludomada-coordinate-tap");
+    }
+  }
+
+  // The activity may already exist in Android's recent-task stack even when the
+  // launcher gesture or accessibility tree fails. Open Recents using its navbar
+  // hit target, inspect the accessibility tree, and reopen only a labeled app.
+  const recentTap = allow("tap", "0.758,0.976", "--session", session, "--force");
+  waitStable(700);
+  const recentState = snapshotState("launcher-recents-recovery");
+  const recentItem = findApp(recentState);
+  attempts.push({
+    step: "recent-apps",
+    tap: safeLaunchSummary(recentTap.value),
+    snapshotOk: recentState.ok,
+    screen: recentState.screen,
+    count: recentState.count,
+    visible: recentState.elements.map(({text,contentDesc,clickable})=>({text,contentDesc,clickable})).slice(0,40),
+    screenshotCaptured: screenshotExists("launcher-recents-recovery")
+  });
+  if (recentItem) {
+    let tapped = tapRef({ ref: recentItem.ref, gen: recentItem.gen });
+    if (!tapped.ok && tapped.value?.error === "stale_ref") {
+      waitStable(250);
+      const refreshed = allow("snapshot", "--session", session);
+      const state = refreshed.ok ? {
+        ok: true,
+        value: refreshed.value,
+        elements: (refreshed.value?.elements || []).map(e=>({...e,gen:refreshed.value.gen}))
+      } : {ok:false,value:refreshed.value,elements:[]};
+      const item = findApp(state);
+      if (item) tapped = tapRef({ref:item.ref,gen:item.gen});
+    }
+    attempts[attempts.length-1].itemTap = safeLaunchSummary(tapped.value);
+    if (tapped.ok) {
+      for (let attempt = 0; attempt < 24; attempt++) {
+        waitStable(1000);
+        const found = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (found.ok && found.value?.elements?.length) {
+          return { home: found, diagnostic: { ok: true, step: "recent-apps", attempts } };
+        }
+      }
+    }
+  }
+
+  return {
+    home: null,
+    diagnostic: {
+      ok: false,
+      step: "no-labeled-ludomada-entry-after-drawer-and-recents",
+      attempts
+    }
+  };
+}
+
+function waitForSessionEnded(sessionId, attempts = 8) {
+  // "status=ending" is asynchronous, not proof that the old device has been released.
+  // Probe the original session until Ramus confirms it is no longer addressable.
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    waitStable(1000);
+    const probe = allow("snapshot", "--session", sessionId);
+    if (!probe.ok) {
+      const message = JSON.stringify(probe.value || {});
+      if (/session[^\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\n]*session/i.test(message)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 let session = "";
 let success = false;
 let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
@@ -139,31 +373,151 @@ try {
   mkdirSync("ramus-evidence", { recursive: true });
 
   // Ramus is shared by parallel project checks. Never terminate, wait for, or reuse
-  // any session from the global list; only own and later end this run's returned session.
-  // If capacity is unavailable, fail safely rather than disrupting another agent.
+  // Ramus session start requires an APK source and installs/launches it.
+  // Poll the Home screen before attempting a launch again: "busy" means the
+  // initial launch is still being processed, not that the app is healthy.
   const started = allow("session", "start", "--apk", apk, "--wait");
-  // Do not fall back to some unrelated active session if Ramus cannot allocate one.
   if (!started.ok || !started.value?.session) {
     throw new Error(JSON.stringify(started.value || { error: "session_start_failed_no_session_reuse" }));
   }
 
   session = started.value.session;
   console.log(`Ramus session: ${session}`);
-  waitStable(1800);
+  let launchInfo = { sessionStart: safeLaunchSummary(started.value) };
+  let home = null;
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    waitStable(1000);
+    home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+    if (home.ok && home.value?.elements?.length) break;
+
+    // Capture the first startup failure immediately; waiting until cleanup lets
+    // launcher/system noise evict the original AndroidRuntime or package error.
+    if (attempt === 1) captureStartupLogcat("initial-home-missing");
+
+    // One bounded foreground launch, after the initial auto-launch had time
+    // to settle. Do not retry "busy" in a tight loop.
+    if (attempt === 15) {
+      const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+      launchInfo = {
+        ...launchInfo,
+        retryLaunch: safeLaunchSummary(launched.value)
+      };
+      waitStable(1200);
+      captureStartupLogcat("after-retry-launch");
+    }
+  }
+
+  // Lane F now installs exact Ramus CLI 0.1.14, which supports its documented
+  // same-session install/open command. Try that first after a stuck initial launch;
+  // it keeps the current emulator and avoids burning a second slot.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-same-session-install");
+    const installed = allow("session", "install", "--session", session, apk);
+    launchInfo = { ...launchInfo, sameSessionInstall: safeLaunchSummary(installed.value) };
+    waitStable(1200);
+    captureStartupLogcat("after-same-session-install");
+    if (installed.ok) {
+      home = null;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        waitStable(1000);
+        home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+        if (home.ok && home.value?.elements?.length) break;
+        if (attempt === 1) captureStartupLogcat("same-session-install-home-missing");
+      }
+    }
+  }
+
+  // Last same-device recovery: an API-level launch can remain "busy" even though
+  // the Android launcher is visible. Try opening the installed app from the launcher
+  // UI before ending this test-owned session.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-launcher-drawer-recovery");
+    const drawer = tryLauncherDrawerLaunch();
+    launchInfo = { ...launchInfo, launcherDrawerRecovery: drawer.diagnostic };
+    if (drawer.home) home = drawer.home;
+    if (!home?.ok || !home.value?.elements?.length) captureStartupLogcat("after-launcher-drawer-recovery");
+  }
+
+  // Last bounded recovery: only create a fresh APK-backed session after Ramus confirms
+  // the prior test-owned session has actually ended. A response of "ending" is not
+  // terminal; overlapping it with another session causes further "busy" launch errors.
+  if (!home?.ok || !home.value?.elements?.length) {
+    captureStartupLogcat("before-fresh-session");
+    const priorSession = session;
+    const ended = allow("session", "end", "--session", priorSession);
+    launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
+    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
+    if (terminal) {
+      const restarted = allow("session", "start", "--apk", apk, "--wait");
+      launchInfo = { ...launchInfo, freshSessionStart: safeLaunchSummary(restarted.value) };
+      if (restarted.ok && restarted.value?.session) {
+        session = restarted.value.session;
+        home = null;
+        for (let attempt = 0; attempt < 20; attempt++) {
+          waitStable(1000);
+          home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+          if (home.ok && home.value?.elements?.length) break;
+          if (attempt === 1) captureStartupLogcat("fresh-session-home-missing");
+          if (attempt === 12) {
+            const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
+            launchInfo = { ...launchInfo, freshSessionRetryLaunch: safeLaunchSummary(launched.value) };
+            waitStable(1200);
+            captureStartupLogcat("fresh-session-after-retry-launch");
+          }
+        }
+      }
+    } else {
+      launchInfo = {
+        ...launchInfo,
+        freshSessionStart: {
+          error: "skipped_prior_session_not_terminal",
+          message: "Ramus has not confirmed that the previous session ended; avoid overlapping sessions.",
+          status: String(ended.value?.status || "unknown").slice(0, 80)
+        }
+      };
+    }
+  }
 
   let startup = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
+  for (let attempt = 0; attempt < 6; attempt++) {
     startup = allow("snapshot", "--session", session);
     if (startup.ok) break;
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
-  if (!startup?.ok) throw new Error("Startup snapshot failed after retries");
   shot("startup");
+  const startupScreenshotPresent = screenshotExists("startup");
+  console.log("RAMUS_STARTUP_SCREENSHOT_EVIDENCE=" + JSON.stringify({
+    present: startupScreenshotPresent,
+    path: startupScreenshotPresent ? "ramus-evidence/startup.jpg" : null,
+    sizeBytes: startupScreenshotPresent ? statSync("ramus-evidence/startup.jpg").size : 0,
+    sha256: startupScreenshotPresent ? sha256File("startup") : ""
+  }));
+
+  // Fail at the true startup boundary and report the actual session snapshot
+  // instead of cascading into misleading JOUER/game-mode errors.
+  if (!startup?.ok || !home?.ok || !home.value?.elements?.length) {
+    const current = allow("snapshot", "--session", session, "--include-offscreen");
+    const elements = current.ok
+      ? (current.value?.elements || []).slice(0, 40).map(e => ({
+          text: String(e.text || "").slice(0, 100),
+          contentDesc: String(e.contentDesc || "").slice(0, 100),
+          clickable: Boolean(e.clickable)
+        }))
+      : [];
+    console.error("RAMUS_STARTUP_DIAGNOSTIC=" + JSON.stringify({
+      installLaunch: launchInfo,
+      snapshotOk: Boolean(startup?.ok),
+      screen: startup?.value?.screen || null,
+      visibleElements: elements
+    }));
+    throw new Error("LudoMada Premium Home did not open after explicit APK install and bounded launch wait; inspect the attached startup screenshot and diagnostics");
+  }
 
   // Screenshot 1 is the Home reference. The current app intentionally starts here.
-  const home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
-  if (home.ok && home.value.elements?.length) {
+  {
     console.log("STARTUP→PREMIUM HOME PASS");
     if (process.env.RAMUS_CAPTURE === "1") {
       shot("home-a");
@@ -546,6 +900,13 @@ try {
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
+  if (session && !success) {
+    try {
+      captureFailureDiagnostics();
+    } catch (diagnosticError) {
+      console.error("RAMUS_FAILURE_DIAGNOSTIC_ERROR=" + redactDiagnosticText(diagnosticError?.message || diagnosticError).slice(0, 2000));
+    }
+  }
   if (session && (success || process.env.RAMUS_KEEP_ON_FAIL !== "1")) {
     const ended = allow("session", "end", "--session", session);
     if (!ended.ok) console.error("session end:", JSON.stringify(ended.value));

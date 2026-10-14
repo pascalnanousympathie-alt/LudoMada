@@ -11,8 +11,12 @@ class LudoMadaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.i("LudoMadaStartup", "APPLICATION_ON_CREATE_ENTER")
         val projectId = BuildConfig.REOWN_PROJECT_ID.trim()
-        if (projectId.isBlank()) return
+        if (projectId.isBlank()) {
+            Log.i("LudoMadaStartup", "APPLICATION_REOWN_OPTIONAL_DISABLED")
+            return
+        }
 
         // Keep Reown optional at compile time. The real-enabled build may package
         // the SDK, while the standard APK starts without loading any Reown class.
@@ -22,6 +26,7 @@ class LudoMadaApplication : Application() {
                 ?: error("CoreClient.initialize not found")
             Log.i("LudoMadaReown", "Reown runtime detected; initialization delegated to wallet flow.")
             reownReady = true
+            Log.i("LudoMadaStartup", "APPLICATION_ON_CREATE_READY")
         }.onFailure {
             reownReady = false
             Log.e("LudoMadaReown", "Optional Reown runtime unavailable", it)

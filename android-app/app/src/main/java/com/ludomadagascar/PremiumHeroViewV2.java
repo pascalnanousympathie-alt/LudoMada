@@ -10,6 +10,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 
 public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
@@ -17,8 +18,20 @@ public class PremiumHeroViewV2 extends FrameLayout {
   private final Button walletHit;
   private final Button walletHitAlt;
   private final TextView playA11y;
+  private Button playHit;
+  private Button playHitAlt;
+  private final ArrayList<HomeTarget> homeTargets=new ArrayList<>();
+
+  private static final class HomeTarget {
+    final View view;
+    final float x,y,width,height;
+    HomeTarget(View view,float x,float y,float width,float height){
+      this.view=view;this.x=x;this.y=y;this.width=width;this.height=height;
+    }
+  }
   public PremiumHeroViewV2(Context c){
     super(c);
+    android.util.Log.i("LudoMadaStartup", "HERO_CONSTRUCTOR_ENTER");
     setWillNotDraw(false);
     setLayerType(LAYER_TYPE_HARDWARE,null);
     setClipChildren(false);
@@ -31,7 +44,9 @@ public class PremiumHeroViewV2 extends FrameLayout {
       ((Activity)c).setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
     }
     home=new HomeView(c);
+    android.util.Log.i("LudoMadaStartup", "HERO_HOME_VIEW_CREATED");
     homeBoard=new LudoBoardView(c,null,null,true);
+    android.util.Log.i("LudoMadaStartup", "HERO_GL_SURFACE_CREATED");
     // Home preview is a real full-screen 3D scene surface; keep it behind the
     // vector UI overlay so the environment itself is never a bitmap/screenshot.
     homeBoard.setZOrderOnTop(false);
@@ -43,7 +58,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     FrameLayout.LayoutParams homeBoardLp=new FrameLayout.LayoutParams(-1,-1);
     addView(homeBoard,homeBoardLp);
 
-    final Button playHit=new Button(c);
+    playHit=new Button(c);
     playHit.setText("JOUER");
     playHit.setTextColor(Color.TRANSPARENT);
     playHit.setContentDescription("JOUER");
@@ -66,7 +81,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     playA11y.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     playA11y.setOnClickListener(v->call("gameModeDialog"));
 
-    final Button playHitAlt=new Button(c);
+    playHitAlt=new Button(c);
     playHitAlt.setText("JOUER");
     playHitAlt.setTextColor(Color.TRANSPARENT);
     playHitAlt.setContentDescription("JOUER");
@@ -126,13 +141,28 @@ public class PremiumHeroViewV2 extends FrameLayout {
     FrameLayout.LayoutParams playAltLp=new FrameLayout.LayoutParams(48,48);
     playAltLp.leftMargin=2; playAltLp.topMargin=96;
     addView(playHitAlt,playAltLp);
+
+    // The Home artwork is drawn on a custom Canvas, so its visible controls need
+    // native accessibility nodes too. These transparent hit targets keep the
+    // real premium artwork unchanged while making every menu discoverable and
+    // directly testable by TalkBack, UIAutomator and Ramus.
+    addHomeActionTargets();
     post(()->{
-      positionHomeBoard(homeBoard);
-      homeBoard.configureHomePreview();
-      positionWalletHit(walletHit, walletHitAlt);
-      positionPlayHit(playHit,playHitAlt);
-      positionPlayHit(playA11y,playHitAlt);
+      android.util.Log.i("LudoMadaStartup", "HERO_LAYOUT_POST_ENTER");
+      try {
+        positionHomeBoard(homeBoard);
+        homeBoard.configureHomePreview();
+        positionWalletHit(walletHit, walletHitAlt);
+        positionPlayHit(playHit,playHitAlt);
+        positionPlayHit(playA11y,playHitAlt);
+        positionHomeTargets();
+        android.util.Log.i("LudoMadaStartup", "HERO_LAYOUT_POST_READY");
+      } catch (Throwable t) {
+        android.util.Log.e("LudoMadaStartup", "HERO_LAYOUT_POST_FAILED", t);
+        throw t;
+      }
     });
+    android.util.Log.i("LudoMadaStartup", "HERO_CONSTRUCTOR_READY");
   }
   private JSONObject homePreviewState(){
     try{
@@ -192,6 +222,54 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
   private boolean walletGesture;
   private boolean playGesture;
+  private boolean homeMenuGesture;
+
+  private boolean isHomeActionPoint(float x,float y){
+    if(y>=140 && y<230 && x>=45 && x<310)return true; // create room
+    if(y>=230 && y<325 && x>=45 && x<310)return true; // join room
+    if(y>=325 && y<420 && x>=45 && x<310)return true; // wallet
+    if(y>=420 && y<515 && x>=45 && x<310)return true; // profile
+    if(y>=520 && y<650 && x>=52 && x<310)return true; // entry-fee selectors
+    if(y>=370 && y<465 && x>=1005)return true;        // play / mode selector
+    if(y>=465 && y<525 && x>=1005)return true;        // tournaments / leaderboard
+    if(y>=525 && y<585 && x>=1005)return true;        // tutorials
+    if(y>=45 && y<115 && x>=52 && x<520)return true;    // profile chip / avatar
+    if(y>=45 && y<115 && x>=825 && x<915)return true;   // market shortcut
+    if(y>=45 && y<115 && x>=1096 && x<1230)return true; // wallet / music shortcuts
+    return false;
+  }
+
+  private float[][] homeActionCandidates(float x,float y){
+    final float W=Math.max(1f,getWidth()), H=Math.max(1f,getHeight());
+    final float den=getResources().getDisplayMetrics().density;
+    final float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    final float safeSc=sc>0f?sc:1f;
+    final float ox=(W-1280f*safeSc)/2f, oy=(H-720f*safeSc)/2f;
+    final float lx=(x-ox)/safeSc, ly=(y-oy)/safeSc;
+    // On a real landscape device, trust the physical view coordinates. Trying
+    // rotated coordinates for every ordinary touch can turn a 3D board tap
+    // into an accidental menu action. Rotated mappings are only meaningful if
+    // Android actually reports this view in portrait bounds.
+    if(W>=H)return new float[][]{{lx,ly}};
+    final float nx=x/W, ny=y/H;
+    final float lxCW=(1f-ny)*1280f, lyCW=nx*720f;
+    final float lxCCW=ny*1280f, lyCCW=(1f-nx)*720f;
+    return new float[][]{{lxCW,lyCW},{lxCCW,lyCCW}};
+  }
+
+  private boolean isHomeActionTouch(float x,float y){
+    for(float[] point:homeActionCandidates(x,y)){
+      if(isHomeActionPoint(point[0],point[1]))return true;
+    }
+    return false;
+  }
+
+  private boolean dispatchHomeAction(float x,float y){
+    for(float[] point:homeActionCandidates(x,y)){
+      if(isHomeActionPoint(point[0],point[1]) && home.hitHomeActions(point[0],point[1]))return true;
+    }
+    return false;
+  }
   private boolean isWalletGesture(float x,float y){
     final float W=getWidth(),H=getHeight();
     if(W<=0 || H<=0)return false;
@@ -217,9 +295,25 @@ public class PremiumHeroViewV2 extends FrameLayout {
     if(action==MotionEvent.ACTION_DOWN){
       walletGesture=isWalletGesture(e.getX(),e.getY());
       playGesture=isPlayGesture(e.getX(),e.getY());
+      homeMenuGesture=!walletGesture && !playGesture && isHomeActionTouch(e.getX(),e.getY());
       if(BuildConfig.DEBUG){
-        android.util.Log.i("LudoMada","HOME_DISPATCH down x="+e.getX()+" y="+e.getY()+" wallet="+walletGesture+" play="+playGesture);
+        android.util.Log.i("LudoMada","HOME_DISPATCH down x="+e.getX()+" y="+e.getY()+" wallet="+walletGesture+" play="+playGesture+" menu="+homeMenuGesture);
       }
+    }
+    // The visual Home is drawn by HomeView, but the full-screen GLSurfaceView is
+    // a sibling child that can consume the pointer first. Own complete touch
+    // streams for every visible Home menu so create/join/profile/market/events/
+    // tutorials/entry-fee/music actions are not swallowed by the 3D surface.
+    if(homeMenuGesture){
+      if(action==MotionEvent.ACTION_UP){
+        homeMenuGesture=false;
+        if(!dispatchHomeAction(e.getX(),e.getY()) && BuildConfig.DEBUG){
+          android.util.Log.w("LudoMada","HOME_MENU_ACTION_MISSED x="+e.getX()+" y="+e.getY());
+        }
+      }else if(action==MotionEvent.ACTION_CANCEL){
+        homeMenuGesture=false;
+      }
+      return true;
     }
     if(walletGesture){
       if(action==MotionEvent.ACTION_UP){
@@ -268,7 +362,58 @@ public class PremiumHeroViewV2 extends FrameLayout {
     positionHomeBoard(homeBoard);
     positionWalletHit(walletHit, walletHitAlt);
     positionPlayA11y(playA11y);
-    if(getChildCount()>=3) positionPlayHit(getChildAt(getChildCount()-2),getChildAt(getChildCount()-1));
+    positionHomeTargets();
+    if(playHit!=null && playHitAlt!=null) positionPlayHit(playHit,playHitAlt);
+  }
+
+  private void addHomeTargets(String description,float x,float y,float width,float height,Runnable action){
+    Button target=new Button(getContext());
+    target.setText(description);
+    target.setTextColor(Color.TRANSPARENT);
+    target.setBackgroundColor(Color.TRANSPARENT);
+    target.setPadding(0,0,0,0);
+    target.setMinWidth(0);target.setMinHeight(0);
+    target.setContentDescription(description);
+    target.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    target.setFocusable(true);target.setClickable(true);target.setAlpha(1f);
+    if(description.startsWith("HOME_ENTRY_FEE_")){
+      target.setSelected(description.equals("HOME_ENTRY_FEE_"+lng("entryFee")));
+    }
+    target.setOnClickListener(v->{if(action!=null)action.run();});
+    addView(target,new FrameLayout.LayoutParams(1,1));
+    homeTargets.add(new HomeTarget(target,x,y,width,height));
+  }
+
+  private void addHomeActionTargets(){
+    addHomeTargets("HOME_PROFILE_CHIP",52,43,468,72,()->call("profile"));
+    addHomeTargets("HOME_CREATE_ROOM",52,145,238,80,()->call("lobby"));
+    addHomeTargets("HOME_JOIN_ROOM",52,238,238,80,()->call("joinDialog"));
+    addHomeTargets("HOME_PROFILE",52,424,238,80,()->call("profile"));
+    addHomeTargets("HOME_MARKET",825,45,90,70,()->call("shop"));
+    addHomeTargets("HOME_WALLET_SHORTCUT",1096,56,68,48,()->call("wallet"));
+    addHomeTargets("HOME_MUSIC_TOGGLE",1164,56,64,48,()->call("toggleHomeMusic"));
+    addHomeTargets("HOME_TOURNAMENTS",1028,470,182,50,()->call("events"));
+    addHomeTargets("HOME_TUTORIALS",1028,528,182,50,()->call("tutorials"));
+    int[] fees={500,1000,2000,5000,10000,20000};
+    for(int i=0;i<fees.length;i++){
+      final int fee=fees[i];
+      addHomeTargets("HOME_ENTRY_FEE_"+fee,60+i*37,570,34,28,()->home.chooseEntryFee(fee));
+    }
+    positionHomeTargets();
+  }
+
+  private void positionHomeTargets(){
+    float W=getWidth(),H=getHeight();
+    if(W<=0||H<=0)return;
+    float den=getResources().getDisplayMetrics().density;
+    float sc=Math.min(W/(1280f*den),H/(720f*den))*den;
+    if(sc<=0)return;
+    float ox=(W-1280f*sc)/2f,oy=(H-720f*sc)/2f;
+    for(HomeTarget target:homeTargets){
+      setHit(target.view,
+          Math.round(ox+target.x*sc),Math.round(oy+target.y*sc),
+          Math.max(1,Math.round(target.width*sc)),Math.max(1,Math.round(target.height*sc)));
+    }
   }
   private void positionPlayA11y(View v){
     float W=getWidth(),H=getHeight();
@@ -583,7 +728,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       t(c,"◆",870,89,19,Color.WHITE,true,true);
       box(c,1096,56,1164,104,18,0xFFEDB83A,0);
       t(c,"+",1130,87,22,0xFF432600,true,true);
-      t(c,"🎵",1195,88,18,Color.WHITE,true,true);
+      t(c,"false".equalsIgnoreCase(str("homeMusicEnabled"))?"🔇":"🎵",1195,88,18,Color.WHITE,true,true);
 
       // Live left navigation rail.
       menu(c,52,145,290,225,0xE61956A6,0xAA6CCBFF,"＋","CRÉER UNE ROOM","Nouvelle partie");
@@ -667,18 +812,37 @@ public class PremiumHeroViewV2 extends FrameLayout {
       return true;
     }
 
+    void chooseEntryFee(int value){
+      if(value!=500 && value!=1000 && value!=2000 && value!=5000 && value!=10000 && value!=20000)return;
+      fee=value;
+      Activity activity=PremiumHeroViewV2.this.activityContext();
+      if(activity instanceof MainActivity)((MainActivity)activity).setDefaultEntryFee(value);
+      else set("entryFee",value);
+      for(HomeTarget target:homeTargets){
+        String description=String.valueOf(target.view.getContentDescription());
+        if(description.startsWith("HOME_ENTRY_FEE_")){
+          target.view.setSelected(description.equals("HOME_ENTRY_FEE_"+value));
+          target.view.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_SELECTED);
+        }
+      }
+      invalidate();
+    }
+
     private boolean hitHomeActions(float x,float y){
-      if(y>=140&&y<230&&x<310){call("createGame");return true;}
-      if(y>=230&&y<325&&x<310){call("joinDialog");return true;}
-      if(y>=325&&y<420&&x<310){call("wallet");return true;}
-      if(y>=420&&y<515&&x<310){call("profile");return true;}
-      if(y>=370&&y<465&&x>970){call("gameModeDialog");return true;}
-      if(y>=465&&y<525&&x>970){call("events");return true;}
-      if(y>=525&&y<585&&x>970){call("tutorials");return true;}
+      if(y>=45&&y<115&&x>=52&&x<520){call("profile");return true;}
+      if(y>=45&&y<115&&x>=1096&&x<1164){call("wallet");return true;}
+      if(y>=45&&y<115&&x>=1164&&x<1230){call("toggleHomeMusic");return true;}
       if(y>=45&&y<115&&x>=825&&x<915){call("shop");return true;}
-      if(y>=520&&y<650&&x<310){
+      if(y>=140&&y<230&&x>=45&&x<310){call("lobby");return true;}
+      if(y>=230&&y<325&&x>=45&&x<310){call("joinDialog");return true;}
+      if(y>=325&&y<420&&x>=45&&x<310){call("wallet");return true;}
+      if(y>=420&&y<515&&x>=45&&x<310){call("profile");return true;}
+      if(y>=370&&y<465&&x>=1005){call("gameModeDialog");return true;}
+      if(y>=465&&y<525&&x>=1005){call("events");return true;}
+      if(y>=525&&y<585&&x>=1005){call("tutorials");return true;}
+      if(y>=520&&y<650&&x>=52&&x<310){
         int[]fs={500,1000,2000,5000,10000,20000};
-        int i=(int)((x-60)/53f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
+        int i=(int)((x-60)/37f);i=Math.max(0,Math.min(5,i));chooseEntryFee(fs[i]);return true;
       }
       return false;
     }

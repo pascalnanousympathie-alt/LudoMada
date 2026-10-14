@@ -34,11 +34,12 @@ class MainActivity : Activity() {
     private var token = ""; private var refreshToken = ""; private var userId = ""; private var username = ""
     private var accountBalanceMGA: Long = 0L; private var mlgBalance: Long = 0L; private var topBalanceView: TextView? = null; private var walletMlgView: TextView? = null; private var referralCode = ""; private val ownedCosmetics = mutableSetOf<String>(); private val marketPrices = mutableMapOf<String,Long>()
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
-    private var state: JSONObject? = null; private var currentScreen = ""
+    private var state: JSONObject? = null; private var currentScreen = ""; private var homeMusicEnabled = true
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var externalWalletView: TextView? = null
     private var selectedLanguage = "fr"
+    private var settingsReturnScreen = "home"
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button; private var musicA11yButton: Button? = null; private var musicStateA11y: TextView? = null; private var lobbyMusicRowRef: LinearLayout? = null
     private var boardHost: LudoBoardView? = null
@@ -329,8 +330,16 @@ class MainActivity : Activity() {
             elevation = dp(6f).toFloat()
             if (action != null) setOnClickListener { action() }
         }
-        controls.addView(control("🔊", "SON", gold) { music.toggle() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
-        controls.addView(control("⚙", "PARAMETRES", gold), LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        val soundControl=control(if(music.enabled()) "🔊" else "🔇", "SON", gold)
+        soundControl.setOnClickListener {
+            music.toggle()
+            homeMusicEnabled=music.enabled()
+            soundControl.text=if(music.enabled()) "🔊" else "🔇"
+            updateMusicButton()
+            window.decorView.invalidate()
+        }
+        controls.addView(soundControl, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
+        controls.addView(control("⚙", "PARAMETRES", gold) { settings() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         controls.addView(control("☰", "MENU_JEU", gold) { offlineMenu() }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { setMargins(dp(4),0,dp(4),0) })
         frame.addView(controls, FrameLayout.LayoutParams(dp(170), dp(54)).apply {
             gravity = Gravity.TOP or Gravity.END
@@ -421,12 +430,27 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_ENTER")
+        selectedLanguage=when(getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE).getString("language","fr")){
+            "mg"->"mg"
+            "en"->"en"
+            else->"fr"
+        }
+        entryFee=getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+            .getInt("defaultEntryFee",500).takeIf { it in entryFees } ?: 500
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         music=CalmMusic(this)
         // Premium Home is the first screen; authenticated state is restored in the background
         // and reused by Home/Wallet/online actions when present.
         restoreSession()
-        home()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_BEFORE_HOME")
+        try {
+            home()
+            android.util.Log.i("LudoMadaStartup", "MAIN_ON_CREATE_HOME_RETURNED")
+        } catch (t: Throwable) {
+            android.util.Log.e("LudoMadaStartup", "MAIN_ON_CREATE_HOME_FAILED", t)
+            throw t
+        }
     }
 
     private fun splash() {
@@ -631,6 +655,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        android.util.Log.i("LudoMadaStartup", "MAIN_ON_RESUME")
         updateExternalWalletStatus()
         if(::music.isInitialized && token.isNotBlank()) { refreshAccountBalance(); refreshMlgSummary() }
     }
@@ -651,16 +676,18 @@ class MainActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        if(modeOverlay!=null){
+        if(modeScreen!=null){
             dismissGameModeOverlay()
+            home()
             return
         }
         when (currentScreen) {
+            "settings" -> closeSettings()
             "offlineMenu" -> home()
             "offline" -> offlineMenu()
             "room" -> home()
             "lobby" -> home()
-            "profile", "wallet", "history", "social", "events", "friends", "tutorials", "settings" -> home()
+            "profile", "wallet", "history", "social", "events", "friends", "tutorials" -> home()
             else -> super.onBackPressed()
         }
     }
@@ -681,7 +708,9 @@ class MainActivity : Activity() {
         }.getOrDefault("")
 
     private fun home() {
+        android.util.Log.i("LudoMadaStartup", "HOME_BUILD_ENTER")
         currentScreen="home"
+        homeMusicEnabled = music.enabled()
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         // Re-assert landscape after returning from login/offline navigation; cloud Android surfaces can retain portrait bounds.
         window.decorView.post { requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -694,19 +723,109 @@ class MainActivity : Activity() {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         ) and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv()
         window.setBackgroundDrawable(GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(3,12,36),Color.rgb(57,18,67))))
-        val hero = PremiumHeroViewV2(this)
+        android.util.Log.i("LudoMadaStartup", "HOME_BEFORE_PREMIUM_HERO")
+        val hero = try {
+            PremiumHeroViewV2(this)
+        } catch (t: Throwable) {
+            android.util.Log.e("LudoMadaStartup", "HOME_PREMIUM_HERO_CONSTRUCTOR_FAILED", t)
+            throw t
+        }
+        android.util.Log.i("LudoMadaStartup", "HOME_PREMIUM_HERO_CONSTRUCTOR_READY")
         if (BuildConfig.DEBUG) hero.contentDescription = "LudoMada Premium Home|DEBUG_LAST=" + smokeLastMarker()
         setContentView(hero)
+        android.util.Log.i("LudoMadaStartup", "HOME_CONTENT_VIEW_ATTACHED")
         refreshAccountBalance()
         refreshMlgSummary()
+        android.util.Log.i("LudoMadaStartup", "HOME_REFRESH_REQUESTS_ISSUED")
     }
 
     private fun profile() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
         add(button("Langue / Language",Color.rgb(37,93,196)){languageDialog()},52)
+        add(button("⚙ Paramètres",Color.rgb(37,93,196)){settings()},52)
         add(card("Sécurité","Vos identifiants et paiements restent protégés côté serveur.",Color.rgb(37,93,196)))
         add(button("← Miverina",Color.rgb(70,82,100)){home()},52)
+        bottomNav("profile")
+    }
+
+    private fun settings() {
+        if(currentScreen!="settings") settingsReturnScreen=currentScreen
+        page("settings","Paramètres")
+        sectionTitle("Préférences de l'application","Langue, musique et mise d'entrée par défaut")
+        val languageName=when(selectedLanguage){"mg"->"Malagasy";"en"->"English";else->"Français"}
+        add(card("Langue",languageName + " • préférence enregistrée sur cet appareil",royal),72,3,5)
+        add(button("🌐 Changer de langue",royal){languageDialog()},52,0,5)
+        val musicOn=music.enabled()
+        add(card("Ambiance musicale",if(musicOn)"Musique activée" else "Musique désactivée",emerald),70,3,5)
+        add(button(if(musicOn)"🔇 Désactiver la musique" else "🎵 Activer la musique",Color.rgb(70,82,100)){
+            music.toggle()
+            homeMusicEnabled=music.enabled()
+            updateMusicButton()
+            window.decorView.invalidate()
+            settings()
+        },52,0,8)
+
+        sectionTitle("Mise d'entrée par défaut","Ce choix est mémorisé sur cet appareil. Il ne prélève aucun argent.")
+        entryFees.chunked(3).forEach { fees ->
+            val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+            fees.forEach { fee ->
+                row.addView(button((if(fee==entryFee)"✓ " else "") + formatMGA(fee.toLong()) + " Ar",
+                    if(fee==entryFee)emerald else royal) {
+                    setDefaultEntryFee(fee)
+                    Toast.makeText(this,"Mise par défaut : " + formatMGA(fee.toLong()) + " Ar",Toast.LENGTH_SHORT).show()
+                    settings()
+                },LinearLayout.LayoutParams(0,dp(52),1f).apply{setMargins(dp(3),0,dp(3),0)})
+            }
+            add(row,52,0,6)
+        }
+
+        sectionTitle("Sécurité et paiements","Les prestataires sans contrat/API validé restent désactivés. Aucun dépôt/retrait réel n'est déclenché depuis ces réglages.")
+        add(card("MVola • Airtel Money • Orange Money • Binance Pay","OFF tant que les intégrations et autorisations de production ne sont pas confirmées.",Color.rgb(70,82,100)),84,3,6)
+        add(button("↻ Actualiser soldes et MLG",royal){
+            refreshAccountBalance()
+            refreshMlgSummary()
+            Toast.makeText(this,"Actualisation demandée.",Toast.LENGTH_SHORT).show()
+        },52,0,5)
+        add(button("Déconnexion",Color.rgb(165,48,58)){
+            AlertDialog.Builder(this)
+                .setTitle("Déconnexion")
+                .setMessage("Voulez-vous vraiment fermer cette session sur cet appareil ?")
+                .setNegativeButton("Annuler",null)
+                .setPositiveButton("Déconnexion"){_,_->
+                    clearSession()
+                    home()
+                }.show()
+        },52,0,5)
+        add(button("← Accueil",Color.rgb(70,82,100)){home()},52,0,3)
+        bottomNav("profile")
+    }
+
+    private fun closeSettings() {
+        val destination=settingsReturnScreen
+        settingsReturnScreen="home"
+        when(destination) {
+            "offline" -> offlineGame(offlinePlayers)
+            "board" -> showBoardEntry()
+            "lobby" -> lobby()
+            "room" -> room()
+            "profile" -> profile()
+            "wallet" -> wallet()
+            "social" -> social()
+            "friends" -> friendsHub()
+            "shop" -> shop()
+            "events" -> events()
+            "tutorials" -> tutorials()
+            else -> home()
+        }
+    }
+
+    fun setDefaultEntryFee(value:Int) {
+        if(value !in entryFees) return
+        entryFee=value
+        getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+            .edit().putInt("defaultEntryFee",value).apply()
+        window.decorView.invalidate()
     }
 
     private fun tutorials() {
@@ -986,8 +1105,14 @@ class MainActivity : Activity() {
 
     private fun languageDialog() {
         val languages=arrayOf("Malagasy", "Français", "English")
-        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,1){d,which-> selectedLanguage=when(which){0->"mg";1->"fr";else->"en"};
-            recreate();Toast.makeText(this,"${languages[which]}",Toast.LENGTH_SHORT).show();d.dismiss()
+        val selectedIndex=when(selectedLanguage){"mg"->0;"fr"->1;else->2}
+        AlertDialog.Builder(this).setTitle("🌐 Langue / Language").setSingleChoiceItems(languages,selectedIndex){d,which->
+            selectedLanguage=when(which){0->"mg";1->"fr";else->"en"}
+            getSharedPreferences("ludomada_settings",Context.MODE_PRIVATE)
+                .edit().putString("language",selectedLanguage).apply()
+            d.dismiss()
+            recreate()
+            Toast.makeText(this,languages[which],Toast.LENGTH_SHORT).show()
         }.setNegativeButton("Fermer",null).show()
     }
 
@@ -1223,34 +1348,33 @@ class MainActivity : Activity() {
 
     private fun loadHistory() { get("/api/wallet/transactions"){j->val rows=j.optJSONArray("items")?:j.optJSONArray("transactions");runOnUiThread{if(!::status.isInitialized||currentScreen!="history")return@runOnUiThread;status.text=if(rows==null||rows.length()==0)"Tsy mbola misy transaction." else buildString{append("${rows.length()} transaction(s)\n\n");for(i in 0 until minOf(rows.length(),30)){val x=rows.optJSONObject(i);append("• ${(x?.optString("type",x?.optString("kind","TRANSACTION") ?: "TRANSACTION") ?: "TRANSACTION")}: ${(x?.optString("amount","0") ?: "0")} Ar — ${(x?.optString("status","") ?: "")}${x?.optString("cryptoCurrency").takeUnless{it.isNullOrBlank()}?.let{" • $it"} ?: ""}\n")}}}} }
 
-    private var modeOverlay: FrameLayout? = null
+    private var modeScreen: FrameLayout? = null
 
     private fun dismissGameModeOverlay() {
-        modeOverlay?.let { overlay ->
-            (overlay.parent as? ViewGroup)?.removeView(overlay)
-        }
-        modeOverlay=null
+        modeScreen = null
     }
 
     fun gameModeDialog() {
         android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
-        val host=findViewById<ViewGroup>(android.R.id.content) ?: run {
-            android.util.Log.e("LudoMada","GAME_MODE_NO_CONTENT_ROOT")
-            return
-        }
-        val overlay=FrameLayout(this).apply{
-            setBackgroundColor(Color.argb(150,0,0,0))
-            isClickable=true
-            isFocusable=true
+
+        // Keep the selector in the Activity window. Ramus/Android 8 then sees
+        // the real mode buttons in one stable accessibility tree instead of a
+        // secondary Dialog window that may not be exposed by the cloud emulator.
+        val outer=FrameLayout(this).apply{
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.rgb(3,12,36),Color.rgb(21,45,82),Color.rgb(7,18,43))
+            )
             contentDescription="GAME_MODE_DIALOG"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            descendantFocusability=ViewGroup.FOCUS_AFTER_DESCENDANTS
+            isFocusable=true
         }
+
         val panel=LinearLayout(this).apply{
             orientation=LinearLayout.VERTICAL
             gravity=Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22),dp(18),dp(22),dp(18))
+            setPadding(dp(26),dp(22),dp(26),dp(22))
             background=GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(navy,Color.rgb(17,57,96),Color.rgb(8,29,58))
@@ -1258,20 +1382,25 @@ class MainActivity : Activity() {
                 cornerRadius=dp(24).toFloat()
                 setStroke(dp(1),0x66EDB734)
             }
-            elevation=dp(18).toFloat()
-            isClickable=false
-            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            elevation=dp(18f).toFloat()
+            contentDescription="Choisissez le mode"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        val title=label("Choisissez le mode",21f,true,Color.WHITE).apply{
+
+        val title=label("Choisissez le mode",22f,true,Color.WHITE).apply{
             gravity=Gravity.CENTER
             contentDescription="Choisissez le mode"
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable=true
         }
-        panel.addView(title,LinearLayout.LayoutParams(-1,dp(34)))
+        panel.addView(title,LinearLayout.LayoutParams(-1,dp(42)))
+
         panel.addView(label("La partie se joue directement depuis la scène 3D.",11f,false,0xB8FFFFFF.toInt()).apply{
             gravity=Gravity.CENTER
-        },LinearLayout.LayoutParams(-1,dp(28)))
+            contentDescription="Sélecteur de mode de jeu"
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        },LinearLayout.LayoutParams(-1,dp(30)).apply{topMargin=dp(3)})
+
         val offline=button("👥  Hors-ligne — 2 à 4 joueurs",Color.rgb(92,82,156)){
             dismissGameModeOverlay()
             offlineMenu()
@@ -1281,6 +1410,7 @@ class MainActivity : Activity() {
             isClickable=true
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
+
         val online=button("🌐  En ligne — Joueurs réels",gold){
             dismissGameModeOverlay()
             lobby()
@@ -1290,18 +1420,31 @@ class MainActivity : Activity() {
             isClickable=true
             importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(10)})
-        panel.addView(online,LinearLayout.LayoutParams(-1,dp(54)).apply{topMargin=dp(8)})
-        overlay.addView(panel,FrameLayout.LayoutParams(
-            (resources.displayMetrics.widthPixels*0.46f).toInt().coerceAtLeast(dp(360)),
-            dp(210),
+
+        panel.addView(offline,LinearLayout.LayoutParams(-1,dp(56)).apply{topMargin=dp(12)})
+        panel.addView(online,LinearLayout.LayoutParams(-1,dp(56)).apply{topMargin=dp(8)})
+
+        val cancel=button("← Retour",Color.rgb(70,82,100)){
+            dismissGameModeOverlay()
+            home()
+        }.apply{
+            contentDescription="MODE_CANCEL"
+            isFocusable=true
+            isClickable=true
+            importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        panel.addView(cancel,LinearLayout.LayoutParams(dp(180),dp(48)).apply{topMargin=dp(12)})
+
+        outer.addView(panel,FrameLayout.LayoutParams(
+            (resources.displayMetrics.widthPixels*0.48f).toInt().coerceAtLeast(dp(380)),
+            WindowManager.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER
         ))
-        overlay.setOnClickListener{ dismissGameModeOverlay() }
-        host.addView(overlay,FrameLayout.LayoutParams(-1,-1))
-        modeOverlay=overlay
-        android.util.Log.i("LudoMada","GAME_MODE_OVERLAY_ADDED")
-        overlay.post{
+        setContentView(outer)
+        modeScreen=outer
+
+        android.util.Log.i("LudoMada","GAME_MODE_DIALOG_ADDED_ACTIVITY")
+        outer.post{
             offline.requestFocus()
             offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
         }
@@ -1332,7 +1475,23 @@ class MainActivity : Activity() {
         var assets=emptyList<String>()
         var rates=JSONObject()
         var selected=""
+        var direction=0
         lateinit var dialog: AlertDialog
+        fun recalculateQuote():Boolean {
+            val rate=info.tag as? Double ?: 0.0
+            if(rate<=0.0)return false
+            return if(direction==0){
+                val amount=crypto.text.toString().replace(',', '.').toDoubleOrNull() ?: return false
+                if(amount<=0.0)return false
+                mga.setText(formatDecimal(amount*rate))
+                true
+            }else{
+                val amount=mga.text.toString().replace(',', '.').toDoubleOrNull() ?: return false
+                if(amount<=0.0)return false
+                crypto.setText(formatDecimal(amount/rate))
+                true
+            }
+        }
         fun applyAsset(asset:String){
             selected=asset.uppercase()
             assetButton.text="Asset crypto: $selected"
@@ -1341,22 +1500,27 @@ class MainActivity : Activity() {
             info.text=if(rate>0) "1 $selected = ${formatDecimal(rate)} Ar" else "Taux non configuré pour $selected."
         }
         assetButton.setOnClickListener{
-            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->applyAsset(assets[which])}.setNegativeButton("Aoka",null).show()
+            if(assets.isNotEmpty()) AlertDialog.Builder(this).setTitle("Choisir un crypto-actif").setItems(assets.toTypedArray()){_,which->
+                applyAsset(assets[which])
+                recalculateQuote()
+            }.setNegativeButton("Aoka",null).show()
         }
         convert.setOnClickListener{
-            val rateHolder=info.tag as? Double ?: 0.0
-            if(rateHolder<=0) Toast.makeText(this,"Taux crypto non disponible.",Toast.LENGTH_LONG).show()
-            else Toast.makeText(this,"Conversion active avec le taux serveur. Aucun solde n’est crédité ici.",Toast.LENGTH_LONG).show()
+            if(!recalculateQuote()) {
+                Toast.makeText(this,"Entrez un montant positif et choisissez un taux serveur valide.",Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this,"Devis calculé avec le taux serveur. Aucun fonds n’est transféré; les paiements restent OFF.",Toast.LENGTH_LONG).show()
+            }
         }
         dialog=AlertDialog.Builder(this).setTitle("Crypto • MGA ↔ Crypto").setView(box)
             .setSingleChoiceItems(arrayOf("Crypto → MGA","MGA → Crypto"),0){_,which->
-                val rateHolder=info.tag as? Double ?: 0.0
-                if(rateHolder>0){
-                    if(which==0){val v=crypto.text.toString().toDoubleOrNull()?:0.0;mga.setText(if(v>0)formatDecimal(v*rateHolder) else "")}
-                    else{val v=mga.text.toString().toDoubleOrNull()?:0.0;crypto.setText(if(v>0)formatDecimal(v/rateHolder) else "")}
-                }
+                direction=which
+                recalculateQuote()
             }
-            .setPositiveButton("CONVERTIR"){_,_->Toast.makeText(this,"Conversion calculée avec le taux serveur. Aucun solde n’est crédité sans provider actif.",Toast.LENGTH_LONG).show()}
+            .setPositiveButton("CALCULER LE DEVIS"){_,_->
+                if(!recalculateQuote()) Toast.makeText(this,"Montant ou taux indisponible.",Toast.LENGTH_LONG).show()
+                else Toast.makeText(this,"Devis calculé; aucun dépôt, retrait ou swap réel n’a été exécuté.",Toast.LENGTH_LONG).show()
+            }
             .setNegativeButton("Aoka",null).create()
         dialog.show()
         get("/api/payments/config"){j->
@@ -1876,6 +2040,16 @@ class MainActivity : Activity() {
         }
     }
 
+    // Public bridge for the live Premium Home music icon rendered in the custom canvas.
+    // Music remains local/offline and toggling it never changes gameplay state.
+    fun toggleHomeMusic() {
+        if (!::music.isInitialized) return
+        music.toggle()
+        homeMusicEnabled = music.enabled()
+        updateMusicButton()
+        window.decorView.invalidate()
+    }
+
     // Gameplay rendering is implemented by the dedicated OpenGL ES scene in LudoBoardView.kt.
     private fun musicLabel():String = if(music.enabled()) "Musique activée" else "Musique désactivée"
     private fun updateMusicButton(){
@@ -1901,7 +2075,7 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
+    override fun onStart(){ super.onStart(); android.util.Log.i("LudoMadaStartup", "MAIN_ON_START"); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 
 }
