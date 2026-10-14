@@ -447,7 +447,12 @@ try {
     const priorSession = session;
     const ended = allow("session", "end", "--session", priorSession);
     launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
-    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    // Treat Ramus' explicit session_ended response as terminal confirmation.
+    // The provider may crash/retire a session before the end command reaches it;
+    // in that case ended.ok is false even though starting a replacement is safe.
+    const endSummary = JSON.stringify(ended.value || {});
+    const alreadyEnded = /session_ended|session\s+.*is ended|no live successor/i.test(endSummary);
+    const terminal = alreadyEnded || (ended.ok && waitForSessionEnded(priorSession));
     launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
     if (terminal) {
       const restarted = allow("session", "start", "--apk", apk, "--wait");
@@ -486,6 +491,36 @@ try {
     if (startup.ok) break;
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
+  }
+
+  // A session can expose Home and then be retired by the remote provider before
+  // the full-screen snapshot. If (and only if) the provider explicitly reports
+  // that the session is ended, allocate one fresh APK-backed session and recheck
+  // both the screenshot snapshot and Home. Never overlap a possibly-live session.
+  if (!startup?.ok) {
+    const startupError = JSON.stringify(startup?.value || {});
+    const terminalSnapshot = /session_ended|session\s+.*is ended|no live successor/i.test(startupError);
+    if (terminalSnapshot) {
+      console.warn("RAMUS_FINAL_SNAPSHOT_SESSION_ENDED=" + startupError.slice(0, 800));
+      launchInfo = { ...launchInfo, finalSnapshotSessionEnded: startupError.slice(0, 800) };
+      const replacement = allow("session", "start", "--apk", apk, "--wait");
+      launchInfo = { ...launchInfo, finalSnapshotReplacement: safeLaunchSummary(replacement.value) };
+      if (replacement.ok && replacement.value?.session) {
+        session = replacement.value.session;
+        console.log(`Ramus final-snapshot recovery session: ${session}`);
+        waitStable(1800);
+        for (let attempt = 0; attempt < 10; attempt++) {
+          startup = allow("snapshot", "--session", session);
+          if (startup.ok) break;
+          const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
+          spawnSync(retrySleep, ["1"], { stdio: "ignore" });
+        }
+        if (startup?.ok) {
+          home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
+          launchInfo = { ...launchInfo, finalSnapshotRecoveryHome: safeLaunchSummary(home.value) };
+        }
+      }
+    }
   }
   shot("startup");
   const startupScreenshotPresent = screenshotExists("startup");
