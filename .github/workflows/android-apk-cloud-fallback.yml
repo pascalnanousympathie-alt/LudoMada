@@ -125,7 +125,7 @@ jobs:
             adb devices > ramus-evidence/adb-devices.txt 2>&1 || true
             adb logcat -d -t 3000 > ramus-evidence/logcat.txt 2>&1 || true
             adb exec-out screencap -p > ramus-evidence/hosted-emulator.png 2> ramus-evidence/screencap.err || true
-            for name in ludomada-home.png ludomada-game-mode.png ludomada-wallet.png ludomada-market.png ludomada-gameplay-2p.png ludomada-gameplay-3p.png ludomada-gameplay-4p.png ludomada-startup-offline.png; do
+            for name in ludomada-home.png ludomada-game-mode.png ludomada-wallet.png ludomada-market.png ludomada-gameplay-2p.png ludomada-gameplay-pawn-moved.png ludomada-gameplay-3p.png ludomada-gameplay-4p.png ludomada-startup-offline.png; do
               adb shell run-as com.ludomadagascar.test cat "cache/$name" > "ramus-evidence/$name" 2> "ramus-evidence/$name.err" || true
             done
             exit "$test_exit"
@@ -146,6 +146,7 @@ jobs:
               'ludomada-gameplay-2p.png',
               'ludomada-gameplay-3p.png',
               'ludomada-gameplay-4p.png',
+              'ludomada-gameplay-pawn-moved.png',
               'ludomada-startup-offline.png',
           ]
           png_magic = bytes.fromhex('89504e470d0a1a0a')
