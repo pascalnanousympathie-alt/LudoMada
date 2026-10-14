@@ -83,9 +83,7 @@ jobs:
             test -s "$config"
             sed -i '/^disk\.dataPartition\.size=/d' "$config"
             printf 'disk.dataPartition.size=4096M\n' >> "$config"
-            test "$(grep -c '^disk.dataPartition.size=4096M          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
-
+            test "$(grep -c '^disk.dataPartition.size=4096M
       - name: Publish debug APK and instrumentation APK
         uses: actions/upload-artifact@v4
         with:
@@ -99,8 +97,6 @@ jobs:
  "$config")" -eq 1
             echo "AVD_DATA_PARTITION_SIZE_FIXED=4096M"
             grep '^disk.dataPartition.size=' "$config"
-          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
           script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 
       - name: Publish debug APK and instrumentation APK
