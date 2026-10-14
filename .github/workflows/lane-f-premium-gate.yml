@@ -1,4 +1,4 @@
-name: Lane F Premium Source Gate (Termux)
+name: Lane F Premium Source Gate (Hosted)
 
 on:
   workflow_dispatch:
@@ -8,8 +8,10 @@ on:
       - feat/ludomada-product-clean-20261013
     paths:
       - "android-app/**"
+      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
@@ -18,8 +20,10 @@ on:
   pull_request:
     paths:
       - "android-app/**"
+      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
@@ -28,7 +32,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: lane-f-premium-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -36,40 +39,28 @@ concurrency:
 
 jobs:
   premium-gate:
-    # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
-    # Cloud Fallback job instead of running a second Gradle build for the same SHA.
-    runs-on: [self-hosted, linux, ARM64]
-    timeout-minutes: 45
-    env:
-      RELEASE_MAX_RUNTIME: "39600"
+    # Source-level premium checks run on GitHub-hosted Linux; UI/runtime evidence
+    # is independently gated by Android APK Cloud Fallback on the same PR head.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Checkout exact merge candidate
+      - name: Checkout exact commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
           fetch-depth: 1
-          clean: true
-          path: _runs/${{ github.run_id }}
 
-      - name: Use Termux Node.js
-        run: |
-          set -eu
-          mkdir -p "$HOME/.ci-node-bin"
-          cat > "$HOME/.ci-node-bin/node" <<'EOF'
-          #!/data/data/com.termux/files/usr/bin/sh
-          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
-          exec /data/data/com.termux/files/usr/bin/node "$@"
-          EOF
-          chmod +x "$HOME/.ci-node-bin/node"
-          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
       - name: Strict premium source gate
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
+          python3 scripts/android-release-audit.py
           node scripts/audit-material-calibration.mjs --strict
           node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
           node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
-
+          node --check scripts/ramus-smoke.mjs
