@@ -85,12 +85,12 @@ jobs:
                 status: "completed",
                 per_page: 100
               });
-              // Actions reports the pull_request workflow run SHA as github.sha (the merge candidate),
-              // which is also the suffix used by the uploaded artifact. pr.head.sha is the source-branch
-              // commit and therefore must not be compared to run.head_sha here.
+              // For pull_request runs, the workflow-runs API exposes the source-branch SHA as run.head_sha.
+              // The artifact names use github.sha (the merge candidate), so check source head here and
+              // verify both artifact names against mergeSha below.
               const candidates = runs.filter(run =>
                 run.conclusion === "success" &&
-                run.head_sha === mergeSha
+                run.head_sha === headSha
               );
               for (const run of candidates) {
                 const listed = await github.rest.actions.listWorkflowRunArtifacts({
