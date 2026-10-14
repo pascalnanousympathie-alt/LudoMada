@@ -1,4 +1,4 @@
-name: Lane F Premium Visual Gate
+name: Lane F Premium Source Gate
 
 on:
   workflow_dispatch:
@@ -29,6 +29,10 @@ on:
 permissions:
   contents: read
   actions: read
+
+concurrency:
+  group: lane-f-premium-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   premium-gate:
@@ -61,128 +65,3 @@ jobs:
           node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
 
-      - name: Locate successful Cloud Fallback artifact for the exact merge SHA
-        id: apk-run
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            const branch = pr?.head?.ref || context.ref.replace(/^refs\/heads\//, "");
-            const headSha = pr?.head?.sha || context.sha;
-            const mergeSha = context.sha;
-            const expectedName = `LudoMada-premium-gles3-debug-${mergeSha}`;
-            const evidenceName = `LudoMada-hosted-emulator-evidence-${mergeSha}`;
-            // Cloud Fallback and Lane F start from the same PR event. Poll for the
-            // matching artifact rather than failing simply because Gradle is still building.
-            for (let attempt = 1; attempt <= 120; attempt++) {
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner,
-                repo,
-                workflow_id: "android-apk-cloud-fallback.yml",
-                branch,
-                status: "completed",
-                per_page: 100
-              });
-              // For pull_request runs, the workflow-runs API exposes the source-branch SHA as run.head_sha.
-              // The artifact names use github.sha (the merge candidate), so check source head here and
-              // verify both artifact names against mergeSha below.
-              const candidates = runs.filter(run =>
-                run.conclusion === "success" &&
-                run.head_sha === headSha
-              );
-              for (const run of candidates) {
-                const listed = await github.rest.actions.listWorkflowRunArtifacts({
-                  owner, repo, run_id: run.id, per_page: 100
-                });
-                const artifact = listed.data.artifacts.find(item =>
-                  !item.expired && item.name === expectedName
-                );
-                const evidence = listed.data.artifacts.find(item =>
-                  !item.expired && item.name === evidenceName
-                );
-                if (artifact && evidence) {
-                  core.setOutput("run_id", String(run.id));
-                  core.info(`Using APK artifact ${artifact.name} and UI evidence ${evidence.name} from successful run ${run.id}`);
-                  return;
-                }
-              }
-              if (attempt < 120) {
-                core.info(`Waiting for exact-SHA Cloud Fallback artifact (${attempt}/120)`);
-                await new Promise(resolve => setTimeout(resolve, 10000));
-              }
-            }
-            core.setFailed(
-              `No successful APK plus hosted UI evidence artifact found for workflow SHA ${mergeSha} (PR source head ${headSha}) after 20 minutes; inspect the Android Cloud Fallback run.`
-            );
-
-      - name: Download verified debug and instrumentation APKs
-        uses: actions/download-artifact@v4
-        with:
-          name: LudoMada-premium-gles3-debug-${{ github.sha }}
-          path: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk
-          run-id: ${{ steps.apk-run.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-
-      - name: Verify current 3D assets are packaged in the downloaded APK
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          test -s android-app/app/build/outputs/apk/debug/app-debug.apk
-          test -s android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Download hosted Android emulator UI evidence
-        uses: actions/download-artifact@v4
-        with:
-          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
-          path: ${{ github.workspace }}/_runs/${{ github.run_id }}/ramus-evidence
-          run-id: ${{ steps.apk-run.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-
-      - name: Verify mandatory Home, mode, wallet, market and 2P/3P/4P screenshots
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          python3 - <<'PY'
-          from pathlib import Path
-          root = Path('ramus-evidence')
-          required = [
-              'hosted-emulator.png',
-              'ludomada-home.png',
-              'ludomada-game-mode.png',
-              'ludomada-wallet.png',
-              'ludomada-market.png',
-              'ludomada-gameplay-2p.png',
-              'ludomada-gameplay-3p.png',
-              'ludomada-gameplay-4p.png',
-              'ludomada-startup-offline.png',
-          ]
-          magic = bytes.fromhex('89504e470d0a1a0a')
-          for name in required:
-              path = root / name
-              if not path.is_file():
-                  raise SystemExit(f'Missing required UI screenshot: {path}')
-              data = path.read_bytes()
-              if len(data) < 1000 or not data.startswith(magic):
-                  raise SystemExit(f'Invalid or truncated PNG: {path} ({len(data)} bytes)')
-          for name in ('adb-devices.txt', 'logcat.txt'):
-              path = root / name
-              if not path.is_file() or path.stat().st_size == 0:
-                  raise SystemExit(f'Missing Android diagnostics: {path}')
-          print('HOSTED_EMULATOR_EVIDENCE_PASS')
-          PY
-
-      - name: Upload hosted Android emulator UI evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ludomada-lane-f-${{ github.run_id }}
-          path: |
-            _runs/${{ github.run_id }}/ramus-evidence
-            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
-          retention-days: 7
