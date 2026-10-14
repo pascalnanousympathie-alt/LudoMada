@@ -158,7 +158,34 @@ try {
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
-  if (!startup?.ok) throw new Error("Startup snapshot failed after retries");
+
+  // Ramus can accept a startup session and then retire/crash the remote device
+  // before the first snapshot. Only start a replacement when the provider
+  // explicitly confirms the first session is terminal; never overlap live sessions.
+  if (!startup?.ok) {
+    const startupError = JSON.stringify(startup?.value || {});
+    const sessionEnded = /session_ended|session\\s+.*is ended|no live successor/i.test(startupError);
+    if (sessionEnded) {
+      console.warn("RAMUS_SESSION_ENDED_DURING_STARTUP=" + startupError.slice(0, 800));
+      const restarted = allow("session", "start", "--apk", apk, "--wait");
+      if (restarted.ok && restarted.value?.session) {
+        session = restarted.value.session;
+        console.log(`Ramus replacement session: ${session}`);
+        waitStable(1800);
+        for (let attempt = 0; attempt < 8; attempt++) {
+          startup = allow("snapshot", "--session", session);
+          if (startup.ok) break;
+          const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
+          spawnSync(retrySleep, ["1"], { stdio: "ignore" });
+        }
+      } else {
+        console.error("RAMUS_REPLACEMENT_SESSION_START_FAILED=" + JSON.stringify(restarted.value || {}).slice(0, 800));
+      }
+    }
+  }
+  if (!startup?.ok) {
+    throw new Error("Startup snapshot failed after bounded recovery: " + JSON.stringify(startup?.value || {}).slice(0, 1000));
+  }
   shot("startup");
 
   // Screenshot 1 is the Home reference. The current app intentionally starts here.
