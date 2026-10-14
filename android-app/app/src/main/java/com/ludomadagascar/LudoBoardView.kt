@@ -73,6 +73,9 @@ class LudoBoardView(
         if (!BuildConfig.DEBUG || homePreview || !::renderer.isInitialized) return
         val viewWidth = max(1f, width.toFloat())
         val viewHeight = max(1f, height.toFloat())
+        val viewport = runCatching { renderer.viewportSize() }.getOrDefault(intArrayOf(width,height))
+        val sceneWidth = max(1, viewport.getOrElse(0) { width })
+        val sceneHeight = max(1, viewport.getOrElse(1) { height })
         val projected = runCatching { renderer.projectedTokens(turn.coerceIn(0, 3)) }.getOrNull()
         val targets = projected?.mapIndexed { index, point ->
             val px = point[0]
@@ -94,7 +97,7 @@ class LudoBoardView(
         if (parts.none { it.startsWith("RENDERER=") }) parts.add("RENDERER=" + rendererMode)
         parts.add("OFFLINE_SMOKE_STATE=players=$players,turn=$turn,dice=$dice,phase=$phase")
         parts.add("OFFLINE_SMOKE_POSITIONS=$positions")
-        parts.add("OFFLINE_SMOKE_VIEW=${width}x${height}")
+        parts.add("OFFLINE_SMOKE_VIEW=${width}x${height},${sceneWidth}x${sceneHeight}")
         parts.add("OFFLINE_SMOKE_TOKENS=$targets")
         contentDescription = parts.joinToString("|")
     }
@@ -489,6 +492,7 @@ class LudoBoardView(
         val bounce: Array<FloatArray>
         fun projectedTokens(pi: Int): Array<FloatArray>
         fun projectedDice(): Array<FloatArray>
+        fun viewportSize(): IntArray
     }
 
     /**
@@ -858,6 +862,8 @@ class LudoBoardView(
             }
             return out
         }
+
+        override fun viewportSize():IntArray = intArrayOf(max(1,width),max(1,height))
 
         private fun project(x:Float,y:Float,z:Float,out:FloatArray){
             val v=floatArrayOf(x,y,z,1f)
@@ -1272,6 +1278,7 @@ class LudoBoardView(
             for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
+        override fun viewportSize():IntArray = intArrayOf(sceneWidth,sceneHeight)
         private fun dieCenterWorld(pi:Int):FloatArray = if(host.homePreview){
             floatArrayOf(0f,boardTop+0.10f,0f)
         }else when(pi){

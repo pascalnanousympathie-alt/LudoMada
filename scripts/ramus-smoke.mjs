@@ -112,11 +112,14 @@ function readOfflineSmokeState() {
     const [x, y] = normalized.split(",").map(Number);
     targets[tokenIndex] = { px, py, x, y };
   }
-  const [viewWidth, viewHeight] = viewMarker.slice("OFFLINE_SMOKE_VIEW=".length).split("x").map(Number);
+  const [viewDimensions = "", sceneDimensions = ""] = viewMarker.slice("OFFLINE_SMOKE_VIEW=".length).split(",");
+  const [viewWidth, viewHeight] = viewDimensions.split("x").map(Number);
+  const [sceneWidth, sceneHeight] = sceneDimensions.split("x").map(Number);
   if (!Number.isFinite(state.players) || !Number.isFinite(state.turn) ||
       !Number.isFinite(state.dice) || !positions[state.turn] ||
-      !Number.isFinite(viewWidth) || !Number.isFinite(viewHeight)) return null;
-  return { state, positions, targets, viewWidth, viewHeight };
+      !Number.isFinite(viewWidth) || !Number.isFinite(viewHeight) ||
+      !Number.isFinite(sceneWidth) || !Number.isFinite(sceneHeight)) return null;
+  return { state, positions, targets, viewWidth, viewHeight, sceneWidth, sceneHeight };
 }
 function waitForOfflineSmokeState(predicate, attempts = 8) {
   let result = null;
@@ -904,9 +907,9 @@ try {
       if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) ||
           !Number.isFinite(target.px) || !Number.isFinite(target.py) ||
           target.px < 0 || target.py < 0 ||
-          target.px > beforeMove.viewWidth || target.py > beforeMove.viewHeight ||
+          target.px > beforeMove.sceneWidth || target.py > beforeMove.sceneHeight ||
           target.x < 0 || target.x > 1 || target.y < 0 || target.y > 1) {
-        throw new Error("Projected pawn hit target is invalid for Ramus tap: " + JSON.stringify({target, view:[beforeMove.viewWidth,beforeMove.viewHeight]}));
+        throw new Error("Projected pawn hit target is invalid for Ramus tap: " + JSON.stringify({target, view:[beforeMove.viewWidth,beforeMove.viewHeight], scene:[beforeMove.sceneWidth,beforeMove.sceneHeight]}));
       }
       const pawnTap = allow("tap", target.x.toFixed(4) + "," + target.y.toFixed(4), "--session", session, "--force");
       if (!pawnTap.ok) throw new Error("Ramus could not tap projected legal pawn " + tokenIndex + ": " + JSON.stringify(pawnTap.value));
