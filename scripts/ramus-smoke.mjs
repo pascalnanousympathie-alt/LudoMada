@@ -71,22 +71,23 @@ function hasText(text) {
   const r = allow("snapshot", "--session", session, "--find", text);
   return !!(r.ok && r.value?.elements?.length);
 }
-function findSmokeMarker(prefix) {
-  const r = allow("snapshot", "--session", session, "--find", prefix);
-  if (!r.ok) return "";
+function readOfflineSmokeState() {
+  const r = allow("snapshot", "--session", session, "--find", "OFFLINE_SMOKE_STATE=");
+  if (!r.ok) return null;
+  let description = "";
   for (const element of r.value?.elements || []) {
     for (const source of [element.contentDesc, element.text]) {
-      const marker = String(source || "").split("|").find(part => part.startsWith(prefix));
-      if (marker) return marker;
+      const value = String(source || "");
+      if (value.includes("OFFLINE_SMOKE_STATE=")) { description = value; break; }
     }
+    if (description) break;
   }
-  return "";
-}
-function readOfflineSmokeState() {
-  const stateMarker = findSmokeMarker("OFFLINE_SMOKE_STATE=");
-  const positionsMarker = findSmokeMarker("OFFLINE_SMOKE_POSITIONS=");
-  const targetsMarker = findSmokeMarker("OFFLINE_SMOKE_TOKENS=");
-  const viewMarker = findSmokeMarker("OFFLINE_SMOKE_VIEW=");
+  if (!description) return null;
+  const marker = prefix => description.split("|").find(part => part.startsWith(prefix)) || "";
+  const stateMarker = marker("OFFLINE_SMOKE_STATE=");
+  const positionsMarker = marker("OFFLINE_SMOKE_POSITIONS=");
+  const targetsMarker = marker("OFFLINE_SMOKE_TOKENS=");
+  const viewMarker = marker("OFFLINE_SMOKE_VIEW=");
   if (!stateMarker || !positionsMarker || !targetsMarker || !viewMarker) return null;
   const state = {};
   for (const pair of stateMarker.slice("OFFLINE_SMOKE_STATE=".length).split(",")) {
@@ -129,6 +130,19 @@ function waitForOfflineSmokeState(predicate, attempts = 8) {
     waitStable(250);
   }
   return result;
+}
+function hasUsablePawnTarget(state) {
+  if (!state || state.state.dice !== 6) return false;
+  const turn = state.state.turn;
+  const positions = state.positions[turn] || [];
+  const index = positions.findIndex(pos => pos < 0 ? state.state.dice === 6 : pos + state.state.dice <= 57);
+  const target = state.targets[index];
+  return index >= 0 && target &&
+    Number.isFinite(target.px) && Number.isFinite(target.py) &&
+    Number.isFinite(target.x) && Number.isFinite(target.y) &&
+    target.px >= 0 && target.py >= 0 &&
+    target.px <= state.sceneWidth && target.py <= state.sceneHeight &&
+    target.x >= 0 && target.x <= 1 && target.y >= 0 && target.y <= 1;
 }
 function findRef(text) {
   const r = snap(text);
@@ -895,7 +909,7 @@ try {
       if (!gotSix) throw new Error("Dice HUD did not reach a six within 24 Ramus rolls");
       console.log("2-PLAYER REAL DICE ROLL PASS");
 
-      const beforeMove = waitForOfflineSmokeState(state => state.state.players === 2 && state.state.dice === 6, 12);
+      const beforeMove = waitForOfflineSmokeState(state => state.state.players === 2 && state.state.dice === 6 && hasUsablePawnTarget(state), 12);
       if (!beforeMove || beforeMove.state.dice !== 6) {
         throw new Error("Offline DEBUG state did not report the successful six roll: " + JSON.stringify(beforeMove));
       }
