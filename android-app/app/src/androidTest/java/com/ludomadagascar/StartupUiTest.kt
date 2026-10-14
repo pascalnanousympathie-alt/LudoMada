@@ -31,7 +31,13 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
+        fun captureEvidence(name: String) {
+            val file = File(instrumentation.context.cacheDir, name)
+            device.takeScreenshot(file)
+            assertTrue("Screenshot evidence missing: $name", file.exists() && file.length() > 1000)
+        }
         assertTrue("Premium Home did not render", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 8000))
+        captureEvidence("ludomada-home.png")
 
         val homeControls = listOf(
             "HOME_PROFILE_CHIP",
@@ -62,6 +68,7 @@ class StartupUiTest {
         assertTrue("Game-mode screen did not open from Home", device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         assertTrue("Offline mode target missing", device.hasObject(By.desc("MODE_OFFLINE")))
         assertTrue("Online mode target missing", device.hasObject(By.desc("MODE_ONLINE")))
+        captureEvidence("ludomada-game-mode.png")
         device.findObject(By.desc("MODE_ONLINE")).click()
         assertTrue("Online mode should open the stake lobby", device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
         device.findObject(By.text("← Accueil")).click()
@@ -108,11 +115,13 @@ class StartupUiTest {
         device.findObject(By.desc("HOME_WALLET_SHORTCUT")).click()
         assertTrue("Wallet menu did not open", device.wait(Until.hasObject(By.text("SOLDE MGA")), 5000))
         assertTrue("Unauthenticated Wallet must not fabricate a balance", device.hasObject(By.text("— Ar")))
+        captureEvidence("ludomada-wallet.png")
         device.findObject(By.text("⌂ Accueil")).click()
         assertTrue("Wallet did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
 
         device.findObject(By.desc("HOME_MARKET")).click()
         assertTrue("3D Market screen did not open", device.wait(Until.hasObject(By.text("Aperçu live 3D")), 5000))
+        captureEvidence("ludomada-market.png")
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Market did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
 
@@ -154,6 +163,11 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
+        fun captureEvidence(name: String) {
+            val file = File(instrumentation.context.cacheDir, name)
+            device.takeScreenshot(file)
+            assertTrue("Screenshot evidence missing: $name", file.exists() && file.length() > 1000)
+        }
 
         // Premium Home is the first screen; authentication is only required for online actions.
         assertTrue(device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 8000))
@@ -182,6 +196,7 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.desc("OFFLINE_4_PLAYERS")))
         device.findObject(By.desc("OFFLINE_2_PLAYERS")).click()
         assertGameplayLoaded(2)
+        captureEvidence("ludomada-gameplay-2p.png")
         assertTrue("Gameplay must expose the dice HUD action", device.hasObject(By.desc("TOUCHEZ_LE_DE")))
 
         // Exercise the real roll callback without asserting a synthetic pawn button: pawns are
@@ -211,11 +226,13 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_3_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_3_PLAYERS")).click()
         assertGameplayLoaded(3)
+        captureEvidence("ludomada-gameplay-3p.png")
 
         device.findObject(By.desc("MENU_JEU")).click()
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_4_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_4_PLAYERS")).click()
         assertGameplayLoaded(4)
+        captureEvidence("ludomada-gameplay-4p.png")
 
         val file = File(instrumentation.context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
