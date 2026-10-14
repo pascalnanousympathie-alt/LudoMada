@@ -1,0 +1,29 @@
+name: Hosted Runner Dispatch Diagnostic
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/runner-dispatch-diagnostic.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: runner-dispatch-diagnostic-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Confirm hosted runner provisioned
+        shell: bash
+        run: |
+          set -eu
+          echo "HOSTED_RUNNER_DISPATCH_PASS"
+          echo "runner.os=$RUNNER_OS"
+          echo "runner.arch=$RUNNER_ARCH"
+          echo "run.id=$GITHUB_RUN_ID"
+          echo "run.sha=$GITHUB_SHA"
