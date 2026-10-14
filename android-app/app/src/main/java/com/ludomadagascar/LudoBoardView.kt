@@ -143,12 +143,24 @@ class LudoBoardView(
             for (ti in 0..3) tokens.put(JSONObject().put("pos", -1))
             players.put(JSONObject().put("tokens", tokens))
         }
+        // The one-frame hosted diagnostic must not enqueue a 320 ms token animator:
+        // software GPU rendering can take seconds per frame and delay the UI/PixelCopy callback.
+        if (diagnosticSingleFrame) {
+            for (pi in 0..3) for (ti in 0..3) {
+                val initial = homeGrid(pi, ti)
+                display[pi][ti][0] = initial[0]
+                display[pi][ti][1] = initial[1]
+                lastPos[pi][ti] = -1
+                renderer.bounce[pi][ti] = 0f
+                renderer.lift[pi][ti] = 0f
+            }
+        }
         state = JSONObject()
             .put("players", players)
             .put("dice", 5)
             .put("phase", "PLAYING")
         player = 0
-        animateState()
+        if (diagnosticSingleFrame) requestRender() else animateState()
     }
 
     /**
@@ -159,6 +171,7 @@ class LudoBoardView(
     internal fun requestDiagnosticWindowPixelCopy() {
         if (!diagnosticSingleFrame || diagnosticPixelCopyRequested) return
         diagnosticPixelCopyRequested = true
+        android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_SCHEDULING")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             android.util.Log.e("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_UNSUPPORTED api=" + Build.VERSION.SDK_INT)
             return
@@ -169,6 +182,7 @@ class LudoBoardView(
             return
         }
         activity.window.decorView.postDelayed({
+            android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_PIXELCOPY_RUNNABLE")
             val decor = activity.window.decorView
             val width = decor.width.coerceAtLeast(1)
             val height = decor.height.coerceAtLeast(1)
@@ -1255,7 +1269,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
             }
             if (isFirstFrame) android.util.Log.i("LudoMadaRender","PBR_FIRST_DRAW homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight+" envParts="+envParts.size+" baobabParts="+baobabParts.size)
-            if (isFirstFrame && host.homePreview) host.requestDiagnosticWindowPixelCopy()
+            if (isFirstFrame) android.util.Log.i("LudoMadaRender","PBR_FRAME_RENDER_BEGIN diagnosticSingleFrame="+host.diagnosticSingleFrame)
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             refreshCosmetics(now)
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
@@ -1271,6 +1285,10 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            if (isFirstFrame) {
+                android.util.Log.i("LudoMadaRender","PBR_FRAME_RENDER_COMPLETE homePreview="+host.homePreview+" size="+sceneWidth+"x"+sceneHeight)
+                if (host.homePreview) host.requestDiagnosticWindowPixelCopy()
+            }
         }
         private fun createSceneTargets(w:Int,h:Int){
             if(sceneFbo!=0){GLES30.glDeleteFramebuffers(1,intArrayOf(sceneFbo),0);GLES30.glDeleteTextures(1,intArrayOf(sceneColorTex),0);GLES30.glDeleteTextures(1,intArrayOf(sceneDepthTex),0)}
@@ -1295,14 +1313,22 @@ class LudoBoardView(
 
         private fun renderDirectFrame(){
             if (host.homePreview) {
-                renderShadowMap()
+                val diagnosticFastHome = host.diagnosticSingleFrame
+                if (diagnosticFastHome) {
+                    // Keep the same GLB/PBR environment and board meshes, but skip the separate
+                    // full-scene shadow-map pass in the hosted software-GPU capture only.
+                    android.util.Log.i("LudoMadaRender", "DIAGNOSTIC_SHADOW_PASS_SKIPPED")
+                } else {
+                    renderShadowMap()
+                }
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
                 GLES30.glViewport(0,0,sceneWidth,sceneHeight)
                 GLES30.glEnable(GLES30.GL_BLEND)
                 GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
                 GLES30.glClearColor(0f,0f,0f,0f)
                 GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-                shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+                val shadowTextureForFrame = if (diagnosticFastHome) fallbackShadowTex else shadowTex
+                shader.beginFrame(shadowTextureForFrame,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
                 drawWorld(false)
                 shader.endFrame()
                 drawParticles()
