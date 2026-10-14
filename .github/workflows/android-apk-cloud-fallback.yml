@@ -116,8 +116,8 @@ jobs:
           # Normalize AVD config after creation so only one userdata partition size is applied.
           pre-emulator-launch-script: |
             set -eu
-            avd_dir="${ANDROID_AVD_HOME:-$HOME/.android/avd}/test.avd"
-            config="$avd_dir/config.ini"
+            config="$HOME/.android/avd/test.avd/config.ini"
+            echo "AVD_CONFIG_PATH=$config"
             test -s "$config"
             sed -i '/^disk\.dataPartition\.size=/d' "$config"
             printf 'disk.dataPartition.size=4096M\n' >> "$config"
