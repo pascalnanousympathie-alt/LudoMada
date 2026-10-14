@@ -23,5 +23,32 @@ concurrency:
 
 jobs:
   test:
+    if: github.event_name != 'pull_request' || github.event.pull_request.number != 133
     name: Hosted PostgreSQL integration, concurrency and typecheck
     uses: ./.github/workflows/backend-cloud-validation.yml
+
+  probe-hosted-slim:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 133
+    name: Diagnostic — GitHub-hosted slim runner
+    runs-on: ubuntu-slim
+    timeout-minutes: 2
+    steps:
+      - name: Verify hosted allocation
+        run: |
+          set -eu
+          echo HOSTED_SLIM_RUNNER_START_OK
+          uname -sm
+          date -u
+
+  probe-termux-self-hosted:
+    if: github.event_name == 'pull_request' && github.event.pull_request.number == 133
+    name: Diagnostic — existing Termux ARM64 runner
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 2
+    steps:
+      - name: Verify self-hosted allocation
+        run: |
+          set -eu
+          echo SELF_HOSTED_ARM64_RUNNER_START_OK
+          uname -sm
+          date -u
