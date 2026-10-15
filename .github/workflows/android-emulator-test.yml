@@ -17,6 +17,9 @@ on:
       - ".github/workflows/android-emulator-test.yml"
       - ".github/workflows/lane-f-premium-gate.yml"
 
+permissions:
+  contents: read
+
 jobs:
   emulator-test:
     runs-on: [self-hosted, linux, ARM64]
@@ -117,6 +120,7 @@ jobs:
           test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
           echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
       - name: Run cloud Android smoke test with Ramus
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         env:
           RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
           RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
@@ -126,9 +130,11 @@ jobs:
           timeout -k 10s 900s node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
       - name: Save Ramus visual evidence locally
         if: always()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: tar -czf "$HOME/LudoMada-ramus-evidence.tgz" ramus-evidence ramus-smoke.log 2>/dev/null || true
       - name: Package Ramus visual evidence
         if: always()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
           mkdir -p ramus-evidence
@@ -143,9 +149,34 @@ jobs:
           path: _runs/${{ github.run_id }}/ludomada-ramus-visual-${{ github.run_id }}.tgz
           if-no-files-found: error
           retention-days: 7
-      - name: Save verified debug APK locally
+      - name: Save verified debug APK to Android Downloads when mounted
         if: success()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          cp android-app/app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/LudoMada-Ramus-verified-debug.apk
-          sha256sum android-app/app/build/outputs/apk/debug/app-debug.apk | tee /sdcard/Download/LudoMada-Ramus-verified-debug.sha256
+          apk="android-app/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          sha256sum "$apk" | tee LudoMada-Ramus-verified-debug.sha256
+          for target_dir in /sdcard/Download /storage/emulated/0/Download "$HOME/storage/downloads"; do
+            if [ -d "$target_dir" ] && [ -w "$target_dir" ]; then
+              cp "$apk" "$target_dir/LudoMada-Ramus-verified-debug.apk"
+              cp LudoMada-Ramus-verified-debug.sha256 "$target_dir/LudoMada-Ramus-verified-debug.sha256"
+              echo "APK_COPIED_TO=$target_dir"
+              exit 0
+            fi
+          done
+          echo "ANDROID_DOWNLOADS_NOT_MOUNTED: APK will be provided as a workflow artifact."
+
+      - name: Upload debug APKs and checksum
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: LudoMada-debug-apk-evidence-${{ github.sha }}
+          path: |
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/output-metadata.json
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            _runs/${{ github.run_id }}/LudoMada-Ramus-verified-debug.sha256
+          if-no-files-found: warn
+          retention-days: 7
