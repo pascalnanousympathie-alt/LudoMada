@@ -119,6 +119,25 @@ jobs:
           tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
           test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
           echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
+      - name: Initialize isolated Ramus credentials for this run
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        env:
+          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
+        run: |
+          set -eu
+          export RAMUS_CONFIG_DIR="$RUNNER_TEMP/ramus-${GITHUB_RUN_ID}"
+          mkdir -p "$RAMUS_CONFIG_DIR"
+          printf 'RAMUS_CONFIG_DIR=%s\\n' "$RAMUS_CONFIG_DIR" >> "$GITHUB_ENV"
+          if [ -n "${RAMUS_API_KEY:-}" ]; then
+            echo "RAMUS_AUTH_MODE=account" >> "$GITHUB_ENV"
+            echo "RAMUS_ACCOUNT_KEY_CONFIGURED"
+            node "$RAMUS_CLI" status
+          else
+            echo "RAMUS_AUTH_MODE=trial" >> "$GITHUB_ENV"
+            echo "RAMUS_API_KEY is absent; initialize an isolated Ramus trial credential."
+            node "$RAMUS_CLI" trial
+            node "$RAMUS_CLI" status
+          fi
       - name: Run cloud Android smoke test with Ramus
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         env:
