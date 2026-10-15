@@ -98,6 +98,12 @@ jobs:
       - name: Start isolated local PostgreSQL for integration and concurrency tests
         run: |
           set -eu
+          runner_uid="$(id -u)"
+          echo "CI_POSTGRES_RUNNER_UID=$runner_uid"
+          if [ "$runner_uid" -eq 0 ]; then
+            echo "::error::PostgreSQL integration tests require the Android Termux runner inside Debian PRoot as an unprivileged UID."
+            exit 1
+          fi
           command -v initdb
           command -v pg_ctl
           command -v createdb
