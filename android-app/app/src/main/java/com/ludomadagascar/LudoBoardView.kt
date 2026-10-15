@@ -114,6 +114,17 @@ class LudoBoardView(
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
+    // Keep the premium GLES3/PBR Home live, but cap software-emulator work to ~30 FPS.
+    // A continuous 60 FPS GL loop provides little visual benefit for a lobby and can
+    // exhaust hosted-emulator GPU/CPU resources before Ramus can capture diagnostics.
+    private val homeFrameTick = object : Runnable {
+        override fun run() {
+            if (!homePreview || !isAttachedToWindow) return
+            requestRender()
+            postDelayed(this, 33L)
+        }
+    }
+
     private fun deviceSupportsGles3(): Boolean {
         val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
         return (info?.reqGlEsVersion ?: 0) >= 0x30000
@@ -154,7 +165,7 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = !homePreview
         isClickable = !homePreview
         if (homePreview) post { configureHomePreview() }
@@ -475,7 +486,29 @@ class LudoBoardView(
         }
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (homePreview) {
+            removeCallbacks(homeFrameTick)
+            post(homeFrameTick)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (homePreview && isAttachedToWindow) {
+            removeCallbacks(homeFrameTick)
+            post(homeFrameTick)
+        }
+    }
+
+    override fun onPause() {
+        removeCallbacks(homeFrameTick)
+        super.onPause()
+    }
+
     override fun onDetachedFromWindow() {
+        removeCallbacks(homeFrameTick)
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
