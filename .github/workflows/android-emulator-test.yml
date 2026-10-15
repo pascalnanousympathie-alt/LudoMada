@@ -26,9 +26,9 @@ jobs:
     # The ARM64 phone runner needs a longer window for cold Kotlin + instrumentation builds.
     timeout-minutes: 60
     concurrency:
-      # Every run gets its own group so a newer PR update cannot kill a costly active build.
-      group: ramus-${{ github.run_id }}
-      cancel-in-progress: false
+      # Keep only the newest PR smoke run; cancel stuck/stale builds to release the single ARM64 runner.
+      group: ramus-${{ github.ref }}
+      cancel-in-progress: true
     env:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
