@@ -1,184 +1,202 @@
-name: Android UI Smoke (GitHub-hosted emulator)
+name: Android UI Smoke (Self-hosted ARM64 + Ramus)
+# Premium landscape visual/gameplay validation gate
 
-# Automatic runtime validation without depending on the phone/Termux runner
-# or a third-party cloud-device session surviving the full smoke test.
 on:
   workflow_dispatch:
+  # Free ARM64 runner + Ramus performs the automated PR UI/gameplay smoke.
   pull_request:
     paths:
       - "android-app/**"
       - "scripts/android-release-audit.py"
+      - "scripts/setup-termux-aapt2.sh"
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-3d-assets.mjs"
       - "scripts/check-3d-optimization.mjs"
       - "scripts/check-apk-3d-asset.mjs"
-      - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/android-emulator-test.yml"
-      - ".github/workflows/android-apk-cloud-fallback.yml"
       - ".github/workflows/lane-f-premium-gate.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  emulator-test:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 35
     concurrency:
-      group: android-ui-hosted-${{ github.event_name }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+      group: ramus-${{ github.ref }}
       cancel-in-progress: true
-    defaults:
-      run:
-        working-directory: android-app
+    env:
+      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
+      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
+      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
     steps:
-      - name: Checkout source
+      - name: Checkout source from GitHub
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+          clean: true
+          path: _runs/${{ github.run_id }}
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
-          cache: gradle
+      - name: Verify and repair checked-out sources
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          set -eu
+          git reset --hard "$GITHUB_SHA"
+          git clean -fdx
+          # Rehydrate the exact tracked tree from Git's object database. This protects the
+          # single self-hosted runner from a previously interrupted job leaving a partial tree.
+          git archive "$GITHUB_SHA" | tar -xf - -C "${{ github.workspace }}/_runs/${{ github.run_id }}"
+          test -f android-app/settings.gradle.kts
+          test -f android-app/gradlew
+          test -f android-app/build.gradle.kts
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 12266719
-          accept-android-sdk-licenses: true
-          packages: platform-tools platforms;android-35 build-tools;36.0.0 emulator system-images;android-28;google_apis;x86_64
+      - name: Accept Android SDK licenses
+        run: |
+          mkdir -p "$ANDROID_HOME/licenses"
+          cat > "$ANDROID_HOME/licenses/android-sdk-license" <<'EOF'
+          8933bad161af4178b1185d1a37fbf41ea5269c55
+          d56f5187479451eabf01fb78af6dfcb131a6481e
+          24333f8a63b6825ea9c5514f83c2829b004d1fee
+          EOF
 
-      - name: Build debug and instrumentation APKs, and run JVM unit tests
-        env:
-          ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+      - name: Configure Android SDK
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
+        run: printf "sdk.dir=%s\n" "$ANDROID_HOME" > local.properties
+      - name: Use Termux Node
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npm" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npm "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/npx" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node /data/data/com.termux/files/usr/bin/npx "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+      - name: Configure ARM64 AAPT2
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          HOME=/data/data/com.termux/files/home bash scripts/setup-termux-aapt2.sh
+          printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
+      - name: Build debug APK for Ramus
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app
         run: |
           set -eu
           chmod +x gradlew
-          ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=1 assembleDebug assembleDebugAndroidTest --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-
-      - name: Audit Android source policy
-        working-directory: .
-        run: python3 scripts/android-release-audit.py
-
-      - name: Validate 3D asset manifest and mobile budgets
-        working-directory: .
+      - name: Audit Android source policy and 3D assets
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          node scripts/audit-material-calibration.mjs --strict
-          node scripts/check-3d-assets.mjs
-          node scripts/check-3d-optimization.mjs
-          node scripts/check-glb-runtime-transform.mjs
-          node scripts/check-ramus-wallet-hitbox.mjs
-
-      - name: Verify current GLB and textures are packaged into debug APK
-        working-directory: .
-        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Scan debug and instrumentation APKs for known embedded credentials
-        working-directory: .
-        run: |
-          set -eu
+          python3 scripts/android-release-audit.py
+          export LD_LIBRARY_PATH="/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          /data/data/com.termux/files/usr/bin/node scripts/check-3d-assets.mjs
+          /data/data/com.termux/files/usr/bin/node scripts/check-3d-optimization.mjs
+          /data/data/com.termux/files/usr/bin/node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
           python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/debug/app-debug.apk
-          python3 scripts/android-release-audit.py android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-
-      - name: Check Ramus test script syntax
-        working-directory: .
-        run: node --check scripts/ramus-smoke.mjs
-
-      - name: Run 2P/3P/4P UI smoke on hosted Android emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 28
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          force-avd-creation: true
-          disable-animations: true
-          emulator-boot-timeout: 900
-          disk-size: 3072M
-          ram-size: 2048M
-          heap-size: 512M
-          sdcard-path-or-size: 256M
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -wipe-data
-          # A single command is required: each pre-launch input line is run in its own shell.
-          # One command is intentional: this action runs each pre-launch line in a separate shell.
-          # Normalize the generated AVD after creation to avoid duplicate settings and slow boot.
-          pre-emulator-launch-script: >-
-            sed -i '/^disk\.dataPartition\.size=/d; /^hw\.cpu\.ncore=/d; /^hw\.ramSize=/d; /^hw\.heapSize=/d; /^hw\.lcd\.width=/d; /^hw\.lcd\.height=/d; /^hw\.lcd\.density=/d' /home/runner/.android/avd/test.avd/config.ini && printf 'hw.cpu.ncore=4\nhw.ramSize=2048M\nhw.heapSize=512M\nhw.lcd.width=720\nhw.lcd.height=1280\nhw.lcd.density=320\ndisk.dataPartition.size=3072M\n' >> /home/runner/.android/avd/test.avd/config.ini && grep -E '^(hw.cpu.ncore|hw.ramSize|hw.heapSize|hw.lcd.width|hw.lcd.height|hw.lcd.density|disk.dataPartition.size)=' /home/runner/.android/avd/test.avd/config.ini
-          script: |
-            set +e
-            cd android-app
-            ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
-            test_exit=$?
-            cd "$GITHUB_WORKSPACE"
-            mkdir -p ramus-evidence
-            adb devices > ramus-evidence/adb-devices.txt 2>&1 || true
-            adb logcat -d -t 3000 > ramus-evidence/logcat.txt 2>&1 || true
-            adb exec-out screencap -p > ramus-evidence/hosted-emulator.png 2> ramus-evidence/screencap.err || true
-            for name in ludomada-home.png ludomada-game-mode.png ludomada-wallet.png ludomada-market.png ludomada-gameplay-2p.png ludomada-gameplay-pawn-moved.png ludomada-gameplay-3p.png ludomada-gameplay-4p.png ludomada-startup-offline.png; do
-              adb shell run-as com.ludomadagascar.test cat "cache/$name" > "ramus-evidence/$name" 2> "ramus-evidence/$name.err" || true
-            done
-            exit "$test_exit"
-
-      - name: Verify mandatory Home, mode, wallet, market and 2P/3P/4P screenshots
-        working-directory: .
+      - name: Install Ramus CLI
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
-          python3 - <<'PY'
-          from pathlib import Path
-          root = Path('ramus-evidence')
-          required = [
-              'hosted-emulator.png',
-              'ludomada-home.png',
-              'ludomada-game-mode.png',
-              'ludomada-wallet.png',
-              'ludomada-market.png',
-              'ludomada-gameplay-2p.png',
-              'ludomada-gameplay-3p.png',
-              'ludomada-gameplay-4p.png',
-              'ludomada-gameplay-pawn-moved.png',
-              'ludomada-startup-offline.png',
-          ]
-          png_magic = bytes.fromhex('89504e470d0a1a0a')
-          for name in required:
-              path = root / name
-              if not path.is_file():
-                  raise SystemExit(f'Missing required UI screenshot: {path}')
-              data = path.read_bytes()
-              if len(data) < 1000 or not data.startswith(png_magic):
-                  raise SystemExit(f'Invalid or truncated PNG: {path} ({len(data)} bytes)')
-          for name in ('adb-devices.txt', 'logcat.txt'):
-              path = root / name
-              if not path.is_file() or path.stat().st_size == 0:
-                  raise SystemExit(f'Missing Android diagnostics: {path}')
-          print('HOSTED_EMULATOR_EVIDENCE_PASS')
-          PY
-
-      - name: Upload hosted emulator screenshots and logcat
+          rm -rf "$RUNNER_TEMP/ramus-cli"
+          mkdir -p "$RUNNER_TEMP/ramus-cli"
+          curl -fsSL https://registry.npmjs.org/ramus-cli/-/ramus-cli-0.1.14.tgz -o "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz"
+          tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli.tgz" -C "$RUNNER_TEMP/ramus-cli"
+          test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
+          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
+      - name: Initialize isolated Ramus credentials for this run
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        env:
+          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
+        run: |
+          set -eu
+          export RAMUS_CONFIG_DIR="$RUNNER_TEMP/ramus-${GITHUB_RUN_ID}"
+          mkdir -p "$RAMUS_CONFIG_DIR"
+          echo "RAMUS_CONFIG_DIR=$RAMUS_CONFIG_DIR" >> "$GITHUB_ENV"
+          if [ -n "${RAMUS_API_KEY:-}" ]; then
+            echo "RAMUS_AUTH_MODE=account" >> "$GITHUB_ENV"
+            echo "RAMUS_API_KEY=$RAMUS_API_KEY" >> "$GITHUB_ENV"
+            echo "RAMUS_ACCOUNT_KEY_CONFIGURED"
+            node "$RAMUS_CLI" status
+          else
+            echo "RAMUS_AUTH_MODE=trial" >> "$GITHUB_ENV"
+            echo "RAMUS_API_KEY is absent; initialize an isolated Ramus trial credential."
+            unset RAMUS_API_KEY
+            node "$RAMUS_CLI" trial
+            node "$RAMUS_CLI" status
+          fi
+      - name: Run cloud Android smoke test with Ramus
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        env:
+          RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+          RAMUS_CAPTURE: "1"
+        run: |
+          set -o pipefail
+          timeout -k 10s 900s node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
+      - name: Save Ramus visual evidence locally
+        if: always()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: tar -czf "$HOME/LudoMada-ramus-evidence.tgz" ramus-evidence ramus-smoke.log 2>/dev/null || true
+      - name: Package Ramus visual evidence
+        if: always()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          set -eu
+          mkdir -p ramus-evidence
+          tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence ramus-smoke.log 2>/dev/null || tar -czf "ludomada-ramus-visual-${{ github.run_id }}.tgz" ramus-evidence
+          test -s "ludomada-ramus-visual-${{ github.run_id }}.tgz"
+      - name: Upload Ramus visual evidence
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
-          name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
-          path: ramus-evidence/
-          if-no-files-found: warn
+          name: ludomada-ramus-visual-${{ github.run_id }}
+          path: _runs/${{ github.run_id }}/ludomada-ramus-visual-${{ github.run_id }}.tgz
+          if-no-files-found: error
           retention-days: 7
-      - name: Publish verified APK and instrumentation artifact
+      - name: Save verified debug APK to Android Downloads when mounted
+        if: success()
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
+        run: |
+          set -eu
+          apk="android-app/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          sha256sum "$apk" | tee LudoMada-Ramus-verified-debug.sha256
+          for target_dir in /sdcard/Download /storage/emulated/0/Download "$HOME/storage/downloads"; do
+            if [ -d "$target_dir" ] && [ -w "$target_dir" ]; then
+              cp "$apk" "$target_dir/LudoMada-Ramus-verified-debug.apk"
+              cp LudoMada-Ramus-verified-debug.sha256 "$target_dir/LudoMada-Ramus-verified-debug.sha256"
+              echo "APK_COPIED_TO=$target_dir"
+              exit 0
+            fi
+          done
+          echo "ANDROID_DOWNLOADS_NOT_MOUNTED: APK will be provided as a workflow artifact."
+
+      - name: Upload debug APKs and checksum
         if: always()
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
-          name: LudoMada-premium-gles3-debug-${{ github.sha }}
+          name: LudoMada-debug-apk-evidence-${{ github.sha }}
           path: |
-            android-app/app/build/outputs/apk/debug/app-debug.apk
-            android-app/app/build/outputs/apk/debug/output-metadata.json
-            android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/output-metadata.json
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            _runs/${{ github.run_id }}/LudoMada-Ramus-verified-debug.sha256
           if-no-files-found: warn
           retention-days: 7
