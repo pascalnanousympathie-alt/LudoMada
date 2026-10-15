@@ -126,12 +126,12 @@ jobs:
           set -eu
           engine="$HOME/LudoMada/node_modules/@prisma/engines/schema-engine-linux-arm64-openssl-3.0.x"
           test -x "$engine"
-          # Invoke the glibc ARM64 engine with Debian libraries, never Termux Bionic LD_LIBRARY_PATH.
+          # Invoke the glibc ARM64 engine without Termux Bionic LD_LIBRARY_PATH or LD_PRELOAD.
           wrapper="$RUNNER_TEMP/prisma-schema-engine.sh"
           cat > "$wrapper" <<EOF
           #!/data/data/com.termux/files/usr/bin/bash
           set -eu
-          exec /data/data/com.termux/files/usr/bin/env -u LD_LIBRARY_PATH "$engine" "\$@"
+          exec /data/data/com.termux/files/usr/bin/env -u LD_LIBRARY_PATH -u LD_PRELOAD "$engine" "\$@"
           EOF
           chmod 700 "$wrapper"
           "$wrapper" --version
