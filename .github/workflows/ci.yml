@@ -65,7 +65,14 @@ jobs:
           chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/npm" "$HOME/.ci-node-bin/npx"
           echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
           # Termux PostgreSQL binaries are dynamically linked; make its runtime library path available to later CI steps too.
-          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          # Keep Android/Bionic libraries scoped to the Termux executables that require them.
+          # Do not export Bionic LD_LIBRARY_PATH into GitHub Actions' glibc /usr/bin/bash.
+          for bin in initdb pg_ctl pg_isready createdb psql pg_dump pg_restore postgres; do
+            if [ -x "/data/data/com.termux/files/usr/bin/$bin" ]; then
+              printf '#!/data/data/com.termux/files/usr/bin/sh\nexport LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib\nexec /data/data/com.termux/files/usr/bin/%s "$@"\n' "$bin" > "$HOME/.ci-node-bin/$bin"
+              chmod +x "$HOME/.ci-node-bin/$bin"
+            fi
+          done
 
       - name: Show toolchain
         run: node -v && npm -v
