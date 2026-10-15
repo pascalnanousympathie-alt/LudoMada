@@ -463,9 +463,17 @@ try {
   console.log(`Ramus session: ${session}`);
   let launchInfo = { sessionStart: safeLaunchSummary(started.value) };
   let home = null;
-  let sessionTerminated = false;
+  // Collect filtered Android startup/crash logs before the first snapshot RPC.
+  // When a hosted emulator terminates at launch, the first snapshot can itself
+  // return session_ended and erase the only chance to capture logcat evidence.
+  let sessionTerminated = captureStartupLogcat("immediately-after-session-start");
+  if (sessionTerminated) {
+    launchInfo = { ...launchInfo, initialSessionTerminated: "session_ended_during_immediate_logcat" };
+    console.error("RAMUS_SESSION_TERMINATED_AFTER_START_LOGCAT");
+  }
 
   for (let attempt = 0; attempt < 24; attempt++) {
+    if (sessionTerminated) break;
     waitStable(700);
     home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
     if (home.ok && home.value?.elements?.length) break;
