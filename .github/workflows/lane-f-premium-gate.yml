@@ -43,9 +43,9 @@ concurrency:
 
 jobs:
   premium-gate:
-    # Source-level premium checks run on GitHub-hosted Linux; UI/runtime evidence
-    # is independently gated by Android APK Cloud Fallback on the same PR head.
-    runs-on: ubuntu-24.04
+    # Source-level premium checks use the existing free self-hosted ARM64 runner.
+    # UI/runtime evidence remains independently gated by Android APK Cloud Fallback.
+    runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 15
     steps:
       - name: Checkout exact commit
