@@ -7,16 +7,21 @@ const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
 if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`);
 
+function isTerminalSessionError(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value || {});
+  return /session[_\s-]*(?:ended|not found|closed|inactive|expired|not active|terminated)|(?:not found|closed|inactive|expired|not active|terminated)[^\n]{0,60}session/i.test(text);
+}
+
 function runCli(...args) {
   const isSnapshot = args[0] === "snapshot";
   const isScreenshot = args[0] === "screenshot";
   const isSessionStart = args[0] === "session" && args[1] === "start";
   const isInteraction = ["tap", "swipe", "press", "type", "wait", "app"].includes(args[0]);
-  const timeoutMs = isSnapshot ? 15000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
+  const timeoutMs = isSnapshot ? 10000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
   const timeoutBin = process.env.RAMUS_TIMEOUT_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/timeout" : "timeout");
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
   const isCapacitySensitive = isSessionStart || args[0] === "trial";
-  const maxAttempts = isCapacitySensitive ? 20 : 3;
+  const maxAttempts = isCapacitySensitive ? 20 : (isSnapshot ? 2 : 3);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const r = spawnSync(timeoutBin, ["-k", "2s", `${timeoutSec}s`, process.execPath, cli, ...args], {
       encoding: "utf8",
@@ -24,6 +29,9 @@ function runCli(...args) {
     });
     const out = (r.stdout || "").trim();
     const err = (r.stderr || "").trim();
+    if (isTerminalSessionError(out + "\n" + err)) {
+      return { ok: false, value: { error: "session_ended", message: (out || err).slice(0, 1200) } };
+    }
     const transient = /fetch failed|unreachable|stream_closed|session stream closed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(out + "\n" + err);
     const capacityBusy = /trial_capacity|session_cap|all trial emulator slots are busy|session cap reached/i.test(out + "\n" + err);
     if (out) {
@@ -46,9 +54,9 @@ function runCli(...args) {
       }
       return { ok: false, value };
     }
-    if ((isSessionStart || isSnapshot || isInteraction) && attempt < 3) {
+    if ((isSessionStart || isSnapshot || isInteraction) && attempt < maxAttempts) {
       const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
-      spawnSync(sleepBin, [isSessionStart ? "3" : "2"], { stdio: "ignore" });
+      spawnSync(sleepBin, [isSessionStart ? "3" : (isSnapshot ? "1" : "2")], { stdio: "ignore" });
       continue;
     }
     return { ok: false, value: { error: "no_output", message: err || `ramus ${args.join(" ")} produced no output` } };
@@ -221,20 +229,19 @@ function safeLaunchSummary(value) {
 }
 
 function captureStartupLogcat(stage) {
-  if (!session) return;
+  if (!session) return false;
   const logs = allow("logcat", "--limit", "200", "--session", session);
   if (!logs.ok) {
+    const terminal = isTerminalSessionError(logs.value);
     console.error("RAMUS_STARTUP_LOGCAT_ERROR=" + JSON.stringify({
       stage,
-      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240)
+      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240),
+      terminalSession: terminal
     }));
-    return;
+    return terminal;
   }
 
   const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
-  // Ramus can return JSON log records concatenated in one string. Split at each
-  // record boundary so early AndroidRuntime/package errors are retained even if
-  // the emulator generates hundreds of unrelated system messages.
   const decoded = raw.replace(/\\n/g, "\n");
   const records = decoded
     .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"\s*:)/g, "\n")
@@ -244,8 +251,8 @@ function captureStartupLogcat(stage) {
   );
   const output = relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n");
   console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + (output || "NO_MATCHING_STARTUP_OR_CRASH_LINES"));
+  return false;
 }
-
 function captureFailureDiagnostics() {
   if (!session) return;
 
@@ -264,6 +271,10 @@ function captureFailureDiagnostics() {
     }));
   } else {
     console.error("RAMUS_FAILURE_SCREEN_ERROR=" + JSON.stringify(screen.value || {}));
+    if (isTerminalSessionError(screen.value)) {
+      console.error("RAMUS_FAILURE_SESSION_TERMINATED=Skipping further RPCs for the ended session.");
+      return;
+    }
   }
 
   // Keep failure evidence even when the main visual capture is disabled or failed.
@@ -421,22 +432,16 @@ function tryLauncherDrawerLaunch() {
   };
 }
 
-function waitForSessionEnded(sessionId, attempts = 8) {
-  // "status=ending" is asynchronous, not proof that the old device has been released.
-  // Probe the original session until Ramus confirms it is no longer addressable.
+function waitForSessionEnded(sessionId, attempts = 4) {
+  // Do not overlap remote sessions. An explicit terminal response means this one
+  // is no longer addressable; otherwise poll only a small bounded number of times.
   for (let attempt = 0; attempt < attempts; attempt++) {
-    waitStable(1000);
+    waitStable(600);
     const probe = allow("snapshot", "--session", sessionId);
-    if (!probe.ok) {
-      const message = JSON.stringify(probe.value || {});
-      if (/session[^\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\n]*session/i.test(message)) {
-        return true;
-      }
-    }
+    if (!probe.ok && isTerminalSessionError(probe.value)) return true;
   }
   return false;
 }
-
 let session = "";
 let success = false;
 let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
@@ -458,33 +463,43 @@ try {
   console.log(`Ramus session: ${session}`);
   let launchInfo = { sessionStart: safeLaunchSummary(started.value) };
   let home = null;
+  let sessionTerminated = false;
 
   for (let attempt = 0; attempt < 24; attempt++) {
-    waitStable(1000);
+    waitStable(700);
     home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
     if (home.ok && home.value?.elements?.length) break;
+    if (isTerminalSessionError(home.value)) {
+      sessionTerminated = true;
+      launchInfo = { ...launchInfo, initialSessionTerminated: safeLaunchSummary(home.value) };
+      console.error("RAMUS_SESSION_TERMINATED_DURING_HOME_PROBE");
+      break;
+    }
 
-    // Capture the first startup failure immediately; waiting until cleanup lets
-    // launcher/system noise evict the original AndroidRuntime or package error.
-    if (attempt === 1) captureStartupLogcat("initial-home-missing");
+    // Capture the earliest useful diagnostic. Stop here if the session ended.
+    if (attempt === 1 && captureStartupLogcat("initial-home-missing")) {
+      sessionTerminated = true;
+      launchInfo = { ...launchInfo, initialSessionTerminated: "logcat confirmed session_ended" };
+      break;
+    }
 
-    // One bounded foreground launch, after the initial auto-launch had time
-    // to settle. Do not retry "busy" in a tight loop.
+    // One bounded foreground launch after the initial auto-launch settles.
     if (attempt === 15) {
       const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-      launchInfo = {
-        ...launchInfo,
-        retryLaunch: safeLaunchSummary(launched.value)
-      };
-      waitStable(1200);
-      captureStartupLogcat("after-retry-launch");
+      launchInfo = { ...launchInfo, retryLaunch: safeLaunchSummary(launched.value) };
+      waitStable(700);
+      if (isTerminalSessionError(launched.value) || captureStartupLogcat("after-retry-launch")) {
+        sessionTerminated = true;
+        launchInfo = { ...launchInfo, retrySessionTerminated: true };
+        break;
+      }
     }
   }
 
   // Lane F now installs exact Ramus CLI 0.1.14, which supports its documented
   // same-session install/open command. Try that first after a stuck initial launch;
   // it keeps the current emulator and avoids burning a second slot.
-  if (!home?.ok || !home.value?.elements?.length) {
+  if (!sessionTerminated && (!home?.ok || !home.value?.elements?.length)) {
     captureStartupLogcat("before-same-session-install");
     const installed = allow("session", "install", "--session", session, apk);
     launchInfo = { ...launchInfo, sameSessionInstall: safeLaunchSummary(installed.value) };
@@ -504,7 +519,7 @@ try {
   // Last same-device recovery: an API-level launch can remain "busy" even though
   // the Android launcher is visible. Try opening the installed app from the launcher
   // UI before ending this test-owned session.
-  if (!home?.ok || !home.value?.elements?.length) {
+  if (!sessionTerminated && (!home?.ok || !home.value?.elements?.length)) {
     captureStartupLogcat("before-launcher-drawer-recovery");
     const drawer = tryLauncherDrawerLaunch();
     launchInfo = { ...launchInfo, launcherDrawerRecovery: drawer.diagnostic };
@@ -520,7 +535,8 @@ try {
     const priorSession = session;
     const ended = allow("session", "end", "--session", priorSession);
     launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
-    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    const terminal = sessionTerminated || isTerminalSessionError(home?.value) ||
+      isTerminalSessionError(ended.value) || (ended.ok && waitForSessionEnded(priorSession, 4));
     launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
     if (terminal) {
       const restarted = allow("session", "start", "--apk", apk, "--wait");
@@ -528,18 +544,34 @@ try {
       if (restarted.ok && restarted.value?.session) {
         session = restarted.value.session;
         home = null;
-        for (let attempt = 0; attempt < 20; attempt++) {
-          waitStable(1000);
+        sessionTerminated = false;
+        let freshSessionTerminated = false;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          waitStable(700);
           home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
           if (home.ok && home.value?.elements?.length) break;
-          if (attempt === 1) captureStartupLogcat("fresh-session-home-missing");
-          if (attempt === 12) {
+          if (isTerminalSessionError(home.value)) {
+            freshSessionTerminated = true;
+            launchInfo = { ...launchInfo, freshSessionTerminated: safeLaunchSummary(home.value) };
+            break;
+          }
+          if (attempt === 1 && captureStartupLogcat("fresh-session-home-missing")) {
+            freshSessionTerminated = true;
+            launchInfo = { ...launchInfo, freshSessionTerminated: "logcat confirmed session_ended" };
+            break;
+          }
+          if (attempt === 6) {
             const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
             launchInfo = { ...launchInfo, freshSessionRetryLaunch: safeLaunchSummary(launched.value) };
-            waitStable(1200);
-            captureStartupLogcat("fresh-session-after-retry-launch");
+            waitStable(700);
+            if (isTerminalSessionError(launched.value) || captureStartupLogcat("fresh-session-after-retry-launch")) {
+              freshSessionTerminated = true;
+              launchInfo = { ...launchInfo, freshSessionTerminatedAfterLaunch: true };
+              break;
+            }
           }
         }
+        sessionTerminated = freshSessionTerminated;
       }
     } else {
       launchInfo = {
@@ -556,7 +588,7 @@ try {
   let startup = null;
   for (let attempt = 0; attempt < 6; attempt++) {
     startup = allow("snapshot", "--session", session);
-    if (startup.ok) break;
+    if (startup.ok || isTerminalSessionError(startup.value)) break;
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
