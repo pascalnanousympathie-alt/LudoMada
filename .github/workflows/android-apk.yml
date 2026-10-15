@@ -59,10 +59,32 @@ jobs:
           printf 'AAPT2_WRAPPER=/data/data/com.termux/files/home/.local/bin/aapt2\n' >> "$GITHUB_ENV"
       - run: chmod +x gradlew
       - run: bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=1 assembleDebug --console=plain --stacktrace
-      - run: |
+      - name: Save APK to Android Downloads when mounted
+        run: |
           set -eu
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          target="/sdcard/Download/LudoMada-premium-gles3-debug.apk"
-          cp app/build/outputs/apk/debug/app-debug.apk "$target"
-          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /sdcard/Download/LudoMada-premium-gles3-debug.sha256
+          apk="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$apk"
+          sha256sum "$apk" > ../LudoMada-premium-gles3-debug.sha256
+          for target_dir in /sdcard/Download /storage/emulated/0/Download "$HOME/storage/downloads"; do
+            if [ -d "$target_dir" ] && [ -w "$target_dir" ]; then
+              cp "$apk" "$target_dir/LudoMada-premium-gles3-debug.apk"
+              cp ../LudoMada-premium-gles3-debug.sha256 "$target_dir/LudoMada-premium-gles3-debug.sha256"
+              echo "APK_COPIED_TO=$target_dir"
+              exit 0
+            fi
+          done
+          echo "ANDROID_DOWNLOADS_NOT_MOUNTED: APK will be provided as a workflow artifact."
+
+      - name: Upload debug APK and checksum
+        if: always()
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: LudoMada-premium-gles3-debug-${{ github.sha }}
+          path: |
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
+            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/output-metadata.json
+            _runs/${{ github.run_id }}/LudoMada-premium-gles3-debug.sha256
+          if-no-files-found: warn
+          retention-days: 7
 
