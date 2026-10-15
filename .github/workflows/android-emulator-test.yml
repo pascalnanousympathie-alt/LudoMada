@@ -130,11 +130,13 @@ jobs:
           echo "RAMUS_CONFIG_DIR=$RAMUS_CONFIG_DIR" >> "$GITHUB_ENV"
           if [ -n "${RAMUS_API_KEY:-}" ]; then
             echo "RAMUS_AUTH_MODE=account" >> "$GITHUB_ENV"
+            echo "RAMUS_API_KEY=$RAMUS_API_KEY" >> "$GITHUB_ENV"
             echo "RAMUS_ACCOUNT_KEY_CONFIGURED"
             node "$RAMUS_CLI" status
           else
             echo "RAMUS_AUTH_MODE=trial" >> "$GITHUB_ENV"
             echo "RAMUS_API_KEY is absent; initialize an isolated Ramus trial credential."
+            unset RAMUS_API_KEY
             node "$RAMUS_CLI" trial
             node "$RAMUS_CLI" status
           fi
@@ -142,7 +144,6 @@ jobs:
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         env:
           RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
-          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
           RAMUS_CAPTURE: "1"
         run: |
           set -o pipefail
