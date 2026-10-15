@@ -47,16 +47,26 @@ jobs:
     # UI/runtime evidence remains independently gated by Android APK Cloud Fallback.
     runs-on: [self-hosted, linux, ARM64]
     timeout-minutes: 15
+    env:
+      RELEASE_MAX_RUNTIME: "39600"
     steps:
       - name: Checkout exact commit
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Use Termux Node.js
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node"
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Strict premium source gate
         run: |
