@@ -23,10 +23,12 @@ permissions:
 jobs:
   emulator-test:
     runs-on: [self-hosted, linux, ARM64]
-    timeout-minutes: 35
+    # The ARM64 phone runner needs a longer window for cold Kotlin + instrumentation builds.
+    timeout-minutes: 60
     concurrency:
-      group: ramus-${{ github.ref }}
-      cancel-in-progress: true
+      # Every run gets its own group so a newer PR update cannot kill a costly active build.
+      group: ramus-${{ github.run_id }}
+      cancel-in-progress: false
     env:
       ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
       ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
@@ -96,7 +98,7 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel -Dorg.gradle.workers.max=1 assembleDebug assembleDebugAndroidTest --console=plain --stacktrace
+          bash ./gradlew -Pandroid.aapt2FromMavenOverride="$AAPT2_WRAPPER" -PREOWN_PROJECT_ID="${{ secrets.REOWN_PROJECT_ID }}" --no-daemon --no-parallel --build-cache -Dorg.gradle.workers.max=1 assembleDebug assembleDebugAndroidTest --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
       - name: Audit Android source policy and 3D assets
