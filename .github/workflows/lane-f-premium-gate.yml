@@ -71,9 +71,14 @@ jobs:
           export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
           exec /data/data/com.termux/files/usr/bin/node "$@"
           EOF
-          chmod +x "$HOME/.ci-node-bin/node"
+          cat > "$HOME/.ci-node-bin/python3" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/python3 "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/python3"
+          # Never export Termux/Bionic libraries into later Debian/glibc bash steps.
           echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
       - name: Strict premium source gate
         run: |
