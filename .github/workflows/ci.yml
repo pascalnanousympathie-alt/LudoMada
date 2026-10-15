@@ -36,19 +36,13 @@ jobs:
         shell: bash
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
     steps:
-      - name: Checkout source from GitHub
-        working-directory: ${{ github.workspace }}
-        env:
-          GIT_AUTH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          rm -rf "${{ github.workspace }}/_runs/${{ github.run_id }}"
-          mkdir -p "${{ github.workspace }}/_runs/${{ github.run_id }}"
-          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" init
-          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          git -c credential.helper= -C "${{ github.workspace }}/_runs/${{ github.run_id }}" fetch --depth=1 "https://x-access-token:$GIT_AUTH_TOKEN@github.com/$GITHUB_REPOSITORY.git" "$GITHUB_SHA"
-          git -C "${{ github.workspace }}/_runs/${{ github.run_id }}" checkout --detach "$GITHUB_SHA"
-
+      - name: Checkout exact commit into an isolated run workspace
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          clean: true
+          path: _runs/${{ github.run_id }}
       - name: Use Termux Node
         run: |
           set -eu
