@@ -49,11 +49,18 @@ jobs:
     timeout-minutes: 15
     env:
       RELEASE_MAX_RUNTIME: "39600"
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
     steps:
-      - name: Checkout exact commit
+      - name: Checkout exact commit into an isolated run workspace
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 1
+          clean: true
+          path: _runs/${{ github.run_id }}
 
       - name: Use Termux Node.js
         run: |
