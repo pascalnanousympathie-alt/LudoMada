@@ -24,4 +24,53 @@ concurrency:
 jobs:
   test:
     name: Hosted PostgreSQL integration, concurrency and typecheck
-    uses: ./.github/workflows/backend-cloud-validation.yml
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ludomada
+          POSTGRES_PASSWORD: ludomada_test
+          POSTGRES_DB: ludomada_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ludomada -d ludomada_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://ludomada:ludomada_test@127.0.0.1:5432/ludomada_test?schema=public
+      NODE_ENV: test
+      JWT_SECRET: cloud-ci-only-0123456789-ludomada-no-production
+      CORS_ORIGINS: ""
+      PG_POOL_MAX: "20"
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - name: Checkout exact commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations to clean PostgreSQL
+        run: npm run db:migrate
+
+      - name: Run integration, concurrency and unit tests
+        run: npm test -- --maxWorkers=2
+
+      - name: Typecheck and compile backend
+        run: npm run build
