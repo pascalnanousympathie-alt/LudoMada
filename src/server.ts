@@ -3,6 +3,7 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { randomInt, randomUUID, createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import bcrypt from "bcryptjs";
 import { PrismaClient, PaymentMethod, TransactionType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -26,6 +27,8 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL_IS_REQUIRED");
 }
 
+const IS_CLOUDFLARE_WORKERS = process.env.CLOUDFLARE_WORKERS === "true";
+
 function poolSize(value: string | undefined, fallback: number) {
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
@@ -34,7 +37,9 @@ function poolSize(value: string | undefined, fallback: number) {
 
 const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5);
 
-const pool = new pg.Pool({
+// Traditional Node deployments reuse one pool. Cloudflare Workers MUST NOT
+// keep a driver pool or Prisma client in global scope across invocations.
+const pool = IS_CLOUDFLARE_WORKERS ? undefined : new pg.Pool({
   connectionString: DATABASE_URL,
   max: pgPoolMax,
   min: 0,
@@ -42,32 +47,72 @@ const pool = new pg.Pool({
   connectionTimeoutMillis: 5000,
 });
 
-const adapter = new PrismaPg(pool);
+const nodePrisma = pool
+  ? new PrismaClient({ adapter: new PrismaPg(pool) })
+  : undefined;
 
-const prisma = new PrismaClient({ adapter });
+type RequestDatabaseContext = { prisma: PrismaClient };
+const requestDatabaseStorage = new AsyncLocalStorage<RequestDatabaseContext>();
+
+function getActivePrismaClient(): PrismaClient {
+  const active = requestDatabaseStorage.getStore()?.prisma ?? nodePrisma;
+  if (!active) throw new Error("REQUEST_SCOPED_PRISMA_REQUIRED");
+  return active;
+}
+
+// Existing route handlers and services continue to use the same PrismaClient
+// interface, while Worker requests resolve every operation to the request-local
+// client supplied by withRequestPrisma().
+const prisma = new Proxy(Object.create(null) as PrismaClient, {
+  get(_target, property) {
+    const active = getActivePrismaClient();
+    const value = Reflect.get(active, property, active);
+
+    if (typeof value === "function") return value.bind(active);
+
+    if (value && typeof value === "object") {
+      return new Proxy(value, {
+        get(_delegateTarget, operation) {
+          const current = getActivePrismaClient();
+          const delegate = Reflect.get(current, property, current);
+          const member = Reflect.get(delegate, operation, delegate);
+          return typeof member === "function" ? member.bind(delegate) : member;
+        }
+      });
+    }
+
+    return value;
+  }
+}) as PrismaClient;
+
+/** Run one Worker request with a Prisma client scoped to that invocation. */
+export function withRequestPrisma<T>(client: PrismaClient, operation: () => T): T {
+  return requestDatabaseStorage.run({ prisma: client }, operation);
+}
 
 let pgPrewarmDone = false;
 
 async function prewarmPgPool() {
-  if (pgPrewarmDone) return;
+  const activePool = pool;
+  if (pgPrewarmDone || !activePool) return;
 
   await Promise.all(
     Array.from(
       { length: 20 },
-      () => pool.query("SELECT 1")
+      () => activePool.query("SELECT 1")
     )
   );
 
   pgPrewarmDone = true;
 
   console.log("PG_POOL_PREWARM", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
+    total: activePool.totalCount,
+    idle: activePool.idleCount,
+    waiting: activePool.waitingCount
   });
 }
 
-if (process.env.CLOUDFLARE_WORKERS !== "true") {
+if (!IS_CLOUDFLARE_WORKERS && pool) {
   setInterval(() => {
     console.log("PG_POOL_STATUS", {
       total: pool.totalCount,
@@ -2036,8 +2081,8 @@ async function shutdown(signal: string) {
 
   server.close(async () => {
     try {
-      await prisma.$disconnect();
-      await pool.end();
+      if (nodePrisma) await nodePrisma.$disconnect();
+      if (pool) await pool.end();
       process.exit(0);
     } catch (error) {
       console.error("SHUTDOWN ERROR:", error);
