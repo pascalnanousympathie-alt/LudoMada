@@ -156,7 +156,7 @@ jobs:
           name: LudoMada-hosted-emulator-evidence-${{ github.sha }}
           path: ramus-evidence/
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
       - name: Publish verified APK and instrumentation artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -167,4 +167,4 @@ jobs:
             android-app/app/build/outputs/apk/debug/output-metadata.json
             android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
