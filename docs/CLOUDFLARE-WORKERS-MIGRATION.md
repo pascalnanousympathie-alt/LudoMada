@@ -13,6 +13,11 @@ Use Cloudflare Hyperdrive in front of a reachable PostgreSQL database when
 possible. The Worker also accepts a PostgreSQL URL via the `DATABASE_URL`
 secret, but a pooled endpoint/Hyperdrive is preferred for serverless traffic.
 
+The Worker creates a fresh Prisma client for each request and uses the existing
+Express routes through Cloudflare's Node HTTP bridge. Do not introduce a global
+`pg.Pool` or global Prisma client in the Worker runtime: Worker I/O connections
+are invocation-scoped, while Hyperdrive keeps the database-side pool warm.
+
 ## Important current blocker
 
 Railway's `LudoMada` and `Postgres` services were observed as Offline after the
