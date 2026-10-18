@@ -170,7 +170,7 @@ jobs:
           name: ludomada-ramus-visual-${{ github.run_id }}
           path: _runs/${{ github.run_id }}/ludomada-ramus-visual-${{ github.run_id }}.tgz
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 1
       - name: Save verified debug APK to Android Downloads when mounted
         if: success()
         working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
@@ -201,4 +201,4 @@ jobs:
             _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             _runs/${{ github.run_id }}/LudoMada-Ramus-verified-debug.sha256
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
