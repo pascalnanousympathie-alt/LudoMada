@@ -21,17 +21,25 @@ concurrency:
 
 jobs:
   worker-dry-run:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Use the repository's already-registered ARM64 runner while GitHub-hosted
+    # ubuntu-latest jobs are failing before their first step. This is a build
+    # only: no Cloudflare token is configured and no deployment can occur.
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 25
     env:
-      DATABASE_URL: postgresql://ludomada_ci@127.0.0.1:5432/ludomada_test
+      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
+      NODE_ENV: test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      NODE_OPTIONS: --max-old-space-size=768
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
-      - run: npm ci
+          clean: false
+          fetch-depth: 1
+      - name: Use runner Linux Node
+        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+      - run: node -v && npm -v
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - run: npx prisma generate
       - run: npm run build
       - name: Bundle the Worker without deploying
