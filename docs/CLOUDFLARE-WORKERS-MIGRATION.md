@@ -71,7 +71,7 @@ database or run migrations against the old volume blindly.
 
 ## Local dry-run
 
-- Copy `.dev.vars.example` to `.dev.vars` and fill values for a disposable DB.
+- Create a local `.dev.vars` file with `DATABASE_URL`, `JWT_SECRET`, and `CORS_ORIGINS` for a disposable DB. The file is git-ignored.
 - Run `npm ci`, `npx prisma generate`, then
   `npx wrangler@4 deploy --dry-run --config wrangler.jsonc`.
 - Never commit `.dev.vars`, database URLs, JWT secrets, payment credentials, or
