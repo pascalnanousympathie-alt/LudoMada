@@ -67,13 +67,15 @@ async function prewarmPgPool() {
   });
 }
 
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
+if (process.env.CLOUDFLARE_WORKERS !== "true") {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 1000).unref();
+}
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
@@ -2049,10 +2051,12 @@ async function shutdown(signal: string) {
   }, 10_000).unref();
 }
 
-process.on("SIGTERM", () => {
-  void shutdown("SIGTERM");
-});
+if (process.env.CLOUDFLARE_WORKERS !== "true") {
+  process.on("SIGTERM", () => {
+    void shutdown("SIGTERM");
+  });
 
-process.on("SIGINT", () => {
-  void shutdown("SIGINT");
-});
+  process.on("SIGINT", () => {
+    void shutdown("SIGINT");
+  });
+}
