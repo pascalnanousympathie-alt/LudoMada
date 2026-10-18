@@ -82,6 +82,19 @@ jobs:
           if [ "$healthy" -ne 1 ]; then
             echo "Worker /health smoke failed; Wrangler output follows"
             cat "$log"
+            # Wrangler keeps its own diagnostic log outside RUNNER_TEMP. Include
+            # the newest one so a local Worker startup failure is diagnosable
+            # from the GitHub Actions run instead of requiring phone access.
+            wrangler_log_dir="$HOME/.config/.wrangler/logs"
+            latest_wrangler_log="$(ls -t "$wrangler_log_dir"/wrangler-*.log 2>/dev/null | head -n 1 || true)"
+            if [ -n "$latest_wrangler_log" ] && [ -f "$latest_wrangler_log" ]; then
+              echo "---- Latest Wrangler internal log: $latest_wrangler_log ----"
+              tail -n 160 "$latest_wrangler_log" | sed -E \
+                -e 's/(DATABASE_URL|JWT_SECRET|CORS_ORIGINS)=([^[:space:]]+)/\1=[REDACTED]/g' \
+                -e 's/(Bearer )[A-Za-z0-9._~-]+/\1[REDACTED]/g'
+            else
+              echo "No Wrangler internal log found in $wrangler_log_dir"
+            fi
             exit 1
           fi
           cat "$health"
