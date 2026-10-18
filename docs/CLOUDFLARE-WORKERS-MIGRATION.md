@@ -109,6 +109,16 @@ the inspected roles have no effective privileges on the application tables.
 The backend must connect with a server-side database role that retains the
 required privileges; never embed that database credential in the mobile app.
 
+A separate default-ACL entry for the `supabase_admin` role still includes
+`anon` / `authenticated` grants. An attempt to revoke those defaults failed
+with PostgreSQL `42501 permission denied to change default privileges`, because
+the connector's `postgres` role is not a member of `supabase_admin` and is not
+a superuser. This did not change the database. Do not create future application
+tables under `supabase_admin` until an owner with the required role membership
+secures that default ACL; the verified migration path runs as `postgres`, whose
+defaults were confirmed to exclude those client roles.
+
+
 ## Required database security decision
 
 The staging database currently has RLS disabled on its 13 application tables.
