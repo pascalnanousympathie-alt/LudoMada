@@ -26,9 +26,18 @@ interface InvocationContext {
   waitUntil(promise: Promise<unknown>): void;
 }
 
+function parsePoolMax(value: string | undefined): number {
+  const parsed = Number(value ?? "1");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+    throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
+  }
+  return parsed;
+}
+
 const topLevelBindings = env as unknown as CloudflareBindings;
 const configuredDatabaseUrl =
   topLevelBindings.HYPERDRIVE?.connectionString ?? topLevelBindings.DATABASE_URL;
+const configuredPoolMax = parsePoolMax(topLevelBindings.PG_POOL_MAX);
 
 if (!configuredDatabaseUrl) {
   throw new Error(
@@ -50,7 +59,7 @@ process.env.CORS_ORIGINS = topLevelBindings.CORS_ORIGINS;
 process.env.PORT = "3000";
 process.env.TRUST_PROXY = "true";
 process.env.CLOUDFLARE_WORKERS = "true";
-process.env.PG_POOL_MAX = "1";
+process.env.PG_POOL_MAX = String(configuredPoolMax);
 
 const { withRequestPrisma } = await import("../src/server");
 
@@ -64,11 +73,19 @@ export default {
       requestBindings.HYPERDRIVE?.connectionString ??
       requestBindings.DATABASE_URL ??
       configuredDatabaseUrl;
+    const requestPoolMax = parsePoolMax(
+      requestBindings.PG_POOL_MAX ?? String(configuredPoolMax),
+    );
 
-    // Keep the Prisma/pg pool request-scoped in Workers. Always close it after
-    // the response has been handled; waitUntil lets cleanup finish afterward.
+    // Keep the Prisma/pg pool request-scoped in Workers. Bound each request's
+    // pg pool and schedule cleanup after the response has been handled.
     const requestPrisma = new PrismaClient({
-      adapter: new PrismaPg({ connectionString: databaseUrl }),
+      adapter: new PrismaPg({
+        connectionString: databaseUrl,
+        max: requestPoolMax,
+        connectionTimeoutMillis: 5_000,
+        idleTimeoutMillis: 10_000,
+      }),
     });
 
     try {

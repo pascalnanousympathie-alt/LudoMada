@@ -22,10 +22,10 @@ concurrency:
 jobs:
   worker-dry-run:
     # Use the repository's already-registered ARM64 runner while GitHub-hosted
-    # ubuntu-latest jobs are failing before their first step. This is a build
-    # only: no Cloudflare token is configured and no deployment can occur.
+    # ubuntu-latest jobs are failing before their first step. This job only
+    # builds and locally smoke-tests the Worker; it never deploys to Cloudflare.
     runs-on: [self-hosted, linux, ARM64]
-    timeout-minutes: 25
+    timeout-minutes: 35
     env:
       DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
       NODE_ENV: test
@@ -44,3 +44,51 @@ jobs:
       - run: npm run build
       - name: Bundle the Worker without deploying
         run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/ludomada-worker-build --config wrangler.jsonc
+      - name: Smoke test local Worker and PostgreSQL readiness
+        env:
+          WORKER_SMOKE_JWT_SECRET: "local-only-smoke-secret-for-ludomada-workers-2026"
+          WORKER_SMOKE_CORS_ORIGINS: "http://127.0.0.1:8787"
+        run: |
+          set -eu
+          log="$RUNNER_TEMP/ludomada-worker-smoke.log"
+          health="$RUNNER_TEMP/ludomada-worker-health.json"
+          npx --yes wrangler@4 dev \
+            --local \
+            --ip 127.0.0.1 \
+            --port 8787 \
+            --show-interactive-dev-session=false \
+            --var "DATABASE_URL:$DATABASE_URL" \
+            --var "JWT_SECRET:$WORKER_SMOKE_JWT_SECRET" \
+            --var "CORS_ORIGINS:$WORKER_SMOKE_CORS_ORIGINS" \
+            --log-level info > "$log" 2>&1 &
+          wrangler_pid=$!
+          cleanup() {
+            pkill -TERM -f '[w]rangler.*dev --local.*--port 8787' 2>/dev/null || true
+            kill "$wrangler_pid" 2>/dev/null || true
+            wait "$wrangler_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          healthy=0
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8787/health > "$health" 2>/dev/null; then
+              healthy=1
+              break
+            fi
+            if ! kill -0 "$wrangler_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            echo "Worker /health smoke failed; Wrangler output follows"
+            cat "$log"
+            exit 1
+          fi
+          cat "$health"
+          echo
+          if ! curl -fsS http://127.0.0.1:8787/ready; then
+            echo "Worker /ready PostgreSQL smoke failed; Wrangler output follows"
+            cat "$log"
+            exit 1
+          fi
+          echo
