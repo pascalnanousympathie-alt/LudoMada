@@ -92,9 +92,9 @@ database or run migrations against the old volume blindly.
 
 The separate staging database now has a second Supabase migration named
 `ludomada_backend_only_privileges`. It revokes table, sequence, and function
-privileges from `anon` and `authenticated`, including default privileges for
-future objects. This is an interim backend-only restriction; **it does not
-enable RLS**.
+privileges from `anon` and `authenticated`, plus default privileges for
+objects created by the `postgres` role used by the migration connector. This is
+an interim backend-only restriction; **it does not enable RLS**.
 
 Read-only verification confirmed:
 - 13 application tables remain present and total data rows remain 0.
