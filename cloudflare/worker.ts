@@ -1,12 +1,14 @@
 /**
  * Cloudflare Workers adapter for the existing Express + Prisma backend.
  *
- * The existing application is PostgreSQL-specific. Use a reachable PostgreSQL
- * database (preferably via Cloudflare Hyperdrive) rather than rewriting the
- * wallet/game ledger for D1 during this recovery.
+ * A fresh Prisma client is created for each Worker invocation. Hyperdrive's
+ * pool is the long-lived layer; Workers must not reuse a global pg.Pool or
+ * Prisma client across request contexts.
  */
 import { env } from "cloudflare:workers";
-import { httpServerHandler } from "cloudflare:node";
+import { handleAsNodeRequest } from "cloudflare:node";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
 
 interface HyperdriveBinding {
   connectionString: string;
@@ -20,35 +22,73 @@ interface CloudflareBindings {
   PG_POOL_MAX?: string;
 }
 
-const bindings = env as unknown as CloudflareBindings;
-const databaseUrl =
-  bindings.HYPERDRIVE?.connectionString ?? bindings.DATABASE_URL;
+interface WorkerExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
 
-if (!databaseUrl) {
+const topLevelBindings = env as unknown as CloudflareBindings;
+const configuredDatabaseUrl =
+  topLevelBindings.HYPERDRIVE?.connectionString ?? topLevelBindings.DATABASE_URL;
+
+if (!configuredDatabaseUrl) {
   throw new Error(
     "CLOUDFLARE_DATABASE_REQUIRED: configure a DATABASE_URL secret or HYPERDRIVE binding",
   );
 }
-if (!bindings.JWT_SECRET || bindings.JWT_SECRET.length < 32) {
+if (!topLevelBindings.JWT_SECRET || topLevelBindings.JWT_SECRET.length < 32) {
   throw new Error("CLOUDFLARE_JWT_SECRET_REQUIRED: use a secret of at least 32 characters");
 }
-if (!bindings.CORS_ORIGINS?.trim()) {
+if (!topLevelBindings.CORS_ORIGINS?.trim()) {
   throw new Error("CLOUDFLARE_CORS_ORIGINS_REQUIRED: list the real client origins");
 }
 
-// Populate the same runtime contract used by the tested Node/Docker backend.
-// The default pool size is kept low because each Worker isolate owns its pool.
-process.env.DATABASE_URL = databaseUrl;
-process.env.JWT_SECRET = bindings.JWT_SECRET;
-process.env.CORS_ORIGINS = bindings.CORS_ORIGINS;
+// The Express backend validates these settings during module initialization.
+process.env.DATABASE_URL = configuredDatabaseUrl;
+process.env.JWT_SECRET = topLevelBindings.JWT_SECRET;
+process.env.CORS_ORIGINS = topLevelBindings.CORS_ORIGINS;
 process.env.NODE_ENV = "production";
 process.env.PORT = "3000";
 process.env.TRUST_PROXY = "true";
 process.env.CLOUDFLARE_WORKERS = "true";
-process.env.PG_POOL_MAX = bindings.PG_POOL_MAX ?? "1";
+process.env.PG_POOL_MAX = "1";
 
-// The backend starts its Express listener on port 3000. Cloudflare's official
-// Node HTTP server adapter translates that listener into the Worker fetch API.
-await import("../src/server");
+const { withRequestPrisma } = await import("../src/server");
 
-export default httpServerHandler({ port: 3000 });
+function scheduleDisconnect(client: PrismaClient, ctx: WorkerExecutionContext) {
+  ctx.waitUntil(
+    client.$disconnect().catch((error: unknown) => {
+      // Avoid logging connection strings, credentials, or raw query contents.
+      console.error("PRISMA_REQUEST_DISCONNECT_FAILED", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
+    }),
+  );
+}
+
+export default {
+  async fetch(
+    request: Request,
+    requestBindings: CloudflareBindings,
+    ctx: WorkerExecutionContext,
+  ): Promise<Response> {
+    const databaseUrl =
+      requestBindings.HYPERDRIVE?.connectionString ??
+      requestBindings.DATABASE_URL ??
+      configuredDatabaseUrl;
+
+    // Hyperdrive owns connection pooling to PostgreSQL. The client in this
+    // Worker isolate is deliberately request-scoped, not module-global.
+    const requestPrisma = new PrismaClient({
+      adapter: new PrismaPg({ connectionString: databaseUrl }),
+    });
+
+    try {
+      return await withRequestPrisma(
+        requestPrisma,
+        () => handleAsNodeRequest(3000, request),
+      );
+    } finally {
+      scheduleDisconnect(requestPrisma, ctx);
+    }
+  },
+};
