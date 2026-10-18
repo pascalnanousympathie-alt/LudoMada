@@ -24,10 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ludomada_test
-      JWT_SECRET: test-only-secret-with-more-than-thirty-two-characters
-      CORS_ORIGINS: http://localhost:3000
-      NODE_ENV: test
+      DATABASE_URL: postgresql://ludomada_ci@127.0.0.1:5432/ludomada_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
