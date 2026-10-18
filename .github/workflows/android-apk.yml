@@ -86,5 +86,5 @@ jobs:
             _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/output-metadata.json
             _runs/${{ github.run_id }}/LudoMada-premium-gles3-debug.sha256
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
 
