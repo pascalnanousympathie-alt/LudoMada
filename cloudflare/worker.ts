@@ -22,10 +22,6 @@ interface CloudflareBindings {
   PG_POOL_MAX?: string;
 }
 
-interface WorkerExecutionContext {
-  waitUntil(promise: Promise<unknown>): void;
-}
-
 const topLevelBindings = env as unknown as CloudflareBindings;
 const configuredDatabaseUrl =
   topLevelBindings.HYPERDRIVE?.connectionString ?? topLevelBindings.DATABASE_URL;
@@ -54,22 +50,10 @@ process.env.PG_POOL_MAX = "1";
 
 const { withRequestPrisma } = await import("../src/server");
 
-function scheduleDisconnect(client: PrismaClient, ctx: WorkerExecutionContext) {
-  ctx.waitUntil(
-    client.$disconnect().catch((error: unknown) => {
-      // Avoid logging connection strings, credentials, or raw query contents.
-      console.error("PRISMA_REQUEST_DISCONNECT_FAILED", {
-        name: error instanceof Error ? error.name : "UnknownError",
-      });
-    }),
-  );
-}
-
 export default {
   async fetch(
     request: Request,
     requestBindings: CloudflareBindings,
-    ctx: WorkerExecutionContext,
   ): Promise<Response> {
     const databaseUrl =
       requestBindings.HYPERDRIVE?.connectionString ??
@@ -82,13 +66,11 @@ export default {
       adapter: new PrismaPg({ connectionString: databaseUrl }),
     });
 
-    try {
-      return await withRequestPrisma(
-        requestPrisma,
-        () => handleAsNodeRequest(3000, request),
-      );
-    } finally {
-      scheduleDisconnect(requestPrisma, ctx);
-    }
+    // Cloudflare automatically manages the invocation-scoped connection
+    // lifecycle. Do not retain this Prisma client in any global state.
+    return await withRequestPrisma(
+      requestPrisma,
+      () => handleAsNodeRequest(3000, request),
+    );
   },
 };
