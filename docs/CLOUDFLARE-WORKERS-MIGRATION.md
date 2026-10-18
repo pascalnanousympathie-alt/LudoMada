@@ -88,6 +88,27 @@ database or run migrations against the old volume blindly.
    Keep the Railway deployment/data intact until backup, rollback, and cutover
    have all been verified.
 
+## Staging database access-control state (verified 2026-10-18)
+
+The separate staging database now has a second Supabase migration named
+`ludomada_backend_only_privileges`. It revokes table, sequence, and function
+privileges from `anon` and `authenticated`, including default privileges for
+future objects. This is an interim backend-only restriction; **it does not
+enable RLS**.
+
+Read-only verification confirmed:
+- 13 application tables remain present and total data rows remain 0.
+- Direct table grants to `anon` / `authenticated`: 0.
+- Table grants to the PostgreSQL `PUBLIC` role: 0.
+- `anon` cannot SELECT from `User` or UPDATE `Wallet`.
+- `authenticated` cannot SELECT from `Transaction` or INSERT into
+  `GameCommand`.
+
+Schema `USAGE` remains inherited from the default `PUBLIC` schema grant, but
+the inspected roles have no effective privileges on the application tables.
+The backend must connect with a server-side database role that retains the
+required privileges; never embed that database credential in the mobile app.
+
 ## Required database security decision
 
 The staging database currently has RLS disabled on its 13 application tables.
