@@ -56,13 +56,27 @@ database or run migrations against the old volume blindly.
    ```
    When this binding exists, the Worker uses its `connectionString`; otherwise
    it uses the `DATABASE_URL` secret. Never put a real password in the repo.
-5. Run Prisma migrations from a trusted migration runner against the restored
-   staging database (`npx prisma migrate deploy`). Do not run migrations
-   automatically on every request or against production before verifying the
-   backup.
-6. Deploy only to a staging Worker first. Verify `GET /health`, `GET /ready`,
-   register/login, refresh-token rotation, lobby, game-state concurrency, wallet
-   ledger invariants, and payment-provider-disabled behavior.
+5. **Migration history must be reconciled before running Prisma migrations.**
+   The separate `ludomada-cloudflare-staging` Supabase project was created on
+   2026-10-18 and its empty database was initialized from the current
+   `prisma/schema.prisma` model: 13 tables, 104 columns, 5 enums, 13 foreign
+   keys, and zero data rows were verified. This was applied through the Supabase
+   migration API, not through Prisma Migrate; the Prisma
+   `_prisma_migrations` baseline is therefore not yet reconciled. **Do not run
+   `npx prisma migrate deploy` against this already-initialized database** until
+   a reviewed Prisma baseline and its applied-history procedure are prepared.
+   Do not run migrations automatically on every request or against production.
+6. **Security gate:** Supabase currently reports Row Level Security (RLS)
+   disabled for all 13 public tables. Do not expose this database through the
+   Supabase Data API, add test/user data, or connect a public client until an
+   intentional RLS/grant policy has been reviewed and applied. See the project's
+   Security section in the deployment notes; enabling RLS without policies
+   blocks normal anon/authenticated table access. Do not add user-selected
+   policies without deciding the intended access model first.
+7. Deploy only to a staging Worker after the database security and migration
+   gates are resolved. Verify `GET /health`, `GET /ready`, register/login,
+   refresh-token rotation, lobby, game-state concurrency, wallet ledger
+   invariants, and payment-provider-disabled behavior.
 7. Keep `PAYMENTS_MVOLA_LIVE_ENABLED=false` and
    `PAYMENTS_BINANCE_LIVE_ENABLED=false` until provider credentials/contracts,
    webhook verification, and operational approval have been verified. Do not
@@ -73,6 +87,34 @@ database or run migrations against the old volume blindly.
 9. Change the Android/API base URL only after staging and regression gates pass.
    Keep the Railway deployment/data intact until backup, rollback, and cutover
    have all been verified.
+
+## Required database security decision
+
+The staging database currently has RLS disabled on its 13 application tables.
+For reference, the Supabase advisor's baseline RLS statements are:
+
+```sql
+ALTER TABLE "public"."User" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."Wallet" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."Game" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."Transaction" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."GameParticipant" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."LedgerEntry" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."GameMove" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."RefreshSession" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."AuditLog" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."IdempotencyRecord" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."GameEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."AuthoritativeGameState" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "public"."GameCommand" ENABLE ROW LEVEL SECURITY;
+```
+
+These statements have **not** been applied. Enabling RLS without policies is a
+deliberate fail-closed state for Supabase anon/authenticated access and may
+block direct app behavior depending on the database role. Confirm the intended
+access model, keep the service credential server-side only, and add/review any
+policies before exposing or seeding the database. Never put a database password
+or service-role key in Git.
 
 ## Local dry-run
 
