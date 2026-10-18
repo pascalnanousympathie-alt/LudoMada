@@ -1,4 +1,4 @@
-name: Lane F Premium Visual Gate
+name: Lane F Premium Source Gate (Hosted)
 
 on:
   workflow_dispatch:
@@ -8,41 +8,53 @@ on:
       - feat/ludomada-product-clean-20261013
     paths:
       - "android-app/**"
+      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
   pull_request:
     paths:
       - "android-app/**"
+      - "scripts/android-release-audit.py"
       - "scripts/audit-material-calibration.mjs"
       - "scripts/check-3d-assets.mjs"
+      - "scripts/check-3d-optimization.mjs"
       - "scripts/check-glb-runtime-transform.mjs"
       - "scripts/check-apk-3d-asset.mjs"
       - "scripts/ramus-smoke.mjs"
       - "scripts/check-ramus-wallet-hitbox.mjs"
       - ".github/workflows/lane-f-premium-gate.yml"
+      - ".github/workflows/ci.yml"
+      - ".github/workflows/backend-cloud-validation.yml"
 
 permissions:
   contents: read
-  actions: read
+
+concurrency:
+  group: lane-f-premium-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   premium-gate:
-    # Ramus is a remote emulator. Reuse the exact successful APK from the hosted
-    # Cloud Fallback job instead of running a second Gradle build for the same SHA.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    concurrency:
-      group: ludomada-shared-ramus-fleet
-      cancel-in-progress: false
+    # Source-level premium checks use the existing free self-hosted ARM64 runner.
+    # UI/runtime evidence remains independently gated by Android APK Cloud Fallback.
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 15
     env:
       RELEASE_MAX_RUNTIME: "39600"
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
     steps:
-      - name: Checkout exact merge candidate
+      - name: Checkout exact commit into an isolated run workspace
         uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
@@ -50,117 +62,31 @@ jobs:
           clean: true
           path: _runs/${{ github.run_id }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
+      - name: Use Termux Node.js
+        run: |
+          set -eu
+          mkdir -p "$HOME/.ci-node-bin"
+          cat > "$HOME/.ci-node-bin/node" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/node "$@"
+          EOF
+          cat > "$HOME/.ci-node-bin/python3" <<'EOF'
+          #!/data/data/com.termux/files/usr/bin/sh
+          export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib
+          exec /data/data/com.termux/files/usr/bin/python3 "$@"
+          EOF
+          chmod +x "$HOME/.ci-node-bin/node" "$HOME/.ci-node-bin/python3"
+          # Never export Termux/Bionic libraries into later Debian/glibc bash steps.
+          echo "PATH=$HOME/.ci-node-bin:/data/data/com.termux/files/usr/bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Strict premium source gate
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
         run: |
           set -eu
+          python3 scripts/android-release-audit.py
           node scripts/audit-material-calibration.mjs --strict
           node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
           node scripts/check-glb-runtime-transform.mjs
           node scripts/check-ramus-wallet-hitbox.mjs
-
-      - name: Locate successful Cloud Fallback artifact for the exact merge SHA
-        id: apk-run
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pr = context.payload.pull_request;
-            const branch = pr?.head?.ref || context.ref.replace(/^refs\/heads\//, "");
-            const headSha = pr?.head?.sha || context.sha;
-            const mergeSha = context.sha;
-            const expectedName = `LudoMada-premium-gles3-debug-${mergeSha}`;
-            // Cloud Fallback and Lane F start from the same PR event. Poll for the
-            // matching artifact rather than failing simply because Gradle is still building.
-            for (let attempt = 1; attempt <= 30; attempt++) {
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner,
-                repo,
-                workflow_id: "android-apk-cloud-fallback.yml",
-                branch,
-                status: "completed",
-                per_page: 100
-              });
-              const candidates = runs.filter(run =>
-                run.conclusion === "success" &&
-                run.head_sha === headSha
-              );
-              for (const run of candidates) {
-                const listed = await github.rest.actions.listWorkflowRunArtifacts({
-                  owner, repo, run_id: run.id, per_page: 100
-                });
-                const artifact = listed.data.artifacts.find(item =>
-                  !item.expired && item.name === expectedName
-                );
-                if (artifact) {
-                  core.setOutput("run_id", String(run.id));
-                  core.info(`Using APK artifact ${artifact.name} from successful run ${run.id}`);
-                  return;
-                }
-              }
-              if (attempt < 30) {
-                core.info(`Waiting for exact-SHA Cloud Fallback artifact (${attempt}/30)`);
-                await new Promise(resolve => setTimeout(resolve, 10000));
-              }
-            }
-            core.setFailed(
-              `No successful Cloud Fallback artifact named "${expectedName}" found for head SHA ${headSha} after 5 minutes; inspect the Android Cloud Fallback run.`
-            );
-
-      - name: Download verified debug and instrumentation APKs
-        uses: actions/download-artifact@v4
-        with:
-          name: LudoMada-premium-gles3-debug-${{ github.sha }}
-          path: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk
-          run-id: ${{ steps.apk-run.outputs.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-
-      - name: Verify current 3D assets are packaged in the downloaded APK
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          test -s android-app/app/build/outputs/apk/debug/app-debug.apk
-          test -s android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Install exact Ramus CLI release 0.1.14
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        run: |
-          set -eu
-          mkdir -p "$RUNNER_TEMP/ramus-cli"
-          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/ramus-cli" ramus-cli@0.1.14
-          test -s "$RUNNER_TEMP/ramus-cli/ramus-cli-0.1.14.tgz"
-          tar -xzf "$RUNNER_TEMP/ramus-cli/ramus-cli-0.1.14.tgz" -C "$RUNNER_TEMP/ramus-cli"
-          test "$(node -p "require('$RUNNER_TEMP/ramus-cli/package/package.json').version")" = "0.1.14"
-          test -f "$RUNNER_TEMP/ramus-cli/package/dist/main.js"
-          echo "RAMUS_CLI=$RUNNER_TEMP/ramus-cli/package/dist/main.js" >> "$GITHUB_ENV"
-          echo "RAMUS_CLI_VERSION=0.1.14" >> "$GITHUB_ENV"
-
-      - name: Ramus visual and interaction smoke
-        working-directory: ${{ github.workspace }}/_runs/${{ github.run_id }}
-        env:
-          RAMUS_APK: ${{ github.workspace }}/_runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
-          RAMUS_API_KEY: ${{ secrets.RAMUS_API_KEY }}
-          RAMUS_CAPTURE: "1"
-        run: |
-          set -o pipefail
-          timeout -k 10s 900s node scripts/ramus-smoke.mjs 2>&1 | tee ramus-smoke.log
-
-      - name: Upload Lane F screenshot and diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ludomada-lane-f-${{ github.run_id }}
-          path: |
-            _runs/${{ github.run_id }}/ramus-smoke.log
-            _runs/${{ github.run_id }}/ramus-evidence
-            _runs/${{ github.run_id }}/android-app/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: warn
-          retention-days: 7
+          node --check scripts/ramus-smoke.mjs

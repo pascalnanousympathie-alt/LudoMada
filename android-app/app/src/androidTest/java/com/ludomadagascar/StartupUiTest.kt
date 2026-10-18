@@ -31,7 +31,13 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
+        fun captureEvidence(name: String) {
+            val file = File(instrumentation.context.cacheDir, name)
+            device.takeScreenshot(file)
+            assertTrue("Screenshot evidence missing: $name", file.exists() && file.length() > 1000)
+        }
         assertTrue("Premium Home did not render", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 8000))
+        captureEvidence("ludomada-home.png")
 
         val homeControls = listOf(
             "HOME_PROFILE_CHIP",
@@ -62,6 +68,7 @@ class StartupUiTest {
         assertTrue("Game-mode screen did not open from Home", device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         assertTrue("Offline mode target missing", device.hasObject(By.desc("MODE_OFFLINE")))
         assertTrue("Online mode target missing", device.hasObject(By.desc("MODE_ONLINE")))
+        captureEvidence("ludomada-game-mode.png")
         device.findObject(By.desc("MODE_ONLINE")).click()
         assertTrue("Online mode should open the stake lobby", device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
         device.findObject(By.text("← Accueil")).click()
@@ -108,11 +115,13 @@ class StartupUiTest {
         device.findObject(By.desc("HOME_WALLET_SHORTCUT")).click()
         assertTrue("Wallet menu did not open", device.wait(Until.hasObject(By.text("SOLDE MGA")), 5000))
         assertTrue("Unauthenticated Wallet must not fabricate a balance", device.hasObject(By.text("— Ar")))
+        captureEvidence("ludomada-wallet.png")
         device.findObject(By.text("⌂ Accueil")).click()
         assertTrue("Wallet did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
 
         device.findObject(By.desc("HOME_MARKET")).click()
         assertTrue("3D Market screen did not open", device.wait(Until.hasObject(By.text("Aperçu live 3D")), 5000))
+        captureEvidence("ludomada-market.png")
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Market did not return to Home", device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 5000))
 
@@ -154,6 +163,11 @@ class StartupUiTest {
         instrumentation.startActivitySync(intent)
 
         val device = UiDevice.getInstance(instrumentation)
+        fun captureEvidence(name: String) {
+            val file = File(instrumentation.context.cacheDir, name)
+            device.takeScreenshot(file)
+            assertTrue("Screenshot evidence missing: $name", file.exists() && file.length() > 1000)
+        }
 
         // Premium Home is the first screen; authentication is only required for online actions.
         assertTrue(device.wait(Until.hasObject(By.desc("LudoMada Premium Home")), 8000))
@@ -182,6 +196,7 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.desc("OFFLINE_4_PLAYERS")))
         device.findObject(By.desc("OFFLINE_2_PLAYERS")).click()
         assertGameplayLoaded(2)
+        captureEvidence("ludomada-gameplay-2p.png")
         assertTrue("Gameplay must expose the dice HUD action", device.hasObject(By.desc("TOUCHEZ_LE_DE")))
 
         // Exercise the real roll callback without asserting a synthetic pawn button: pawns are
@@ -200,6 +215,101 @@ class StartupUiTest {
         }
         assertTrue("Dice action should reach a six within retries", gotSix)
 
+        // Read DEBUG-only, real game state from the existing 3D board accessibility node.
+        // The tap uses the same normalized projected-pawn coordinates as LudoBoardView.onTouchEvent.
+        fun offlineSmokeMarkers(): Map<String, String> {
+            val board = device.findObject(By.descContains("OFFLINE_SMOKE_STATE=")) ?: return emptyMap()
+            return board.contentDescription?.toString().orEmpty()
+                .split("|")
+                .mapNotNull { marker ->
+                    val separator = marker.indexOf('=')
+                    if (separator <= 0) null else marker.substring(0, separator) to marker.substring(separator + 1)
+                }
+                .toMap()
+        }
+        fun parseSmokeFields(raw: String?): Map<String, String> = raw.orEmpty()
+            .split(",")
+            .mapNotNull { field ->
+                val separator = field.indexOf('=')
+                if (separator <= 0) null else field.substring(0, separator) to field.substring(separator + 1)
+            }
+            .toMap()
+        fun smokePositions(markers: Map<String, String>, player: Int): List<Int> {
+            val playerRow = markers["OFFLINE_SMOKE_POSITIONS"]?.split(';')
+                ?.firstOrNull { it.startsWith("$player:") } ?: return emptyList()
+            return playerRow.substringAfter(':').split(',').mapNotNull { it.toIntOrNull() }
+        }
+
+        var beforeMarkers = emptyMap<String, String>()
+        var beforeState = emptyMap<String, String>()
+        var beforePositions = emptyList<Int>()
+        var turn = -1
+        for (attempt in 0 until 20) {
+            beforeMarkers = offlineSmokeMarkers()
+            beforeState = parseSmokeFields(beforeMarkers["OFFLINE_SMOKE_STATE"])
+            turn = beforeState["turn"]?.toIntOrNull() ?: -1
+            if (beforeState["players"] == "2" && beforeState["dice"] == "6" && turn >= 0) {
+                beforePositions = smokePositions(beforeMarkers, turn)
+                if (beforePositions.size == 4) break
+            }
+            Thread.sleep(250)
+        }
+        assertTrue("DEBUG state did not report a valid two-player six roll: $beforeState",
+            beforeState["players"] == "2" && beforeState["dice"] == "6" && turn >= 0)
+        assertTrue("Four token positions were not exposed: $beforeMarkers", beforePositions.size == 4)
+        val tokenIndex = beforePositions.indexOfFirst { position -> position == -1 || position >= 0 && position + 6 <= 57 }
+        assertTrue("No legal token found after six: $beforePositions", tokenIndex >= 0)
+
+        val targetEntry = beforeMarkers["OFFLINE_SMOKE_TOKENS"]?.split(';')
+            ?.firstOrNull { it.startsWith("$tokenIndex:") }
+            ?: throw AssertionError("Projected target for legal token $tokenIndex is missing: $beforeMarkers")
+        val targetParts = targetEntry.split('@')
+        assertTrue("Projected target coordinates are malformed: $targetEntry", targetParts.size == 2)
+        val scenePoint = targetParts[0].substringAfter(':').split(',')
+        val normalizedPoint = targetParts[1].split(',')
+        assertTrue("Scene point is malformed: $targetEntry", scenePoint.size == 2)
+        assertTrue("Normalized input point is malformed: $targetEntry", normalizedPoint.size == 2)
+        val sceneX = scenePoint[0].toFloatOrNull() ?: throw AssertionError("Invalid scene X: $targetEntry")
+        val sceneY = scenePoint[1].toFloatOrNull() ?: throw AssertionError("Invalid scene Y: $targetEntry")
+        val inputX = normalizedPoint[0].toFloatOrNull() ?: throw AssertionError("Invalid input X: $targetEntry")
+        val inputY = normalizedPoint[1].toFloatOrNull() ?: throw AssertionError("Invalid input Y: $targetEntry")
+        val viewDimensions = beforeMarkers["OFFLINE_SMOKE_VIEW"]?.split(',') ?: emptyList()
+        assertTrue("View and GL viewport dimensions are missing: $viewDimensions", viewDimensions.size == 2)
+        val sceneDimensions = viewDimensions[1].split('x')
+        assertTrue("GL viewport dimensions are malformed: $viewDimensions", sceneDimensions.size == 2)
+        val sceneWidth = sceneDimensions[0].toFloatOrNull() ?: -1f
+        val sceneHeight = sceneDimensions[1].toFloatOrNull() ?: -1f
+        assertTrue("Projected pawn is outside the GL viewport: $targetEntry / $viewDimensions",
+            sceneWidth > 0f && sceneHeight > 0f && sceneX in 0f..sceneWidth && sceneY in 0f..sceneHeight)
+        assertTrue("Pawn touch input must be normalized inside the board: $targetEntry",
+            inputX >= 0f && inputX < 1f && inputY >= 0f && inputY < 1f)
+
+        val boardView = device.findObject(By.descContains("OFFLINE_SMOKE_STATE="))
+            ?: throw AssertionError("3D board accessibility target disappeared before pawn tap")
+        val boardBounds = boardView.visibleBounds
+        assertTrue("3D board has no visible tappable bounds: $boardBounds", boardBounds.width() > 0 && boardBounds.height() > 0)
+        val tapX = boardBounds.left + (inputX * boardBounds.width()).toInt()
+        val tapY = boardBounds.top + (inputY * boardBounds.height()).toInt()
+        assertTrue("Ramus-equivalent tap fell outside the projected board bounds: $tapX,$tapY / $boardBounds",
+            tapX in boardBounds.left until boardBounds.right && tapY in boardBounds.top until boardBounds.bottom)
+        assertTrue("Touch on projected legal pawn was rejected", device.click(tapX, tapY))
+
+        var afterMarkers = emptyMap<String, String>()
+        var afterState = emptyMap<String, String>()
+        var afterPositions = emptyList<Int>()
+        for (attempt in 0 until 20) {
+            Thread.sleep(250)
+            afterMarkers = offlineSmokeMarkers()
+            afterState = parseSmokeFields(afterMarkers["OFFLINE_SMOKE_STATE"])
+            afterPositions = smokePositions(afterMarkers, turn)
+            if (afterPositions.size == 4 && afterPositions[tokenIndex] != beforePositions[tokenIndex]) break
+        }
+        assertTrue("Real pawn tap did not move its token: before=$beforePositions after=$afterPositions",
+            afterPositions.size == 4 && afterPositions[tokenIndex] == 0)
+        assertTrue("A six-roll pawn move must clear the die and preserve the extra turn: $afterState",
+            afterState["dice"] == "0" && afterState["turn"] == turn.toString())
+        captureEvidence("ludomada-gameplay-pawn-moved.png")
+
         // Game HUD settings must be functional and return to the same offline match.
         device.findObject(By.desc("PARAMETRES")).click()
         assertTrue("Gameplay settings control did not open settings", device.wait(Until.hasObject(By.text("Préférences de l'application")), 3000))
@@ -211,11 +321,13 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_3_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_3_PLAYERS")).click()
         assertGameplayLoaded(3)
+        captureEvidence("ludomada-gameplay-3p.png")
 
         device.findObject(By.desc("MENU_JEU")).click()
         assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_4_PLAYERS")), 3000))
         device.findObject(By.desc("OFFLINE_4_PLAYERS")).click()
         assertGameplayLoaded(4)
+        captureEvidence("ludomada-gameplay-4p.png")
 
         val file = File(instrumentation.context.cacheDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)

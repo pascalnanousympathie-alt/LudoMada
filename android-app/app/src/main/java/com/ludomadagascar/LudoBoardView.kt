@@ -64,6 +64,43 @@ class LudoBoardView(
             contentDescription = parts.joinToString("|")
         }
     }
+
+    /**
+     * DEBUG-only Ramus evidence: current offline rules state and the real projected pawn targets.
+     * This describes the existing hit-test geometry; it does not change gameplay input or rules.
+     */
+    internal fun updateOfflineSmokeEvidence(players: Int, turn: Int, dice: Int, positions: String, phase: String) {
+        if (!BuildConfig.DEBUG || homePreview || !::renderer.isInitialized) return
+        val viewWidth = max(1f, width.toFloat())
+        val viewHeight = max(1f, height.toFloat())
+        val viewport = runCatching { renderer.viewportSize() }.getOrDefault(intArrayOf(width,height))
+        val sceneWidth = max(1, viewport.getOrElse(0) { width })
+        val sceneHeight = max(1, viewport.getOrElse(1) { height })
+        val projected = runCatching { renderer.projectedTokens(turn.coerceIn(0, 3)) }.getOrNull()
+        val targets = projected?.mapIndexed { index, point ->
+            val px = point[0]
+            val py = point[1]
+            val inputX = if (width < height) py / viewWidth else px / viewWidth
+            val inputY = if (width < height) (viewHeight - px) / viewHeight else py / viewHeight
+            "$index:$px,$py@$inputX,$inputY"
+        }?.joinToString(";") ?: "unavailable"
+        val parts = contentDescription?.toString().orEmpty()
+            .split("|")
+            .filter { it.isNotBlank() }
+            .filterNot {
+                it.startsWith("OFFLINE_SMOKE_STATE=") ||
+                    it.startsWith("OFFLINE_SMOKE_POSITIONS=") ||
+                    it.startsWith("OFFLINE_SMOKE_TOKENS=") ||
+                    it.startsWith("OFFLINE_SMOKE_VIEW=")
+            }
+            .toMutableList()
+        if (parts.none { it.startsWith("RENDERER=") }) parts.add("RENDERER=" + rendererMode)
+        parts.add("OFFLINE_SMOKE_STATE=players=$players,turn=$turn,dice=$dice,phase=$phase")
+        parts.add("OFFLINE_SMOKE_POSITIONS=$positions")
+        parts.add("OFFLINE_SMOKE_VIEW=${width}x${height},${sceneWidth}x${sceneHeight}")
+        parts.add("OFFLINE_SMOKE_TOKENS=$targets")
+        contentDescription = parts.joinToString("|")
+    }
     private var gameAudio: SpatialGameAudio? = null
     private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
     private fun smokeMarker(value:String) {
@@ -76,6 +113,17 @@ class LudoBoardView(
     }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
+
+    // Keep the premium GLES3/PBR Home live, but cap software-emulator work to ~30 FPS.
+    // A continuous 60 FPS GL loop provides little visual benefit for a lobby and can
+    // exhaust hosted-emulator GPU/CPU resources before Ramus can capture diagnostics.
+    private val homeFrameTick = object : Runnable {
+        override fun run() {
+            if (!homePreview || !isAttachedToWindow) return
+            requestRender()
+            postDelayed(this, 33L)
+        }
+    }
 
     private fun deviceSupportsGles3(): Boolean {
         val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
@@ -117,7 +165,7 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = !homePreview
         isClickable = !homePreview
         if (homePreview) post { configureHomePreview() }
@@ -438,7 +486,29 @@ class LudoBoardView(
         }
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (homePreview) {
+            removeCallbacks(homeFrameTick)
+            post(homeFrameTick)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (homePreview && isAttachedToWindow) {
+            removeCallbacks(homeFrameTick)
+            post(homeFrameTick)
+        }
+    }
+
+    override fun onPause() {
+        removeCallbacks(homeFrameTick)
+        super.onPause()
+    }
+
     override fun onDetachedFromWindow() {
+        removeCallbacks(homeFrameTick)
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
@@ -455,6 +525,7 @@ class LudoBoardView(
         val bounce: Array<FloatArray>
         fun projectedTokens(pi: Int): Array<FloatArray>
         fun projectedDice(): Array<FloatArray>
+        fun viewportSize(): IntArray
     }
 
     /**
@@ -824,6 +895,8 @@ class LudoBoardView(
             }
             return out
         }
+
+        override fun viewportSize():IntArray = intArrayOf(max(1,width),max(1,height))
 
         private fun project(x:Float,y:Float,z:Float,out:FloatArray){
             val v=floatArrayOf(x,y,z,1f)
@@ -1238,6 +1311,7 @@ class LudoBoardView(
             for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
+        override fun viewportSize():IntArray = intArrayOf(sceneWidth,sceneHeight)
         private fun dieCenterWorld(pi:Int):FloatArray = if(host.homePreview){
             floatArrayOf(0f,boardTop+0.10f,0f)
         }else when(pi){

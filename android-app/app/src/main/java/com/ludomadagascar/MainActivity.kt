@@ -1731,6 +1731,8 @@ class MainActivity : Activity() {
 
         addGameplayHud(frame,players)
         host.animateState()
+        updateOfflineSmokeEvidence(host)
+        root.postDelayed({if(currentScreen=="offline"&&offlineHost===host)updateOfflineSmokeEvidence(host)},450L)
         smokeMarker("OFFLINE_AFTER_ANIMATE")
         smokeMarker("OFFLINE_DONE")
     }
@@ -1742,9 +1744,26 @@ class MainActivity : Activity() {
         val positions=(0 until minOf(4,ts.length())).map { ts.optJSONObject(it)?.optInt("pos",-1)?:-1 }
         return OfflineLudoRules.hasLegalMove(positions,dice)
     }
+    private fun updateOfflineSmokeEvidence(host:LudoBoardView) {
+        if(!BuildConfig.DEBUG)return
+        val ps=offlineState?.optJSONArray("players")?:return
+        val positions=(0 until minOf(offlinePlayers,ps.length())).joinToString(";"){pi->
+            val ts=ps.optJSONObject(pi)?.optJSONArray("tokens")
+            "${pi}:"+(0 until 4).joinToString(","){ti->(ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1).toString()}
+        }
+        val phase=offlineState?.optString("phase","PLAYING")?:"PLAYING"
+        host.updateOfflineSmokeEvidence(offlinePlayers,offlineTurn,offlineDice,positions,phase)
+    }
     private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
-        offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
-        status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
+        offlineTurn=(offlineTurn+1)%players
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState
+        host.player=offlineTurn
+        status.text="Joueur ${offlineTurn+1}/$players • Dé: 0"
+        host.invalidate()
+        updateOfflineSmokeEvidence(host)
+        root.postDelayed({if(currentScreen=="offline"&&offlineHost===host)updateOfflineSmokeEvidence(host)},350L)
     }
     private fun offlineRoll(host:LudoBoardView){
         if(host.isDiceRolling())return
@@ -1754,11 +1773,14 @@ class MainActivity : Activity() {
         offlineState?.put("dice",offlineDice)
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
-            offlineDice=0
-            root.postDelayed({if(currentScreen=="offline")advanceOfflineTurn(offlinePlayers,host)},550L)
+            updateOfflineSmokeEvidence(host)
+            root.postDelayed({if(currentScreen=="offline"&&offlineHost===host)advanceOfflineTurn(offlinePlayers,host)},550L)
             return
         }
-        status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()
+        status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice"
+        host.invalidate()
+        updateOfflineSmokeEvidence(host)
+        root.postDelayed({if(currentScreen=="offline"&&offlineHost===host)updateOfflineSmokeEvidence(host)},350L)
     }
     private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){
         if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return}
@@ -1791,11 +1813,17 @@ class MainActivity : Activity() {
         if(finished){
             offlineState?.put("phase","FINISHED")?.put("winnerId","offline-$offlineTurn")
             status.text="🏆 Joueur ${offlineTurn+1} gagne la partie !"
-            host.invalidate();return
+            host.invalidate()
+            updateOfflineSmokeEvidence(host)
+            return
         }
         val extra=OfflineLudoRules.keepsTurn(dice,captured)
         status.text="Joueur ${offlineTurn+1} • Dé: 0 • ${if(captured>0)"Capture ! " else ""}Déplacement…"
-        root.postDelayed({if(currentScreen=="offline"){if(extra){status.text="Joueur ${offlineTurn+1}/$players • Rejouez — Dé: 0"}else advanceOfflineTurn(players,host)}},700L)
+        updateOfflineSmokeEvidence(host)
+        root.postDelayed({if(currentScreen=="offline"&&offlineHost===host){
+            updateOfflineSmokeEvidence(host)
+            if(extra){status.text="Joueur ${offlineTurn+1}/$players • Rejouez — Dé: 0"}else advanceOfflineTurn(players,host)
+        }},700L)
     }
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}

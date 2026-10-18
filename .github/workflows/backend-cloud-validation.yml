@@ -1,27 +1,9 @@
 name: LudoMada Backend Cloud Validation
 
 on:
+  # Reusable hosted PostgreSQL validation; ci.yml invokes it for backend PR changes.
+  workflow_call:
   workflow_dispatch:
-  push:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "prisma/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "jest.config.cjs"
-      - ".github/workflows/backend-cloud-validation.yml"
-  pull_request:
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "prisma/**"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "jest.config.cjs"
-      - ".github/workflows/backend-cloud-validation.yml"
 
 permissions:
   contents: read

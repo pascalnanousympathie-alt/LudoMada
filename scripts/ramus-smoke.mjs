@@ -7,16 +7,21 @@ const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
 if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`);
 
+function isTerminalSessionError(value) {
+  const text = typeof value === "string" ? value : JSON.stringify(value || {});
+  return /session[_\s-]*(?:ended|not found|closed|inactive|expired|not active|terminated)|(?:not found|closed|inactive|expired|not active|terminated)[^\n]{0,60}session/i.test(text);
+}
+
 function runCli(...args) {
   const isSnapshot = args[0] === "snapshot";
   const isScreenshot = args[0] === "screenshot";
   const isSessionStart = args[0] === "session" && args[1] === "start";
   const isInteraction = ["tap", "swipe", "press", "type", "wait", "app"].includes(args[0]);
-  const timeoutMs = isSnapshot ? 15000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
+  const timeoutMs = isSnapshot ? 10000 : (isScreenshot ? 15000 : (isSessionStart ? 180000 : (isInteraction ? 15000 : 60000)));
   const timeoutBin = process.env.RAMUS_TIMEOUT_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/timeout" : "timeout");
   const timeoutSec = Math.max(1, Math.ceil(timeoutMs / 1000));
   const isCapacitySensitive = isSessionStart || args[0] === "trial";
-  const maxAttempts = isCapacitySensitive ? 20 : 3;
+  const maxAttempts = isCapacitySensitive ? 20 : (isSnapshot ? 2 : 3);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const r = spawnSync(timeoutBin, ["-k", "2s", `${timeoutSec}s`, process.execPath, cli, ...args], {
       encoding: "utf8",
@@ -24,6 +29,9 @@ function runCli(...args) {
     });
     const out = (r.stdout || "").trim();
     const err = (r.stderr || "").trim();
+    if (isTerminalSessionError(out + "\n" + err)) {
+      return { ok: false, value: { error: "session_ended", message: (out || err).slice(0, 1200) } };
+    }
     const transient = /fetch failed|unreachable|stream_closed|session stream closed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|network/i.test(out + "\n" + err);
     const capacityBusy = /trial_capacity|session_cap|all trial emulator slots are busy|session cap reached/i.test(out + "\n" + err);
     if (out) {
@@ -46,9 +54,9 @@ function runCli(...args) {
       }
       return { ok: false, value };
     }
-    if ((isSessionStart || isSnapshot || isInteraction) && attempt < 3) {
+    if ((isSessionStart || isSnapshot || isInteraction) && attempt < maxAttempts) {
       const sleepBin = process.env.RAMUS_SLEEP_BIN || (process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep");
-      spawnSync(sleepBin, [isSessionStart ? "3" : "2"], { stdio: "ignore" });
+      spawnSync(sleepBin, [isSessionStart ? "3" : (isSnapshot ? "1" : "2")], { stdio: "ignore" });
       continue;
     }
     return { ok: false, value: { error: "no_output", message: err || `ramus ${args.join(" ")} produced no output` } };
@@ -70,6 +78,79 @@ function snap(findText = null) {
 function hasText(text) {
   const r = allow("snapshot", "--session", session, "--find", text);
   return !!(r.ok && r.value?.elements?.length);
+}
+function readOfflineSmokeState() {
+  const r = allow("snapshot", "--session", session, "--find", "OFFLINE_SMOKE_STATE=");
+  if (!r.ok) return null;
+  let description = "";
+  for (const element of r.value?.elements || []) {
+    for (const source of [element.contentDesc, element.text]) {
+      const value = String(source || "");
+      if (value.includes("OFFLINE_SMOKE_STATE=")) { description = value; break; }
+    }
+    if (description) break;
+  }
+  if (!description) return null;
+  const marker = prefix => description.split("|").find(part => part.startsWith(prefix)) || "";
+  const stateMarker = marker("OFFLINE_SMOKE_STATE=");
+  const positionsMarker = marker("OFFLINE_SMOKE_POSITIONS=");
+  const targetsMarker = marker("OFFLINE_SMOKE_TOKENS=");
+  const viewMarker = marker("OFFLINE_SMOKE_VIEW=");
+  if (!stateMarker || !positionsMarker || !targetsMarker || !viewMarker) return null;
+  const state = {};
+  for (const pair of stateMarker.slice("OFFLINE_SMOKE_STATE=".length).split(",")) {
+    const at = pair.indexOf("=");
+    if (at <= 0) continue;
+    const key = pair.slice(0, at);
+    const value = pair.slice(at + 1);
+    state[key] = ["players", "turn", "dice"].includes(key) ? Number(value) : value;
+  }
+  const positions = {};
+  for (const item of positionsMarker.slice("OFFLINE_SMOKE_POSITIONS=".length).split(";")) {
+    const at = item.indexOf(":");
+    if (at <= 0) continue;
+    positions[Number(item.slice(0, at))] = item.slice(at + 1).split(",").map(Number);
+  }
+  const targets = {};
+  for (const item of targetsMarker.slice("OFFLINE_SMOKE_TOKENS=".length).split(";")) {
+    const at = item.indexOf(":");
+    if (at <= 0) continue;
+    const tokenIndex = Number(item.slice(0, at));
+    const [raw = "", normalized = ""] = item.slice(at + 1).split("@");
+    const [px, py] = raw.split(",").map(Number);
+    const [x, y] = normalized.split(",").map(Number);
+    targets[tokenIndex] = { px, py, x, y };
+  }
+  const [viewDimensions = "", sceneDimensions = ""] = viewMarker.slice("OFFLINE_SMOKE_VIEW=".length).split(",");
+  const [viewWidth, viewHeight] = viewDimensions.split("x").map(Number);
+  const [sceneWidth, sceneHeight] = sceneDimensions.split("x").map(Number);
+  if (!Number.isFinite(state.players) || !Number.isFinite(state.turn) ||
+      !Number.isFinite(state.dice) || !positions[state.turn] ||
+      !Number.isFinite(viewWidth) || !Number.isFinite(viewHeight) ||
+      !Number.isFinite(sceneWidth) || !Number.isFinite(sceneHeight)) return null;
+  return { state, positions, targets, viewWidth, viewHeight, sceneWidth, sceneHeight };
+}
+function waitForOfflineSmokeState(predicate, attempts = 8) {
+  let result = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    result = readOfflineSmokeState();
+    if (result && predicate(result)) return result;
+    waitStable(250);
+  }
+  return result;
+}
+function hasUsablePawnTarget(state) {
+  if (!state || state.state.dice !== 6) return false;
+  const turn = state.state.turn;
+  const positions = state.positions[turn] || [];
+  const index = positions.findIndex(pos => pos < 0 ? state.state.dice === 6 : pos + state.state.dice <= 57);
+  const target = state.targets[index];
+  return index >= 0 && target &&
+    Number.isFinite(target.px) && Number.isFinite(target.py) &&
+    Number.isFinite(target.x) && Number.isFinite(target.y) &&
+    target.px >= 0 && target.py >= 0 &&
+    target.px <= state.sceneWidth && target.py <= state.sceneHeight &&
+    target.x >= 0 && target.x <= 1 && target.y >= 0 && target.y <= 1;
 }
 function findRef(text) {
   const r = snap(text);
@@ -148,20 +229,19 @@ function safeLaunchSummary(value) {
 }
 
 function captureStartupLogcat(stage) {
-  if (!session) return;
+  if (!session) return false;
   const logs = allow("logcat", "--limit", "200", "--session", session);
   if (!logs.ok) {
+    const terminal = isTerminalSessionError(logs.value);
     console.error("RAMUS_STARTUP_LOGCAT_ERROR=" + JSON.stringify({
       stage,
-      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240)
+      error: String(logs.value?.error || "logcat_unavailable").slice(0, 240),
+      terminalSession: terminal
     }));
-    return;
+    return terminal;
   }
 
   const raw = typeof logs.value === "string" ? logs.value : JSON.stringify(logs.value || {});
-  // Ramus can return JSON log records concatenated in one string. Split at each
-  // record boundary so early AndroidRuntime/package errors are retained even if
-  // the emulator generates hundreds of unrelated system messages.
   const decoded = raw.replace(/\\n/g, "\n");
   const records = decoded
     .replace(/,(?=\s*\{"(?:stamp|timestamp|stream|tag)"\s*:)/g, "\n")
@@ -169,10 +249,18 @@ function captureStartupLogcat(stage) {
   const relevant = records.filter(line =>
     /FATAL EXCEPTION|AndroidRuntime|com\.ludomadagascar|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process:|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|PackageManager|Launch timeout|force finishing/i.test(line)
   );
-  const output = relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n");
-  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + (output || "NO_MATCHING_STARTUP_OR_CRASH_LINES"));
+  const fallback = records.slice(-12)
+    .map(line => redactDiagnosticText(line.replace(/\s+/g, " ").trim()).slice(-400))
+    .filter(Boolean)
+    .join("\n");
+  const output = relevant.length
+    ? relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n")
+    : (fallback
+      ? "NO_MATCHING_STARTUP_OR_CRASH_LINES; recent redacted records:\n" + fallback
+      : "NO_MATCHING_STARTUP_OR_CRASH_LINES; logcat returned no records");
+  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + output);
+  return false;
 }
-
 function captureFailureDiagnostics() {
   if (!session) return;
 
@@ -191,6 +279,10 @@ function captureFailureDiagnostics() {
     }));
   } else {
     console.error("RAMUS_FAILURE_SCREEN_ERROR=" + JSON.stringify(screen.value || {}));
+    if (isTerminalSessionError(screen.value)) {
+      console.error("RAMUS_FAILURE_SESSION_TERMINATED=Skipping further RPCs for the ended session.");
+      return;
+    }
   }
 
   // Keep failure evidence even when the main visual capture is disabled or failed.
@@ -348,22 +440,16 @@ function tryLauncherDrawerLaunch() {
   };
 }
 
-function waitForSessionEnded(sessionId, attempts = 8) {
-  // "status=ending" is asynchronous, not proof that the old device has been released.
-  // Probe the original session until Ramus confirms it is no longer addressable.
+function waitForSessionEnded(sessionId, attempts = 4) {
+  // Do not overlap remote sessions. An explicit terminal response means this one
+  // is no longer addressable; otherwise poll only a small bounded number of times.
   for (let attempt = 0; attempt < attempts; attempt++) {
-    waitStable(1000);
+    waitStable(600);
     const probe = allow("snapshot", "--session", sessionId);
-    if (!probe.ok) {
-      const message = JSON.stringify(probe.value || {});
-      if (/session[^\n]*(?:not found|ended|closed|inactive|not active|expired)|(?:not found|ended|closed|inactive|expired)[^\n]*session/i.test(message)) {
-        return true;
-      }
-    }
+    if (!probe.ok && isTerminalSessionError(probe.value)) return true;
   }
   return false;
 }
-
 let session = "";
 let success = false;
 let trialEnsured = Boolean(process.env.RAMUS_API_KEY);
@@ -385,33 +471,51 @@ try {
   console.log(`Ramus session: ${session}`);
   let launchInfo = { sessionStart: safeLaunchSummary(started.value) };
   let home = null;
+  // Collect filtered Android startup/crash logs before the first snapshot RPC.
+  // When a hosted emulator terminates at launch, the first snapshot can itself
+  // return session_ended and erase the only chance to capture logcat evidence.
+  let sessionTerminated = captureStartupLogcat("immediately-after-session-start");
+  if (sessionTerminated) {
+    launchInfo = { ...launchInfo, initialSessionTerminated: "session_ended_during_immediate_logcat" };
+    console.error("RAMUS_SESSION_TERMINATED_AFTER_START_LOGCAT");
+  }
 
   for (let attempt = 0; attempt < 24; attempt++) {
-    waitStable(1000);
+    if (sessionTerminated) break;
+    waitStable(700);
     home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
     if (home.ok && home.value?.elements?.length) break;
+    if (isTerminalSessionError(home.value)) {
+      sessionTerminated = true;
+      launchInfo = { ...launchInfo, initialSessionTerminated: safeLaunchSummary(home.value) };
+      console.error("RAMUS_SESSION_TERMINATED_DURING_HOME_PROBE");
+      break;
+    }
 
-    // Capture the first startup failure immediately; waiting until cleanup lets
-    // launcher/system noise evict the original AndroidRuntime or package error.
-    if (attempt === 1) captureStartupLogcat("initial-home-missing");
+    // Capture the earliest useful diagnostic. Stop here if the session ended.
+    if (attempt === 1 && captureStartupLogcat("initial-home-missing")) {
+      sessionTerminated = true;
+      launchInfo = { ...launchInfo, initialSessionTerminated: "logcat confirmed session_ended" };
+      break;
+    }
 
-    // One bounded foreground launch, after the initial auto-launch had time
-    // to settle. Do not retry "busy" in a tight loop.
+    // One bounded foreground launch after the initial auto-launch settles.
     if (attempt === 15) {
       const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
-      launchInfo = {
-        ...launchInfo,
-        retryLaunch: safeLaunchSummary(launched.value)
-      };
-      waitStable(1200);
-      captureStartupLogcat("after-retry-launch");
+      launchInfo = { ...launchInfo, retryLaunch: safeLaunchSummary(launched.value) };
+      waitStable(700);
+      if (isTerminalSessionError(launched.value) || captureStartupLogcat("after-retry-launch")) {
+        sessionTerminated = true;
+        launchInfo = { ...launchInfo, retrySessionTerminated: true };
+        break;
+      }
     }
   }
 
   // Lane F now installs exact Ramus CLI 0.1.14, which supports its documented
   // same-session install/open command. Try that first after a stuck initial launch;
   // it keeps the current emulator and avoids burning a second slot.
-  if (!home?.ok || !home.value?.elements?.length) {
+  if (!sessionTerminated && (!home?.ok || !home.value?.elements?.length)) {
     captureStartupLogcat("before-same-session-install");
     const installed = allow("session", "install", "--session", session, apk);
     launchInfo = { ...launchInfo, sameSessionInstall: safeLaunchSummary(installed.value) };
@@ -431,7 +535,7 @@ try {
   // Last same-device recovery: an API-level launch can remain "busy" even though
   // the Android launcher is visible. Try opening the installed app from the launcher
   // UI before ending this test-owned session.
-  if (!home?.ok || !home.value?.elements?.length) {
+  if (!sessionTerminated && (!home?.ok || !home.value?.elements?.length)) {
     captureStartupLogcat("before-launcher-drawer-recovery");
     const drawer = tryLauncherDrawerLaunch();
     launchInfo = { ...launchInfo, launcherDrawerRecovery: drawer.diagnostic };
@@ -447,7 +551,8 @@ try {
     const priorSession = session;
     const ended = allow("session", "end", "--session", priorSession);
     launchInfo = { ...launchInfo, priorSessionEnd: safeLaunchSummary(ended.value) };
-    const terminal = ended.ok && waitForSessionEnded(priorSession);
+    const terminal = sessionTerminated || isTerminalSessionError(home?.value) ||
+      isTerminalSessionError(ended.value) || (ended.ok && waitForSessionEnded(priorSession, 4));
     launchInfo = { ...launchInfo, priorSessionTerminal: terminal };
     if (terminal) {
       const restarted = allow("session", "start", "--apk", apk, "--wait");
@@ -455,18 +560,34 @@ try {
       if (restarted.ok && restarted.value?.session) {
         session = restarted.value.session;
         home = null;
-        for (let attempt = 0; attempt < 20; attempt++) {
-          waitStable(1000);
+        sessionTerminated = false;
+        let freshSessionTerminated = false;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          waitStable(700);
           home = allow("snapshot", "--session", session, "--find", "LudoMada Premium Home");
           if (home.ok && home.value?.elements?.length) break;
-          if (attempt === 1) captureStartupLogcat("fresh-session-home-missing");
-          if (attempt === 12) {
+          if (isTerminalSessionError(home.value)) {
+            freshSessionTerminated = true;
+            launchInfo = { ...launchInfo, freshSessionTerminated: safeLaunchSummary(home.value) };
+            break;
+          }
+          if (attempt === 1 && captureStartupLogcat("fresh-session-home-missing")) {
+            freshSessionTerminated = true;
+            launchInfo = { ...launchInfo, freshSessionTerminated: "logcat confirmed session_ended" };
+            break;
+          }
+          if (attempt === 6) {
             const launched = allow("app", "launch", "--package", "com.ludomadagascar", "--session", session);
             launchInfo = { ...launchInfo, freshSessionRetryLaunch: safeLaunchSummary(launched.value) };
-            waitStable(1200);
-            captureStartupLogcat("fresh-session-after-retry-launch");
+            waitStable(700);
+            if (isTerminalSessionError(launched.value) || captureStartupLogcat("fresh-session-after-retry-launch")) {
+              freshSessionTerminated = true;
+              launchInfo = { ...launchInfo, freshSessionTerminatedAfterLaunch: true };
+              break;
+            }
           }
         }
+        sessionTerminated = freshSessionTerminated;
       }
     } else {
       launchInfo = {
@@ -483,7 +604,7 @@ try {
   let startup = null;
   for (let attempt = 0; attempt < 6; attempt++) {
     startup = allow("snapshot", "--session", session);
-    if (startup.ok) break;
+    if (startup.ok || isTerminalSessionError(startup.value)) break;
     const retrySleep = process.platform === "android" ? "/data/data/com.termux/files/usr/bin/sleep" : "sleep";
     spawnSync(retrySleep, ["1"], { stdio: "ignore" });
   }
@@ -835,6 +956,37 @@ try {
       }
       if (!gotSix) throw new Error("Dice HUD did not reach a six within 24 Ramus rolls");
       console.log("2-PLAYER REAL DICE ROLL PASS");
+
+      const beforeMove = waitForOfflineSmokeState(state => state.state.players === 2 && state.state.dice === 6 && hasUsablePawnTarget(state), 12);
+      if (!beforeMove || beforeMove.state.dice !== 6) {
+        throw new Error("Offline DEBUG state did not report the successful six roll: " + JSON.stringify(beforeMove));
+      }
+      const turn = beforeMove.state.turn;
+      const beforePositions = beforeMove.positions[turn];
+      const tokenIndex = beforePositions.findIndex(pos => pos < 0 ? beforeMove.state.dice === 6 : pos + beforeMove.state.dice <= 57);
+      if (tokenIndex < 0) throw new Error("No legal pawn exists after a six: " + JSON.stringify(beforeMove));
+      const target = beforeMove.targets[tokenIndex];
+      if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) ||
+          !Number.isFinite(target.px) || !Number.isFinite(target.py) ||
+          target.px < 0 || target.py < 0 ||
+          target.px > beforeMove.sceneWidth || target.py > beforeMove.sceneHeight ||
+          target.x < 0 || target.x > 1 || target.y < 0 || target.y > 1) {
+        throw new Error("Projected pawn hit target is invalid for Ramus tap: " + JSON.stringify({target, view:[beforeMove.viewWidth,beforeMove.viewHeight], scene:[beforeMove.sceneWidth,beforeMove.sceneHeight]}));
+      }
+      const pawnTap = allow("tap", target.x.toFixed(4) + "," + target.y.toFixed(4), "--session", session, "--force");
+      if (!pawnTap.ok) throw new Error("Ramus could not tap projected legal pawn " + tokenIndex + ": " + JSON.stringify(pawnTap.value));
+      const afterMove = waitForOfflineSmokeState(state =>
+        state.state.players === 2 && Boolean(state.positions[turn]) &&
+        state.positions[turn][tokenIndex] !== beforePositions[tokenIndex],
+        12
+      );
+      if (!afterMove || afterMove.positions[turn][tokenIndex] === beforePositions[tokenIndex]) {
+        throw new Error("Real pawn hit did not change the offline token position: " + JSON.stringify({before:beforeMove,after:afterMove}));
+      }
+      if (afterMove.positions[turn][tokenIndex] !== 0 || afterMove.state.dice !== 0 || afterMove.state.turn !== turn) {
+        throw new Error("Six-roll pawn move did not enter position 0, clear the die, and preserve the extra turn: " + JSON.stringify(afterMove));
+      }
+      console.log("2-PLAYER REAL PAWN TOUCH/MOVE + SIX EXTRA-TURN PASS");
     }
 
     const menu = findRef("MENU_JEU");
@@ -877,10 +1029,8 @@ try {
   if (screenshotExists("board-4p")) console.log("GAMEPLAY REFERENCE SCREENSHOT PASS");
   else console.log("GAMEPLAY REFERENCE SCREENSHOT SKIPPED: screenshot transport unavailable");
 
-  // Functional die/pawn interaction was already exercised in the earlier verified Ramus
-  // run (#360). Keep this visual-reference gate independent from Ramus coordinate transforms:
-  // capture the post-entry frame without probing dozens of guessed touch points.
-  console.log("PHYSICAL DIE/PAWN INTERACTION COVERED BY PRIOR VERIFIED RAMUS RUN");
+  // The current APK pawn movement is exercised above through a real projected pawn hit.
+  // Keep a post-entry reference shot as supplementary evidence for the 4P renderer.
   shot("board-after-physical-dice-pawn");
 
   // CI is intentionally unauthenticated here. Do not enter the optional online lobby
