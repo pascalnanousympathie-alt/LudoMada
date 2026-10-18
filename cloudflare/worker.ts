@@ -1,9 +1,9 @@
 /**
  * Cloudflare Workers adapter for the existing Express + Prisma backend.
  *
- * A fresh Prisma client is created for each Worker invocation. Hyperdrive's
- * pool is the long-lived layer; Workers must not reuse a global pg.Pool or
- * Prisma client across request contexts.
+ * Create a fresh Prisma client for each invocation and schedule teardown with
+ * waitUntil. Hyperdrive owns the long-lived PostgreSQL connection pool; never
+ * retain a pg.Pool or Prisma client across Worker request contexts.
  */
 import { env } from "cloudflare:workers";
 import { handleAsNodeRequest } from "cloudflare:node";
@@ -20,6 +20,10 @@ interface CloudflareBindings {
   JWT_SECRET?: string;
   CORS_ORIGINS?: string;
   PG_POOL_MAX?: string;
+}
+
+interface InvocationContext {
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 const topLevelBindings = env as unknown as CloudflareBindings;
@@ -54,23 +58,26 @@ export default {
   async fetch(
     request: Request,
     requestBindings: CloudflareBindings,
+    ctx: InvocationContext,
   ): Promise<Response> {
     const databaseUrl =
       requestBindings.HYPERDRIVE?.connectionString ??
       requestBindings.DATABASE_URL ??
       configuredDatabaseUrl;
 
-    // Hyperdrive owns connection pooling to PostgreSQL. The client in this
-    // Worker isolate is deliberately request-scoped, not module-global.
+    // Keep the Prisma/pg pool request-scoped in Workers. Always close it after
+    // the response has been handled; waitUntil lets cleanup finish afterward.
     const requestPrisma = new PrismaClient({
       adapter: new PrismaPg({ connectionString: databaseUrl }),
     });
 
-    // Cloudflare automatically manages the invocation-scoped connection
-    // lifecycle. Do not retain this Prisma client in any global state.
-    return await withRequestPrisma(
-      requestPrisma,
-      () => handleAsNodeRequest(3000, request),
-    );
+    try {
+      return await withRequestPrisma(
+        requestPrisma,
+        () => handleAsNodeRequest(3000, request),
+      );
+    } finally {
+      ctx.waitUntil(requestPrisma.$disconnect());
+    }
   },
 };
