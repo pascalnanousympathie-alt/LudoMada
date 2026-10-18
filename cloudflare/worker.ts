@@ -42,11 +42,11 @@ if (!topLevelBindings.CORS_ORIGINS?.trim()) {
   throw new Error("CLOUDFLARE_CORS_ORIGINS_REQUIRED: list the real client origins");
 }
 
-// The Express backend validates these settings during module initialization.
+// NODE_ENV is defined as "production" in wrangler.jsonc. Avoid assigning it
+// here because Wrangler replaces that expression with a compile-time constant.
 process.env.DATABASE_URL = configuredDatabaseUrl;
 process.env.JWT_SECRET = topLevelBindings.JWT_SECRET;
 process.env.CORS_ORIGINS = topLevelBindings.CORS_ORIGINS;
-process.env.NODE_ENV = "production";
 process.env.PORT = "3000";
 process.env.TRUST_PROXY = "true";
 process.env.CLOUDFLARE_WORKERS = "true";
