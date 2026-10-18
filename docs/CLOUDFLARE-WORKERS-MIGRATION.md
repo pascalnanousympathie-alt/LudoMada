@@ -104,19 +104,23 @@ Read-only verification confirmed:
 - `authenticated` cannot SELECT from `Transaction` or INSERT into
   `GameCommand`.
 
-Schema `USAGE` remains inherited from the default `PUBLIC` schema grant, but
-the inspected roles have no effective privileges on the application tables.
-The backend must connect with a server-side database role that retains the
-required privileges; never embed that database credential in the mobile app.
+A third staging migration, `ludomada_disable_public_schema_usage`, has now
+revoked schema `USAGE` from PostgreSQL's `PUBLIC` pseudo-role while preserving
+explicit `USAGE` for `postgres` and `service_role`. Read-only verification
+confirmed `postgres` and `service_role` still have schema usage, while
+`anon` and `authenticated` do not. Therefore client roles cannot reach
+application tables through the public schema, including tables created later
+with unsafe table ACL defaults.
 
 A separate default-ACL entry for the `supabase_admin` role still includes
-`anon` / `authenticated` grants. An attempt to revoke those defaults failed
+`anon` / `authenticated` grants. An attempt to alter those defaults failed
 with PostgreSQL `42501 permission denied to change default privileges`, because
 the connector's `postgres` role is not a member of `supabase_admin` and is not
-a superuser. This did not change the database. Do not create future application
-tables under `supabase_admin` until an owner with the required role membership
-secures that default ACL; the verified migration path runs as `postgres`, whose
-defaults were confirmed to exclude those client roles.
+a superuser. This did not change the database. Do not re-grant schema
+`USAGE` to `PUBLIC` or to the client roles until the `supabase_admin`
+default ACL is secured by an owner with the required role membership. The
+verified migration path runs as `postgres`, whose defaults exclude those
+client roles.
 
 
 ## Required database security decision
