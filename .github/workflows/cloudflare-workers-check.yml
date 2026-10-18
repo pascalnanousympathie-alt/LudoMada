@@ -1,0 +1,41 @@
+name: Cloudflare Workers compatibility check
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - "wrangler.jsonc"
+      - "src/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/cloudflare-workers-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-workers-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://test:test@127.0.0.1:5432/ludomada_test
+      JWT_SECRET: test-only-secret-with-more-than-thirty-two-characters
+      CORS_ORIGINS: http://localhost:3000
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run build
+      - name: Bundle the Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/ludomada-worker-build --config wrangler.jsonc
