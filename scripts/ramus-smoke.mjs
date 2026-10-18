@@ -249,8 +249,16 @@ function captureStartupLogcat(stage) {
   const relevant = records.filter(line =>
     /FATAL EXCEPTION|AndroidRuntime|com\.ludomadagascar|LudoMada|INSTALL_FAILED|Fatal signal|ANR in|Process:|Caused by:|ClassNotFoundException|NoClassDefFoundError|Unable to start|ActivityTaskManager|PackageManager|Launch timeout|force finishing/i.test(line)
   );
-  const output = relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\n");
-  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + (output || "NO_MATCHING_STARTUP_OR_CRASH_LINES"));
+  const fallback = records.slice(-12)
+    .map(line => redactDiagnosticText(line.replace(/\\s+/g, " ").trim()).slice(-400))
+    .filter(Boolean)
+    .join("\\n");
+  const output = relevant.length
+    ? relevant.slice(-50).map(line => redactDiagnosticText(line).slice(-900)).join("\\n")
+    : (fallback
+      ? "NO_MATCHING_STARTUP_OR_CRASH_LINES; recent redacted records:\\n" + fallback
+      : "NO_MATCHING_STARTUP_OR_CRASH_LINES; logcat returned no records");
+  console.error("RAMUS_STARTUP_LOGCAT_" + String(stage).toUpperCase().replace(/[^A-Z0-9]+/g, "_") + "=" + output);
   return false;
 }
 function captureFailureDiagnostics() {
