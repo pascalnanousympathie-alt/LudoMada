@@ -25,96 +25,131 @@ jobs:
         env:
           MADA_BASES: "https://mada-commander-public-mcp.vercel.app,https://mada-commander-public-mcp-auto.vercel.app"
         run: |
-          node --input-type=module <<'NODE'
-          import assert from "node:assert/strict";
-
-          const targets = [
-            { base: "https://mada-commander-public-mcp.vercel.app", ready: true },
-            // The Git-linked auto project is intentionally fail-closed; it has no production DB/OAuth secrets.
-            { base: "https://mada-commander-public-mcp-auto.vercel.app", ready: false }
-          ];
-          const expectedTools = [
-            "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status",
-            "mada_connection_help", "mada_workspace_list", "mada_workspace_read", "mada_workspace_write",
-            "mada_run_task", "mada_run_command", "mada_run_shell", "mada_opera_status",
-            "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action", "mada_mcp_integrations",
-            "mada_mcp_tools", "mada_mcp_call"
-          ];
-          const failures = [];
-          const check = async (label, action) => {
-            try { await action(); console.log("PASS " + label); }
-            catch (error) { failures.push(label); console.error("FAIL " + label + ": " + String(error?.message || error)); }
-          };
-          const get = async (base, route) => fetch(new URL(route, base), {
-            redirect: "manual",
-            cache: "no-store",
-            signal: AbortSignal.timeout(10000)
-          });
-          const rpc = async (base, message) => fetch(new URL("/mcp", base), {
-            method: "POST",
-            headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
-            body: JSON.stringify(message),
-            cache: "no-store",
-            signal: AbortSignal.timeout(10000)
-          });
-
-          for (const target of targets) {
-            const base = target.base;
-            const label = new URL(base).hostname;
-            await check(label + " " + (target.ready ? "ready" : "fail-closed") + " health", async () => {
-              const response = await get(base, "/api/health");
-              const health = await response.json();
-              if (target.ready) {
-                assert.equal(response.status, 200, "health HTTP " + response.status);
-                assert.equal(health.ready, true, "health.ready was false");
-                assert.equal(health.checks?.databaseConfigured, true, "database is not configured");
-                assert.equal(health.checks?.schemaReady, true, "database schema is not ready");
-                assert.equal(health.checks?.googleOAuthConfigured, true, "Google OAuth configuration is incomplete");
-                assert.equal(health.checks?.oauthClientModeConfigured, true, "OAuth client mode is not configured");
-                assert.equal(health.checks?.oauthRedirectAllowlistConfigured, true, "OAuth redirect policy is not configured");
-              } else {
-                assert.equal(response.status, 503, "unconfigured auto deployment must remain fail-closed");
-                assert.equal(health.ready, false, "unconfigured auto deployment must not claim readiness");
-                assert.ok(health.checks?.databaseConfigured === false || health.checks?.googleOAuthConfigured === false,
-                  "fail-closed health must identify a missing prerequisite");
-              }
-            });
-            await check(label + " MCP initialize and tools/list", async () => {
-              const initialized = await rpc(base, {
-                jsonrpc: "2.0", id: 1, method: "initialize",
-                params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mada-runtime-canary", version: "1.0" } }
-              });
-              assert.equal(initialized.status, 200, "initialize HTTP " + initialized.status);
-              const initBody = await initialized.json();
-              assert.equal(initBody.result?.serverInfo?.name, "mada-commander-public");
-              const listed = await rpc(base, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-              assert.equal(listed.status, 200, "tools/list HTTP " + listed.status);
-              const body = await listed.json();
-              assert.deepEqual(body.result?.tools?.map(tool => tool.name), expectedTools);
-            });
-            await check(label + " Google OAuth path", async () => {
-              if (target.ready) {
-                // Use a deliberately invalid MCP authorization transaction so the canary
-                // exercises config/rate-limit/database reads without creating OAuth state rows.
-                const response = await get(base, "/oauth/google/start?purpose=mcp&transaction_id=runtime-watch-invalid");
-                assert.equal(response.status, 400, "expected invalid transaction response, got HTTP " + response.status);
-                const body = await response.json();
-                assert.equal(body.error, "invalid_request", "OAuth preflight returned an unexpected error");
-                assert.match(body.error_description || "", /authorization request expired/i);
-              } else {
-                // The auto deployment is deliberately unconfigured and must reject sign-in,
-                // rather than return an internal error or accidentally claim OAuth is ready.
-                const response = await get(base, "/oauth/google/start?purpose=dashboard");
-                assert.equal(response.status, 503, "unconfigured OAuth must fail closed, got HTTP " + response.status);
-                const body = await response.json();
-                assert.equal(body.error, "service_not_configured");
-              }
-            });
-          }
-          if (failures.length) {
-            console.error("Runtime watch failed " + failures.length + " check(s): " + failures.join(", "));
-            process.exitCode = 1;
-          } else {
-            console.log("Runtime watch passed for " + targets.length + " production deployment modes.");
-          }
-          NODE
+          python3 - <<'PY'
+          import json
+          import sys
+          import urllib.error
+          import urllib.request
+          
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+          
+          opener = urllib.request.build_opener(NoRedirect)
+          targets = [
+              {"base": "https://mada-commander-public-mcp.vercel.app", "ready": True},
+              # This Git-linked auto deployment is deliberately fail-closed (no production DB/OAuth secrets).
+              {"base": "https://mada-commander-public-mcp-auto.vercel.app", "ready": False},
+          ]
+          expected_tools = [
+              "mada_agent_status", "mada_list_projects", "mada_run_diagnostics", "mada_job_status",
+              "mada_connection_help", "mada_workspace_list", "mada_workspace_read", "mada_workspace_write",
+              "mada_run_task", "mada_run_command", "mada_run_shell", "mada_opera_status",
+              "mada_opera_tabs", "mada_opera_navigate", "mada_opera_action", "mada_mcp_integrations",
+              "mada_mcp_tools", "mada_mcp_call",
+          ]
+          failures = []
+          
+          def request(base, route, body=None):
+              data = None if body is None else json.dumps(body).encode("utf-8")
+              headers = {"cache-control": "no-cache"}
+              if body is not None:
+                  headers.update({
+                      "content-type": "application/json",
+                      "accept": "application/json, text/event-stream",
+                  })
+              req = urllib.request.Request(
+                  base + route, data=data, headers=headers,
+                  method="GET" if body is None else "POST",
+              )
+              try:
+                  with opener.open(req, timeout=12) as response:
+                      return response.status, response.read()
+              except urllib.error.HTTPError as error:
+                  return error.code, error.read()
+          
+          def check(label, action):
+              try:
+                  action()
+                  print("PASS " + label, flush=True)
+              except Exception as error:
+                  failures.append(label)
+                  print("FAIL " + label + ": " + type(error).__name__ + ": " + str(error)[:300], flush=True)
+          
+          for target in targets:
+              base, ready = target["base"], target["ready"]
+              label = base.split("//", 1)[-1]
+              print("TARGET " + label + (" ready" if ready else " fail-closed"), flush=True)
+          
+              def health_check():
+                  status, raw = request(base, "/api/health")
+                  health = json.loads(raw)
+                  assert status == (200 if ready else 503), "health HTTP " + str(status)
+                  assert health.get("ready") is ready, "health.ready was " + repr(health.get("ready"))
+                  checks = health.get("checks") or {}
+                  if ready:
+                      for key in (
+                          "databaseConfigured", "schemaReady", "googleOAuthConfigured",
+                          "oauthClientModeConfigured", "oauthRedirectAllowlistConfigured",
+                      ):
+                          assert checks.get(key) is True, key + " was not true"
+                  else:
+                      assert (
+                          checks.get("databaseConfigured") is False
+                          or checks.get("googleOAuthConfigured") is False
+                      ), "fail-closed health did not identify a missing prerequisite"
+          
+              check(label + (" ready health" if ready else " fail-closed health"), health_check)
+          
+              def mcp_check():
+                  status, raw = request(base, "/mcp", {
+                      "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                      "params": {
+                          "protocolVersion": "2025-06-18", "capabilities": {},
+                          "clientInfo": {"name": "mada-runtime-canary", "version": "1.0"},
+                      },
+                  })
+                  assert status == 200, "initialize HTTP " + str(status) + ": " + raw[:250].decode("utf-8", "replace")
+                  initialized = json.loads(raw)
+                  assert (
+                      initialized.get("result", {}).get("serverInfo", {}).get("name")
+                      == "mada-commander-public"
+                  ), "unexpected MCP serverInfo"
+                  status, raw = request(base, "/mcp", {
+                      "jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {},
+                  })
+                  assert status == 200, "tools/list HTTP " + str(status)
+                  body = json.loads(raw)
+                  names = [tool.get("name") for tool in body.get("result", {}).get("tools", [])]
+                  assert names == expected_tools, "MCP tool catalog mismatch: " + repr(names)
+          
+              check(label + " MCP initialize and tools/list", mcp_check)
+          
+              def oauth_check():
+                  route = (
+                      "/oauth/google/start?purpose=mcp&transaction_id=runtime-watch-invalid"
+                      if ready else "/oauth/google/start?purpose=dashboard"
+                  )
+                  status, raw = request(base, route)
+                  body = json.loads(raw)
+                  if ready:
+                      assert status == 400, "expected invalid transaction HTTP 400, got " + str(status)
+                      assert body.get("error") == "invalid_request", "unexpected OAuth error"
+                      assert "authorization request expired" in (
+                          body.get("error_description") or ""
+                      ).lower(), "expected expired-transaction description"
+                  else:
+                      assert status == 503, "expected unconfigured OAuth HTTP 503, got " + str(status)
+                      assert body.get("error") == "service_not_configured", "unexpected OAuth error"
+          
+              check(label + " Google OAuth path", oauth_check)
+          
+          if failures:
+              print(
+                  "Runtime watch failed " + str(len(failures)) + " check(s): "
+                  + ", ".join(failures), flush=True,
+              )
+              sys.exit(1)
+          
+          print("Runtime watch passed for " + str(len(targets)) + " production deployment modes.", flush=True)
+          PY
