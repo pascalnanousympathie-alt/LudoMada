@@ -34,9 +34,13 @@ class StartupUiTest {
         assertTrue("Premium Home must expose the primary play target", device.hasObject(By.desc("JOUER")))
 
         device.findObject(By.desc("JOUER")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")), 3000))
+        val offlineMode = By.desc("MODE_OFFLINE")
+        assertTrue(
+            "Game-mode overlay must expose its stable offline action",
+            device.wait(Until.hasObject(offlineMode), 3000)
+        )
 
-        device.findObject(By.text("👥 Hors-ligne — 2 à 4 joueurs")).click()
+        device.findObject(offlineMode).click()
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.desc("OFFLINE_2_PLAYERS")))
 
@@ -45,12 +49,12 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
-        repeat(24) {
+        for (attempt in 0 until 24) {
             assertTrue("Dice button must remain reachable", device.hasObject(By.desc("GAME_DICE_ROLL")))
             device.findObject(By.desc("GAME_DICE_ROLL")).click()
             if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
-                return@repeat
+                break
             }
             device.wait(Until.hasObject(By.textContains("Joueur ")), 1200)
             Thread.sleep(250)
