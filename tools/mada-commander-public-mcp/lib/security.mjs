@@ -9,7 +9,7 @@ export const OPTIONAL_OAUTH_SCOPES = Object.freeze(["offline_access"]);
  * offline_access only requests refresh-token continuity.
  */
 export function parseOAuthScopes(raw) {
-  const scopes = String(raw || REQUIRED_SCOPE).split(/\\s+/).filter(Boolean);
+  const scopes = String(raw || REQUIRED_SCOPE).split(/\s+/).filter(Boolean);
   const unique = [...new Set(scopes)];
   if (!unique.includes(REQUIRED_SCOPE)
     || unique.some(scope => scope !== REQUIRED_SCOPE && !OPTIONAL_OAUTH_SCOPES.includes(scope))) return null;
