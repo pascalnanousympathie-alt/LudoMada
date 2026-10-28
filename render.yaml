@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: ludomada-api-staging
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /ready
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "true"
+      - key: PG_POOL_MAX
+        value: "2"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: PAYMENTS_MVOLA_LIVE_ENABLED
+        value: "false"
+      - key: PAYMENTS_MVOLA_SANDBOX_ENABLED
+        value: "false"
+      - key: PAYMENTS_AIRTEL_SANDBOX_ENABLED
+        value: "false"
