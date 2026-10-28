@@ -12,26 +12,16 @@ Render's initial Blueprint flow prompts for `DATABASE_URL` and `CORS_ORIGINS`. E
 
 Use Supabase Dashboard → Connect → **Session pooler** (IPv4; port 5432) to obtain the exact host and connection details. Do not compose a hostname from the region: Supabase uses a pooler cluster index that must be copied from the Connect dialog.
 
-Use a dedicated least-privilege PostgreSQL login for the API, not the `postgres` superuser. Create the role in Supabase SQL Editor using a newly generated strong URL-safe password and run grants only for this staging database. The connection username for the shared pooler must be `ludomada_render_staging.jliatljqvvbibcibnrjk`; URL-encode the password if necessary. The URL must use the **exact** pooler host copied from Supabase and port `5432`.
+A dedicated least-privilege PostgreSQL role named `ludomada_render_staging` has already been created in this target staging database. It is `LOGIN`, `NOSUPERUSER`, `NOCREATEDB`, and `NOCREATEROLE`; its database-connect, `public` schema usage, current table/sequence DML, and the five current application enum USAGE grants were verified. It deliberately has **no password yet**, so it cannot authenticate until the owner sets one directly.
 
-Example role setup (replace the password placeholder inside Supabase SQL Editor; never commit the replacement password):
+**Required manual step:** open Supabase Dashboard → SQL Editor for `ludomada-cloudflare-staging` and execute the following with a new strong URL-safe password generated in a password manager. Do not send the password to ChatGPT or commit it anywhere:
 
 ```sql
-CREATE ROLE ludomada_render_staging
-  LOGIN PASSWORD 'REPLACE_WITH_A_NEW_RANDOM_URL_SAFE_PASSWORD'
-  NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-
-GRANT CONNECT ON DATABASE postgres TO ludomada_render_staging;
-GRANT USAGE ON SCHEMA public TO ludomada_render_staging;
-GRANT SELECT, INSERT, UPDATE, DELETE
-  ON ALL TABLES IN SCHEMA public TO ludomada_render_staging;
-GRANT USAGE, SELECT, UPDATE
-  ON ALL SEQUENCES IN SCHEMA public TO ludomada_render_staging;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ludomada_render_staging;
-ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
-  GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ludomada_render_staging;
+ALTER ROLE ludomada_render_staging
+  WITH PASSWORD 'REPLACE_WITH_A_NEW_RANDOM_URL_SAFE_PASSWORD';
 ```
+
+The shared-pooler connection username must be `ludomada_render_staging.jliatljqvvbibcibnrjk`; URL-encode the password if necessary. The URL must use the **exact** pooler host copied from Supabase and port `5432`. Do not assume the pooler hostname from the region.
 
 Set `DATABASE_URL` to the Supabase **session-pooler** URL using that role, e.g. `postgresql://ludomada_render_staging.jliatljqvvbibcibnrjk:<URL-ENCODED-PASSWORD>@<EXACT-POOLER-HOST>:5432/postgres?sslmode=require`. Replace the placeholder values locally in Render's protected settings only.
 
