@@ -20,14 +20,21 @@ const INLINE_EVAL_FLAGS = {
   python: new Set(["-c", "--command"]),
   python3: new Set(["-c", "--command"])
 };
+const ANDROID_GRADLE_ARGS = Object.freeze([
+  "--no-daemon",
+  "--no-parallel",
+  "-Dorg.gradle.workers.max=1",
+  "-Dorg.gradle.internal.instrumentation.agent=false"
+]);
+const ANDROID_TASK_TIMEOUT_MS = 900000;
 const TASKS = Object.freeze({
   git_status: ["git", ["status", "--short", "--branch"], 15000],
   git_diff_stat: ["git", ["diff", "--stat"], 15000],
   npm_test: ["npm", ["test"], 90000],
   npm_lint: ["npm", ["run", "lint"], 60000],
   npm_build: ["npm", ["run", "build"], 120000],
-  android_assemble_debug: ["./gradlew", ["assembleDebug"], 180000],
-  android_test: ["./gradlew", ["testDebugUnitTest"], 180000]
+  android_assemble_debug: ["./gradlew", [...ANDROID_GRADLE_ARGS, "assembleDebug"], ANDROID_TASK_TIMEOUT_MS],
+  android_test: ["./gradlew", [...ANDROID_GRADLE_ARGS, "testDebugUnitTest"], ANDROID_TASK_TIMEOUT_MS]
 });
 
 function partsFor(relative, allowRoot = false) {
@@ -149,6 +156,14 @@ export async function runApprovedTask(project, task) {
   if (task.startsWith("android_")) {
     const wrapper = await fs.stat(path.join(project.path,"gradlew")).catch(() => null);
     if (!wrapper?.isFile()) throw new Error("This workspace has no Gradle wrapper.");
+  }
+  if (task === "android_assemble_debug") {
+    // Prefer a repository-owned Termux build script when present. It configures the
+    // Android SDK/AAPT2 wrapper, serializes Gradle work, runs unit tests, and validates the APK.
+    const buildScript = await fs.stat(path.join(project.path,"scripts","build-termux.sh")).catch(() => null);
+    if (buildScript?.isFile()) {
+      return { task, ...await runChild("bash", ["scripts/build-termux.sh"], project.path, timeoutMs) };
+    }
   }
   return { task, ...await runChild(program,args,project.path,timeoutMs) };
 }
