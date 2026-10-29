@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - fix/home-mode-overlay-accessibility-20261029
     paths:
       - "android-app/**"
       - ".github/workflows/android-ui-instrumentation.yml"
@@ -19,7 +18,7 @@ permissions:
 
 concurrency:
   group: android-ui-instrumentation-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   ui-instrumentation:
