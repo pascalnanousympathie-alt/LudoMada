@@ -289,6 +289,11 @@ try {
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
+  const boardSurface = readTree();
+  if (!treeHas(boardSurface, "LudoMada 3D Ludo board")) {
+    throw new Error("3D board accessibility surface missing: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
+  }
+  console.log("3D BOARD SURFACE PASS");
 
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");

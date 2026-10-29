@@ -11,6 +11,7 @@ on:
       - "tests/**"
       - "prisma/**"
       - "android-app/**"
+      - "scripts/**"
       - "loadtests/**"
       - "package.json"
       - "package-lock.json"
@@ -122,6 +123,17 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up Node.js for 3D asset verification
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Verify bundled 3D scene manifest and mobile budgets
+        run: |
+          set -eu
+          node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
+
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -166,6 +178,7 @@ jobs:
         working-directory: android-app
         run: |
           set -eu
+          node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/debug/app-debug.apk
           release_apk="app/build/outputs/apk/release/app-release.apk"
           unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
@@ -173,10 +186,12 @@ jobs:
           if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
             test -s "$release_apk"
             "$apksigner" verify --verbose --print-certs "$release_apk"
+            node ../scripts/check-apk-3d-asset.mjs "$release_apk"
             sha256sum "$release_apk"
             echo "RELEASE_SIGNED=true"
           else
             test -s "$unsigned_apk"
+            node ../scripts/check-apk-3d-asset.mjs "$unsigned_apk"
             sha256sum "$unsigned_apk"
             echo "RELEASE_SIGNED=false (configure GitHub signing secrets for a signed release)"
           fi
