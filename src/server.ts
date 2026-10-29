@@ -1764,6 +1764,9 @@ app.get("/api/games/:gameId/ai-suggestion",auth,async(req:any,res:any)=>{
     if(state.players[state.currentPlayerIndex]?.id!==req.userId){
       return res.status(409).json({error:"NOT_YOUR_TURN"});
     }
+    if(state.dice===null){
+      return res.status(409).json({error:"DICE_NOT_ROLLED"});
+    }
 
     const tokenIndex=chooseAiMove(state,req.userId);
     return res.json({
