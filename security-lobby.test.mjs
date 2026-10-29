@@ -1,7 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const BASE = "http://127.0.0.1:3000";
+const configuredBase = process.env.LUDO_SECURITY_BASE_URL;
+if (!configuredBase) {
+  throw new Error("Set LUDO_SECURITY_BASE_URL to a disposable test API origin.");
+}
+
+const targetUrl = new URL(configuredBase);
+const loopbackHosts = new Set(["127.0.0.1", "localhost", "[::1]"]);
+const isLoopback = loopbackHosts.has(targetUrl.hostname);
+
+if (targetUrl.protocol !== "https:" && !(targetUrl.protocol === "http:" && isLoopback)) {
+  throw new Error("LUDO_SECURITY_BASE_URL must use HTTPS unless it targets loopback.");
+}
+if (!isLoopback && process.env.LUDO_SECURITY_ALLOW_NONLOCAL_TARGET !== "true") {
+  throw new Error("Non-loopback targets require explicit opt-in; use disposable staging, never production.");
+}
+if (targetUrl.username || targetUrl.password) {
+  throw new Error("LUDO_SECURITY_BASE_URL must not contain credentials.");
+}
+
+const BASE = targetUrl.origin;
 
 async function login(username, password) {
   const r = await fetch(`${BASE}/api/auth/login`, {
