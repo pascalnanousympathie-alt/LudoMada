@@ -2065,7 +2065,7 @@ app.post("/api/games/:gameId/move",auth,async(req:any,res)=>{
       stateVersion:out.result.stateVersion
     });
 
-    publishGameUpdate(req.params.gameId,out.result.stateVersion,"TOKEN_MOVED");
+    publishGameUpdate(req.params.gameId,out.result.stateVersion,out.result.finished ? "GAME_FINISHED" : "TOKEN_MOVED");
     res.json({
       gameId:req.params.gameId,
       ...out.result
