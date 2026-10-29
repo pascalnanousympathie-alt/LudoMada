@@ -115,6 +115,18 @@ try {
   }
   console.log("4-PLAYER TURN ROTATION PASS");
 
+  // Verify the complete 3-player turn rotation, not only the menu entry.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertMenuButton("👥 3 joueurs");
+  target = findRef("👥 3 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertTurn("Joueur 1/3");
+  for (const nextTurn of ["Joueur 2/3", "Joueur 3/3", "Joueur 1/3"]) {
+    advanceToTurn(nextTurn);
+  }
+  console.log("3-PLAYER TURN ROTATION PASS");
+
   // Return to the 2-player board for the dice/pawn validation.
   target = findRef("← Hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
