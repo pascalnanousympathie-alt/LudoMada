@@ -157,7 +157,7 @@ class MainActivity : Activity() {
             val b=TextView(this).apply{
                 text=pair.first + "\n" + pair.second;textSize=10f;gravity=Gravity.CENTER;setTypeface(null,android.graphics.Typeface.BOLD)
                 setTextColor(if(key==active)royal else Color.rgb(102,113,130));setPadding(0,dp(4),0,dp(4))
-                setOnClickListener{when(key){"home"->home();"play"->window.decorView.post { gameModeDialog() };"wallet"->wallet();"social"->social();"profile"->profile()}}
+                setOnClickListener{when(key){"home"->home();"play"->gameModeDialog();"wallet"->wallet();"social"->social();"profile"->profile()}}
             }
             row.addView(b,LinearLayout.LayoutParams(0,dp(54),1f))
         }
@@ -420,6 +420,12 @@ class MainActivity : Activity() {
     }
 
     private fun gameModeDialog() {
+        // PremiumHeroViewV2 invokes this while handling a canvas touch. Defer every
+        // caller before mutating the Activity content hierarchy.
+        window.decorView.post { showGameModeOverlay() }
+    }
+
+    private fun showGameModeOverlay() {
         android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
         val host = findViewById<ViewGroup>(android.R.id.content) ?: run {
