@@ -36,3 +36,13 @@ test("unsubscribe is idempotent and stops future notifications", () => {
 test("rejects negative state versions", () => {
   expect(() => publishGameUpdate("game-version", -1, "DICE_ROLLED")).toThrow("INVALID_GAME_STATE_VERSION");
 });
+
+test("supports a terminal game-finished notification", () => {
+  const event = publishGameUpdate("game-finished", 57, "GAME_FINISHED");
+  expect(event).toMatchObject({
+    type: "game.update",
+    gameId: "game-finished",
+    stateVersion: 57,
+    reason: "GAME_FINISHED"
+  });
+});
