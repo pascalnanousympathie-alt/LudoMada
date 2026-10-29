@@ -94,45 +94,7 @@ jobs:
           heap-size: 1024M
           sdcard-path-or-size: 256M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -no-snapshot-save
-          script: |
-            set -eu
-            adb wait-for-device
-            ready=0
-            for attempt in $(seq 1 60); do
-              boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
-              package_service="$(adb shell service check package 2>/dev/null || true)"
-              if [ "$boot" = "1" ] && echo "$package_service" | grep -q 'found'; then ready=1; break; fi
-              sleep 2
-            done
-            if [ "$ready" != "1" ]; then
-              echo "EMULATOR_BOOT_DIAGNOSTICS: Android system or package manager did not become ready"
-              adb devices -l || true
-              adb shell getprop sys.boot_completed || true
-              adb shell service list | grep -i package || true
-              adb logcat -d -t 1500 | tail -n 250 || true
-              exit 1
-            fi
-            adb shell settings put global window_animation_scale 0 || true
-            adb shell settings put global transition_animation_scale 0 || true
-            adb shell settings put global animator_duration_scale 0 || true
-            cd android-app
-            set +e
-            # Ramus already covers the full offline gameplay path. Keep this emulator gate
-            # focused on the accessibility regression that previously blocked Home → JOUER.
-            timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
-              -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest#game_mode_overlay_is_accessible_and_routes_both_modes \
-              --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
-            test_status=$?
-            set -e
-            if [ "$test_status" -ne 0 ]; then
-              echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: gradle exit code $test_status"
-              adb devices -l || true
-              adb shell getprop sys.boot_completed || true
-              adb shell service check package || true
-              adb shell dumpsys activity activities | tail -n 100 || true
-              adb logcat -d -t 2500 -s AndroidRuntime:E ActivityManager:E TestRunner:E AndroidJUnitRunner:E || true
-              exit "$test_status"
-            fi
+          script: bash .github/scripts/run-android-ui-instrumentation.sh
 
       - name: Upload instrumentation reports
         if: always()
