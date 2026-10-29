@@ -1,0 +1,146 @@
+name: Android UI Instrumentation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-ui-instrumentation.yml"
+  pull_request:
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-ui-instrumentation.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ui-instrumentation-api30-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ui-instrumentation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK and emulator image
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: "platform-tools platforms;android-30 platforms;android-35 build-tools;35.0.0 emulator system-images;android-30;google_apis;x86_64"
+
+      - name: Configure Android SDK
+        working-directory: android-app
+        run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
+
+      - name: Run Kotlin/JVM tests and build instrumentation APKs
+        working-directory: android-app
+        run: |
+          set -eu
+          chmod +x gradlew
+          ./gradlew test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+
+      - name: Enable KVM hardware acceleration for the emulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -e /dev/kvm ]]; then
+            echo "KVM_REQUIRED: /dev/kvm is not present on this runner"
+            exit 1
+          fi
+          # Hosted Ubuntu exposes /dev/kvm as root:kvm but the runner user may
+          # not be a member of that group. The emulator otherwise silently falls
+          # back to slow software emulation and stays adb-offline on this image.
+          sudo chmod 666 /dev/kvm
+          test -r /dev/kvm && test -w /dev/kvm
+          ls -l /dev/kvm
+          if ! grep -qm1 -E '(vmx|svm)' /proc/cpuinfo; then
+            echo "KVM_CPU_VIRTUALIZATION_FLAG_MISSING"
+            exit 1
+          fi
+
+      - name: Run connected Android UI instrumentation tests
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          disk-size: 4096M
+          ram-size: 3072M
+          heap-size: 1024M
+          sdcard-path-or-size: 256M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -no-snapshot-save
+          script: |
+            set -eu
+            adb wait-for-device
+            ready=0
+            for attempt in $(seq 1 60); do
+              boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+              package_service="$(adb shell service check package 2>/dev/null || true)"
+              if [ "$boot" = "1" ] && echo "$package_service" | grep -q 'found'; then ready=1; break; fi
+              sleep 2
+            done
+            if [ "$ready" != "1" ]; then
+              echo "EMULATOR_BOOT_DIAGNOSTICS: Android system or package manager did not become ready"
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell service list | grep -i package || true
+              adb logcat -d -t 1500 | tail -n 250 || true
+              exit 1
+            fi
+            adb shell settings put global window_animation_scale 0 || true
+            adb shell settings put global transition_animation_scale 0 || true
+            adb shell settings put global animator_duration_scale 0 || true
+            cd android-app
+            set +e
+            # Ramus already covers the full offline gameplay path. Keep this emulator gate
+            # focused on the accessibility regression that previously blocked Home → JOUER.
+            timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest#game_mode_overlay_is_accessible_and_routes_both_modes \
+              --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            test_status=$?
+            set -e
+            if [ "$test_status" -ne 0 ]; then
+              echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: gradle exit code $test_status"
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell service check package || true
+              adb shell dumpsys activity activities | tail -n 100 || true
+              adb logcat -d -t 2500 -s AndroidRuntime:E ActivityManager:E TestRunner:E AndroidJUnitRunner:E || true
+              exit "$test_status"
+            fi
+
+      - name: Upload instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-ui-instrumentation-${{ github.sha }}
+          path: |
+            android-app/app/build/reports/androidTests/connected/
+            android-app/app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14
