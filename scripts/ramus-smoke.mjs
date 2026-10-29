@@ -17,12 +17,37 @@ function runAllowError(...args) {
 }
 
 function runCli(...args) {
+  const command = String(args[0] || "");
+  const waitIndex = args.indexOf("--timeout");
+  const declaredWaitMs = waitIndex >= 0 ? Number(args[waitIndex + 1]) : 0;
+  // Ramus RPCs can occasionally hang if the cloud accessibility stream is stale.
+  // Bound every child process so retry/finally logic can recover and close our session.
+  const timeout = command === "session"
+    ? 45000
+    : command === "screenshot"
+      ? 20000
+      : command === "wait"
+        ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
+        : 12000;
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    timeout,
+    maxBuffer: 4 * 1024 * 1024,
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
+  if (r.error) {
+    return {
+      ok: false,
+      value: {
+        error: r.error.code === "ETIMEDOUT" ? "timeout" : "spawn_error",
+        message: r.error.message,
+        command,
+        timeoutMs: timeout,
+      },
+    };
+  }
   if (!out) {
     return {
       ok: false,
@@ -50,18 +75,147 @@ function waitForSix(timeoutMs) {
   return snapshot.ok && snapshot.value.elements?.length > 0;
 }
 
+function waitStable(ms = 1200) {
+  // A bounded local settle delay is safer than racing the remote accessibility tree.
+  const sleepMs = Math.max(0, Math.min(Number(ms) || 0, 1800));
+  spawnSync("sleep", [String(sleepMs / 1000)], {
+    stdio: "ignore",
+    timeout: 2500,
+  });
+}
+
+function waitForSnapshot(findText, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+
+  while (Date.now() < deadline) {
+    const snapshot = runAllowError("snapshot", "--session", session, "--find", findText);
+    last = snapshot;
+    if (snapshot.ok && snapshot.value.elements?.length) return snapshot.value;
+
+    // UI transitions can lag behind session creation or an animation. Wait briefly
+    // for the expected accessibility text, then re-snapshot within a fixed deadline.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    runAllowError(
+      "wait", "--text", findText,
+      "--timeout", String(Math.min(750, remaining)),
+      "--session", session
+    );
+  }
+
+  return last?.ok ? last.value : null;
+}
+
 function assertMenuButton(text) {
-  const result = runAllowError("snapshot", "--session", session, "--find", text);
-  if (!result.ok || !result.value.elements?.some((e) => e.text === text)) {
-    throw new Error(`Expected offline menu button: ${text}`);
+  const snapshot = waitForSnapshot(text, 5000);
+  if (!snapshot?.elements?.some((e) => e.text === text)) {
+    throw new Error(`Expected offline menu button after waiting: ${text}`);
   }
 }
 
 function assertTurn(text) {
-  const result = runAllowError("snapshot", "--session", session, "--find", text);
-  if (!result.ok || !result.value.elements?.some((e) => e.text?.startsWith(text))) {
-    throw new Error(`Expected turn state: ${text}`);
+  const snapshot = waitForSnapshot(text, 5000);
+  if (!snapshot?.elements?.some((e) => e.text?.startsWith(text))) {
+    throw new Error(`Expected turn state after waiting: ${text}`);
   }
+}
+
+function treeLabels(tree) {
+  return (tree?.elements || []).map((e) =>
+    [e.text, e.contentDesc, e.contentDescription, e.description, e.label]
+      .filter((v) => typeof v === "string" && v.length > 0)
+      .join(" ")
+  );
+}
+
+function readTree() {
+  const result = runAllowError("snapshot", "--session", session, "--include-offscreen");
+  if (!result.ok || !result.value?.elements) return null;
+  return result.value;
+}
+
+function treeHas(tree, value) {
+  return treeLabels(tree).some((label) => label.includes(value));
+}
+
+function modePickerIsVisible(tree) {
+  return treeHas(tree, "GAME_MODE_DIALOG") &&
+    treeHas(tree, "MODE_OFFLINE") &&
+    treeHas(tree, "MODE_ONLINE");
+}
+
+function tapTreeNode(tree, needle) {
+  const node = (tree?.elements || []).find((e) =>
+    [e.text, e.contentDesc, e.contentDescription, e.description, e.label]
+      .some((value) => typeof value === "string" && value.includes(needle))
+  );
+  if (!node) throw new Error(`Accessibility node missing from fresh tree: ${needle}; labels=${JSON.stringify(treeLabels(tree))}`);
+  const result = runAllowError("tap", node.ref, "--gen", String(tree.gen), "--session", session);
+  if (!result.ok) throw new Error(`Could not tap accessibility node ${needle}: ${JSON.stringify(result.value)}`);
+  return result;
+}
+
+function isPremiumHome(tree) {
+  return treeHas(tree, "LudoMada Premium Home");
+}
+
+function returnToHome() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let tree = readTree();
+    if (isPremiumHome(tree)) return true;
+    if (!treeHas(tree, "← Accueil")) return false;
+    tapTreeNode(tree, "← Accueil");
+    waitStable(650);
+    tree = readTree();
+    if (isPremiumHome(tree)) return true;
+  }
+  return isPremiumHome(readTree());
+}
+
+function openModePickerFromHome() {
+  // The view scales a 390×710 canvas into Ramus's portrait surface. The true
+  // JOUER hitbox is x=8..126 / y=110..158; these normalized points cover its
+  // centre first, followed by small offsets and rotated/letterboxed fallbacks.
+  const points = [
+    "0.17,0.247", "0.17,0.24", "0.18,0.25", "0.16,0.25",
+    "0.42,0.19", "0.42,0.21",
+    "0.12,0.42", "0.14,0.46", "0.86,0.42"
+  ];
+  let lastLabels = [];
+
+  for (const point of points) {
+    let tree = readTree();
+    if (!isPremiumHome(tree)) {
+      if (!returnToHome()) {
+        lastLabels = treeLabels(tree);
+        continue;
+      }
+      tree = readTree();
+    }
+    if (!isPremiumHome(tree)) {
+      lastLabels = treeLabels(tree);
+      continue;
+    }
+
+    const tap = runAllowError("tap", point, "--session", session, "--force");
+    waitStable(450);
+    const afterTap = readTree();
+    lastLabels = treeLabels(afterTap);
+
+    // Require all three signals in the same fresh tree; never accept a stale
+    // GAME_MODE_DIALOG marker if the app actually navigated to Events/Wallet.
+    if (modePickerIsVisible(afterTap)) return afterTap;
+
+    // A wrong coordinate may activate another Home card. Return explicitly to
+    // Home before probing the next point, rather than cascading through screens.
+    if (!isPremiumHome(afterTap) && treeHas(afterTap, "← Accueil")) {
+      returnToHome();
+    }
+    if (!tap.ok) waitStable(200);
+  }
+
+  throw new Error("Could not open the Home JOUER mode picker using verified hitbox candidates. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
 }
 
 function pendingDiceValue() {
@@ -219,6 +373,44 @@ try {
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
 
+  // Exercise the real Home -> JOUER canvas hitbox rather than only the
+  // login-screen offline shortcut. The universal deferred handler prevents
+  // replacing the content hierarchy during the original Home touch dispatch.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "← Accueil", "--session", session);
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--session", session);
+  if (!waitForSnapshot("LudoMada Premium Home", 8000)) {
+    throw new Error("Offline menu could not return to Premium Home");
+  }
+  console.log("OFFLINE MENU→HOME PASS");
+
+  let modeTree = openModePickerFromHome();
+  console.log("HOME→JOUER MODE OVERLAY PASS");
+
+  tapTreeNode(modeTree, "MODE_ONLINE");
+  waitStable(700);
+  let lobbyTree = readTree();
+  if (!treeHas(lobbyTree, "Choisir la mise") || !treeHas(lobbyTree, "Hiditra amin'ny room")) {
+    throw new Error("Online mode did not open the lobby entry screen. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+  }
+  console.log("JOUER→ONLINE LOBBY PASS");
+
+  if (!returnToHome()) throw new Error("Could not return from online lobby to Premium Home");
+  modeTree = openModePickerFromHome();
+  tapTreeNode(modeTree, "MODE_OFFLINE");
+  waitStable(700);
+  let offlineMenuTree = readTree();
+  for (const expected of ["👤 2 joueurs", "👥 3 joueurs", "👥 4 joueurs"]) {
+    if (!treeHas(offlineMenuTree, expected)) {
+      throw new Error(`Offline mode menu is missing ${expected}. Accessibility tree: ` + JSON.stringify(treeLabels(offlineMenuTree)).slice(0, 5000));
+    }
+  }
+  console.log("JOUER→OFFLINE MENU PASS");
+
+  if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
   run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
@@ -234,7 +426,7 @@ try {
 }
 
 function findRef(findText) {
-  const s = run("snapshot", "--session", session, "--find", findText);
-  if (!s.elements?.length) throw new Error(`UI element not found: ${findText}`);
+  const s = waitForSnapshot(findText, 8000);
+  if (!s?.elements?.length) throw new Error(`UI element not found after bounded wait: ${findText}`);
   return { ref: s.elements[0].ref, gen: s.gen };
 }
