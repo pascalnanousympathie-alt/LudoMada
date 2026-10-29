@@ -16,6 +16,8 @@ import { GameStateRepository } from "./game/gameStateRepository";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
 import { isValidEntryFee } from "./game/entryFees";
+import { chooseAiMove } from "./game/aiOpponent";
+import { publishGameUpdate, subscribeGameUpdates } from "./realtime/gameEventHub";
 import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
@@ -1261,6 +1263,7 @@ app.post("/api/games/:gameId/join",auth,async(req:any,res)=>{
       }
     );
 
+    publishGameUpdate(req.params.gameId,null,"PLAYER_JOINED");
     return res.json(response);
 
   }catch(e:any){
@@ -1593,6 +1596,7 @@ app.post("/api/games/:gameId/start",auth,async(req:any,res)=>{
       }
     );
 
+    publishGameUpdate(req.params.gameId,result.state.stateVersion,"GAME_STARTED");
     return res.json(response);
 
   }catch(e:any){
@@ -1663,6 +1667,117 @@ app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
     });
   }catch(e:any){
     console.error("GAME LOBBY ERROR:",e?.message);
+    return res.status(500).json({error:"Internal server error"});
+  }
+});
+
+
+app.get("/api/games/:gameId/events",auth,async(req:any,res:any)=>{
+  try{
+    const game=await prisma.game.findUnique({
+      where:{id:req.params.gameId},
+      include:{participants:{select:{userId:true}}}
+    });
+
+    if(!game) return res.status(404).json({error:"Game not found"});
+    if(!game.participants.some((p:any)=>p.userId===req.userId)){
+      return res.status(403).json({error:"Forbidden"});
+    }
+
+    let unsubscribe:()=>void;
+    try{
+      unsubscribe=subscribeGameUpdates(req.params.gameId,req.userId,(event)=>{
+        if(res.writableEnded || res.destroyed) return;
+        res.write(
+          "id: "+event.id+"\nevent: game-update\ndata: "+
+          JSON.stringify(event)+"\n\n"
+        );
+      });
+    }catch(e:any){
+      const code=String(e?.message||"");
+      if(code==="GAME_STREAM_CAPACITY_REACHED" || code==="USER_STREAM_CAPACITY_REACHED"){
+        return res.status(429).json({error:"Too many live game streams"});
+      }
+      throw e;
+    }
+
+    res.status(200);
+    res.setHeader("Content-Type","text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control","no-cache, no-transform");
+    res.setHeader("Connection","keep-alive");
+    res.setHeader("X-Accel-Buffering","no");
+    res.setHeader("X-Content-Type-Options","nosniff");
+    res.flushHeaders();
+    res.write("event: ready\ndata: "+JSON.stringify({
+      gameId:req.params.gameId,
+      refresh:"GET /api/games/"+req.params.gameId+"/state"
+    })+"\n\n");
+
+    const heartbeat=setInterval(()=>{
+      if(!res.writableEnded && !res.destroyed) res.write(": keep-alive\n\n");
+    },25_000);
+    if(typeof heartbeat.unref==="function") heartbeat.unref();
+
+    res.on("close",()=>{
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
+  }catch(e:any){
+    console.error("GAME EVENT STREAM ERROR",{
+      name:e?.name,
+      message:e?.message,
+      gameId:req.params.gameId,
+      userId:req.userId,
+      requestId:req.requestId
+    });
+    if(!res.headersSent) return res.status(500).json({error:"Internal server error"});
+    return res.end();
+  }
+});
+
+app.get("/api/games/:gameId/ai-suggestion",auth,async(req:any,res:any)=>{
+  try{
+    const game=await prisma.game.findUnique({
+      where:{id:req.params.gameId},
+      include:{participants:{select:{userId:true}}}
+    });
+
+    if(!game) return res.status(404).json({error:"Game not found"});
+    if(!game.participants.some((p:any)=>p.userId===req.userId)){
+      return res.status(403).json({error:"Forbidden"});
+    }
+    if(game.status!=="PLAYING"){
+      return res.status(409).json({error:"GAME_NOT_PLAYING"});
+    }
+
+    const stored=await prisma.authoritativeGameState.findUnique({
+      where:{gameId:req.params.gameId},
+      select:{state:true,stateVersion:true}
+    });
+    if(!stored) return res.status(404).json({error:"Game state not found"});
+
+    const state=stored.state as unknown as GameState;
+    if(state.players[state.currentPlayerIndex]?.id!==req.userId){
+      return res.status(409).json({error:"NOT_YOUR_TURN"});
+    }
+
+    const tokenIndex=chooseAiMove(state,req.userId);
+    return res.json({
+      gameId:req.params.gameId,
+      stateVersion:state.stateVersion,
+      tokenIndex,
+      available:tokenIndex!==null,
+      reason:tokenIndex===null?"NO_LEGAL_MOVE":"HEURISTIC_SUGGESTION",
+      strategy:"ludomada-heuristic-v1"
+    });
+  }catch(e:any){
+    console.error("AI SUGGESTION ERROR",{
+      name:e?.name,
+      message:e?.message,
+      gameId:req.params.gameId,
+      userId:req.userId,
+      requestId:req.requestId
+    });
     return res.status(500).json({error:"Internal server error"});
   }
 });
@@ -1883,6 +1998,7 @@ app.post("/api/games/:gameId/roll",auth,async(req:any,res)=>{
       stateVersion:out.result.stateVersion
     });
 
+    publishGameUpdate(req.params.gameId,out.result.stateVersion,"DICE_ROLLED");
     res.json({
       gameId:req.params.gameId,
       dice:out.result.dice,
@@ -1945,6 +2061,7 @@ app.post("/api/games/:gameId/move",auth,async(req:any,res)=>{
       stateVersion:out.result.stateVersion
     });
 
+    publishGameUpdate(req.params.gameId,out.result.stateVersion,"TOKEN_MOVED");
     res.json({
       gameId:req.params.gameId,
       ...out.result
