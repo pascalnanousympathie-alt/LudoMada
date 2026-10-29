@@ -1,0 +1,29 @@
+name: Render Blueprint Safety
+
+on:
+  pull_request:
+    paths:
+      - "render.yaml"
+      - "docs/RENDER_FREE_STAGING.md"
+      - "scripts/verify-render-staging.rb"
+      - ".github/workflows/render-blueprint-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "render.yaml"
+      - "docs/RENDER_FREE_STAGING.md"
+      - "scripts/verify-render-staging.rb"
+      - ".github/workflows/render-blueprint-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Validate Render staging safety constraints
+        run: ruby scripts/verify-render-staging.rb
