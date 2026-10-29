@@ -17,12 +17,37 @@ function runAllowError(...args) {
 }
 
 function runCli(...args) {
+  const command = String(args[0] || "");
+  const waitIndex = args.indexOf("--timeout");
+  const declaredWaitMs = waitIndex >= 0 ? Number(args[waitIndex + 1]) : 0;
+  // Ramus RPCs can occasionally hang if the cloud accessibility stream is stale.
+  // Bound every child process so retry/finally logic can recover and close our session.
+  const timeout = command === "session"
+    ? 45000
+    : command === "screenshot"
+      ? 20000
+      : command === "wait"
+        ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
+        : 12000;
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    timeout,
+    maxBuffer: 4 * 1024 * 1024,
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
+  if (r.error) {
+    return {
+      ok: false,
+      value: {
+        error: r.error.code === "ETIMEDOUT" ? "timeout" : "spawn_error",
+        message: r.error.message,
+        command,
+        timeoutMs: timeout,
+      },
+    };
+  }
   if (!out) {
     return {
       ok: false,
@@ -144,11 +169,9 @@ function openModePickerFromHome() {
   // JOUER hitbox is x=8..126 / y=110..158; these normalized points cover its
   // centre first, followed by small offsets and rotated/letterboxed fallbacks.
   const points = [
-    "0.17,0.247", "0.17,0.24", "0.18,0.25", "0.16,0.25", "0.19,0.25",
-    "0.18,0.23", "0.15,0.24", "0.42,0.19", "0.42,0.21",
-    "0.42,0.86", "0.42,0.88", "0.46,0.86", "0.47,0.90",
-    "0.58,0.12", "0.60,0.14", "0.54,0.12", "0.52,0.16",
-    "0.12,0.42", "0.14,0.46", "0.16,0.50", "0.86,0.42", "0.88,0.46", "0.90,0.47"
+    "0.17,0.247", "0.17,0.24", "0.18,0.25", "0.16,0.25",
+    "0.42,0.19", "0.42,0.21",
+    "0.12,0.42", "0.14,0.46", "0.86,0.42"
   ];
   let lastLabels = [];
 
