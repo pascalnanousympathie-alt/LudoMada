@@ -242,6 +242,63 @@ try {
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
 
+  // Exercise the real Home -> JOUER canvas hitbox rather than only the
+  // login-screen offline shortcut. The universal deferred handler prevents
+  // replacing the content hierarchy during the original Home touch dispatch.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "← Accueil", "--session", session);
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--session", session);
+  if (!waitForSnapshot("LudoMada Premium Home", 8000)) {
+    throw new Error("Offline menu could not return to Premium Home");
+  }
+  console.log("OFFLINE MENU→HOME PASS");
+
+  let playTap = runAllowError("tap", "0.42,0.86", "--session", session, "--force");
+  if (!playTap.ok) throw new Error("Home JOUER touch was rejected: " + JSON.stringify(playTap.value));
+  if (!waitForSnapshot("GAME_MODE_DIALOG", 6000)) {
+    throw new Error("Home JOUER did not open the accessible game-mode overlay");
+  }
+  const offlineMode = waitForSnapshot("MODE_OFFLINE", 3000);
+  const onlineMode = waitForSnapshot("MODE_ONLINE", 3000);
+  if (!offlineMode?.elements?.length || !onlineMode?.elements?.length) {
+    throw new Error("Home game-mode overlay is missing MODE_OFFLINE or MODE_ONLINE");
+  }
+  console.log("HOME→JOUER MODE OVERLAY PASS");
+
+  target = findRef("MODE_ONLINE");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "Choisir la mise", "--session", session);
+  if (!waitForSnapshot("🔑 Hiditra amin'ny room", 3000)) {
+    throw new Error("Online mode did not expose the lobby room-join action");
+  }
+  console.log("JOUER→ONLINE LOBBY PASS");
+
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  if (!waitForSnapshot("LudoMada Premium Home", 5000)) {
+    throw new Error("Lobby could not return to Premium Home");
+  }
+  playTap = runAllowError("tap", "0.42,0.86", "--session", session, "--force");
+  if (!playTap.ok || !waitForSnapshot("GAME_MODE_DIALOG", 6000)) {
+    throw new Error("Home JOUER did not reopen the game-mode overlay");
+  }
+  target = findRef("MODE_OFFLINE");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "👤 2 joueurs", "--session", session);
+  assertMenuButton("👤 2 joueurs");
+  assertMenuButton("👥 3 joueurs");
+  assertMenuButton("👥 4 joueurs");
+  console.log("JOUER→OFFLINE MENU PASS");
+
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  if (!waitForSnapshot("LudoMada Premium Home", 5000)) {
+    throw new Error("Offline menu could not return to Premium Home after mode test");
+  }
+
   run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
