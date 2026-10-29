@@ -267,10 +267,15 @@ class MainActivity : Activity() {
         super.onResume()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
+        when(currentScreen) {
+            "board" -> boardHost?.onResume()
+            "offline" -> offlineHost?.onResume()
+        }
     }
 
     override fun onPause() {
         stopGameEventStream()
+        pauseBoardViews()
         super.onPause()
     }
 
@@ -1052,17 +1057,6 @@ class MainActivity : Activity() {
 
     private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
-    override fun onResume() {
-        super.onResume()
-        when(currentScreen) {
-            "board" -> boardHost?.onResume()
-            "offline" -> offlineHost?.onResume()
-        }
-    }
-    override fun onPause() {
-        pauseBoardViews()
-        super.onPause()
-    }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
     override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
 
