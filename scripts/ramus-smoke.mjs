@@ -264,7 +264,14 @@ try {
   const offlineMode = waitForSnapshot("MODE_OFFLINE", 3000);
   const onlineMode = waitForSnapshot("MODE_ONLINE", 3000);
   if (!offlineMode?.elements?.length || !onlineMode?.elements?.length) {
-    throw new Error("Home game-mode overlay is missing MODE_OFFLINE or MODE_ONLINE");
+    const tree = runAllowError("snapshot", "--session", session);
+    const visible = (tree.value?.elements || []).map(e => ({
+      text: e.text ?? null,
+      contentDescription: e.contentDescription ?? e.description ?? null,
+      ref: e.ref ?? null,
+      bounds: e.bounds ?? null
+    }));
+    throw new Error("Home game-mode overlay is missing MODE_OFFLINE or MODE_ONLINE. Accessibility tree: " + JSON.stringify(visible).slice(0, 7000));
   }
   console.log("HOME→JOUER MODE OVERLAY PASS");
 

@@ -65,7 +65,7 @@ class StartupUiTest {
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
         tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
-            device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
+            device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
         assertTrue("Offline mode accessibility marker missing", device.hasObject(By.desc("MODE_OFFLINE")))
         assertTrue("Online mode accessibility marker missing", device.hasObject(By.desc("MODE_ONLINE")))
 
@@ -80,7 +80,7 @@ class StartupUiTest {
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
-            device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
+            device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
         device.findObject(By.desc("MODE_OFFLINE")).click()
         assertTrue("Offline selection must navigate to the offline menu",
             device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))

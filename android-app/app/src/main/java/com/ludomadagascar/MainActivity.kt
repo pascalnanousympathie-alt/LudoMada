@@ -436,8 +436,9 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.argb(150, 0, 0, 0))
             isClickable = true
             isFocusable = true
-            contentDescription = "GAME_MODE_DIALOG"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            // Keep this container non-descriptive so accessibility services expose
+            // its child buttons instead of treating the full-screen overlay as one node.
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val panel = LinearLayout(this).apply {
@@ -458,7 +459,8 @@ class MainActivity : Activity() {
         }
         val title = label("Choisissez le mode", 21f, true, Color.WHITE).apply {
             gravity = Gravity.CENTER
-            contentDescription = "Choisissez le mode"
+            // Stable marker on a leaf node; unlike the parent, this won't hide button descendants.
+            contentDescription = "GAME_MODE_DIALOG • Choisissez le mode"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             isFocusable = true
         }
