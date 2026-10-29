@@ -50,17 +50,40 @@ function waitForSix(timeoutMs) {
   return snapshot.ok && snapshot.value.elements?.length > 0;
 }
 
+function waitForSnapshot(findText, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+
+  while (Date.now() < deadline) {
+    const snapshot = runAllowError("snapshot", "--session", session, "--find", findText);
+    last = snapshot;
+    if (snapshot.ok && snapshot.value.elements?.length) return snapshot.value;
+
+    // UI transitions can lag behind session creation or an animation. Wait briefly
+    // for the expected accessibility text, then re-snapshot within a fixed deadline.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    runAllowError(
+      "wait", "--text", findText,
+      "--timeout", String(Math.min(750, remaining)),
+      "--session", session
+    );
+  }
+
+  return last?.ok ? last.value : null;
+}
+
 function assertMenuButton(text) {
-  const result = runAllowError("snapshot", "--session", session, "--find", text);
-  if (!result.ok || !result.value.elements?.some((e) => e.text === text)) {
-    throw new Error(`Expected offline menu button: ${text}`);
+  const snapshot = waitForSnapshot(text, 5000);
+  if (!snapshot?.elements?.some((e) => e.text === text)) {
+    throw new Error(`Expected offline menu button after waiting: ${text}`);
   }
 }
 
 function assertTurn(text) {
-  const result = runAllowError("snapshot", "--session", session, "--find", text);
-  if (!result.ok || !result.value.elements?.some((e) => e.text?.startsWith(text))) {
-    throw new Error(`Expected turn state: ${text}`);
+  const snapshot = waitForSnapshot(text, 5000);
+  if (!snapshot?.elements?.some((e) => e.text?.startsWith(text))) {
+    throw new Error(`Expected turn state after waiting: ${text}`);
   }
 }
 
@@ -234,7 +257,7 @@ try {
 }
 
 function findRef(findText) {
-  const s = run("snapshot", "--session", session, "--find", findText);
-  if (!s.elements?.length) throw new Error(`UI element not found: ${findText}`);
+  const s = waitForSnapshot(findText, 8000);
+  if (!s?.elements?.length) throw new Error(`UI element not found after bounded wait: ${findText}`);
   return { ref: s.elements[0].ref, gen: s.gen };
 }
