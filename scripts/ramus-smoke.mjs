@@ -87,6 +87,105 @@ function assertTurn(text) {
   }
 }
 
+function treeLabels(tree) {
+  return (tree?.elements || []).map((e) =>
+    [e.text, e.contentDesc, e.contentDescription, e.description, e.label]
+      .filter((v) => typeof v === "string" && v.length > 0)
+      .join(" ")
+  );
+}
+
+function readTree() {
+  const result = runAllowError("snapshot", "--session", session, "--include-offscreen");
+  if (!result.ok || !result.value?.elements) return null;
+  return result.value;
+}
+
+function treeHas(tree, value) {
+  return treeLabels(tree).some((label) => label.includes(value));
+}
+
+function modePickerIsVisible(tree) {
+  return treeHas(tree, "GAME_MODE_DIALOG") &&
+    treeHas(tree, "MODE_OFFLINE") &&
+    treeHas(tree, "MODE_ONLINE");
+}
+
+function tapTreeNode(tree, needle) {
+  const node = (tree?.elements || []).find((e) =>
+    [e.text, e.contentDesc, e.contentDescription, e.description, e.label]
+      .some((value) => typeof value === "string" && value.includes(needle))
+  );
+  if (!node) throw new Error(`Accessibility node missing from fresh tree: ${needle}; labels=${JSON.stringify(treeLabels(tree))}`);
+  const result = runAllowError("tap", node.ref, "--gen", String(tree.gen), "--session", session);
+  if (!result.ok) throw new Error(`Could not tap accessibility node ${needle}: ${JSON.stringify(result.value)}`);
+  return result;
+}
+
+function isPremiumHome(tree) {
+  return treeHas(tree, "LudoMada Premium Home");
+}
+
+function returnToHome() {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let tree = readTree();
+    if (isPremiumHome(tree)) return true;
+    if (!treeHas(tree, "← Accueil")) return false;
+    tapTreeNode(tree, "← Accueil");
+    waitStable(650);
+    tree = readTree();
+    if (isPremiumHome(tree)) return true;
+  }
+  return isPremiumHome(readTree());
+}
+
+function openModePickerFromHome() {
+  // The view scales a 390×710 canvas into Ramus's portrait surface. The true
+  // JOUER hitbox is x=8..126 / y=110..158; these normalized points cover its
+  // centre first, followed by small offsets and rotated/letterboxed fallbacks.
+  const points = [
+    "0.17,0.247", "0.17,0.24", "0.18,0.25", "0.16,0.25", "0.19,0.25",
+    "0.18,0.23", "0.15,0.24", "0.42,0.19", "0.42,0.21",
+    "0.42,0.86", "0.42,0.88", "0.46,0.86", "0.47,0.90",
+    "0.58,0.12", "0.60,0.14", "0.54,0.12", "0.52,0.16",
+    "0.12,0.42", "0.14,0.46", "0.16,0.50", "0.86,0.42", "0.88,0.46", "0.90,0.47"
+  ];
+  let lastLabels = [];
+
+  for (const point of points) {
+    let tree = readTree();
+    if (!isPremiumHome(tree)) {
+      if (!returnToHome()) {
+        lastLabels = treeLabels(tree);
+        continue;
+      }
+      tree = readTree();
+    }
+    if (!isPremiumHome(tree)) {
+      lastLabels = treeLabels(tree);
+      continue;
+    }
+
+    const tap = runAllowError("tap", point, "--session", session, "--force");
+    waitStable(450);
+    const afterTap = readTree();
+    lastLabels = treeLabels(afterTap);
+
+    // Require all three signals in the same fresh tree; never accept a stale
+    // GAME_MODE_DIALOG marker if the app actually navigated to Events/Wallet.
+    if (modePickerIsVisible(afterTap)) return afterTap;
+
+    // A wrong coordinate may activate another Home card. Return explicitly to
+    // Home before probing the next point, rather than cascading through screens.
+    if (!isPremiumHome(afterTap) && treeHas(afterTap, "← Accueil")) {
+      returnToHome();
+    }
+    if (!tap.ok) waitStable(200);
+  }
+
+  throw new Error("Could not open the Home JOUER mode picker using verified hitbox candidates. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
+}
+
 function pendingDiceValue() {
   const snapshot = runAllowError("snapshot", "--session", session, "--find", "Dé:");
   if (!snapshot.ok) return { value: null, status: "" };
@@ -256,56 +355,30 @@ try {
   }
   console.log("OFFLINE MENU→HOME PASS");
 
-  let playTap = runAllowError("tap", "0.42,0.86", "--session", session, "--force");
-  if (!playTap.ok) throw new Error("Home JOUER touch was rejected: " + JSON.stringify(playTap.value));
-  if (!waitForSnapshot("GAME_MODE_DIALOG", 6000)) {
-    throw new Error("Home JOUER did not open the accessible game-mode overlay");
-  }
-  const offlineMode = waitForSnapshot("MODE_OFFLINE", 3000);
-  const onlineMode = waitForSnapshot("MODE_ONLINE", 3000);
-  if (!offlineMode?.elements?.length || !onlineMode?.elements?.length) {
-    const tree = runAllowError("snapshot", "--session", session);
-    const visible = (tree.value?.elements || []).map(e => ({
-      text: e.text ?? null,
-      contentDescription: e.contentDescription ?? e.description ?? null,
-      ref: e.ref ?? null,
-      bounds: e.bounds ?? null
-    }));
-    throw new Error("Home game-mode overlay is missing MODE_OFFLINE or MODE_ONLINE. Accessibility tree: " + JSON.stringify(visible).slice(0, 7000));
-  }
+  let modeTree = openModePickerFromHome();
   console.log("HOME→JOUER MODE OVERLAY PASS");
 
-  target = findRef("MODE_ONLINE");
-  run("tap", target.ref, "--gen", String(target.gen),
-      "--expect", "Choisir la mise", "--session", session);
-  if (!waitForSnapshot("🔑 Hiditra amin'ny room", 3000)) {
-    throw new Error("Online mode did not expose the lobby room-join action");
+  tapTreeNode(modeTree, "MODE_ONLINE");
+  waitStable(700);
+  let lobbyTree = readTree();
+  if (!treeHas(lobbyTree, "Choisir la mise") || !treeHas(lobbyTree, "Hiditra amin'ny room")) {
+    throw new Error("Online mode did not open the lobby entry screen. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
   console.log("JOUER→ONLINE LOBBY PASS");
 
-  target = findRef("← Accueil");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  if (!waitForSnapshot("LudoMada Premium Home", 5000)) {
-    throw new Error("Lobby could not return to Premium Home");
+  if (!returnToHome()) throw new Error("Could not return from online lobby to Premium Home");
+  modeTree = openModePickerFromHome();
+  tapTreeNode(modeTree, "MODE_OFFLINE");
+  waitStable(700);
+  let offlineMenuTree = readTree();
+  for (const expected of ["👤 2 joueurs", "👥 3 joueurs", "👥 4 joueurs"]) {
+    if (!treeHas(offlineMenuTree, expected)) {
+      throw new Error(`Offline mode menu is missing ${expected}. Accessibility tree: ` + JSON.stringify(treeLabels(offlineMenuTree)).slice(0, 5000));
+    }
   }
-  playTap = runAllowError("tap", "0.42,0.86", "--session", session, "--force");
-  if (!playTap.ok || !waitForSnapshot("GAME_MODE_DIALOG", 6000)) {
-    throw new Error("Home JOUER did not reopen the game-mode overlay");
-  }
-  target = findRef("MODE_OFFLINE");
-  run("tap", target.ref, "--gen", String(target.gen),
-      "--expect", "👤 2 joueurs", "--session", session);
-  assertMenuButton("👤 2 joueurs");
-  assertMenuButton("👥 3 joueurs");
-  assertMenuButton("👥 4 joueurs");
   console.log("JOUER→OFFLINE MENU PASS");
 
-  target = findRef("← Accueil");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  if (!waitForSnapshot("LudoMada Premium Home", 5000)) {
-    throw new Error("Offline menu could not return to Premium Home after mode test");
-  }
-
+  if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
   run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");

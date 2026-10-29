@@ -435,10 +435,10 @@ class MainActivity : Activity() {
         val overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.argb(150, 0, 0, 0))
             isClickable = true
-            isFocusable = true
-            // Keep this container non-descriptive so accessibility services expose
-            // its child buttons instead of treating the full-screen overlay as one node.
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            isFocusable = false
+            // The full-screen backdrop is a touch target, not an accessibility
+            // item. Mark NO (not NO_HIDE_DESCENDANTS) so its buttons stay discoverable.
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val panel = LinearLayout(this).apply {
@@ -453,8 +453,8 @@ class MainActivity : Activity() {
                 setStroke(dp(1), 0x66EDB734)
             }
             elevation = dp(18).toFloat()
-            isClickable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+            isClickable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val title = label("Choisissez le mode", 21f, true, Color.WHITE).apply {
