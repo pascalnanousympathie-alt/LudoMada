@@ -58,7 +58,13 @@ If **any** count is non-zero, stop; this runbook is deliberately limited to the 
 
 Only after steps 1–3 pass, and only against the staging URL, mark the migrations that produced the current schema as applied. This writes Prisma migration-history metadata; it does **not** execute their historical SQL or alter application tables.
 
-Run in order from the repo root:
+The app role deliberately has `USAGE` but not `CREATE` on `public`. Therefore, **do not skip this temporary-permission step**. In the Supabase Dashboard SQL Editor (running with the project's administrative database role), grant schema `CREATE` only for the baseline window:
+
+```sql
+GRANT CREATE ON SCHEMA public TO ludomada_render_staging;
+```
+
+Then, from the repo root with `DATABASE_URL` configured for `ludomada_render_staging.jliatljqvvbibcibnrjk`, run in order:
 
 ```sh
 npx prisma migrate resolve --applied 0001_v6_1_persistence
@@ -68,7 +74,13 @@ npx prisma migrate resolve --applied 0003_lobby_creator_schema
 npx prisma migrate resolve --applied 20260911203000_add_email_phone_auth
 ```
 
-These are the five migration directories in this repository at the time this runbook was written. Recheck `prisma/migrations/` first if the branch changed. If any command fails, stop and inspect migration status/history before continuing; do not drop `_prisma_migrations` or try to repair the issue by replaying DDL.
+Immediately after the commands succeed, return to the Supabase SQL Editor and revoke the temporary permission:
+
+```sql
+REVOKE CREATE ON SCHEMA public FROM ludomada_render_staging;
+```
+
+If any command fails, revoke `CREATE` first, then stop and inspect migration status/history before continuing. Do not drop `_prisma_migrations`, leave `CREATE` granted, or try to repair the issue by replaying DDL. These are the five migration directories in this repository at the time this runbook was written; recheck `prisma/migrations/` first if the branch changed.
 
 ## 5. Verify the baseline
 
@@ -78,7 +90,7 @@ npx prisma migrate status
 
 Expected: all five listed migrations are applied, none are pending, and Prisma exits successfully. Repeat the read-only schema diff from step 2; it should still return code `0`. Confirm the 13 application tables remain empty and all live-payment flags remain disabled.
 
-After this baseline is validated, future migrations can be introduced normally and `prisma migrate deploy` will apply only newly-added migrations. Do not add automatic migration execution to the Render startup command during the baseline operation.
+After this baseline is validated, `prisma migrate status` should report no pending migrations. The backend runtime role is deliberately not a schema owner and must **not** run `prisma migrate deploy` for future DDL changes. Apply future migrations only through a separate owner-approved migration workflow/role with the necessary object ownership, then deploy the app separately. Do not add automatic migration execution to the Render startup command.
 
 ## Rollback boundary
 
