@@ -12,6 +12,22 @@
 - **3D assets and cosmetics:** GLB/GLES3 scene loading and Market V6 already exist in separate open feature PRs (#69 and #73), not in this main baseline. Review and integrate those product branches as a separate, ordered Android workstream; do not cherry-pick individual 3D assets without their loader, manifest, renderer and validation checks.
 - **Go backend:** the reference Go implementation demonstrates an alternative for performance-sensitive services, not a reason to rewrite a stable TypeScript/Express API. Profile gameplay and database latency first; keep one authoritative backend until metrics justify a separate service.
 
+## Adoption decision matrix
+
+| Technology / lesson | Decision for LudoMada | Why / next gate |
+|---|---|---|
+| SSE game updates | Implemented on backend and Android online board | Same-process live update path, bounded streams, state refetch; verify long-duration disconnect/reconnect behavior on a real device |
+| Socket.IO / WebSockets | Deferred as a transport replacement | SSE is enough for server-to-client invalidation; introduce bi-directional sockets only if latency/interaction measurements require it |
+| Redis / RedisJSON | Deferred | Current deployment has a single-process event hub; add shared pub/sub only with multi-instance deployment and replay/recovery tests |
+| Firebase | Not used as an authoritative game/wallet database | Avoid splitting authentication and durable game/ledger truth; optional push notifications can be evaluated separately |
+| AI opponent | Implemented as a read-only move suggestion | Deterministic heuristic; future fully automated bot requires explicit bot identity, turn ownership, timeout rules, anti-abuse and integration tests |
+| Jetpack Compose | Deferred to incremental UI work | Do not rewrite the existing Android screens to get real-time updates; evaluate per-screen after design and accessibility checks |
+| GLB + OpenGL ES 3 / PBR | Existing feature work stays in PRs #69/#73 | Integrate the board, asset loader, assets, shader/render code and validation together; require emulator/device capture evidence |
+| Market / cosmetics | Keep isolated from this backend change | Product branch includes catalog/preview/economy work; merge only after authoritative server price/ownership and UI tests are reviewed |
+| Go backend | Deferred pending profiling | Avoid a multi-language rewrite until measured backend/database bottlenecks justify it |
+| CI hosted runners | Separate required infrastructure correction in PR #139 | The known ARM64 runner fails before dependency install; do not suppress or weaken validation gates |
+
+
 ## Implemented in this branch
 
 1. Authenticated participant-only SSE endpoint: GET /api/games/:gameId/events.
