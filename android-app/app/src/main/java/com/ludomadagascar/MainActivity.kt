@@ -32,6 +32,10 @@ class MainActivity : Activity() {
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var movePending = false
+    @Volatile private var gameEventsEnabled = false
+    @Volatile private var gameEventsGameId = ""
+    @Volatile private var gameEventsConnection: HttpURLConnection? = null
+    @Volatile private var gameEventsThread: Thread? = null
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
@@ -63,6 +67,7 @@ class MainActivity : Activity() {
         setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
+        if(name!="board") stopGameEventStream()
         currentScreen=name
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
@@ -259,6 +264,17 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
+        if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
+    }
+
+    override fun onPause() {
+        stopGameEventStream()
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        stopGameEventStream()
+        super.onDestroy()
     }
 
     private fun refreshAccountBalance() {
@@ -525,6 +541,11 @@ class MainActivity : Activity() {
     }
     private fun offlineRoll(host:LudoBoardView){
         if(host.isDiceRolling())return
+        // Do not let a player overwrite a rolled die without making a move.
+        if(offlineDice!=0){
+            status.text="Jouez d'abord le pion (Dé: $offlineDice)."
+            return
+        }
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
@@ -577,11 +598,16 @@ class MainActivity : Activity() {
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
         val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
-        status=st;add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54);add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
+        status=st
+        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
+        add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
+        add(button("✨ Conseil IA",Color.rgb(111,70,186)){requestAiSuggestion()},48,2,4)
         val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
         for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
         add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
-        updateBoard(host);root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
+        updateBoard(host)
+        startGameEventStream()
+        root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
     }
 
     private fun updateBoard(host:LudoBoardView){
@@ -611,6 +637,116 @@ class MainActivity : Activity() {
             refreshState()
         },{msg->if(::status.isInitialized)status.text=msg})
     }
+    private fun requestAiSuggestion(){
+        if(gameId.isBlank() || movePending || currentScreen!="board") return
+        val requestedGameId=gameId
+        val requestedVersion=version
+        get("/api/games/$requestedGameId/ai-suggestion"){j->
+            if(currentScreen!="board" || gameId!=requestedGameId) return@get
+            val suggestedVersion=j.optInt("stateVersion",-1)
+            if(suggestedVersion<0 || suggestedVersion!=requestedVersion || suggestedVersion!=version){
+                status.text="Niova ny lalao. Havaozy ny state dia mangataha soso-kevitra indray."
+                return@get
+            }
+            val tokenIndex=j.optInt("tokenIndex",-1)
+            status.text=if(tokenIndex in 0..3){
+                "✨ Conseil IA: jouez le pion ${tokenIndex+1}. Confirmez avec le bouton Pion correspondant."
+            }else{
+                "Tsy misy fihetsika ara-dalàna atolotry ny AI amin’izao fotoana izao."
+            }
+        }
+    }
+
+    private fun stopGameEventStream(){
+        gameEventsEnabled=false
+        gameEventsGameId=""
+        gameEventsConnection?.disconnect()
+        gameEventsConnection=null
+        gameEventsThread?.interrupt()
+        gameEventsThread=null
+    }
+
+    private fun startGameEventStream(){
+        if(currentScreen!="board" || gameId.isBlank() || token.isBlank()) return
+        if(gameEventsEnabled && gameEventsGameId==gameId) return
+        stopGameEventStream()
+
+        val watchedGameId=gameId
+        gameEventsGameId=watchedGameId
+        gameEventsEnabled=true
+        val worker=thread(start=false,isDaemon=true,name="ludomada-events"){
+            while(gameEventsEnabled && gameEventsGameId==watchedGameId && token.isNotBlank()){
+                var connection:HttpURLConnection?=null
+                try{
+                    if(!gameEventsEnabled || gameEventsGameId!=watchedGameId) break
+                    val requestToken=token
+                    connection=(URL(apiBase+"/api/games/$watchedGameId/events").openConnection() as HttpURLConnection).apply{
+                        requestMethod="GET"
+                        connectTimeout=10000
+                        readTimeout=45000
+                        doInput=true
+                        setRequestProperty("Accept","text/event-stream")
+                        setRequestProperty("Cache-Control","no-cache")
+                        setRequestProperty("Authorization","Bearer $requestToken")
+                    }
+                    gameEventsConnection=connection
+                    val code=connection.responseCode
+                    if(code==401){
+                        if(refreshAccessToken(requestToken)) continue
+                        runOnUiThread{
+                            if(token==requestToken){
+                                clearSession()
+                                if(currentScreen!="login") login()
+                            }
+                        }
+                        break
+                    }
+                    if(code !in 200..299){
+                        if(code in 400..499 && code!=401){
+                            gameEventsEnabled=false
+                            gameEventsGameId=""
+                            break
+                        }
+                        throw IllegalStateException("GAME_EVENT_STREAM_HTTP_$code")
+                    }
+                    connection.inputStream.bufferedReader(Charsets.UTF_8).use{reader->
+                        var eventName=""
+                        while(gameEventsEnabled && gameEventsGameId==watchedGameId){
+                            val line=reader.readLine() ?: break
+                            when{
+                                line.startsWith("event:")->eventName=line.substringAfter(':').trim()
+                                line.startsWith("data:")->{
+                                    if(eventName=="game-update"){
+                                        runOnUiThread{
+                                            if(currentScreen=="board" && gameId==watchedGameId){
+                                                root.postDelayed({
+                                                    if(currentScreen=="board" && gameId==watchedGameId) refreshState()
+                                                },120L)
+                                            }
+                                        }
+                                    }
+                                    eventName=""
+                                }
+                                line.isEmpty()->eventName=""
+                            }
+                        }
+                    }
+                }catch(e:Exception){
+                    // Network drops, app pause and server restarts use the same bounded reconnect path.
+                }finally{
+                    if(gameEventsConnection===connection) gameEventsConnection=null
+                    connection?.disconnect()
+                }
+
+                if(gameEventsEnabled && gameEventsGameId==watchedGameId){
+                    try{Thread.sleep(1500L)}catch(_:InterruptedException){Thread.currentThread().interrupt();break}
+                }
+            }
+        }
+        gameEventsThread=worker
+        worker.start()
+    }
+
     private fun move(i:Int){ requestMove(i) }
 
     private fun showGameEntryLoading() {
@@ -710,6 +846,7 @@ class MainActivity : Activity() {
     }
 
     private fun clearSession() {
+        stopGameEventStream()
         token=""
         refreshToken=""
         userId=""
