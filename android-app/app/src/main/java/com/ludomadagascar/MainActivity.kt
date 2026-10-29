@@ -527,13 +527,18 @@ class MainActivity : Activity() {
         add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
     }
 
-    private fun offlineGlobalSquare(player:Int,pos:Int):Int? = if(pos in 0..51) ((player*13)+pos)%52 else null
-    private fun offlineCanMove(pos:Int,dice:Int):Boolean = if(dice !in 1..6) false else if(pos<0) dice==6 else pos+dice<=57
+    private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
+        OfflineLudoRules.globalSquare(player,pos)
+
+    private fun offlineCanMove(pos:Int,dice:Int):Boolean =
+        OfflineLudoRules.canMove(pos,dice)
+
     private fun offlineHasLegalMove(playersState:org.json.JSONArray,dice:Int,player:Int):Boolean {
         val p=playersState.optJSONObject(player)?:return false
         val ts=p.optJSONArray("tokens")?:return false
-        for(i in 0 until minOf(4,ts.length())) if(offlineCanMove(ts.optJSONObject(i)?.optInt("pos",-1)?:-1,dice)) return true
-        return false
+        val positions=(0 until minOf(OfflineLudoRules.TOKENS_PER_PLAYER,ts.length()))
+            .map { ts.optJSONObject(it)?.optInt("pos",-1) ?: -1 }
+        return OfflineLudoRules.hasLegalMove(positions,dice)
     }
     private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
         offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
@@ -565,12 +570,15 @@ class MainActivity : Activity() {
         val tok=ts.optJSONObject(tokenIndex)?:return
         val old=tok.optInt("pos",-1);val dice=offlineDice
         if(!offlineCanMove(old,dice)){status.text=if(old<0)"Mila 6 vao mivoaka ny pion." else "Tsy afaka mihetsika: tsy ampy ny toerana sisa.";return}
-        val next=if(old<0)0 else old+dice
+        val next=OfflineLudoRules.nextPosition(old,dice) ?: run {
+            status.text=if(old<0)"Mila 6 vao mivoaka ny pion." else "Tsy afaka mihetsika: tsy ampy ny toerana sisa."
+            return
+        }
         tok.put("pos",next)
         var captured=0
         val landing=offlineGlobalSquare(offlineTurn,next)
         if(landing!=null){
-            val safe=intArrayOf(0,8,13,21,26,34,39,47).contains(landing)
+            val safe=OfflineLudoRules.isSafeSquare(landing)
             if(!safe){
                 for(pi in 0 until minOf(players,ps.length())){
                     if(pi==offlineTurn)continue
@@ -584,13 +592,16 @@ class MainActivity : Activity() {
             }
         }
         offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
-        val finished=(0 until minOf(4,ts.length())).all{ts.optJSONObject(it)?.optInt("pos",-1)==57}
+        val finalPositions=IntArray(minOf(OfflineLudoRules.TOKENS_PER_PLAYER,ts.length())) {
+            ts.optJSONObject(it)?.optInt("pos",-1) ?: -1
+        }
+        val finished=OfflineLudoRules.hasWinner(finalPositions)
         if(finished){
             offlineState?.put("phase","FINISHED")?.put("winnerId","offline-$offlineTurn")
             status.text="🏆 Joueur ${offlineTurn+1} gagne la partie !"
             host.invalidate();return
         }
-        val extra=dice==6 || captured>0
+        val extra=OfflineLudoRules.keepsTurn(dice,captured)
         status.text="Joueur ${offlineTurn+1} • Dé: 0 • ${if(captured>0)"Capture ! " else ""}Déplacement…"
         root.postDelayed({if(currentScreen=="offline"){if(extra){status.text="Joueur ${offlineTurn+1}/$players • Rejouez — Dé: 0"}else advanceOfflineTurn(players,host)}},700L)
     }
