@@ -87,6 +87,7 @@ model Transaction {
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
   @@index([providerReference])
+  @@index([gameId])
 }
 
 model Game {
@@ -128,6 +129,7 @@ model GameParticipant {
   game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
 
   @@unique([gameId, userId])
+  @@index([userId])
 }
 
 model LedgerEntry {
