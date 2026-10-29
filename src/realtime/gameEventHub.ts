@@ -47,6 +47,10 @@ export function subscribeGameUpdates(
     throw new Error("GAME_STREAM_ID_REQUIRED");
   }
 
+  if (countUserStreams(userId) >= MAX_STREAMS_PER_USER) {
+    throw new Error("USER_STREAM_CAPACITY_REACHED");
+  }
+
   let gameSubscribers = subscribersByGame.get(gameId);
   if (!gameSubscribers) {
     gameSubscribers = new Map<string, Subscriber>();
@@ -55,9 +59,6 @@ export function subscribeGameUpdates(
 
   if (gameSubscribers.size >= MAX_STREAMS_PER_GAME) {
     throw new Error("GAME_STREAM_CAPACITY_REACHED");
-  }
-  if (countUserStreams(userId) >= MAX_STREAMS_PER_USER) {
-    throw new Error("USER_STREAM_CAPACITY_REACHED");
   }
 
   const subscriptionId = randomUUID();
