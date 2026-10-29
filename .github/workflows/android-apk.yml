@@ -7,35 +7,55 @@ on:
       - 'android-app/**'
       - '.github/workflows/android-apk.yml'
 
+permissions:
+  contents: read
+
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
-    runs-on: [self-hosted, linux, ARM64]
-    timeout-minutes: 20
-    concurrency:
-      group: android-apk-${{ github.ref }}
-      cancel-in-progress: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
-      ANDROID_HOME: /data/data/com.termux/files/home/android-sdk
-      ANDROID_SDK_ROOT: /data/data/com.termux/files/home/android-sdk
-      JAVA_HOME: /data/data/com.termux/files/usr/lib/jvm/java-21-openjdk
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     defaults:
       run:
         working-directory: android-app
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          clean: false
           fetch-depth: 1
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          cmdline-tools-version: 12266719
+          accept-android-sdk-licenses: true
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
+
       - name: Configure Android SDK path
-        working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
-      - run: sh ./gradlew --version
-      - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
+      - name: Build debug APK
+        run: |
+          set -eu
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/debug/app-debug.apk
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: LudoMadagascar-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
+          retention-days: 7
