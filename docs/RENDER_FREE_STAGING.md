@@ -31,7 +31,7 @@ Set `CORS_ORIGINS` to the comma-separated, exact HTTPS origins of the intended c
 
 The restored staging database already has the current 13-table schema, but it has no `public._prisma_migrations` table. The historical Prisma migration chain contains earlier schema states (including a `CREATED` game status not present in the current schema). Therefore, do **not** run `prisma migrate deploy` blindly against this existing schema: the old migrations may try to create objects that already exist.
 
-Before enabling automatic schema migrations, follow [`docs/PRISMA_STAGING_BASELINE.md`](./PRISMA_STAGING_BASELINE.md): it requires a read-only schema diff, a zero-row check across every application table, and an explicit `prisma migrate resolve --applied` baseline. This Blueprint intentionally starts the application without mutating the schema.
+Before any Prisma baseline work, follow [`docs/PRISMA_STAGING_BASELINE.md`](./PRISMA_STAGING_BASELINE.md): it requires a read-only schema diff, a zero-row check across every application table, a temporary `CREATE` grant that is revoked immediately after recording migration history, and explicit `prisma migrate resolve --applied` commands. The runtime role must not run future DDL migrations, and this Blueprint intentionally starts the application without mutating the schema.
 
 ## Release checks
 
