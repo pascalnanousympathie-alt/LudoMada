@@ -16,6 +16,24 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+    private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
+        val home = device.findObject(By.descContains("LudoMada Premium Home"))
+        val bounds = home.visibleBounds
+        val density = context.resources.displayMetrics.density
+        val scale = minOf(
+            bounds.width() / (390f * density),
+            bounds.height() / (710f * density)
+        ) * density
+        val xOffset = (bounds.width() - 390f * scale) / 2f
+        val yOffset = (bounds.height() - 710f * scale) / 2f
+
+        // The Home canvas defines JOUER at logical x=8..126, y=110..158.
+        // Convert that real hitbox to screen pixels instead of tapping the whole View center.
+        val x = bounds.left + (xOffset + 65f * scale).toInt()
+        val y = bounds.top + (yOffset + 132f * scale).toInt()
+        assertTrue("Home JOUER tap should be accepted", device.click(x, y))
+    }
+
     @Test
     fun game_mode_overlay_is_accessible_and_routes_both_modes() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -45,9 +63,7 @@ class StartupUiTest {
 
         assertTrue("Premium Home did not appear",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
-        // PremiumHeroView is a canvas-backed screen with a single accessibility node.
-        // Its center hitbox maps to the visible Home JOUER call-to-action.
-        device.findObject(By.descContains("LudoMada Premium Home")).click()
+        tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
             device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         assertTrue("Offline mode accessibility marker missing", device.hasObject(By.desc("MODE_OFFLINE")))
@@ -62,7 +78,7 @@ class StartupUiTest {
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
 
-        device.findObject(By.descContains("LudoMada Premium Home")).click()
+        tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
             device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         device.findObject(By.desc("MODE_OFFLINE")).click()
