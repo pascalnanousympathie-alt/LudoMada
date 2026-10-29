@@ -98,7 +98,11 @@ jobs:
             adb shell settings put global animator_duration_scale 0 || true
             cd android-app
             set +e
-            timeout --signal=TERM --kill-after=30s 18m ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            # Ramus already covers the full offline gameplay path. Keep this emulator gate
+            # focused on the accessibility regression that previously blocked Home → JOUER.
+            timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
+              -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest#game_mode_overlay_is_accessible_and_routes_both_modes \
+              --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
             test_status=$?
             set -e
             if [ "$test_status" -ne 0 ]; then
