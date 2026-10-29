@@ -686,7 +686,16 @@ class MainActivity : Activity() {
                     }
                     gameEventsConnection=connection
                     val code=connection.responseCode
-                    if(code==401 && refreshAccessToken(requestToken)) continue
+                    if(code==401){
+                        if(refreshAccessToken(requestToken)) continue
+                        runOnUiThread{
+                            if(token==requestToken){
+                                clearSession()
+                                if(currentScreen!="login") login()
+                            }
+                        }
+                        break
+                    }
                     if(code !in 200..299){
                         if(code in 400..499 && code!=401){
                             gameEventsEnabled=false
