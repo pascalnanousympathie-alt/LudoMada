@@ -193,3 +193,13 @@ Added a containerized staging path:
 
 This is a staging deployment package, not a claim that payment-provider,
 penetration-test, legal, or production approval gates are complete.
+
+
+## Real-time game updates and AI move hints
+
+The backend exposes these optional, authenticated endpoints:
+
+- `GET /api/games/:gameId/events` opens a Server-Sent Events stream for a game participant. The stream publishes `game-update` events for lobby joins, game start, dice rolls and token moves. Events contain only a reason and version metadata; clients should refetch `GET /api/games/:gameId/state` for the authoritative snapshot.
+- `GET /api/games/:gameId/ai-suggestion` returns a deterministic heuristic token index for the current participant after the dice has been rolled. It is read-only and does not perform the move or change wallet/game state. Submit an accepted move through the normal `/move` endpoint with the current `expectedVersion` and required `Idempotency-Key`.
+
+The current event hub is process-local, limited to 64 streams per game and 4 per user. It is not a cross-instance message bus and does not replay missed events; clients should fetch the current snapshot after connecting or reconnecting. Before horizontal scaling, add and test a shared fanout adapter. PostgreSQL remains the authoritative game-state store.
