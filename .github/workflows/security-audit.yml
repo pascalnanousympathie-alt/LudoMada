@@ -71,7 +71,7 @@ jobs:
           severity: CRITICAL,HIGH,MEDIUM
           format: json
           output: trivy-results.json
-          exit-code: "0"
+          exit-code: "1"
       - name: Upload Trivy report
         if: always() && hashFiles('trivy-results.json') != ''
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4
