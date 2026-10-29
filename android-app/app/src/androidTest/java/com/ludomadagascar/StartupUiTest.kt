@@ -38,11 +38,16 @@ class StartupUiTest {
                 .filterIsInstance<MainActivity>()
                 .firstOrNull()
             assertNotNull("MainActivity must be resumed", activity)
-            activity!!.javaClass.getDeclaredMethod("gameModeDialog").apply {
+            activity!!.javaClass.getDeclaredMethod("home").apply {
                 isAccessible = true
             }.invoke(activity)
         }
 
+        assertTrue("Premium Home did not appear",
+            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
+        // PremiumHeroView is a canvas-backed screen with a single accessibility node.
+        // Its center hitbox maps to the visible Home JOUER call-to-action.
+        device.findObject(By.descContains("LudoMada Premium Home")).click()
         assertTrue("Mode overlay accessibility marker missing",
             device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         assertTrue("Offline mode accessibility marker missing", device.hasObject(By.desc("MODE_OFFLINE")))
@@ -57,12 +62,8 @@ class StartupUiTest {
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
 
-        instrumentation.runOnMainSync {
-            activity!!.javaClass.getDeclaredMethod("gameModeDialog").apply {
-                isAccessible = true
-            }.invoke(activity)
-        }
-        assertTrue("Mode overlay did not reopen from Home",
+        device.findObject(By.descContains("LudoMada Premium Home")).click()
+        assertTrue("Mode overlay did not reopen from Home JOUER",
             device.wait(Until.hasObject(By.desc("GAME_MODE_DIALOG")), 3000))
         device.findObject(By.desc("MODE_OFFLINE")).click()
         assertTrue("Offline selection must navigate to the offline menu",
