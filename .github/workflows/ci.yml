@@ -30,7 +30,7 @@ jobs:
           clean: false
           fetch-depth: 1
       - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
       - run: node -v && npm -v
       - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
       - run: npx prisma generate
