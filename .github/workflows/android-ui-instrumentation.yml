@@ -23,7 +23,7 @@ concurrency:
 jobs:
   ui-instrumentation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 40
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
@@ -69,7 +69,7 @@ jobs:
           profile: pixel_2
           force-avd-creation: true
           disable-animations: true
-          emulator-boot-timeout: 900
+          emulator-boot-timeout: 600
           disk-size: 4096M
           ram-size: 3072M
           heap-size: 1024M
@@ -85,9 +85,31 @@ jobs:
               if [ "$boot" = "1" ] && echo "$package_service" | grep -q 'found'; then ready=1; break; fi
               sleep 2
             done
-            test "$ready" = "1"
+            if [ "$ready" != "1" ]; then
+              echo "EMULATOR_BOOT_DIAGNOSTICS: Android system or package manager did not become ready"
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell service list | grep -i package || true
+              adb logcat -d -t 1500 | tail -n 250 || true
+              exit 1
+            fi
+            adb shell settings put global window_animation_scale 0 || true
+            adb shell settings put global transition_animation_scale 0 || true
+            adb shell settings put global animator_duration_scale 0 || true
             cd android-app
-            ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            set +e
+            timeout --signal=TERM --kill-after=30s 18m ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+            test_status=$?
+            set -e
+            if [ "$test_status" -ne 0 ]; then
+              echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: gradle exit code $test_status"
+              adb devices -l || true
+              adb shell getprop sys.boot_completed || true
+              adb shell service check package || true
+              adb shell dumpsys activity activities | tail -n 100 || true
+              adb logcat -d -t 2500 -s AndroidRuntime:E ActivityManager:E TestRunner:E AndroidJUnitRunner:E || true
+              exit "$test_status"
+            fi
 
       - name: Upload instrumentation reports
         if: always()
