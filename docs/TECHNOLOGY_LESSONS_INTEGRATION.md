@@ -23,6 +23,6 @@
 ## Limits and next integration gates
 
 - The event hub is in-memory and works only for clients connected to the same API process. Before horizontal scaling, add a shared fanout adapter and define reconnect/snapshot semantics. PostgreSQL remains the canonical state.
-- The Android client has not yet been wired to open the SSE stream or display AI suggestions. Its active 3D/cosmetics feature branches need separate integration and emulator validation.
+- The Android online board now opens the authenticated SSE stream, refetches authoritative state on game updates, and includes a manual AI hint button. The existing 4-second state refresh remains as a fallback. The 3D/cosmetics feature branches still need separate integration and emulator validation.
 - Existing CI in main still uses the self-hosted ARM64 runner. The open PR #139 contains a hosted-runner fix and reported passing backend/security/release checks on its head, but that PR is not merged by this change. Do not mask a runner failure as a test pass.
 - No database migration, third-party runtime dependency, production deployment, payment switch, wallet logic, or live credential change is included.
