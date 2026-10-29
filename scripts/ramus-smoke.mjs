@@ -75,6 +75,15 @@ function waitForSix(timeoutMs) {
   return snapshot.ok && snapshot.value.elements?.length > 0;
 }
 
+function waitStable(ms = 1200) {
+  // A bounded local settle delay is safer than racing the remote accessibility tree.
+  const sleepMs = Math.max(0, Math.min(Number(ms) || 0, 1800));
+  spawnSync("sleep", [String(sleepMs / 1000)], {
+    stdio: "ignore",
+    timeout: 2500,
+  });
+}
+
 function waitForSnapshot(findText, timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
   let last = null;
