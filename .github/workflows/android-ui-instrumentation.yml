@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ui-instrumentation-${{ github.ref }}
+  group: android-ui-instrumentation-api30-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
         with:
           cmdline-tools-version: 12266719
           accept-android-sdk-licenses: true
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0 emulator system-images;android-34;google_apis;x86_64"
+          packages: "platform-tools platforms;android-30 platforms;android-35 build-tools;35.0.0 emulator system-images;android-30;google_apis;x86_64"
 
       - name: Configure Android SDK
         working-directory: android-app
@@ -63,7 +63,7 @@ jobs:
       - name: Run connected Android UI instrumentation tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: 34
+          api-level: 30
           target: google_apis
           arch: x86_64
           profile: pixel_2
