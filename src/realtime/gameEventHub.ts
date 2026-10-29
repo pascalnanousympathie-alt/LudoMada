@@ -4,7 +4,8 @@ export type GameUpdateReason =
   | "PLAYER_JOINED"
   | "GAME_STARTED"
   | "DICE_ROLLED"
-  | "TOKEN_MOVED";
+  | "TOKEN_MOVED"
+  | "GAME_FINISHED";
 
 export interface PublicGameUpdate {
   id: string;
