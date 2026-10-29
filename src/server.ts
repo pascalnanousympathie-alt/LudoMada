@@ -1673,6 +1673,9 @@ app.get("/api/games/:gameId/lobby",auth,async(req:any,res)=>{
 
 
 app.get("/api/games/:gameId/events",auth,async(req:any,res:any)=>{
+  let unsubscribe:(()=>void)|undefined;
+  let heartbeat:ReturnType<typeof setInterval>|undefined;
+
   try{
     const game=await prisma.game.findUnique({
       where:{id:req.params.gameId},
@@ -1684,7 +1687,6 @@ app.get("/api/games/:gameId/events",auth,async(req:any,res:any)=>{
       return res.status(403).json({error:"Forbidden"});
     }
 
-    let unsubscribe:()=>void;
     try{
       unsubscribe=subscribeGameUpdates(req.params.gameId,req.userId,(event)=>{
         if(res.writableEnded || res.destroyed) return;
@@ -1713,16 +1715,18 @@ app.get("/api/games/:gameId/events",auth,async(req:any,res:any)=>{
       refresh:"GET /api/games/"+req.params.gameId+"/state"
     })+"\n\n");
 
-    const heartbeat=setInterval(()=>{
+    heartbeat=setInterval(()=>{
       if(!res.writableEnded && !res.destroyed) res.write(": keep-alive\n\n");
     },25_000);
     if(typeof heartbeat.unref==="function") heartbeat.unref();
 
     res.on("close",()=>{
-      clearInterval(heartbeat);
-      unsubscribe();
+      if(heartbeat) clearInterval(heartbeat);
+      unsubscribe?.();
     });
   }catch(e:any){
+    if(heartbeat) clearInterval(heartbeat);
+    unsubscribe?.();
     console.error("GAME EVENT STREAM ERROR",{
       name:e?.name,
       message:e?.message,
