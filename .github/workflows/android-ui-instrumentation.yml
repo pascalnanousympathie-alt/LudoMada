@@ -45,7 +45,7 @@ jobs:
         with:
           cmdline-tools-version: 12266719
           accept-android-sdk-licenses: true
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0 emulator system-images;android-35;google_apis;x86_64"
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0 emulator system-images;android-34;google_apis;x86_64"
 
       - name: Configure Android SDK
         working-directory: android-app
@@ -63,7 +63,7 @@ jobs:
       - name: Run connected Android UI instrumentation tests
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
-          api-level: 35
+          api-level: 34
           target: google_apis
           arch: x86_64
           profile: pixel_2
@@ -71,11 +71,23 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 900
           disk-size: 4096M
-          ram-size: 2048M
-          heap-size: 512M
+          ram-size: 3072M
+          heap-size: 1024M
           sdcard-path-or-size: 256M
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: cd android-app && ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          script: |
+            set -eu
+            adb wait-for-device
+            ready=0
+            for attempt in $(seq 1 60); do
+              boot="$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+              package_service="$(adb shell service check package 2>/dev/null || true)"
+              if [ "$boot" = "1" ] && echo "$package_service" | grep -q 'found'; then ready=1; break; fi
+              sleep 2
+            done
+            test "$ready" = "1"
+            cd android-app
+            ./gradlew connectedDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 
       - name: Upload instrumentation reports
         if: always()
