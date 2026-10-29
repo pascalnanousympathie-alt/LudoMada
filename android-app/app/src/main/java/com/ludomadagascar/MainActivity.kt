@@ -541,6 +541,11 @@ class MainActivity : Activity() {
     }
     private fun offlineRoll(host:LudoBoardView){
         if(host.isDiceRolling())return
+        // Do not let a player overwrite a rolled die without making a move.
+        if(offlineDice!=0){
+            status.text="Jouez d'abord le pion (Dé: $offlineDice)."
+            return
+        }
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()

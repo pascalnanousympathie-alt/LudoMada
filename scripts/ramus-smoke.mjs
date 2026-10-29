@@ -64,6 +64,38 @@ function assertTurn(text) {
   }
 }
 
+function pendingDiceValue() {
+  const snapshot = runAllowError("snapshot", "--session", session, "--find", "Dé:");
+  if (!snapshot.ok) return { value: null, status: "" };
+  const texts = (snapshot.value.elements || []).map((e) => e.text).filter((t) => typeof t === "string");
+  const status = texts.find((t) => t.includes("Dé:")) || "";
+  if (status.includes("Aucun coup")) return { value: null, status };
+  const match = status.match(/Dé:\s*([1-6])/);
+  return { value: match ? Number(match[1]) : null, status };
+}
+
+function moveAnyLegalPawnAfterRoll() {
+  const { value: dice, status } = pendingDiceValue();
+  if (dice === null || status.includes("Aucun coup")) return false;
+
+  for (let index = 1; index <= 4; index++) {
+    const pawn = runAllowError("snapshot", "--session", session, "--find", `Pion ${index}`);
+    if (!pawn.ok || !pawn.value.elements?.length) continue;
+
+    const ref = pawn.value.elements[0];
+    runAllowError("tap", ref.ref, "--gen", String(pawn.value.gen), "--session", session);
+
+    // A legal move resets the pending die to zero immediately. Illegal pawns
+    // leave the die pending, so try the next token without throwing.
+    const moved = runAllowError(
+      "wait", "--text", "Dé: 0", "--timeout", "1200", "--session", session
+    );
+    if (moved.ok) return true;
+  }
+
+  throw new Error(`Dice ${dice} allowed a move but no pawn could be moved. Status: ${pendingDiceValue().status}`);
+}
+
 function advanceToTurn(targetTurn) {
   for (let i = 0; i < 12; i++) {
     if (runAllowError("snapshot", "--session", session, "--find", targetTurn).value?.elements?.length) {
@@ -76,6 +108,8 @@ function advanceToTurn(targetTurn) {
     }
     const ref = roll.value.elements[0];
     run("tap", ref.ref, "--gen", String(roll.value.gen), "--session", session);
+
+    moveAnyLegalPawnAfterRoll();
 
     const waited = runAllowError(
       "wait", "--text", targetTurn, "--timeout", "2200", "--session", session
@@ -134,6 +168,19 @@ try {
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   assertTurn("Joueur 1/2");
   console.log("2-PLAYER REENTRY PASS");
+  for (const nextTurn of ["Joueur 2/2", "Joueur 1/2"]) {
+    advanceToTurn(nextTurn);
+  }
+  console.log("2-PLAYER TURN ROTATION PASS");
+
+  // Reset to a fresh two-player game so the exact-six/pawn scenario starts
+  // with all four pawns in home, independent of the rotation test above.
+  target = findRef("← Hors-ligne");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  target = findRef("👤 2 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  assertTurn("Joueur 1/2");
+  console.log("2-PLAYER RESET PASS");
 
   let gotSix = false;
   for (let i = 0; i < 24; i++) {
@@ -152,6 +199,20 @@ try {
   }
   if (!gotSix) throw new Error("No six within 24 cloud-emulator rolls");
   console.log("DICE SIX PASS");
+
+  // A pending die must be immutable until the player chooses a pawn.
+  runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  target = findRef("Lancer le dé");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const blockedReroll = runAllowError(
+    "wait", "--text", "Jouez d'abord le pion", "--timeout", "1800", "--session", session
+  );
+  if (!blockedReroll.ok) throw new Error("A second dice roll was accepted before moving a pawn");
+  const preservedSix = runAllowError("snapshot", "--session", session, "--find", "Dé: 6");
+  if (!preservedSix.ok || !preservedSix.value.elements?.length) {
+    throw new Error("The pending six was not preserved after a rejected reroll");
+  }
+  console.log("PENDING DICE REROLL BLOCK PASS");
 
   target = findRef("Pion 1");
   run("tap", target.ref, "--gen", String(target.gen),
