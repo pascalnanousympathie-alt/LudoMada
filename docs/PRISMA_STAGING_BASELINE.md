@@ -4,7 +4,7 @@
 
 This runbook is only for the isolated Supabase staging project `ludomada-cloudflare-staging` (`jliatljqvvbibcibnrjk`). It is **not** for Railway, production, or any database with user/game/payment data. The staging schema has the 13 current Prisma tables, currently zero rows, and no `public._prisma_migrations` table. The repository adds two missing foreign-key indexes in `20261029170000_add_missing_foreign_key_indexes`; these must be reconciled before the schema-diff gate. The original migrations cannot be replayed safely over this existing schema because they create objects and enum values that already exist and include older schema states.
 
-Do not run these steps until the staging owner has set the password for the least-privilege `ludomada_render_staging` role and has copied the exact IPv4 **Session Pooler** connection string from Supabase Dashboard → Connect. Use port `5432`, TLS (`sslmode=require`), and keep credentials only in a protected local environment. Never commit or paste the URL into tickets or chat.
+Do not run these steps until the staging owner has access to the current password for the least-privilege `ludomada_render_staging` role and has copied the exact IPv4 **Session Pooler** connection details from Supabase Dashboard → Connect. A read-only metadata check on 2026-10-29 found the role password field set, but that does not prove the owner knows the password or that Render has been configured. Use port `5432`, TLS (`sslmode=require`), and keep the complete URL only in a protected local environment/Render Protected Environment. Never commit or paste it into tickets or chat.
 
 ## 1. Verify you are targeting staging
 
