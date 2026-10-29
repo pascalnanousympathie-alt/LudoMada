@@ -17,22 +17,50 @@ concurrency:
   group: backend-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
-    runs-on: [self-hosted, linux, ARM64]
+    # The repository is public. Use a reproducible hosted Linux runner rather than
+    # binding backend CI to an Android/Termux self-hosted runner's native linker.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ludomada_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ludomada_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
     env:
-      DATABASE_URL: postgresql://u0_a214@localhost:5432/ludomada_ci
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ludomada_ci?schema=public
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          clean: false
           fetch-depth: 1
-      - name: Use runner Linux Node
-        run: echo "/data/data/com.termux/files/usr/bin" >> "$GITHUB_PATH"
-      - run: node -v && npm -v
-      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
-      - run: npx prisma generate
-      - run: npx prisma migrate deploy
-      - run: npm test -- --maxWorkers=2
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install backend dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Generate Prisma client and migrate clean test database
+        run: |
+          set -eu
+          npm run db:generate
+          npm run db:migrate
+      - name: Run full backend test suite
+        run: npm run test:all
+      - name: Build backend
+        run: npm run build
