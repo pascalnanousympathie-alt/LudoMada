@@ -27,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Scan source code
-        run: semgrep scan --config auto --json-output semgrep-results.json
+        run: semgrep scan --error --config auto --json-output semgrep-results.json
       - name: Upload Semgrep report
         if: always() && hashFiles('semgrep-results.json') != ''
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4

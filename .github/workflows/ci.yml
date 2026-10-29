@@ -25,7 +25,7 @@ jobs:
       NODE_ENV: test
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           clean: false
           fetch-depth: 1

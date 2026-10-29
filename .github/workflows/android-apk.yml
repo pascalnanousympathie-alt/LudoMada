@@ -22,7 +22,7 @@ jobs:
       run:
         working-directory: android-app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           clean: false
           fetch-depth: 1
@@ -33,7 +33,7 @@ jobs:
       - run: sh ./gradlew --version
       - run: sh ./gradlew -Pandroid.aapt2FromMavenOverride=/data/data/com.termux/files/usr/bin/aapt2 -Dorg.gradle.workers.max=2 assembleDebug --stacktrace
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: LudoMadagascar-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk

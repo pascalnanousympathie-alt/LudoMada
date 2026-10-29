@@ -6,7 +6,6 @@ on:
     paths:
       - 'android-app/**'
       - 'scripts/ramus-smoke.mjs'
-      - '.github/workflows/android-emulator-test.yml'
 
 jobs:
   emulator-test:
@@ -22,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           clean: false
           fetch-depth: 1
@@ -60,7 +59,7 @@ jobs:
 
       - name: Upload APK
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: LudoMadagascar-debug-apk
           path: android-app/app/build/outputs/apk/debug/app-debug.apk
@@ -68,7 +67,7 @@ jobs:
 
       - name: Upload Ramus screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ramus-android-evidence
           path: ramus-screen.jpg
@@ -76,7 +75,7 @@ jobs:
 
       - name: Upload Ramus smoke log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ramus-smoke-log
           path: ramus-smoke.log
