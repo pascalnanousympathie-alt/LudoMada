@@ -417,6 +417,13 @@ function captureFailureLogcat() {
   // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const entries = normalizeLogcatRows(broad);
+  // Preserve the filtered tag response as independent evidence; some cloud guest
+  // sessions expose only system-stream rows through the unfiltered endpoint.
+  const filtered = runAllowError(
+    "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
+  );
+  const filteredEntries = normalizeLogcatRows(filtered);
+  const combinedEntries = [...entries, ...filteredEntries];
   const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i;
   const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
   console.error("RAMUS_LOGCAT_UNFILTERED_SUMMARY=" + JSON.stringify({
@@ -433,8 +440,14 @@ function captureFailureLogcat() {
       rendererRelated: rendererPattern.test(entry.line)
     }))
   }));
+  console.error("RAMUS_LOGCAT_FILTERED_SUMMARY=" + JSON.stringify({
+    ok: filtered.ok,
+    lineCount: filteredEntries.length,
+    rendererLines: filteredEntries.filter((entry) => rendererPattern.test(entry.line)).length,
+    error: filtered.ok ? null : String(filtered.value?.error || "logcat_error").slice(0, 80)
+  }));
 
-  const relevant = entries
+  const relevant = combinedEntries
     .map((entry) => entry.line)
     .filter((line) => relevantPattern.test(line))
     .slice(-220)
@@ -449,24 +462,31 @@ function captureFailureLogcat() {
 }
 
 function readRendererLogLines() {
-  // Fetch the guest tail without a server-side filter, then match renderer markers
-  // locally so a Ramus text/stream filter mismatch cannot hide valid diagnostics.
-  const result = runAllowError("logcat", "--limit", "500", "--session", session);
-  if (!result.ok) {
-    return {
-      ok: false,
-      totalLines: 0,
-      error: String(result.value?.error || "logcat_error").slice(0, 80),
-      lines: []
-    };
-  }
-  const entries = normalizeLogcatRows(result);
+  // Prefer the full guest tail. Some cloud sessions expose only system rows
+  // there, so fall back to the proven LudoMadaRender tag filter when needed.
   const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  const broad = runAllowError("logcat", "--limit", "500", "--session", session);
+  const broadEntries = normalizeLogcatRows(broad);
+  let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  let filtered = { ok: false, value: { error: "not_needed" } };
+  let filteredEntries = [];
+
+  if (lines.length === 0) {
+    filtered = runAllowError(
+      "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
+    );
+    filteredEntries = normalizeLogcatRows(filtered);
+    lines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  }
+
   return {
-    ok: true,
-    totalLines: entries.length,
-    error: null,
-    lines: entries.map((entry) => entry.line).filter((line) => markers.test(line))
+    ok: broad.ok || filtered.ok,
+    totalLines: broadEntries.length,
+    filteredLines: filteredEntries.length,
+    error: broad.ok || filtered.ok
+      ? null
+      : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
+    lines
   };
 }
 
@@ -605,16 +625,35 @@ try {
     throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
-  // Capture evidence before renderer assertions so a missing GL/logcat marker
-  // never destroys the only visual evidence from this live session.
+  // Preserve an early capture even if renderer validation fails, but keep it
+  // separate: GLSurfaceView may still be loading assets at this point.
+  const preBoardShot = runAllowError(
+    "screenshot", "--session", session, "--out", "ramus-pre-assertion-screen.jpg"
+  );
+  if (preBoardShot.ok) console.log("3D BOARD PRE-ASSERTION SCREENSHOT CAPTURED");
+  else console.error("3D BOARD PRE-ASSERTION SCREENSHOT FAILED");
+
+  let rendererFailure = null;
+  try {
+    assertRuntimeGlbLoaded();
+    console.log("3D BOARD RENDERER ASSERTIONS PASS");
+  } catch (error) {
+    rendererFailure = error;
+    console.error("3D BOARD RENDERER ASSERTIONS FAILED:",
+      String(error?.message || error).slice(0, 1600));
+  }
+
+  // The final gameplay screenshot must be taken after the renderer's bounded
+  // GLB/readback wait, on both success and failure paths.
   const boardShot = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   if (!boardShot.ok) {
-    throw new Error("Could not capture pre-assertion 3D board evidence: " +
+    console.error("Could not capture post-render 3D board evidence: " +
       String(boardShot.value?.error || boardShot.value?.message || "unknown").slice(0, 240));
+  } else {
+    console.log("3D BOARD POST-RENDER SCREENSHOT CAPTURED");
   }
-  console.log("3D BOARD PRE-ASSERTION SCREENSHOT CAPTURED");
-  assertRuntimeGlbLoaded();
-  console.log("3D BOARD SCREENSHOT CAPTURED");
+  if (rendererFailure) throw rendererFailure;
+  if (!boardShot.ok) throw new Error("Could not capture post-render 3D board screenshot");
 
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");
