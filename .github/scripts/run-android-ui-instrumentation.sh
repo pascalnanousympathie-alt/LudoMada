@@ -50,8 +50,9 @@ fi
 
 cd android-app
 set +e
+echo "INSTRUMENTATION_TARGET=com.ludomadagascar.StartupUiTest (all @Test methods)"
 timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest#game_mode_overlay_is_accessible_and_routes_both_modes \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest \
   --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 test_status=$?
 set -e
