@@ -7,10 +7,12 @@ on:
       - main
     paths:
       - "android-app/**"
+      - ".github/scripts/run-android-ui-instrumentation.sh"
       - ".github/workflows/android-ui-instrumentation.yml"
   pull_request:
     paths:
       - "android-app/**"
+      - ".github/scripts/run-android-ui-instrumentation.sh"
       - ".github/workflows/android-ui-instrumentation.yml"
 
 permissions:
