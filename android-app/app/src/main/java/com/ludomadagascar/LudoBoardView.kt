@@ -359,11 +359,11 @@ class LudoBoardView(
                 )
             } catch (_:Throwable) {}
         }
-        // Ramus can expose a landscape GLSurfaceView through a portrait-normalized
-        // input plane. In that case rotate the input point CCW back into the renderer
-        // framebuffer before testing the real projected hitboxes.
-        val touchX = if (width < height) (1f - (e.y / max(1f, height.toFloat()))) * height else e.x
-        val touchY = if (width < height) (e.x / max(1f, width.toFloat())) * width else e.y
+        // MotionEvent coordinates are local to this GLSurfaceView. The renderer
+        // projects dice and pawn hitboxes into the same width/height pixel space,
+        // so keep the input unrotated in both portrait and landscape layouts.
+        val touchX = e.x
+        val touchY = e.y
         val dieHit = min(width, height) * 0.120f
         for (pi in 0..3) {
             val p = projectedDice[pi]
