@@ -84,7 +84,7 @@ fi
 if [[ -z "$screenshot_source" ]]; then
   echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP additional_test_output did not contain the screenshot"
   if [[ -d "$additional_output_root" ]]; then
-    find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\\n' | head -n 80 || true
+    find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
   else
     echo "UTP additional output directory is missing: $additional_output_root"
   fi
@@ -98,7 +98,7 @@ import sys
 
 path = Path(sys.argv[1])
 data = path.read_bytes()
-if len(data) < 33 or data[:8] != b"\\x89PNG\\r\\n\\x1a\\n":
+if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
     print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_PNG bytes={len(data)} path={path}")
     raise SystemExit(1)
 width, height = struct.unpack(">II", data[16:24])
