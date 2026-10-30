@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: android-ui-instrumentation-api30-${{ github.ref }}
+  group: android-ui-instrumentation-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,12 +42,12 @@ jobs:
           java-version: "21"
           cache: gradle
 
-      - name: Set up Android SDK and emulator image
+      - name: Set up Android SDK and emulator images
         uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
         with:
           cmdline-tools-version: 12266719
           accept-android-sdk-licenses: true
-          packages: "platform-tools platforms;android-30 platforms;android-35 build-tools;35.0.0 emulator system-images;android-30;google_apis;x86_64"
+          packages: "platform-tools platforms;android-27 platforms;android-30 platforms;android-35 build-tools;35.0.0 emulator system-images;android-27;google_apis;x86 system-images;android-30;google_apis;x86_64"
 
       - name: Configure Android SDK
         working-directory: android-app
@@ -81,12 +81,40 @@ jobs:
             exit 1
           fi
 
-      - name: Run connected Android UI instrumentation tests
+      - name: Run connected Android UI instrumentation tests (API 30)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
           api-level: 30
           target: google_apis
           arch: x86_64
+          profile: pixel_2
+          force-avd-creation: true
+          disable-animations: true
+          emulator-boot-timeout: 900
+          disk-size: 4096M
+          ram-size: 3072M
+          heap-size: 1024M
+          sdcard-path-or-size: 256M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -no-snapshot-save
+          script: bash .github/scripts/run-android-ui-instrumentation.sh
+
+      - name: Preserve API 30 screenshot evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file="android-app/app/build/ramus-evidence/ludomada-startup-offline.png"
+          if [[ -s "$source_file" ]]; then
+            mkdir -p android-app/app/build/ramus-evidence/api30
+            cp -- "$source_file" android-app/app/build/ramus-evidence/api30/ludomada-startup-offline.png
+          fi
+
+      - name: Run connected Android UI instrumentation tests (Android 8.1 / API 27)
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 27
+          target: google_apis
+          arch: x86
           profile: pixel_2
           force-avd-creation: true
           disable-animations: true
