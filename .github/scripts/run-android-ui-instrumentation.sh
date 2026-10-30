@@ -5,6 +5,17 @@ cd "${GITHUB_WORKSPACE:-$(pwd)}"
 ADB="${ANDROID_HOME:-/usr/local/lib/android/sdk}/platform-tools/adb"
 DEVICE="emulator-5554"
 
+# Resolve the API-specific screenshot path before running instrumentation and
+# remove stale output so a prior matrix entry can never satisfy this capture.
+api_level="$(timeout 8s "$ADB" -s "$DEVICE" shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r' || true)"
+if [[ ! "$api_level" =~ ^[0-9]+$ ]]; then
+  echo "ANDROID_API_LEVEL_UNAVAILABLE: could not determine emulator API level"
+  exit 1
+fi
+screenshot_name="ludomada-startup-offline-api-$api_level.png"
+screenshot_remote="/sdcard/Pictures/LudoMada/$screenshot_name"
+timeout 8s "$ADB" -s "$DEVICE" shell rm -f "$screenshot_remote" >/dev/null 2>&1 || true
+
 "$ADB" start-server >/dev/null 2>&1 || true
 ready=0
 
@@ -72,15 +83,11 @@ fi
 # independent visual artifact alongside Ramus screenshots.
 evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
 additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connected_android_test_additional_output"
-screenshot_name="ludomada-startup-offline.png"
 mkdir -p "$evidence_dir"
 
-# Pull directly from the emulator while it is still running. UTP's
-# additional_test_output collector is inconsistent on older Android images
-# (API 27 runs the UI tests and writes the PNG, but does not export this folder).
-# The app stores the screenshot in its first app-specific external media dir.
-screenshot_remote="/sdcard/Android/media/com.ludomadagascar/additional_test_output/$screenshot_name"
-screenshot_local="$evidence_dir/$screenshot_name"
+# The instrumentation copies this API-specific image to shared Pictures
+# before teardown. UTP output remains a fallback for emulator variants.
+screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 if ! timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
   echo "ANDROID_SURFACE_SCREENSHOT_ADB_PULL_FAILED: direct emulator pull failed; checking UTP output"
   screenshot_source=""
