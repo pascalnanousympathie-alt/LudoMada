@@ -9,7 +9,9 @@ if (!fs.existsSync(apk) || fs.statSync(apk).size === 0) {
   process.exit(2);
 }
 
-const target = "assets/3d/ludomada-premium-3d-rev3.glb";
+// Keep the APK assertion aligned with GlbRuntimeLoader.loadHeroParts/loadBoardParts
+// and check-3d-assets.mjs: rev5 is the GLB actually consumed by the runtime.
+const target = "assets/3d/ludomada-gameplay-rev5.glb";
 const listing = execFileSync("unzip", ["-Z1", apk], { encoding: "utf8" });
 const entries = listing.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
 const present = entries.includes(target);
