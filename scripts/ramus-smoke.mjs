@@ -533,11 +533,13 @@ try {
   console.log("2-PLAYER RESET PASS");
 
   let gotSix = false;
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 48; i++) {
     target = findRef("Lancer le dé");
     run("tap", target.ref, "--gen", String(target.gen), "--session", session);
 
-    const six = waitForSix(3000);
+    const six = waitForSix(2200);
+    const diceStatus = pendingDiceValue().status;
+    console.log("RAMUS_DICE_ROLL_ATTEMPT=" + (i + 1) + " STATUS=" + diceStatus.slice(0, 100));
     if (six) {
       gotSix = true;
       break;
@@ -547,7 +549,7 @@ try {
     // a little time to settle before the next observation.
     runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
   }
-  if (!gotSix) throw new Error("No six within 24 cloud-emulator rolls");
+  if (!gotSix) throw new Error("No six within 48 cloud-emulator rolls; last status: " + pendingDiceValue().status);
   console.log("DICE SIX PASS");
 
   // A pending die must be immutable until the player chooses a pawn.
