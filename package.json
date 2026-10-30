@@ -15,6 +15,7 @@
     "test:security": "node node_modules/jest/bin/jest.js --maxWorkers=2 tests/security",
     "ci": "npm run db:generate && npm run db:migrate && npm run test:fast && npm run build",
     "test:all": "node node_modules/jest/bin/jest.js --maxWorkers=2",
+    "test:native": "node --import tsx --test --test-concurrency=1 ./*.native.test.mjs",
     "staging:check": "npm run db:generate && npm run db:migrate && npm run test:all",
     "start:prod": "node dist/server.js",
     "migrate:prod": "node node_modules/prisma/build/index.js migrate deploy",

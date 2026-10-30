@@ -94,6 +94,9 @@ jobs:
           fi
           curl -fsS http://127.0.0.1:3101/health
 
+      - name: Run native HTTP, 4-player, concurrency and idempotency tests
+        run: npm run test:native
+
       - name: Run staging load smoke
         run: npm exec -- artillery run loadtests/artillery/loadtest-health-80rps.yml
 

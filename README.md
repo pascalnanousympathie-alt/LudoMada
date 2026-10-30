@@ -157,9 +157,9 @@ This prevents two API instances from concurrently mutating the same game state a
 
 ## V6.2 — Production hardening
 Added Prisma migration baseline, integration/concurrency/security test suites,
-and a production security/reliability checklist. The tests are intentionally
-safe templates until a disposable PostgreSQL test database and CI environment
-are configured; they do not claim a completed security audit.
+and a production security/reliability checklist. The TypeScript unit suite runs in CI; PostgreSQL-backed native HTTP/game/economy
+scenarios are added to the Release Gate in V6.3. These checks do not replace an
+external penetration test or formal security audit.
 
 ## V6.3 — Reproducible CI / PostgreSQL test environment
 
@@ -168,11 +168,15 @@ Added:
 - `.env.test.example`
 - Docker Compose test database
 - GitHub Actions CI workflow
-- `npm run ci` and `npm run test:all`
+- `npm run ci`, `npm run test:all`, and `npm run test:native`
+- serialized native HTTP/4-player/concurrency/idempotency tests in the Release Gate
 - test matrix documentation
 
-This makes the migration/test pipeline reproducible. It does not claim that a
-security audit or production load test has been completed.
+The TypeScript unit suite and the native PostgreSQL-backed integration suite
+are separate gates. The native suite runs only against the disposable CI
+PostgreSQL service after the API is healthy. Passing these CI gates does not
+claim that a security audit, external penetration test, legal review, or
+production deployment has been completed.
 
 ## V6.4 — Load / Security Release Gate
 
