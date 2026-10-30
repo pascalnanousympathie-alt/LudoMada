@@ -664,6 +664,10 @@ class MainActivity : Activity() {
         status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
     }
     private fun offlineRoll(host:LudoBoardView){
+        if (!OfflineLudoRules.canContinue(offlineState?.optString("phase"))) {
+            status.text = "La partie est terminée. Retournez au menu hors-ligne."
+            return
+        }
         if(host.isDiceRolling())return
         // Do not let a player overwrite a rolled die without making a move.
         if(offlineDice!=0){
@@ -682,6 +686,10 @@ class MainActivity : Activity() {
         status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()
     }
     private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){
+        if (!OfflineLudoRules.canContinue(offlineState?.optString("phase"))) {
+            status.text = "La partie est terminée. Retournez au menu hors-ligne."
+            return
+        }
         if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return}
         val ps=offlineState?.optJSONArray("players")?:return
         val p=ps.optJSONObject(offlineTurn)?:return
