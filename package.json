@@ -59,5 +59,8 @@
     "prisma@6.19.3": true,
     "@prisma/engines@6.19.3": true,
     "protobufjs@7.6.6": true
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
