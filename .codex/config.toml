@@ -1,0 +1,20 @@
+# LudoMada project-scoped MCP configuration for Codex.
+# Codex loads this file only when the repository is explicitly trusted.
+# Never store API keys, OAuth tokens, passwords, or production credentials here.
+
+# Official library documentation lookup. The stdio server uses npx;
+# no Context7 API key is required for the basic free connection.
+[mcp_servers.context7]
+command = "npx"
+args = ["-y", "@upstash/context7-mcp"]
+startup_timeout_sec = 30
+default_tools_approval_mode = "prompt"
+
+# Restrict the Supabase MCP to the LudoMada staging project.
+# read_only=true enforces a read-only database role. The allowlist below hides
+# migration, deployment, branching, and other write-capable MCP tools.
+# Complete Supabase OAuth from Codex when it prompts; do not paste tokens here.
+[mcp_servers.supabase_ludomada_staging]
+url = "https://mcp.supabase.com/mcp?project_ref=jliatljqvvbibcibnrjk&read_only=true&features=database,docs,debugging"
+enabled_tools = ["list_tables", "list_extensions", "list_migrations", "execute_sql", "search_docs", "get_advisors"]
+default_tools_approval_mode = "prompt"
