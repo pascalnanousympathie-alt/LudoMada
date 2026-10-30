@@ -289,9 +289,13 @@ try {
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
-  const boardSurface = readTree();
+  const boardSurface = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
   if (!treeHas(boardSurface, "LudoMada 3D Ludo board")) {
-    throw new Error("3D board accessibility surface missing: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
+    console.error("3D_BOARD_ACCESSIBILITY_DIAGNOSTICS:" + JSON.stringify(treeLabels(boardSurface)).slice(0, 7000));
+    const evidence = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+    if (evidence.ok) console.error("3D_BOARD_SCREENSHOT_CAPTURED");
+    else console.error("3D_BOARD_SCREENSHOT_CAPTURE_FAILED:" + JSON.stringify(evidence.value));
+    throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
 
