@@ -1,0 +1,100 @@
+/**
+ * Cloudflare Workers adapter for the existing Express + Prisma backend.
+ *
+ * Create a fresh Prisma client for each invocation and schedule teardown with
+ * waitUntil. Hyperdrive owns the long-lived PostgreSQL connection pool; never
+ * retain a pg.Pool or Prisma client across Worker request contexts.
+ */
+import { env } from "cloudflare:workers";
+import { handleAsNodeRequest } from "cloudflare:node";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@prisma/client";
+
+interface HyperdriveBinding {
+  connectionString: string;
+}
+
+interface CloudflareBindings {
+  DATABASE_URL?: string;
+  HYPERDRIVE?: HyperdriveBinding;
+  JWT_SECRET?: string;
+  CORS_ORIGINS?: string;
+  PG_POOL_MAX?: string;
+}
+
+interface InvocationContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
+function parsePoolMax(value: string | undefined): number {
+  const parsed = Number(value ?? "1");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) {
+    throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
+  }
+  return parsed;
+}
+
+const topLevelBindings = env as unknown as CloudflareBindings;
+const configuredDatabaseUrl =
+  topLevelBindings.HYPERDRIVE?.connectionString ?? topLevelBindings.DATABASE_URL;
+const configuredPoolMax = parsePoolMax(topLevelBindings.PG_POOL_MAX);
+
+if (!configuredDatabaseUrl) {
+  throw new Error(
+    "CLOUDFLARE_DATABASE_REQUIRED: configure a DATABASE_URL secret or HYPERDRIVE binding",
+  );
+}
+if (!topLevelBindings.JWT_SECRET || topLevelBindings.JWT_SECRET.length < 32) {
+  throw new Error("CLOUDFLARE_JWT_SECRET_REQUIRED: use a secret of at least 32 characters");
+}
+if (!topLevelBindings.CORS_ORIGINS?.trim()) {
+  throw new Error("CLOUDFLARE_CORS_ORIGINS_REQUIRED: list the real client origins");
+}
+
+// NODE_ENV is defined as "production" in wrangler.jsonc. Avoid assigning it
+// here because Wrangler replaces that expression with a compile-time constant.
+process.env.DATABASE_URL = configuredDatabaseUrl;
+process.env.JWT_SECRET = topLevelBindings.JWT_SECRET;
+process.env.CORS_ORIGINS = topLevelBindings.CORS_ORIGINS;
+process.env.PORT = "3000";
+process.env.TRUST_PROXY = "true";
+process.env.CLOUDFLARE_WORKERS = "true";
+process.env.PG_POOL_MAX = String(configuredPoolMax);
+
+const { withRequestPrisma } = await import("../src/server");
+
+export default {
+  async fetch(
+    request: Request,
+    requestBindings: CloudflareBindings,
+    ctx: InvocationContext,
+  ): Promise<Response> {
+    const databaseUrl =
+      requestBindings.HYPERDRIVE?.connectionString ??
+      requestBindings.DATABASE_URL ??
+      configuredDatabaseUrl;
+    const requestPoolMax = parsePoolMax(
+      requestBindings.PG_POOL_MAX ?? String(configuredPoolMax),
+    );
+
+    // Keep the Prisma/pg pool request-scoped in Workers. Bound each request's
+    // pg pool and schedule cleanup after the response has been handled.
+    const requestPrisma = new PrismaClient({
+      adapter: new PrismaPg({
+        connectionString: databaseUrl,
+        max: requestPoolMax,
+        connectionTimeoutMillis: 5_000,
+        idleTimeoutMillis: 10_000,
+      }),
+    });
+
+    try {
+      return await withRequestPrisma(
+        requestPrisma,
+        () => handleAsNodeRequest(3000, request),
+      );
+    } finally {
+      ctx.waitUntil(requestPrisma.$disconnect());
+    }
+  },
+};
