@@ -71,11 +71,11 @@ fi
 # renders into a separate Surface, so keep this device screenshot as an
 # independent visual artifact alongside Ramus screenshots.
 evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
-screenshot_remote="/sdcard/Android/data/com.ludomadagascar/files/ludomada-startup-offline.png"
+screenshot_remote="/storage/emulated/0/Android/data/com.ludomadagascar/files/ludomada-startup-offline.png"
 mkdir -p "$evidence_dir"
 if ! timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$evidence_dir/ludomada-startup-offline.png"; then
   echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: instrumentation screenshot was not retrievable"
-  timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Android/data/com.ludomadagascar/files || true
+  timeout 8s "$ADB" -s "$DEVICE" shell ls -la /storage/emulated/0/Android/data/com.ludomadagascar/files || true
   exit 1
 fi
 test -s "$evidence_dir/ludomada-startup-offline.png"
