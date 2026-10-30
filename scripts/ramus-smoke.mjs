@@ -356,8 +356,8 @@ function assertRuntimeGlbLoaded(timeoutMs = 12000) {
   let checks = { gles3Pbr: false, pbrSurfaceCreated: false, heroParts: 0, boardParts: 0 };
   while (Date.now() < deadline) {
     const lines = readRendererLogLines();
-    const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\\d+)/)).find(Boolean);
-    const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\\d+)/)).find(Boolean);
+    const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
+    const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
     checks = {
       gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
       pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
