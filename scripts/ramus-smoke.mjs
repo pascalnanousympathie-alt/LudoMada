@@ -280,6 +280,10 @@ let failureLogcatCaptured = false;
 function captureFailureLogcat() {
   if (!session || failureLogcatCaptured) return;
   failureLogcatCaptured = true;
+  // Capture the installed Ramus logcat command contract so future diagnostics
+  // use supported filters instead of guessing CLI flags.
+  const logcatHelp = runAllowError("logcat", "--help");
+  console.error("RAMUS_LOGCAT_HELP=" + JSON.stringify(logcatHelp.value ?? {}).slice(0, 6000));
   const diagnostic = runAllowError("logcat", "--limit", "500", "--session", session);
   const value = diagnostic.value ?? {};
   const rows = Array.isArray(value.lines)
