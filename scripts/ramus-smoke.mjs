@@ -330,6 +330,25 @@ try {
     const evidence = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
     if (evidence.ok) console.error("3D_BOARD_SCREENSHOT_CAPTURED");
     else console.error("3D_BOARD_SCREENSHOT_CAPTURE_FAILED:" + JSON.stringify(evidence.value));
+
+    // Distinguish a retired/backgrounded Ramus session from an app process that
+    // cannot relaunch after the offline-board transition. Keep the original
+    // failure screenshot above before attempting this read-only recovery launch.
+    const recovery = runAllowError("app", "launch", "--session", session);
+    console.error("RAMUS_POST_FAILURE_APP_LAUNCH=" + JSON.stringify({
+      ok: recovery.ok,
+      error: typeof recovery.value?.error === "string" ? recovery.value.error.slice(0, 120) : null,
+      status: typeof recovery.value?.status === "string" ? recovery.value.status.slice(0, 120) : null
+    }));
+    waitStable(1000);
+    const recoveryTree = readTree();
+    console.error("RAMUS_POST_FAILURE_TREE=" + JSON.stringify({
+      screen: recoveryTree?.screen || null,
+      labels: treeLabels(recoveryTree).slice(0, 30).map(label => label.slice(0, 120))
+    }).slice(0, 5000));
+    const recoveryShot = runAllowError("screenshot", "--session", session, "--out", "ramus-recovery-screen.jpg");
+    console.error(recoveryShot.ok ? "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURED" : "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURE_FAILED");
+    captureFailureLogcat();
     throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
