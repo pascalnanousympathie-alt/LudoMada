@@ -1090,7 +1090,21 @@ class LudoBoardView(
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);heroRing=ringMesh(64,1.02f,0.72f)
 
-            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture();envBarkTex=loadAssetTexture("environment/textures/bark_diff_2k.jpg");envBarkNormalTex=loadAssetTexture("environment/textures/bark_nor_gl_2k.jpg");envBarkRoughTex=loadAssetTexture("environment/textures/bark_rough_2k.jpg");envDirtTex=loadAssetTexture("environment/textures/dirt_diff_2k.jpg");envDirtNormalTex=loadAssetTexture("environment/textures/dirt_nor_gl_2k.jpg");envDirtRoughTex=loadAssetTexture("environment/textures/dirt_rough_2k.jpg");envSkyTex=loadAssetTexture("environment/textures/safari_sunset_2k.jpg");envGrassTex=loadAssetTexture("environment/textures/grass_diff_2k.jpg");envGrassNormalTex=loadAssetTexture("environment/textures/grass_nor_gl_2k.jpg");envGrassRoughTex=loadAssetTexture("environment/textures/grass_rough_2k.jpg")
+            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
+            // The authored outdoor environment is drawn only by the Home-preview path.
+            // Avoid loading its 2K maps into ordinary gameplay surfaces.
+            if (host.homePreview) {
+                envBarkTex=loadAssetTexture("environment/textures/bark_diff_2k.jpg")
+                envBarkNormalTex=loadAssetTexture("environment/textures/bark_nor_gl_2k.jpg")
+                envBarkRoughTex=loadAssetTexture("environment/textures/bark_rough_2k.jpg")
+                envDirtTex=loadAssetTexture("environment/textures/dirt_diff_2k.jpg")
+                envDirtNormalTex=loadAssetTexture("environment/textures/dirt_nor_gl_2k.jpg")
+                envDirtRoughTex=loadAssetTexture("environment/textures/dirt_rough_2k.jpg")
+                envSkyTex=loadAssetTexture("environment/textures/safari_sunset_2k.jpg")
+                envGrassTex=loadAssetTexture("environment/textures/grass_diff_2k.jpg")
+                envGrassNormalTex=loadAssetTexture("environment/textures/grass_nor_gl_2k.jpg")
+                envGrassRoughTex=loadAssetTexture("environment/textures/grass_rough_2k.jpg")
+            }
             glbParts=runCatching{
                 GlbRuntimeLoader(host.context).loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
@@ -1111,21 +1125,25 @@ class LudoBoardView(
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","BOARD_GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
                 emptyMap()
             }
-            envParts=runCatching{
-                GlbRuntimeLoader(host.context).loadEnvironmentParts().also{
-                    android.util.Log.i("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_OK parts="+it.size)
+            if (host.homePreview) {
+                envParts=runCatching{
+                    GlbRuntimeLoader(host.context).loadEnvironmentParts().also{
+                        android.util.Log.i("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_OK parts="+it.size)
+                    }
+                }.getOrElse{
+                    android.util.Log.e("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_FAILED",it)
+                    emptyMap()
                 }
-            }.getOrElse{
-                android.util.Log.e("LudoMadaRender","ENV_GLB_RUNTIME_LOAD_FAILED",it)
-                emptyMap()
-            }
-            baobabParts=runCatching{
-                GlbRuntimeLoader(host.context).loadBaobabParts().also{
-                    android.util.Log.i("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_OK parts="+it.size)
+                baobabParts=runCatching{
+                    GlbRuntimeLoader(host.context).loadBaobabParts().also{
+                        android.util.Log.i("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_OK parts="+it.size)
+                    }
+                }.getOrElse{
+                    android.util.Log.e("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_FAILED",it)
+                    emptyMap()
                 }
-            }.getOrElse{
-                android.util.Log.e("LudoMadaRender","BAOBAB_REAL_GLB_LOAD_FAILED",it)
-                emptyMap()
+            } else {
+                android.util.Log.i("LudoMadaRender","HOME_ENV_ASSETS_SKIPPED_FOR_GAMEPLAY")
             }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
