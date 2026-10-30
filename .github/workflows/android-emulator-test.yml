@@ -105,7 +105,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ramus-android-evidence
-          path: ramus-screen.jpg
+          path: |
+            ramus-pre-assertion-screen.jpg
+            ramus-screen.jpg
           if-no-files-found: warn
           retention-days: 7
 
