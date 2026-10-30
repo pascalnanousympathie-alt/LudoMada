@@ -331,11 +331,36 @@ function captureFailureLogcat() {
   }
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
+function safeRamusMetadata(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { valueType: typeof value };
+  }
+  const summary = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (/token|secret|password|credential|api[_-]?key|authorization/i.test(key)) continue;
+    if (/duration|expires|remaining|limit|status|state|mode|trial|plan|ttl|timeout|started|created|message/i.test(key) &&
+        ["string", "number", "boolean"].includes(typeof entry)) {
+      summary[key] = entry;
+    }
+  }
+  summary.availableFields = Object.keys(value)
+    .filter((key) => !/token|secret|password|credential|api[_-]?key|authorization/i.test(key))
+    .slice(0, 30);
+  return summary;
+}
+
 try {
-  if (!process.env.RAMUS_API_KEY) run("trial");
+  if (!process.env.RAMUS_API_KEY) {
+    console.log("RAMUS_AUTH_MODE=trial");
+    const trialInfo = run("trial");
+    console.log("RAMUS_TRIAL_METADATA=" + JSON.stringify(safeRamusMetadata(trialInfo)));
+  } else {
+    console.log("RAMUS_AUTH_MODE=api_key");
+  }
   const started = run("session", "start", "--apk", apk, "--wait");
   session = started.session;
   console.log(`Ramus session: ${session}`);
+  console.log("RAMUS_SESSION_METADATA=" + JSON.stringify(safeRamusMetadata(started)));
 
   let target = findRef("👥 Jouer hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen),
