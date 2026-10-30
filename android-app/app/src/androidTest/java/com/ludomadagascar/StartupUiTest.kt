@@ -110,6 +110,7 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
+        assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 

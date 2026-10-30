@@ -275,6 +275,40 @@ function advanceToTurn(targetTurn) {
 
 let session = "";
 let success = false;
+let failureLogcatCaptured = false;
+
+function captureFailureLogcat() {
+  if (!session || failureLogcatCaptured) return;
+  failureLogcatCaptured = true;
+  const diagnostic = runAllowError("logcat", "--limit", "500", "--session", session);
+  const value = diagnostic.value ?? {};
+  const rows = Array.isArray(value.lines)
+    ? value.lines
+    : Array.isArray(value.logs)
+      ? value.logs
+      : [];
+  const rendered = rows.map((entry) => {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return "";
+    return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+      .filter((part) => part !== undefined && part !== null && part !== "")
+      .join(" ");
+  }).filter(Boolean);
+  const relevant = rendered
+    .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)|ActivityTaskManager|am_crash|Exception|Caused by:/i.test(line))
+    .slice(-180)
+    .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
+  if (rendered.length === 0) {
+    console.error("No log entries returned. " + JSON.stringify(value).slice(0, 1200));
+  } else if (relevant.length === 0) {
+    console.error("No app/crash/render lines matched; available log streams: " +
+      [...new Set(rows.map((entry) => typeof entry === "object" && entry ? entry.stream : "unknown"))].join(", "));
+  } else {
+    console.error(relevant.join("\n"));
+  }
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
+}
 try {
   if (!process.env.RAMUS_API_KEY) run("trial");
   const started = run("session", "start", "--apk", apk, "--wait");
@@ -289,6 +323,35 @@ try {
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
+  const boardSurface = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
+  if (!treeHas(boardSurface, "LudoMada 3D Ludo board")) {
+    console.error("3D_BOARD_ACCESSIBILITY_DIAGNOSTICS:" + JSON.stringify(treeLabels(boardSurface)).slice(0, 7000));
+    captureFailureLogcat();
+    const evidence = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+    if (evidence.ok) console.error("3D_BOARD_SCREENSHOT_CAPTURED");
+    else console.error("3D_BOARD_SCREENSHOT_CAPTURE_FAILED:" + JSON.stringify(evidence.value));
+
+    // Distinguish a retired/backgrounded Ramus session from an app process that
+    // cannot relaunch after the offline-board transition. Keep the original
+    // failure screenshot above before attempting this read-only recovery launch.
+    const recovery = runAllowError("app", "launch", "--session", session);
+    console.error("RAMUS_POST_FAILURE_APP_LAUNCH=" + JSON.stringify({
+      ok: recovery.ok,
+      error: typeof recovery.value?.error === "string" ? recovery.value.error.slice(0, 120) : null,
+      status: typeof recovery.value?.status === "string" ? recovery.value.status.slice(0, 120) : null
+    }));
+    waitStable(1000);
+    const recoveryTree = readTree();
+    console.error("RAMUS_POST_FAILURE_TREE=" + JSON.stringify({
+      screen: recoveryTree?.screen || null,
+      labels: treeLabels(recoveryTree).slice(0, 30).map(label => label.slice(0, 120))
+    }).slice(0, 5000));
+    const recoveryShot = runAllowError("screenshot", "--session", session, "--out", "ramus-recovery-screen.jpg");
+    console.error(recoveryShot.ok ? "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURED" : "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURE_FAILED");
+    captureFailureLogcat();
+    throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
+  }
+  console.log("3D BOARD SURFACE PASS");
 
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");
@@ -415,6 +478,9 @@ try {
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
+  if (session && !success && !failureLogcatCaptured) {
+    captureFailureLogcat();
+  }
   if (session) {
     try { run("session", "end", "--session", session); }
     catch (e) { console.error("session end:", e.message); }
