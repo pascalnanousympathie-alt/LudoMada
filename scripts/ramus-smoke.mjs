@@ -404,7 +404,7 @@ function normalizeLogcatRows(result) {
 
 function redactLogLine(line) {
   return String(line).replace(
-    /(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\\s:=]+)[^",\\s}]+/gi,
+    /(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi,
     "$1$2[redacted]"
   );
 }
@@ -417,7 +417,7 @@ function captureFailureLogcat() {
   // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const entries = normalizeLogcatRows(broad);
-  const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\\.ludomadagascar|com\\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\\.ludomadagascar|Force finishing .*com\\.ludomadagascar/i;
+  const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i;
   const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
   console.error("RAMUS_LOGCAT_UNFILTERED_SUMMARY=" + JSON.stringify({
     ok: broad.ok,
@@ -443,7 +443,7 @@ function captureFailureLogcat() {
   if (relevant.length === 0) {
     console.error("No app, activity, renderer or low-memory lines found in the unfiltered guest log tail.");
   } else {
-    console.error(relevant.join("\\n"));
+    console.error(relevant.join("\n"));
   }
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
