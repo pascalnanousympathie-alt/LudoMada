@@ -132,15 +132,31 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // UTP collects this directory before uninstalling the target APK.
-        // Keeping the screenshot in the app-specific external media folder lets
-        // CI retrieve a real PNG without depending on post-test app installation.
+        // Keep a copy in app-specific media for UTP, and publish a second copy
+        // from the instrumentation process before Android 8.1 tears down the app.
         val mediaDir = context.externalMediaDirs.firstOrNull()
         assertNotNull("App-specific external media directory must be available", mediaDir)
         val screenshotDir = File(mediaDir!!, "additional_test_output")
         assertTrue("Screenshot directory must exist or be creatable", screenshotDir.exists() || screenshotDir.mkdirs())
-        val file = File(screenshotDir, "ludomada-startup-offline.png")
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val file = File(screenshotDir, screenshotName)
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
+
+        // UTP does not consistently export additional_test_output on API 27.
+        // Copy through the emulator shell while the target package is still
+        // installed; the host can then pull this shared file after Gradle exits.
+        val sharedScreenshot = "/sdcard/Pictures/LudoMada/$screenshotName"
+        val copyResult = device.executeShellCommand(
+            "mkdir -p /sdcard/Pictures/LudoMada && " +
+                "cp '${file.absolutePath}' '$sharedScreenshot' && " +
+                "test -s '$sharedScreenshot' && " +
+                "echo LUDOMADA_SCREENSHOT_SHARED_COPY_PASS"
+        )
+        assertTrue(
+            "Screenshot must be copied to shared storage before instrumentation teardown",
+            copyResult.contains("LUDOMADA_SCREENSHOT_SHARED_COPY_PASS")
+        )
     }
 }
