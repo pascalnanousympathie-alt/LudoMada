@@ -75,23 +75,33 @@ additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connecte
 screenshot_name="ludomada-startup-offline.png"
 mkdir -p "$evidence_dir"
 
-# Android Test Orchestrator/UTP copies this app-specific media folder to the
-# host before uninstall_after_test removes the target and test APKs.
-screenshot_source=""
-if [[ -d "$additional_output_root" ]]; then
-  screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
-fi
-if [[ -z "$screenshot_source" ]]; then
-  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP additional_test_output did not contain the screenshot"
+# Pull directly from the emulator while it is still running. UTP's
+# additional_test_output collector is inconsistent on older Android images
+# (API 27 runs the UI tests and writes the PNG, but does not export this folder).
+# The app stores the screenshot in its first app-specific external media dir.
+screenshot_remote="/sdcard/Android/media/com.ludomadagascar/additional_test_output/$screenshot_name"
+screenshot_local="$evidence_dir/$screenshot_name"
+if ! timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
+  echo "ANDROID_SURFACE_SCREENSHOT_ADB_PULL_FAILED: direct emulator pull failed; checking UTP output"
+  screenshot_source=""
   if [[ -d "$additional_output_root" ]]; then
-    find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
-  else
-    echo "UTP additional output directory is missing: $additional_output_root"
+    screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
   fi
-  exit 1
+  if [[ -n "$screenshot_source" ]]; then
+    cp -- "$screenshot_source" "$screenshot_local"
+  else
+    timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Android/media/com.ludomadagascar/additional_test_output || true
+    if [[ -d "$additional_output_root" ]]; then
+      find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
+    else
+      echo "UTP additional output directory is missing: $additional_output_root"
+    fi
+    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: screenshot not retrievable from emulator or UTP output"
+    exit 1
+  fi
 fi
 
-if ! python3 - "$screenshot_source" <<'PY'
+if ! python3 - "$screenshot_local" <<'PY'
 from pathlib import Path
 import struct
 import sys
@@ -108,9 +118,8 @@ if width < 1 or height < 1:
 print(f"ANDROID_SURFACE_PNG_VALID bytes={len(data)} size={width}x{height}")
 PY
 then
-  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP output is not a valid PNG"
+  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: retrieved output is not a valid PNG"
   exit 1
 fi
 
-cp -- "$screenshot_source" "$evidence_dir/$screenshot_name"
 echo "ANDROID_SURFACE_SCREENSHOT_CAPTURE_PASS"
