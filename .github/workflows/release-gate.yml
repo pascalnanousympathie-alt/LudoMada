@@ -94,6 +94,9 @@ jobs:
           fi
           curl -fsS http://127.0.0.1:3101/health
 
+      - name: Seed disposable CI native-test accounts
+        run: node scripts/seed-native-test-users.mjs
+
       - name: Run native HTTP, 4-player, concurrency and idempotency tests
         run: npm run test:native
 
