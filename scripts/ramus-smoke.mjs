@@ -122,10 +122,12 @@ function runCli(...args) {
   const timeout = command === "session"
     ? 45000
     : command === "screenshot"
-      ? 20000
-      : command === "wait"
-        ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
-        : 12000;
+      ? 30000
+      : command === "logcat"
+        ? 15000
+        : command === "wait"
+          ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
+          : 12000;
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -374,78 +376,98 @@ let session = "";
 let success = false;
 let failureLogcatCaptured = false;
 
-function captureFailureLogcat() {
-  if (!session || failureLogcatCaptured) return;
-  failureLogcatCaptured = true;
-
-  const filters = [
-    "com.ludomadagascar",
-    "LudoMadaRender",
-    "ActivityTaskManager",
-    "ActivityManager",
-    "lmkd",
-  ];
-  const rendered = [];
-  const renderRows = (result) => {
-    const value = result.value ?? {};
-    const rows = Array.isArray(value.lines)
-      ? value.lines
-      : Array.isArray(value.logs)
-        ? value.logs
-        : [];
-    return rows.map((entry) => {
-      if (typeof entry === "string") return entry;
-      if (!entry || typeof entry !== "object") return "";
-      return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
-        .filter((part) => part !== undefined && part !== null && part !== "")
-        .join(" ");
-    }).filter(Boolean);
-  };
-
-  // Retain the broad session tail, then query the documented Ramus text/stream
-  // filter independently for app lifecycle, renderer and low-memory evidence.
-  rendered.push(...renderRows(runAllowError("logcat", "--limit", "500", "--session", session)));
-  for (const filter of filters) {
-    const filtered = runAllowError(
-      "logcat", "--limit", "250", "--filter", filter, "--session", session
-    );
-    rendered.push(...renderRows(filtered));
-    if (!filtered.ok && filtered.value?.message) {
-      console.error("RAMUS_LOGCAT_FILTER_ERROR[" + filter + "]=" +
-        String(filtered.value.message).slice(0, 500));
-    }
-  }
-
-  const relevant = [...new Set(rendered)]
-    .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i.test(line))
-    .slice(-220)
-    .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
-  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
-  if (relevant.length === 0) {
-    console.error("No app, activity, renderer or low-memory lines returned by filtered session logcat.");
-  } else {
-    console.error(relevant.join("\n"));
-  }
-  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
-}
-function readRendererLogLines() {
-  const result = runAllowError(
-    "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
-  );
-  if (!result.ok) return [];
-  const value = result.value ?? {};
+function normalizeLogcatRows(result) {
+  const value = result?.value ?? {};
   const rows = Array.isArray(value.lines)
     ? value.lines
     : Array.isArray(value.logs)
       ? value.logs
       : [];
   return rows.map((entry) => {
-    if (typeof entry === "string") return entry;
-    if (!entry || typeof entry !== "object") return "";
-    return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
-      .filter((part) => part !== undefined && part !== null && part !== "")
-      .join(" ");
-  }).filter(Boolean);
+    if (typeof entry === "string") {
+      return { line: entry, tag: "", stream: "", priority: "", fields: [] };
+    }
+    if (!entry || typeof entry !== "object") {
+      return { line: "", tag: "", stream: "", priority: "", fields: [] };
+    }
+    return {
+      line: [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+        .filter((part) => part !== undefined && part !== null && part !== "")
+        .join(" "),
+      tag: typeof entry.tag === "string" ? entry.tag : "",
+      stream: typeof entry.stream === "string" ? entry.stream : "",
+      priority: typeof entry.priority === "string" ? entry.priority : "",
+      fields: Object.keys(entry).sort()
+    };
+  }).filter((entry) => entry.line);
+}
+
+function redactLogLine(line) {
+  return String(line).replace(
+    /(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\\s:=]+)[^",\\s}]+/gi,
+    "$1$2[redacted]"
+  );
+}
+
+function captureFailureLogcat() {
+  if (!session || failureLogcatCaptured) return;
+  failureLogcatCaptured = true;
+
+  // Read the unfiltered guest tail once. Ramus applies --filter to text/stream;
+  // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
+  const broad = runAllowError("logcat", "--limit", "500", "--session", session);
+  const entries = normalizeLogcatRows(broad);
+  const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\\.ludomadagascar|com\\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\\.ludomadagascar|Force finishing .*com\\.ludomadagascar/i;
+  const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  console.error("RAMUS_LOGCAT_UNFILTERED_SUMMARY=" + JSON.stringify({
+    ok: broad.ok,
+    error: broad.ok ? null : String(broad.value?.error || "logcat_error").slice(0, 80),
+    lineCount: entries.length,
+    firstEntryFields: entries[0]?.fields ?? [],
+    tailMetadata: entries.slice(-20).map((entry) => ({
+      tag: entry.tag,
+      stream: entry.stream,
+      priority: entry.priority,
+      lineLength: entry.line.length,
+      appRelated: relevantPattern.test(entry.line),
+      rendererRelated: rendererPattern.test(entry.line)
+    }))
+  }));
+
+  const relevant = entries
+    .map((entry) => entry.line)
+    .filter((line) => relevantPattern.test(line))
+    .slice(-220)
+    .map(redactLogLine);
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
+  if (relevant.length === 0) {
+    console.error("No app, activity, renderer or low-memory lines found in the unfiltered guest log tail.");
+  } else {
+    console.error(relevant.join("\\n"));
+  }
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
+}
+
+function readRendererLogLines() {
+  // Fetch the guest tail without a server-side filter, then match renderer markers
+  // locally so a Ramus text/stream filter mismatch cannot hide valid diagnostics.
+  const result = runAllowError("logcat", "--limit", "500", "--session", session);
+  if (!result.ok) {
+    return {
+      ok: false,
+      totalLines: 0,
+      error: String(result.value?.error || "logcat_error").slice(0, 80),
+      lines: []
+    };
+  }
+  const entries = normalizeLogcatRows(result);
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  return {
+    ok: true,
+    totalLines: entries.length,
+    error: null,
+    lines: entries.map((entry) => entry.line).filter((line) => markers.test(line))
+  };
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
@@ -458,6 +480,7 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     "LM_Pawn_Underside_Insert",
     "LM_Die_HydroChrome_Body"
   ];
+  let lastLogcat = { ok: false, totalLines: 0, error: "not_read" };
   let checks = {
     gles3Pbr: false,
     pbrSurfaceCreated: false,
@@ -469,7 +492,8 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     firstFrameComplete: false
   };
   while (Date.now() < deadline) {
-    const lines = readRendererLogLines();
+    lastLogcat = readRendererLogLines();
+    const lines = lastLogcat.lines;
     const heroLine = lines.find((line) =>
       line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
       !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")
@@ -502,9 +526,15 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       console.log("PBR FIRST FRAME COMPLETE");
       return;
     }
-    waitStable(500);
+    waitStable(Math.min(1800, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("Runtime GLB/frame verification failed: " + JSON.stringify(checks));
+  throw new Error("Runtime GLB/frame verification failed: " +
+    JSON.stringify({ checks, logcat: {
+      ok: lastLogcat.ok,
+      totalLines: lastLogcat.totalLines,
+      rendererLines: lastLogcat.lines.length,
+      error: lastLogcat.error
+    } }));
 }
 
 function safeRamusMetadata(value) {
@@ -575,12 +605,15 @@ try {
     throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
-  assertRuntimeGlbLoaded();
+  // Capture evidence before renderer assertions so a missing GL/logcat marker
+  // never destroys the only visual evidence from this live session.
   const boardShot = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   if (!boardShot.ok) {
-    throw new Error("Could not capture 3D board evidence: " +
+    throw new Error("Could not capture pre-assertion 3D board evidence: " +
       String(boardShot.value?.error || boardShot.value?.message || "unknown").slice(0, 240));
   }
+  console.log("3D BOARD PRE-ASSERTION SCREENSHOT CAPTURED");
+  assertRuntimeGlbLoaded();
   console.log("3D BOARD SCREENSHOT CAPTURED");
 
   // Verify the 4-player mode and its complete turn rotation.
