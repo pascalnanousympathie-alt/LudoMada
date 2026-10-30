@@ -132,11 +132,13 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep the screenshot in the app-private files directory so CI can
-        // retrieve it reliably with adb run-as, even when external app storage
-        // is unavailable on a fresh emulator image.
-        val screenshotDir = context.filesDir
-        assertTrue("Screenshot directory must exist", screenshotDir.exists())
+        // UTP collects this directory before uninstalling the target APK.
+        // Keeping the screenshot in the app-specific external media folder lets
+        // CI retrieve a real PNG without depending on post-test app installation.
+        val mediaDir = context.externalMediaDirs.firstOrNull()
+        assertNotNull("App-specific external media directory must be available", mediaDir)
+        val screenshotDir = File(mediaDir!!, "additional_test_output")
+        assertTrue("Screenshot directory must exist or be creatable", screenshotDir.exists() || screenshotDir.mkdirs())
         val file = File(screenshotDir, "ludomada-startup-offline.png")
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
