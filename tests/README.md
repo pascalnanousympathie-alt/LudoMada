@@ -15,6 +15,11 @@ uses randomly scoped fixtures and must run only against a disposable CI/test
 database; several cases create test users, games, wallet entries and payouts.
 It must never target production or the owner's Supabase/Railway databases.
 
+The Release Gate enables a higher request budget only when `CI=true`,
+`NATIVE_TEST_MODE=true`, `NODE_ENV=staging`, and the database URL points to
+the loopback `ludomada_ci` PostgreSQL service. All other environments retain
+the normal auth (20/15 min) and API (120/min) rate limits.
+
 ## Concurrency scenarios
 Run two independent service instances against the same PostgreSQL database and
 submit the same `expectedVersion`. Exactly one command may commit.

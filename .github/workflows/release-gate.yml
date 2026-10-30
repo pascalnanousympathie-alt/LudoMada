@@ -76,6 +76,8 @@ jobs:
         run: npm run build
 
       - name: Start staging API and verify readiness
+        env:
+          NATIVE_TEST_MODE: "true"
         run: |
           set -eu
           nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
