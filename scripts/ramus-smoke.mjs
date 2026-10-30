@@ -376,16 +376,16 @@ function assertRuntimeGlbLoaded(timeoutMs = 12000) {
     );
     const heroText = heroLine?.split("GLB_RUNTIME_LOAD_OK parts=")[1] || "";
     const heroParts = heroText.split(",").map((part) => part.trim()).filter(Boolean);
-    const board = lines.map((line) =>
-      line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\\d+)/)
-    ).find(Boolean);
+    const boardLine = lines.find((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
+    const boardText = boardLine?.split("BOARD_GLB_RUNTIME_LOAD_OK parts=")[1] || "";
+    const boardCount = Number.parseInt(boardText, 10);
     const missingHeroParts = requiredHeroParts.filter((part) => !heroParts.includes(part));
     checks = {
       gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
       pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
       heroParts,
       missingHeroParts,
-      boardParts: board ? Number(board[1]) : 0
+      boardParts: Number.isFinite(boardCount) ? boardCount : 0
     };
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
         checks.missingHeroParts.length === 0 && checks.boardParts > 0) {
