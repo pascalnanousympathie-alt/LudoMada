@@ -349,13 +349,6 @@ function safeRamusMetadata(value) {
   return summary;
 }
 
-function findRef(text) {
-  const snapshot = run("snapshot", "--session", session, "--find", text);
-  const target = snapshot.elements?.[0];
-  if (!target) throw new Error(`Could not find accessible UI element: ${text}`);
-  return { ref: target.ref, gen: snapshot.gen, text: target.text };
-}
-
 try {
   if (!process.env.RAMUS_API_KEY) {
     console.log("RAMUS_AUTH_MODE=trial");
@@ -471,61 +464,82 @@ try {
   if (!gotSix) throw new Error("No six within 24 cloud-emulator rolls");
   console.log("DICE SIX PASS");
 
-  // A pending six must reject another roll until the current player moves a pawn.
-  const pendingRoll = findRef("Lancer le dé");
-  const reroll = runAllowError("tap", pendingRoll.ref, "--gen", String(pendingRoll.gen), "--session", session);
-  waitStable(250);
-  const pendingStatus = pendingDiceValue();
-  if (pendingStatus.value !== 6) {
-    throw new Error("A pending six was not preserved after a reroll attempt. Status: " + pendingStatus.status);
+  // A pending die must be immutable until the player chooses a pawn.
+  runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  target = findRef("Lancer le dé");
+  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const blockedReroll = runAllowError(
+    "wait", "--text", "Jouez d'abord le pion", "--timeout", "1800", "--session", session
+  );
+  if (!blockedReroll.ok) throw new Error("A second dice roll was accepted before moving a pawn");
+  const preservedSix = runAllowError("snapshot", "--session", session, "--find", "Dé: 6");
+  if (!preservedSix.ok || !preservedSix.value.elements?.length) {
+    throw new Error("The pending six was not preserved after a rejected reroll");
   }
   console.log("PENDING DICE REROLL BLOCK PASS");
 
-  if (!moveAnyLegalPawnAfterRoll()) {
-    throw new Error("No legal pawn move found after six");
-  }
-  const replay = waitForSnapshot("Rejouez", 6000);
-  if (!replay?.elements?.length) throw new Error("Expected replay status after moving a pawn on six");
+  target = findRef("Pion 1");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
 
+  // Exercise the real Home -> JOUER canvas hitbox rather than only the
+  // login-screen offline shortcut. The universal deferred handler prevents
+  // replacing the content hierarchy during the original Home touch dispatch.
   target = findRef("← Hors-ligne");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  assertMenuButton("👥 3 joueurs");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--expect", "← Accueil", "--session", session);
+  target = findRef("← Accueil");
+  run("tap", target.ref, "--gen", String(target.gen),
+      "--session", session);
+  if (!waitForSnapshot("LudoMada Premium Home", 8000)) {
+    throw new Error("Offline menu could not return to Premium Home");
+  }
   console.log("OFFLINE MENU→HOME PASS");
 
-  target = findRef("← Accueil");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  if (!isPremiumHome(readTree())) throw new Error("Home screen missing after offline menu navigation");
+  let modeTree = openModePickerFromHome();
   console.log("HOME→JOUER MODE OVERLAY PASS");
 
-  openModePickerFromHome();
-  target = findRef("MODE_ONLINE");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  const onlineLobby = waitForSnapshot("Choisir la mise", 6000);
-  if (!onlineLobby?.elements?.some((e) => e.text === "Choisir la mise")) {
-    throw new Error("Online selection did not open the lobby stake screen");
+  tapTreeNode(modeTree, "MODE_ONLINE");
+  waitStable(700);
+  let lobbyTree = readTree();
+  if (!treeHas(lobbyTree, "Choisir la mise") || !treeHas(lobbyTree, "Hiditra amin'ny room")) {
+    throw new Error("Online mode did not open the lobby entry screen. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
   console.log("JOUER→ONLINE LOBBY PASS");
 
-  target = findRef("← Accueil");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  openModePickerFromHome();
-  target = findRef("MODE_OFFLINE");
-  run("tap", target.ref, "--gen", String(target.gen), "--session", session);
-  assertMenuButton("👤 2 joueurs");
+  if (!returnToHome()) throw new Error("Could not return from online lobby to Premium Home");
+  modeTree = openModePickerFromHome();
+  tapTreeNode(modeTree, "MODE_OFFLINE");
+  waitStable(700);
+  let offlineMenuTree = readTree();
+  for (const expected of ["👤 2 joueurs", "👥 3 joueurs", "👥 4 joueurs"]) {
+    if (!treeHas(offlineMenuTree, expected)) {
+      throw new Error(`Offline mode menu is missing ${expected}. Accessibility tree: ` + JSON.stringify(treeLabels(offlineMenuTree)).slice(0, 5000));
+    }
+  }
   console.log("JOUER→OFFLINE MENU PASS");
 
-  const shot = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
-  if (!shot.ok) console.error("RAMUS_SCREENSHOT_WARNING=" + JSON.stringify(shot.value));
+  if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
+  run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
-} catch (error) {
-  captureFailureLogcat();
-  throw error;
 } finally {
-  if (session) {
-    const closed = runAllowError("session", "close", "--session", session);
-    if (!closed.ok) console.error("RAMUS_SESSION_CLOSE_WARNING=" + JSON.stringify(closed.value));
+  if (session && !success && !failureLogcatCaptured) {
+    captureFailureLogcat();
   }
-  if (!success) process.exitCode = 1;
+  if (session) {
+    try { run("session", "end", "--session", session); }
+    catch (e) { console.error("session end:", e.message); }
+  }
+  if (!success) {
+    console.error("RAMUS_SMOKE_FAIL");
+    process.exitCode = 1;
+  }
+}
+
+function findRef(findText) {
+  const s = waitForSnapshot(findText, 8000);
+  if (!s?.elements?.length) throw new Error(`UI element not found after bounded wait: ${findText}`);
+  return { ref: s.elements[0].ref, gen: s.gen };
 }
