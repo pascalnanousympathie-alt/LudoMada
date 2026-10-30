@@ -429,11 +429,11 @@ try {
     // Keep only app/runtime failure lines and redact common credential fields.
     const diagnostic = runAllowError("logcat", "--limit", "300", "--session", session);
     const raw = JSON.stringify(diagnostic.value ?? {});
-    const decoded = raw.replace(/\\r?\\n/g, "\n").replace(/\\\"/g, '"');
+    const decoded = raw.replace(/\\r?\\n/g, "\n").replace(/\\"/g, '"');
     const relevant = decoded.split(/\\r?\\n/)
-      .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\\.ludomadagascar|LudoMadaSmoke|LudoMadaRender|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)/i.test(line))
+      .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|LudoMadaSmoke|LudoMadaRender|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)/i.test(line))
       .slice(-160)
-      .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\\s:=]+)[^",\\s}]+/gi, "$1$2[redacted]"));
+      .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
     console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
     console.error(relevant.join("\n") || "No matching Android crash/render lines returned by Ramus logcat.");
     console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
