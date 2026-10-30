@@ -71,14 +71,46 @@ fi
 # renders into a separate Surface, so keep this device screenshot as an
 # independent visual artifact alongside Ramus screenshots.
 evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
-screenshot_remote="files/ludomada-startup-offline.png"
+additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connected_android_test_additional_output"
+screenshot_name="ludomada-startup-offline.png"
 mkdir -p "$evidence_dir"
-# The UI test writes into Context.filesDir. Read app-private data through
-# run-as instead of depending on external app storage on a fresh AVD.
-if ! timeout 15s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$evidence_dir/ludomada-startup-offline.png"; then
-  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: app-private instrumentation screenshot was not retrievable"
-  timeout 8s "$ADB" -s "$DEVICE" shell run-as com.ludomadagascar ls -la files || true
+
+# Android Test Orchestrator/UTP copies this app-specific media folder to the
+# host before uninstall_after_test removes the target and test APKs.
+screenshot_source=""
+if [[ -d "$additional_output_root" ]]; then
+  screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
+fi
+if [[ -z "$screenshot_source" ]]; then
+  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP additional_test_output did not contain the screenshot"
+  if [[ -d "$additional_output_root" ]]; then
+    find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\\n' | head -n 80 || true
+  else
+    echo "UTP additional output directory is missing: $additional_output_root"
+  fi
   exit 1
 fi
-test -s "$evidence_dir/ludomada-startup-offline.png"
+
+if ! python3 - "$screenshot_source" <<'PY'
+from pathlib import Path
+import struct
+import sys
+
+path = Path(sys.argv[1])
+data = path.read_bytes()
+if len(data) < 33 or data[:8] != b"\\x89PNG\\r\\n\\x1a\\n":
+    print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_PNG bytes={len(data)} path={path}")
+    raise SystemExit(1)
+width, height = struct.unpack(">II", data[16:24])
+if width < 1 or height < 1:
+    print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_DIMENSIONS width={width} height={height}")
+    raise SystemExit(1)
+print(f"ANDROID_SURFACE_PNG_VALID bytes={len(data)} size={width}x{height}")
+PY
+then
+  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP output is not a valid PNG"
+  exit 1
+fi
+
+cp -- "$screenshot_source" "$evidence_dir/$screenshot_name"
 echo "ANDROID_SURFACE_SCREENSHOT_CAPTURE_PASS"
