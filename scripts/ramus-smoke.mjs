@@ -280,7 +280,7 @@ let failureLogcatCaptured = false;
 function captureFailureLogcat() {
   if (!session || failureLogcatCaptured) return;
   failureLogcatCaptured = true;
-  const diagnostic = runAllowError("logcat", "--limit", "1000", "--session", session);
+  const diagnostic = runAllowError("logcat", "--limit", "500", "--session", session);
   const value = diagnostic.value ?? {};
   const rows = Array.isArray(value.lines)
     ? value.lines
