@@ -280,34 +280,52 @@ let failureLogcatCaptured = false;
 function captureFailureLogcat() {
   if (!session || failureLogcatCaptured) return;
   failureLogcatCaptured = true;
-  // Capture the installed Ramus logcat command contract so future diagnostics
-  // use supported filters instead of guessing CLI flags.
-  const logcatHelp = runAllowError("logcat", "--help");
-  console.error("RAMUS_LOGCAT_HELP=" + JSON.stringify(logcatHelp.value ?? {}).slice(0, 6000));
-  const diagnostic = runAllowError("logcat", "--limit", "500", "--session", session);
-  const value = diagnostic.value ?? {};
-  const rows = Array.isArray(value.lines)
-    ? value.lines
-    : Array.isArray(value.logs)
-      ? value.logs
-      : [];
-  const rendered = rows.map((entry) => {
-    if (typeof entry === "string") return entry;
-    if (!entry || typeof entry !== "object") return "";
-    return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
-      .filter((part) => part !== undefined && part !== null && part !== "")
-      .join(" ");
-  }).filter(Boolean);
-  const relevant = rendered
-    .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)|ActivityTaskManager|am_crash|Exception|Caused by:/i.test(line))
-    .slice(-180)
+
+  const filters = [
+    "com.ludomadagascar",
+    "LudoMadaRender",
+    "ActivityTaskManager",
+    "ActivityManager",
+    "lmkd",
+  ];
+  const rendered = [];
+  const renderRows = (result) => {
+    const value = result.value ?? {};
+    const rows = Array.isArray(value.lines)
+      ? value.lines
+      : Array.isArray(value.logs)
+        ? value.logs
+        : [];
+    return rows.map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (!entry || typeof entry !== "object") return "";
+      return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+        .filter((part) => part !== undefined && part !== null && part !== "")
+        .join(" ");
+    }).filter(Boolean);
+  };
+
+  // Retain the broad session tail, then query the documented Ramus text/stream
+  // filter independently for app lifecycle, renderer and low-memory evidence.
+  rendered.push(...renderRows(runAllowError("logcat", "--limit", "500", "--session", session)));
+  for (const filter of filters) {
+    const filtered = runAllowError(
+      "logcat", "--limit", "250", "--filter", filter, "--session", session
+    );
+    rendered.push(...renderRows(filtered));
+    if (!filtered.ok && filtered.value?.message) {
+      console.error("RAMUS_LOGCAT_FILTER_ERROR[" + filter + "]=" +
+        String(filtered.value.message).slice(0, 500));
+    }
+  }
+
+  const relevant = [...new Set(rendered)]
+    .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i.test(line))
+    .slice(-220)
     .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
-  if (rendered.length === 0) {
-    console.error("No log entries returned. " + JSON.stringify(value).slice(0, 1200));
-  } else if (relevant.length === 0) {
-    console.error("No app/crash/render lines matched; available log streams: " +
-      [...new Set(rows.map((entry) => typeof entry === "object" && entry ? entry.stream : "unknown"))].join(", "));
+  if (relevant.length === 0) {
+    console.error("No app, activity, renderer or low-memory lines returned by filtered session logcat.");
   } else {
     console.error(relevant.join("\n"));
   }
