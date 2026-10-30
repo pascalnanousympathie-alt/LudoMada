@@ -275,6 +275,40 @@ function advanceToTurn(targetTurn) {
 
 let session = "";
 let success = false;
+let failureLogcatCaptured = false;
+
+function captureFailureLogcat() {
+  if (!session || failureLogcatCaptured) return;
+  failureLogcatCaptured = true;
+  const diagnostic = runAllowError("logcat", "--limit", "1000", "--session", session);
+  const value = diagnostic.value ?? {};
+  const rows = Array.isArray(value.lines)
+    ? value.lines
+    : Array.isArray(value.logs)
+      ? value.logs
+      : [];
+  const rendered = rows.map((entry) => {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return "";
+    return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+      .filter((part) => part !== undefined && part !== null && part !== "")
+      .join(" ");
+  }).filter(Boolean);
+  const relevant = rendered
+    .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)|ActivityTaskManager|am_crash|Exception|Caused by:/i.test(line))
+    .slice(-180)
+    .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
+  if (rendered.length === 0) {
+    console.error("No log entries returned. " + JSON.stringify(value).slice(0, 1200));
+  } else if (relevant.length === 0) {
+    console.error("No app/crash/render lines matched; available log streams: " +
+      [...new Set(rows.map((entry) => typeof entry === "object" && entry ? entry.stream : "unknown"))].join(", "));
+  } else {
+    console.error(relevant.join("\n"));
+  }
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
+}
 try {
   if (!process.env.RAMUS_API_KEY) run("trial");
   const started = run("session", "start", "--apk", apk, "--wait");
@@ -292,6 +326,7 @@ try {
   const boardSurface = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
   if (!treeHas(boardSurface, "LudoMada 3D Ludo board")) {
     console.error("3D_BOARD_ACCESSIBILITY_DIAGNOSTICS:" + JSON.stringify(treeLabels(boardSurface)).slice(0, 7000));
+    captureFailureLogcat();
     const evidence = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
     if (evidence.ok) console.error("3D_BOARD_SCREENSHOT_CAPTURED");
     else console.error("3D_BOARD_SCREENSHOT_CAPTURE_FAILED:" + JSON.stringify(evidence.value));
@@ -424,19 +459,8 @@ try {
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
-  if (session && !success) {
-    // Capture the remote Android crash/render diagnostics before ending the device.
-    // Keep only app/runtime failure lines and redact common credential fields.
-    const diagnostic = runAllowError("logcat", "--limit", "300", "--session", session);
-    const raw = JSON.stringify(diagnostic.value ?? {});
-    const decoded = raw.replace(/\\r?\\n/g, "\n").replace(/\\"/g, '"');
-    const relevant = decoded.split(/\\r?\\n/)
-      .filter((line) => /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|LudoMadaSmoke|LudoMadaRender|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager.*(?:Killing|Force finishing)/i.test(line))
-      .slice(-160)
-      .map((line) => line.replace(/(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi, "$1$2[redacted]"));
-    console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
-    console.error(relevant.join("\n") || "No matching Android crash/render lines returned by Ramus logcat.");
-    console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
+  if (session && !success && !failureLogcatCaptured) {
+    captureFailureLogcat();
   }
   if (session) {
     try { run("session", "end", "--session", session); }
