@@ -1,6 +1,103 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
+function parseFramebufferReadback(line, expectedLabel) {
+  if (typeof line !== "string") {
+    return { ok: false, reason: "missing_readback" };
+  }
+
+  const match = line.match(
+    /PBR_READBACK label=([a-z_]+) size=(\d+)x(\d+) brightPixels=(\d+)\/(\d+) maxChannel=(\d+) meanRGB=(\d+),(\d+),(\d+) centerRGB=(\d+),(\d+),(\d+) glError=0x([0-9a-f]+)\b/i
+  );
+  if (!match || match[1] !== expectedLabel) {
+    return { ok: false, reason: "malformed_readback" };
+  }
+
+  const values = match.slice(2).map((value, index) =>
+    index === 11 ? Number.parseInt(value, 16) : Number(value)
+  );
+  const [width, height, brightPixels, totalPixels, maxChannel,
+    meanR, meanG, meanB, centerR, centerG, centerB, glError] = values;
+  const channels = [meanR, meanG, meanB, centerR, centerG, centerB];
+  const dimensionsValid = Number.isSafeInteger(width) && width > 0 &&
+    Number.isSafeInteger(height) && height > 0 &&
+    Number.isSafeInteger(totalPixels) && totalPixels === width * height;
+  const countsValid = Number.isSafeInteger(brightPixels) &&
+    brightPixels >= 0 && brightPixels <= totalPixels;
+  const channelsValid = [maxChannel, ...channels].every((value) =>
+    Number.isSafeInteger(value) && value >= 0 && value <= 255
+  );
+  const glErrorValid = Number.isSafeInteger(glError) && glError >= 0;
+
+  if (!dimensionsValid || !countsValid || !channelsValid || !glErrorValid) {
+    return { ok: false, reason: "invalid_readback_metrics" };
+  }
+
+  const minimumBrightPixels = Math.max(32, Math.ceil(totalPixels * 0.005));
+  if (glError !== 0) {
+    return { ok: false, reason: "gl_error", glError, brightPixels, totalPixels, maxChannel };
+  }
+  if (maxChannel <= 24 || brightPixels < minimumBrightPixels) {
+    return {
+      ok: false,
+      reason: "insufficient_non_dark_pixels",
+      brightPixels,
+      totalPixels,
+      minimumBrightPixels,
+      maxChannel
+    };
+  }
+
+  return {
+    ok: true,
+    label: expectedLabel,
+    width,
+    height,
+    brightPixels,
+    totalPixels,
+    brightRatio: Number((brightPixels / totalPixels).toFixed(4)),
+    maxChannel,
+    meanRGB: [meanR, meanG, meanB],
+    centerRGB: [centerR, centerG, centerB],
+    glError
+  };
+}
+
+function selfTestFramebufferReadback() {
+  const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
+  const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
+  const black = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=0/657150 maxChannel=11 meanRGB=2,4,11 centerRGB=2,4,11 glError=0x0";
+  const glFailure = scene.replace("glError=0x0", "glError=0x502");
+  const sparse = scene.replace("brightPixels=369149/657150", "brightPixels=100/657150");
+  const inconsistentSize = scene.replace("brightPixels=369149/657150", "brightPixels=369149/600000");
+  const impossibleCount = scene.replace("brightPixels=369149/657150", "brightPixels=700000/657150");
+
+  const cases = [
+    ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
+    ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
+    ["black frame rejected", !parseFramebufferReadback(black, "scene_fbo").ok],
+    ["GL error rejected", !parseFramebufferReadback(glFailure, "scene_fbo").ok],
+    ["sparse pixels rejected", !parseFramebufferReadback(sparse, "scene_fbo").ok],
+    ["inconsistent dimensions rejected", !parseFramebufferReadback(inconsistentSize, "scene_fbo").ok],
+    ["pixel count overflow rejected", !parseFramebufferReadback(impossibleCount, "scene_fbo").ok],
+    ["wrong label rejected", !parseFramebufferReadback(scene, "surface_backbuffer").ok],
+    ["missing log rejected", !parseFramebufferReadback(null, "scene_fbo").ok]
+  ];
+  const failed = cases.filter(([, passed]) => !passed);
+  for (const [name, passed] of cases) {
+    console.log((passed ? "PASS " : "FAIL ") + name);
+  }
+  if (failed.length) {
+    throw new Error("Framebuffer readback self-test failed: " + failed.map(([name]) => name).join(", "));
+  }
+  console.log("FRAMEBUFFER READBACK SELF-TEST PASS (" + cases.length + " cases)");
+}
+
+if (process.argv.includes("--test-framebuffer-readback")) {
+  selfTestFramebufferReadback();
+  process.exit(0);
+}
+
 const cli = process.env.RAMUS_CLI;
 const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
@@ -390,18 +487,18 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       heroParts,
       missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
       boardParts: Number.isFinite(boardCount) ? boardCount : 0,
-      sceneReadback: Boolean(sceneReadbackLine),
-      surfaceReadback: Boolean(surfaceReadbackLine),
+      sceneReadback: parseFramebufferReadback(sceneReadbackLine, "scene_fbo"),
+      surfaceReadback: parseFramebufferReadback(surfaceReadbackLine, "surface_backbuffer"),
       firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE"))
     };
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
         checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
-        checks.sceneReadback && checks.surfaceReadback && checks.firstFrameComplete) {
+        checks.sceneReadback.ok && checks.surfaceReadback.ok && checks.firstFrameComplete) {
       console.log("GLES3 PBR RENDERER PASS");
       console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
       console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
-      console.log("PBR SCENE FBO READBACK=" + sceneReadbackLine);
-      console.log("PBR SURFACE READBACK=" + surfaceReadbackLine);
+      console.log("PBR SCENE FBO READBACK PASS=" + JSON.stringify(checks.sceneReadback));
+      console.log("PBR SURFACE READBACK PASS=" + JSON.stringify(checks.surfaceReadback));
       console.log("PBR FIRST FRAME COMPLETE");
       return;
     }

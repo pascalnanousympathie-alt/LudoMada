@@ -3,10 +3,10 @@ name: Android Emulator Automated Tests
 on:
   workflow_dispatch:
   push:
-    # Workflow-only edits deliberately do not consume the cloud Android smoke-test quota.
+    # Script-only changes run the lightweight framebuffer contract workflow.
+    # Reserve cloud Ramus sessions for Android runtime changes.
     paths:
       - 'android-app/**'
-      - 'scripts/ramus-smoke.mjs'
 
 permissions:
   contents: read
@@ -67,6 +67,9 @@ jobs:
 
       - name: Verify 3D model is packaged in the debug APK
         run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Validate framebuffer readback acceptance checks
+        run: node scripts/ramus-smoke.mjs --test-framebuffer-readback
 
       - name: Install Ramus CLI
         run: |
