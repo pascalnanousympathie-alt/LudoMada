@@ -331,6 +331,48 @@ function captureFailureLogcat() {
   }
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
+function readRendererLogLines() {
+  const result = runAllowError(
+    "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
+  );
+  if (!result.ok) {
+    throw new Error("Could not read filtered LudoMadaRender logs: " +
+      String(result.value?.error || result.value?.message || "unknown").slice(0, 240));
+  }
+  const value = result.value ?? {};
+  const rows = Array.isArray(value.lines)
+    ? value.lines
+    : Array.isArray(value.logs)
+      ? value.logs
+      : [];
+  return rows.map((entry) => {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return "";
+    return [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+      .filter((part) => part !== undefined && part !== null && part !== "")
+      .join(" ");
+  }).filter(Boolean);
+}
+
+function assertRuntimeGlbLoaded() {
+  const lines = readRendererLogLines();
+  const renderer = lines.some((line) => line.includes("Renderer=GLES3_PBR"));
+  const surface = lines.some((line) => line.includes("PBR_SURFACE_CREATED"));
+  const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
+  const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
+  if (!renderer || !surface || !hero || Number(hero[1]) <= 0 || !board || Number(board[1]) <= 0) {
+    throw new Error("Runtime GLB verification failed: " + JSON.stringify({
+      gles3Pbr: renderer,
+      pbrSurfaceCreated: surface,
+      heroParts: hero ? Number(hero[1]) : 0,
+      boardParts: board ? Number(board[1]) : 0
+    }));
+  }
+  console.log("GLES3 PBR RENDERER PASS");
+  console.log("RUNTIME HERO GLB LOAD PASS parts=" + Number(hero[1]));
+  console.log("RUNTIME BOARD GLB LOAD PASS parts=" + Number(board[1]));
+}
+
 function safeRamusMetadata(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { valueType: typeof value };
@@ -399,6 +441,13 @@ try {
     throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
+  assertRuntimeGlbLoaded();
+  const boardShot = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+  if (!boardShot.ok) {
+    throw new Error("Could not capture 3D board evidence: " +
+      String(boardShot.value?.error || boardShot.value?.message || "unknown").slice(0, 240));
+  }
+  console.log("3D BOARD SCREENSHOT CAPTURED");
 
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");
@@ -521,7 +570,6 @@ try {
   console.log("JOUER→OFFLINE MENU PASS");
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
-  run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
