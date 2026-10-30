@@ -428,7 +428,8 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
-    private fun gameModeDialog() {
+    @kotlin.jvm.JvmName("gameModeDialog")
+    internal fun gameModeDialog() {
         // PremiumHeroViewV2 invokes this while handling a canvas touch. Defer every
         // caller before mutating the Activity content hierarchy.
         window.decorView.post { showGameModeOverlay() }
