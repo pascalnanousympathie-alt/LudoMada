@@ -52,7 +52,7 @@ console.log(JSON.stringify({
   sourceScene: manifest.source_scene,
   board: manifest.board_geometry,
   packagedAssets: packagedFiles,
-  rev3Asset: { present: fs.existsSync(expectedAsset), bytes: packagedBytes, sha256: packagedSha256 },
+  runtimeRev5Asset: { present: fs.existsSync(expectedAsset), bytes: packagedBytes, sha256: packagedSha256 },
   oversizedAssets: oversized,
   passed: checks.length - failed.length,
   total: checks.length,
