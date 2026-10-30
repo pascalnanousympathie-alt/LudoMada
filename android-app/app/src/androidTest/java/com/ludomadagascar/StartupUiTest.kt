@@ -111,13 +111,13 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
-        assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
+        assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
         for (attempt in 0 until 24) {
-            assertTrue("Dice button must remain reachable", device.hasObject(By.text("Lancer le dé")))
-            device.findObject(By.text("Lancer le dé")).click()
+            assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
+            device.findObject(By.textContains("Lancer le dé")).click()
             if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
                 break
