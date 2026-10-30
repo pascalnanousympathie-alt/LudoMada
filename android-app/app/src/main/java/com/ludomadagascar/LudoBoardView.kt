@@ -1358,7 +1358,6 @@ class LudoBoardView(
             Matrix.setIdentityM(modelScratch,0)
             Matrix.translateM(modelScratch,0,-0.7f*boardScaleXZ,0.20f,0f)
             Matrix.scaleM(modelScratch,0,boardScaleXZ,1f,boardScaleXZ)
-            Matrix.rotateM(modelScratch,0,-90f,1f,0f,0f)
             return modelScratch.clone()
         }
 
