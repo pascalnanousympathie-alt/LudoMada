@@ -351,7 +351,7 @@ function readRendererLogLines() {
   }).filter(Boolean);
 }
 
-function assertRuntimeGlbLoaded(timeoutMs = 12000) {
+function assertRuntimeGlbLoaded(timeoutMs = 16000) {
   const deadline = Date.now() + timeoutMs;
   const requiredHeroParts = [
     "LM_Pawn_Base_Weighted",
@@ -366,7 +366,10 @@ function assertRuntimeGlbLoaded(timeoutMs = 12000) {
     pbrSurfaceCreated: false,
     heroParts: [],
     missingHeroParts: requiredHeroParts,
-    boardParts: 0
+    boardParts: 0,
+    sceneReadback: false,
+    surfaceReadback: false,
+    firstFrameComplete: false
   };
   while (Date.now() < deadline) {
     const lines = readRendererLogLines();
@@ -379,24 +382,32 @@ function assertRuntimeGlbLoaded(timeoutMs = 12000) {
     const boardLine = lines.find((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
     const boardText = boardLine?.split("BOARD_GLB_RUNTIME_LOAD_OK parts=")[1] || "";
     const boardCount = Number.parseInt(boardText, 10);
-    const missingHeroParts = requiredHeroParts.filter((part) => !heroParts.includes(part));
+    const sceneReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=scene_fbo"));
+    const surfaceReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=surface_backbuffer"));
     checks = {
       gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
       pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
       heroParts,
-      missingHeroParts,
-      boardParts: Number.isFinite(boardCount) ? boardCount : 0
+      missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
+      boardParts: Number.isFinite(boardCount) ? boardCount : 0,
+      sceneReadback: Boolean(sceneReadbackLine),
+      surfaceReadback: Boolean(surfaceReadbackLine),
+      firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE"))
     };
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
-        checks.missingHeroParts.length === 0 && checks.boardParts > 0) {
+        checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
+        checks.sceneReadback && checks.surfaceReadback && checks.firstFrameComplete) {
       console.log("GLES3 PBR RENDERER PASS");
       console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
       console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
+      console.log("PBR SCENE FBO READBACK=" + sceneReadbackLine);
+      console.log("PBR SURFACE READBACK=" + surfaceReadbackLine);
+      console.log("PBR FIRST FRAME COMPLETE");
       return;
     }
     waitStable(500);
   }
-  throw new Error("Runtime GLB verification failed: " + JSON.stringify(checks));
+  throw new Error("Runtime GLB/frame verification failed: " + JSON.stringify(checks));
 }
 
 function safeRamusMetadata(value) {
