@@ -1020,6 +1020,7 @@ class LudoBoardView(
         private val shadowSize=premiumLighting.shadowMapResolution
         private var sceneWidth=1
         private var sceneHeight=1
+        private var firstFrameDiagnosticsCaptured=false
         private var woodTex=0
         private var boardTex=0
         private var neutralTex=0
@@ -1178,6 +1179,39 @@ class LudoBoardView(
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
         }
+        private fun logFramebufferPixels(label:String,w:Int,h:Int){
+            val safeW=max(1,w);val safeH=max(1,h)
+            val pixels=ByteBuffer.allocateDirect(safeW*safeH*4).order(ByteOrder.nativeOrder())
+            GLES30.glFinish()
+            GLES30.glReadPixels(0,0,safeW,safeH,GLES30.GL_RGBA,GLES30.GL_UNSIGNED_BYTE,pixels)
+            val glError=GLES30.glGetError()
+            var brightPixels=0
+            var maxChannel=0
+            var sumR=0L;var sumG=0L;var sumB=0L
+            for(i in 0 until safeW*safeH){
+                val o=i*4
+                val r=pixels.get(o).toInt() and 0xff
+                val g=pixels.get(o+1).toInt() and 0xff
+                val b=pixels.get(o+2).toInt() and 0xff
+                if(max(r,max(g,b))>24)brightPixels++
+                maxChannel=max(maxChannel,max(r,max(g,b)))
+                sumR+=r;sumG+=g;sumB+=b
+            }
+            val center=((safeH/2)*safeW+safeW/2)*4
+            val cr=pixels.get(center).toInt() and 0xff
+            val cg=pixels.get(center+1).toInt() and 0xff
+            val cb=pixels.get(center+2).toInt() and 0xff
+            val total=max(1,safeW*safeH)
+            android.util.Log.i("LudoMadaRender",
+                "PBR_READBACK label="+label+
+                " size="+safeW+"x"+safeH+
+                " brightPixels="+brightPixels+"/"+total+
+                " maxChannel="+maxChannel+
+                " meanRGB="+(sumR/total)+","+(sumG/total)+","+(sumB/total)+
+                " centerRGB="+cr+","+cg+","+cb+
+                " glError=0x"+glError.toString(16))
+        }
+
         private fun createSceneTargets(w:Int,h:Int){
             if(sceneFbo!=0){GLES30.glDeleteFramebuffers(1,intArrayOf(sceneFbo),0);GLES30.glDeleteTextures(1,intArrayOf(sceneColorTex),0);GLES30.glDeleteTextures(1,intArrayOf(sceneDepthTex),0)}
             val tex=IntArray(2);GLES30.glGenTextures(2,tex,0);sceneColorTex=tex[0];sceneDepthTex=tex[1]
@@ -1196,7 +1230,9 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
+            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",sceneWidth,sceneHeight)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
         private fun renderDirectFrame(){
@@ -1218,6 +1254,11 @@ class LudoBoardView(
             renderShadowMap()
             renderScene()
             renderPostProcess()
+            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
+                logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
+                android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                firstFrameDiagnosticsCaptured=true
+            }
         }
         override fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
