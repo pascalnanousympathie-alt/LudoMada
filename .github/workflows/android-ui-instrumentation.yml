@@ -106,5 +106,6 @@ jobs:
           path: |
             android-app/app/build/reports/androidTests/connected/
             android-app/app/build/outputs/androidTest-results/connected/
+            android-app/app/build/ramus-evidence/
           if-no-files-found: warn
           retention-days: 14
