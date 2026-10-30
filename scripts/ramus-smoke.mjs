@@ -353,20 +353,44 @@ function readRendererLogLines() {
 
 function assertRuntimeGlbLoaded(timeoutMs = 12000) {
   const deadline = Date.now() + timeoutMs;
-  let checks = { gles3Pbr: false, pbrSurfaceCreated: false, heroParts: 0, boardParts: 0 };
+  const requiredHeroParts = [
+    "LM_Pawn_Base_Weighted",
+    "LM_Pawn_Collar",
+    "LM_Pawn_Spherical_Head",
+    "LM_Pawn_Tapered_Body",
+    "LM_Pawn_Underside_Insert",
+    "LM_Die_HydroChrome_Body"
+  ];
+  let checks = {
+    gles3Pbr: false,
+    pbrSurfaceCreated: false,
+    heroParts: [],
+    missingHeroParts: requiredHeroParts,
+    boardParts: 0
+  };
   while (Date.now() < deadline) {
     const lines = readRendererLogLines();
-    const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
-    const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
+    const heroLine = lines.find((line) =>
+      line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
+      !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")
+    );
+    const heroText = heroLine?.split("GLB_RUNTIME_LOAD_OK parts=")[1] || "";
+    const heroParts = heroText.split(",").map((part) => part.trim()).filter(Boolean);
+    const board = lines.map((line) =>
+      line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\\d+)/)
+    ).find(Boolean);
+    const missingHeroParts = requiredHeroParts.filter((part) => !heroParts.includes(part));
     checks = {
       gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
       pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
-      heroParts: hero ? Number(hero[1]) : 0,
+      heroParts,
+      missingHeroParts,
       boardParts: board ? Number(board[1]) : 0
     };
-    if (checks.gles3Pbr && checks.pbrSurfaceCreated && checks.heroParts > 0 && checks.boardParts > 0) {
+    if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
+        checks.missingHeroParts.length === 0 && checks.boardParts > 0) {
       console.log("GLES3 PBR RENDERER PASS");
-      console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts);
+      console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
       console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
       return;
     }
