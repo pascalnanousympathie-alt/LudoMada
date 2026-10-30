@@ -335,10 +335,7 @@ function readRendererLogLines() {
   const result = runAllowError(
     "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
   );
-  if (!result.ok) {
-    throw new Error("Could not read filtered LudoMadaRender logs: " +
-      String(result.value?.error || result.value?.message || "unknown").slice(0, 240));
-  }
+  if (!result.ok) return [];
   const value = result.value ?? {};
   const rows = Array.isArray(value.lines)
     ? value.lines
@@ -354,23 +351,28 @@ function readRendererLogLines() {
   }).filter(Boolean);
 }
 
-function assertRuntimeGlbLoaded() {
-  const lines = readRendererLogLines();
-  const renderer = lines.some((line) => line.includes("Renderer=GLES3_PBR"));
-  const surface = lines.some((line) => line.includes("PBR_SURFACE_CREATED"));
-  const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
-  const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\d+)/)).find(Boolean);
-  if (!renderer || !surface || !hero || Number(hero[1]) <= 0 || !board || Number(board[1]) <= 0) {
-    throw new Error("Runtime GLB verification failed: " + JSON.stringify({
-      gles3Pbr: renderer,
-      pbrSurfaceCreated: surface,
+function assertRuntimeGlbLoaded(timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  let checks = { gles3Pbr: false, pbrSurfaceCreated: false, heroParts: 0, boardParts: 0 };
+  while (Date.now() < deadline) {
+    const lines = readRendererLogLines();
+    const hero = lines.map((line) => line.match(/GLB_RUNTIME_LOAD_OK parts=(\\d+)/)).find(Boolean);
+    const board = lines.map((line) => line.match(/BOARD_GLB_RUNTIME_LOAD_OK parts=(\\d+)/)).find(Boolean);
+    checks = {
+      gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
+      pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
       heroParts: hero ? Number(hero[1]) : 0,
       boardParts: board ? Number(board[1]) : 0
-    }));
+    };
+    if (checks.gles3Pbr && checks.pbrSurfaceCreated && checks.heroParts > 0 && checks.boardParts > 0) {
+      console.log("GLES3 PBR RENDERER PASS");
+      console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts);
+      console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
+      return;
+    }
+    waitStable(500);
   }
-  console.log("GLES3 PBR RENDERER PASS");
-  console.log("RUNTIME HERO GLB LOAD PASS parts=" + Number(hero[1]));
-  console.log("RUNTIME BOARD GLB LOAD PASS parts=" + Number(board[1]));
+  throw new Error("Runtime GLB verification failed: " + JSON.stringify(checks));
 }
 
 function safeRamusMetadata(value) {
