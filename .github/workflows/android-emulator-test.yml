@@ -3,10 +3,12 @@ name: Android Emulator Automated Tests
 on:
   workflow_dispatch:
   push:
-    # Script-only changes run the lightweight framebuffer contract workflow.
-    # Reserve cloud Ramus sessions for Android runtime changes.
+    # Android runtime changes and Ramus smoke-harness edits need end-to-end emulator validation.
+    # Other script-only changes continue through the lightweight framebuffer contract workflow.
     paths:
       - 'android-app/**'
+      - 'scripts/ramus-smoke.mjs'
+      - '.github/workflows/android-emulator-test.yml'
 
 permissions:
   contents: read
