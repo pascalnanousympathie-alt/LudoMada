@@ -85,21 +85,21 @@ evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
 additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connected_android_test_additional_output"
 mkdir -p "$evidence_dir"
 
-# Prefer the app-private screenshot: run-as avoids shell-UID access to the
-# app-specific external-media path. Keep UTP additional_output as a fallback.
-screenshot_remote="files/$screenshot_name"
+# The instrumentation streams the API-specific screenshot to shared
+# Pictures before teardown; pull it directly while retaining UTP as fallback.
+screenshot_remote="/sdcard/Pictures/LudoMada/$screenshot_name"
 screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 screenshot_source_kind=""
-if timeout 15s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_local"; then
+if timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
   if [[ -s "$screenshot_local" ]]; then
-    screenshot_source_kind="run-as"
+    screenshot_source_kind="shared-pictures"
   else
     rm -f "$screenshot_local"
   fi
 fi
 
 if [[ ! -s "$screenshot_local" ]]; then
-  echo "ANDROID_SURFACE_SCREENSHOT_RUN_AS_FAILED: trying UTP additional_output"
+  echo "ANDROID_SURFACE_SCREENSHOT_SHARED_PULL_FAILED: trying UTP additional_output"
   screenshot_source=""
   if [[ -d "$additional_output_root" ]]; then
     screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
@@ -108,13 +108,13 @@ if [[ ! -s "$screenshot_local" ]]; then
     cp -- "$screenshot_source" "$screenshot_local"
     screenshot_source_kind="utp"
   else
-    timeout 8s "$ADB" -s "$DEVICE" shell run-as com.ludomadagascar ls -la files || true
+    timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Pictures/LudoMada || true
     if [[ -d "$additional_output_root" ]]; then
       find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
     else
       echo "UTP additional output directory is missing: $additional_output_root"
     fi
-    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: app-private and UTP outputs unavailable"
+    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: shared and UTP outputs unavailable"
     exit 1
   fi
 fi
