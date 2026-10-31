@@ -83,7 +83,8 @@ jobs:
         run: |
           set -eu
           docker build --pull --tag ludomada-api:release-gate .
-          docker run --rm --entrypoint node ludomada-api:release-gate --version | grep -E '^v24\\.'
+          docker run --rm --entrypoint node ludomada-api:release-gate -e 'const major = Number(process.versions.node.split(".")[0]); if (major !== 24) process.exit(1); console.log("DOCKER_NODE_RUNTIME_PASS", process.versions.node);'
+          docker run --rm --entrypoint node ludomada-api:release-gate -e 'const { PrismaClient } = require("@prisma/client"); if (typeof PrismaClient !== "function") process.exit(1); console.log("DOCKER_PRISMA_CLIENT_LOAD_PASS");'
 
       - name: Start staging API and verify readiness
         env:
