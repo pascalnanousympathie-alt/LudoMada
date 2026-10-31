@@ -148,12 +148,12 @@ V6.1 replaces the in-memory game-state dependency for roll/move commands with:
 - PostgreSQL `AuthoritativeGameState` snapshots
 - PostgreSQL `GameCommand` idempotency records
 - durable `GameEvent` append records
-- `SERIALIZABLE` transactions
-- `SELECT ... FOR UPDATE` row locking
+- PostgreSQL `READ COMMITTED` transactions with a per-game `SELECT ... FOR UPDATE` row lock
 - state-version conflict detection
 - duplicate command replay returning the original result
+- bounded retry/backoff for database serialization conflicts
 
-This prevents two API instances from concurrently mutating the same game state and lets state survive process restarts. Production deployment should still run Prisma migrations, add retry/backoff for serialization failures, and load-test the locking strategy.
+The lock is acquired on the durable `AuthoritativeGameState` row inside the same transaction as the command, game-row update, idempotency record and event append. This serializes commands for the same game across API instances and lets the state survive process restarts. The implementation uses explicit row locking under `READ COMMITTED`; it does **not** set the transaction isolation level to `SERIALIZABLE`. Load-test this exact locking strategy before production scaling.
 
 ## V6.2 — Production hardening
 Added Prisma migration baseline, integration/concurrency/security test suites,
@@ -190,13 +190,12 @@ must not be aimed at production real-money systems.
 Added a containerized staging path:
 - Node 20 production container
 - PostgreSQL 16 staging compose stack
-- Prisma migration on startup
+- explicit Prisma migration CLI command (`npm run db:migrate`)
 - staging environment template
 - staging deployment/rollback runbook
 - build/start scripts
 
-This is a staging deployment package, not a claim that payment-provider,
-penetration-test, legal, or production approval gates are complete.
+The API container starts `node dist/server.js`; it does **not** run schema migrations on startup. Migrations are a separate owner-controlled operation. The Render staging blueprint deliberately keeps automatic deployment off and uses a runtime database role without schema `CREATE`; baseline the existing empty Supabase staging schema only through `docs/PRISMA_STAGING_BASELINE.md`.
 
 
 ## Real-time game updates and AI move hints
