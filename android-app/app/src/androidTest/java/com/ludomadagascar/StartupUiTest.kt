@@ -135,7 +135,9 @@ class StartupUiTest {
         // Keep the screenshot app-private. The host CI helper retrieves it with
         // adb exec-out run-as, avoiding API-specific shared-storage permissions
         // and Android 8.1 emulator restrictions on public Pictures directories.
-        val screenshotFile = File(context.filesDir, "ludomada-startup-offline.png")
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotFile = File(context.filesDir, screenshotName)
         if (screenshotFile.exists()) {
             assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
         }
