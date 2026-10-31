@@ -126,6 +126,17 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot -no-snapshot-save
           script: bash .github/scripts/run-android-ui-instrumentation.sh
 
+      - name: Preserve Android 8.1 / API 27 screenshot evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file="android-app/app/build/ramus-evidence/ludomada-startup-offline.png"
+          if [[ -s "$source_file" ]]; then
+            mkdir -p android-app/app/build/ramus-evidence/api27
+            cp -- "$source_file" android-app/app/build/ramus-evidence/api27/ludomada-startup-offline.png
+          fi
+
       - name: Upload instrumentation reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
