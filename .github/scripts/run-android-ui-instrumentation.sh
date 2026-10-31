@@ -126,11 +126,22 @@ if [[ "$test_status" -ne 0 ]]; then
   exit "$test_status"
 fi
 
-# The watcher reads the app-private file before Gradle's post-test uninstall.
+# The watcher should have completed before Gradle's post-test uninstall.
+# Stop it immediately when there is no capture; UTP is the bounded fallback.
 screenshot_source_kind=""
-if wait "$screenshot_watcher_pid" && [[ -s "$screenshot_local" ]] && validate_png "$screenshot_local"; then
-  screenshot_source_kind="app-private-run-as-before-teardown"
+if [[ -s "$screenshot_local" ]]; then
+  wait "$screenshot_watcher_pid" 2>/dev/null || true
+  if validate_png "$screenshot_local"; then
+    screenshot_source_kind="app-private-run-as-before-teardown"
+  else
+    rm -f "$screenshot_local"
+  fi
 else
+  kill "$screenshot_watcher_pid" 2>/dev/null || true
+  wait "$screenshot_watcher_pid" 2>/dev/null || true
+fi
+
+if [[ -z "$screenshot_source_kind" ]]; then
   rm -f "$screenshot_local" "$screenshot_tmp"
   echo "ANDROID_SURFACE_SCREENSHOT_RUN_AS_WATCH_FAILED: checking UTP output fallback"
   screenshot_source=""
