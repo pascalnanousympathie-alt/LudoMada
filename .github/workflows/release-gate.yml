@@ -83,7 +83,7 @@ jobs:
       - name: Start staging API and verify readiness
         env:
           LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') }}
-          PG_POOL_MAX: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') && '20' || '5' }}
+          PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031')) && '20' || '5' }}
         run: |
           set -eu
           nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
