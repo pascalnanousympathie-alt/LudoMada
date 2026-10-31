@@ -132,31 +132,21 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep a copy in app-specific media for UTP, and publish a second copy
-        // from the instrumentation process before Android 8.1 tears down the app.
-        val mediaDir = context.externalMediaDirs.firstOrNull()
-        assertNotNull("App-specific external media directory must be available", mediaDir)
-        val screenshotDir = File(mediaDir!!, "additional_test_output")
-        assertTrue("Screenshot directory must exist or be creatable", screenshotDir.exists() || screenshotDir.mkdirs())
+        // Keep the canonical screenshot in app-private storage so the host can
+        // retrieve it with adb run-as on API 27 and API 30. Also publish a UTP
+        // additional_test_output copy when available; API 27 may omit that export.
         val apiLevel = android.os.Build.VERSION.SDK_INT
         val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val file = File(screenshotDir, screenshotName)
+        val file = File(context.filesDir, screenshotName)
+        assertTrue("App-private screenshot directory must exist", context.filesDir.exists())
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
 
-        // UTP does not consistently export additional_test_output on API 27.
-        // Copy through the emulator shell while the target package is still
-        // installed; the host can then pull this shared file after Gradle exits.
-        val sharedScreenshot = "/sdcard/Pictures/LudoMada/$screenshotName"
-        val copyResult = device.executeShellCommand(
-            "mkdir -p /sdcard/Pictures/LudoMada && " +
-                "cp '${file.absolutePath}' '$sharedScreenshot' && " +
-                "test -s '$sharedScreenshot' && " +
-                "echo LUDOMADA_SCREENSHOT_SHARED_COPY_PASS"
-        )
-        assertTrue(
-            "Screenshot must be copied to shared storage before instrumentation teardown",
-            copyResult.contains("LUDOMADA_SCREENSHOT_SHARED_COPY_PASS")
-        )
+        context.externalMediaDirs.firstOrNull()?.let { mediaDir ->
+            val utpDir = File(mediaDir, "additional_test_output")
+            if (utpDir.exists() || utpDir.mkdirs()) {
+                runCatching { file.copyTo(File(utpDir, screenshotName), overwrite = true) }
+            }
+        }
     }
 }
