@@ -132,15 +132,28 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep the canonical screenshot in app-private storage so the host can
-        // retrieve it with adb run-as on API 27 and API 30. Also publish a UTP
-        // additional_test_output copy when available; API 27 may omit that export.
+        // Keep the canonical screenshot app-private, then stream it through
+        // run-as into shared Pictures before instrumentation teardown uninstalls
+        // the target package. UTP output remains a fallback for API variants.
         val apiLevel = android.os.Build.VERSION.SDK_INT
         val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
         val file = File(context.filesDir, screenshotName)
         assertTrue("App-private screenshot directory must exist", context.filesDir.exists())
         device.takeScreenshot(file)
         assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
+
+        val sharedScreenshot = "/sdcard/Pictures/LudoMada/$screenshotName"
+        val copyResult = device.executeShellCommand(
+            "mkdir -p /sdcard/Pictures/LudoMada && " +
+                "rm -f '$sharedScreenshot' && " +
+                "run-as com.ludomadagascar cat 'files/$screenshotName' > '$sharedScreenshot' && " +
+                "test -s '$sharedScreenshot' && " +
+                "echo LUDOMADA_SCREENSHOT_SHARED_COPY_PASS"
+        )
+        assertTrue(
+            "Screenshot must be copied before teardown; shell output: $copyResult",
+            copyResult.contains("LUDOMADA_SCREENSHOT_SHARED_COPY_PASS")
+        )
 
         context.externalMediaDirs.firstOrNull()?.let { mediaDir ->
             val utpDir = File(mediaDir, "additional_test_output")
