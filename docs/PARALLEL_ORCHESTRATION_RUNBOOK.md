@@ -23,9 +23,9 @@ Use this prompt structure for every coding agent:
 
 | Priority | Work item | Primary owner | Independent reviewer | Dependency / acceptance |
 |---|---|---|---|---|
-| P0 | Validate API 27 fix on latest PR #156 head | Android test-infrastructure agent | Android QA reviewer | Three affected file blobs in PR #156 match tested PR #161 patch; require run `41229878304` on head `87af023` and valid API 30/API 27 PNG artifacts before candidate acceptance |
+| P0 | Validate API 27 fix on latest PR #156 head | Android test-infrastructure agent | Android QA reviewer | Three affected file blobs in PR #156 match tested PR #161 patch; require run `41230261326` on head `b26f9c4` and valid API 30/API 27 PNG artifacts before candidate acceptance |
 | P0 | Ramus renderer diagnostics gap | Ramus/test-infrastructure agent | 3D renderer reviewer (read-only) | Same candidate APK/session evidence; identify whether marker capture or app rendering failed; full smoke and framebuffer evidence pass |
-| P0 | Render Free + Supabase staging | Human owner for protected configuration; DevOps agent for code/docs | Security reviewer | Real service URL; `/health` and `/ready`; schema baseline preconditions; auth/CORS/rate limits; payment switches false |
+| P0 | Render Free + Supabase staging | Human owner for protected configuration; DevOps agent for code/docs | Free service `srv-dbj32afb9u1s73ctr880` exists, but first deploy failed with `DATABASE_URL_IS_REQUIRED`. Set the session-pooler URL and >=32-character JWT secret only in Render Protected Environment; reconcile production CORS allowlist/runtime before a manual deploy; verify `/health` and `/ready`; no schema baseline until owner approval; payment switches false |
 | P0 | Dependency/security closure | DevOps/security agent | Independent security reviewer | Current Trivy/OSV/Semgrep/Gitleaks evidence; no unreviewed dependency major changes |
 | P1 | Nginx/SSE compatibility review | DevOps agent | Backend/realtime reviewer | Confirm authenticated SSE still works through staging proxy after header change |
 | P1 | Remaining immutable Actions references | CI agent | Security reviewer | Re-scan all scoped workflow files; preserve semantics and required checks |
@@ -63,7 +63,7 @@ Never mark a task PASS because a workflow was merely dispatched. `runner_id=0` o
 
 The earlier failure sequence was `UiAutomation.grantRuntimePermission` `NoSuchMethodError`, failed shell `pm grant`, then inability to create shared `Pictures/LudoMada`. Do not repeat these patches. PR #158 latest head `e9467b33395c0d9480c76c64e2fa99fc89dc69a4` moved capture to `context.filesDir`, retrieves the image with host-side `adb run-as` before Gradle tears down the package, validates PNG completeness, and passed the connected API 30 and API 27 runs. Evidence is in UI job `124614319105` and artifact `13052591683`.
 
-The patch is present in current PR #156 head `87af023f44ca01261b7e77c8276a329d8667fe8c`, with all three affected file blob hashes matching the tested PR #161 patch. PR #161 UI run `41229249488` passed API 30 and API 27, producing valid 1080×1920 PNGs (718,120 bytes and 1,261,248 bytes), artifact `13053137384`. Because PR #161 is based on older parent head `225c0a`, new PR #156 UI run `41229878304` is queued and must also pass both APIs. Preserve all UI assertions and API 27 coverage.
+The patch is present identically in current PR #156 head `b26f9c4b9ab7623eb325a9b46e366a149cc58685`, with all three affected blobs matching the tested PR #161 patch. PR #161 UI run `41229249488` passed API 30 and API 27, producing valid 1080×1920 PNGs (718,120 bytes and 1,261,248 bytes), artifact `13053137384`. Because PR #161 is based on older parent `225c0a`, current PR #156 UI run `41230261326` is the exact-head acceptance test and was at Android SDK setup at last check. Preserve all UI assertions and API 27 coverage.
 
 ### Ramus renderer evidence
 
@@ -71,7 +71,7 @@ The earlier same-candidate run logged `GLES3 PBR`, six hero GLB parts, 95 board 
 
 ### Staging backend
 
-Render does not yet list a LudoMada API service. Supabase staging is healthy but the application tables are empty and `_prisma_migrations` is absent. The existing schema is already populated structurally, so do not run historical migrations blindly. Follow `docs/RENDER_FREE_STAGING.md` and `docs/PRISMA_STAGING_BASELINE.md`; do not paste pooler credentials or passwords into chat or GitHub.
+Render now lists Free staging service `ludomada-api-staging` (`srv-dbj32afb9u1s73ctr880`, Singapore, branch `main`, auto-deploy disabled). Its build succeeded but the first container launch failed with explicit `DATABASE_URL_IS_REQUIRED` (`src/server.ts`); do not retry without protected environment setup. Logs also show the main-branch Node 20 image receiving `EBADENGINE` warnings for packages requiring Node >=22; the candidate Dockerfile uses Node 24. Main-branch production CORS validation also rejects an empty allowlist, so this must be reconciled with the native-client/browser origins before redeploy. Supabase staging has 13 empty application tables, no `public._prisma_migrations`, and no safe reason to replay historical migrations. See `docs/RENDER_FREE_STAGING.md` and `docs/PRISMA_STAGING_BASELINE.md`; never paste pooler credentials/passwords into chat or GitHub.
 
 ## 7. Daily orchestration cycle
 
@@ -94,11 +94,11 @@ Terminal alternatives: `BLOCKED` (must name evidence and owner action), `REJECTE
 
 ## 9. Live PR/check snapshot (2026-10-31)
 
-- PR #156 — current 3D integration candidate, Draft/Open, latest observed head `87af023f44ca01261b7e77c8276a329d8667fe8c`. The API 27 screenshot fix is included; all three changed file blobs match the tested PR #161 patch. Current head UI run `41229878304` queued; Release Gate `41229878333` and V6.3 `41229878311` pending; Framebuffer Contract `41229878305` and Security Audit `41229878621` in progress. Earlier visual/Ramus success on predecessor SHA `2b513aa` is not proof for current head.
+- PR #156 — current 3D integration candidate, Draft/Open, latest observed head `b26f9c4b9ab7623eb325a9b46e366a149cc58685`. API 27 fix is included. V6.3 CI `41230261300` PASS; Framebuffer Contract `41230261321` PASS; Render Blueprint Safety `41230261344` PASS. UI Instrumentation `41230261326` IN_PROGRESS at Android SDK setup; Release Gate `41230261297` IN_PROGRESS; Security Audit `41230261734` still finishing (Gitleaks, Trivy, OSV PR Scan passed; Semgrep finishing; OSV Full Scan skipped). Ramus evidence is still not refreshed on this full head.
 - PR #157 — earlier API 27 storage-permission attempt; its run failed. Do not merge or repeat it.
 - PR #158 — source of the validated UI screenshot fix, Draft/Open, head `e9467b33395c0d9480c76c64e2fa99fc89dc69a4`; API 30 and API 27 instrumentation plus both PNG captures passed (run `41227405095`, artifact `13052591683`). The fix has been ported to PR #156's exact head in PR #161.
 - PR #159 — Nginx/SSE proxy fix, Draft/Open, head `03aaf92504b17b58b18c602d44c0a5726d2974a0`; backend, Android and listed security checks passed, while OSV Full Scan was skipped. Static review confirms HTTP/1.1 upstream and no Upgrade forwarding, while the backend keeps SSE unbuffered with a 25-second heartbeat. Real staging-proxy SSE verification is still required; no production Nginx reload is implied.
-- PR #161 — API 27 screenshot integration on earlier PR #156 head `225c0a`, Draft/Open, head `b599b7de4447d017332d86a5735504e8dbd2375f`; its UI run `41229249488` and Security Audit passed. Its three changed files are already identical in current PR #156. Keep it as validation record only; do not merge the stale stack separately.
+- PR #161 — API 27 screenshot integration on earlier PR #156 head `225c0a`, Draft/Open, head `b599b7de4447d017332d86a5735504e8dbd2375f`; UI run `41229249488` passed API 30/API 27 and Security Audit passed. Screenshots are valid 1080×1920 PNGs (718,120 bytes and 1,261,248 bytes), artifact `13053137384`. Its three changed files are already identical in current PR #156. Keep it as validation record only; do not merge the stale stack separately.
 
 These are separate branches/PRs. Passing checks apply only to their exact head SHA; do not assume they have been merged into one release candidate.
 
