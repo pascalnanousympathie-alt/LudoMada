@@ -12,7 +12,7 @@ if [[ ! "$api_level" =~ ^[0-9]+$ ]]; then
   echo "ANDROID_API_LEVEL_UNAVAILABLE: could not determine emulator API level"
   exit 1
 fi
-screenshot_name="ludomada-startup-offline.png"
+screenshot_name="ludomada-startup-offline-api-$api_level.png"
 screenshot_remote="files/$screenshot_name"
 
 "$ADB" start-server >/dev/null 2>&1 || true
