@@ -132,38 +132,19 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // API 27 lacks the UTP additional-output collection used on newer
-        // Android versions. Use a debug-only legacy storage permission to put
-        // its screenshot in shared Pictures before the target package is removed.
+        // Keep the screenshot app-private. The host CI helper retrieves it with
+        // adb exec-out run-as, avoiding API-specific shared-storage permissions
+        // and Android 8.1 emulator restrictions on public Pictures directories.
         val apiLevel = android.os.Build.VERSION.SDK_INT
         val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val file = if (apiLevel <= 28) {
-            instrumentation.uiAutomation.grantRuntimePermission(
-                context.packageName,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
-            val picturesDir = File(
-                android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_PICTURES
-                ),
-                "LudoMada"
-            )
-            assertTrue(
-                "Shared Pictures directory could not be created",
-                picturesDir.exists() || picturesDir.mkdirs()
-            )
-            File(picturesDir, screenshotName)
-        } else {
-            val mediaRoot = context.externalMediaDirs.firstOrNull()
-            assertNotNull("App-specific external media directory missing", mediaRoot)
-            val utpDir = File(mediaRoot!!, "additional_test_output")
-            assertTrue(
-                "UTP additional output directory could not be created",
-                utpDir.exists() || utpDir.mkdirs()
-            )
-            File(utpDir, screenshotName)
+        val screenshotFile = File(context.filesDir, screenshotName)
+        if (screenshotFile.exists()) {
+            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
         }
-        device.takeScreenshot(file)
-        assertTrue("Startup screenshot missing or too small", file.exists() && file.length() > 1000)
+        device.takeScreenshot(screenshotFile)
+        assertTrue(
+            "Startup screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
     }
 }
