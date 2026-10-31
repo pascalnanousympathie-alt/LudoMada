@@ -188,7 +188,7 @@ must not be aimed at production real-money systems.
 ## V6.5 — Staging deployment package
 
 Added a containerized staging path:
-- Node 20 production container
+- Node 24 LTS production container
 - PostgreSQL 16 staging compose stack
 - explicit Prisma migration CLI command (`npm run db:migrate`)
 - staging environment template
