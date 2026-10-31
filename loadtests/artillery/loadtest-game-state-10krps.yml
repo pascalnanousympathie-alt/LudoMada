@@ -3,7 +3,7 @@ config:
   http:
     timeout: 15
   payload:
-    path: "./loadtests/artillery/capacity-fixtures.csv"
+    path: "./capacity-fixtures.csv"
     fields:
       - "gameId"
       - "accessToken"
