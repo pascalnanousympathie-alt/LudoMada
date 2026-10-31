@@ -11,9 +11,14 @@ on:
       - "tests/**"
       - "prisma/**"
       - "android-app/**"
+      - "scripts/**"
       - "loadtests/**"
       - "package.json"
       - "package-lock.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/release-gate.yml"
 
 permissions:
@@ -74,7 +79,16 @@ jobs:
       - name: Build backend
         run: npm run build
 
+      - name: Build production Docker image (Node 24 LTS)
+        run: |
+          set -eu
+          docker build --pull --tag ludomada-api:release-gate .
+          docker run --rm --entrypoint node ludomada-api:release-gate -e 'const major = Number(process.versions.node.split(".")[0]); if (major !== 24) process.exit(1); console.log("DOCKER_NODE_RUNTIME_PASS", process.versions.node);'
+          docker run --rm --entrypoint node ludomada-api:release-gate -e 'const { PrismaClient } = require("@prisma/client"); if (typeof PrismaClient !== "function") process.exit(1); console.log("DOCKER_PRISMA_CLIENT_LOAD_PASS");'
+
       - name: Start staging API and verify readiness
+        env:
+          NATIVE_TEST_MODE: "true"
         run: |
           set -eu
           nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
@@ -92,6 +106,12 @@ jobs:
             exit 1
           fi
           curl -fsS http://127.0.0.1:3101/health
+
+      - name: Seed disposable CI native-test accounts
+        run: node scripts/seed-native-test-users.mjs
+
+      - name: Run native HTTP, 4-player, concurrency and idempotency tests
+        run: npm run test:native
 
       - name: Run staging load smoke
         run: npm exec -- artillery run loadtests/artillery/loadtest-health-80rps.yml
@@ -121,6 +141,17 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 1
+
+      - name: Set up Node.js for 3D asset verification
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Verify bundled 3D scene manifest and mobile budgets
+        run: |
+          set -eu
+          node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
 
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
@@ -166,6 +197,7 @@ jobs:
         working-directory: android-app
         run: |
           set -eu
+          node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/debug/app-debug.apk
           release_apk="app/build/outputs/apk/release/app-release.apk"
           unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
@@ -173,10 +205,12 @@ jobs:
           if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
             test -s "$release_apk"
             "$apksigner" verify --verbose --print-certs "$release_apk"
+            node ../scripts/check-apk-3d-asset.mjs "$release_apk"
             sha256sum "$release_apk"
             echo "RELEASE_SIGNED=true"
           else
             test -s "$unsigned_apk"
+            node ../scripts/check-apk-3d-asset.mjs "$unsigned_apk"
             sha256sum "$unsigned_apk"
             echo "RELEASE_SIGNED=false (configure GitHub signing secrets for a signed release)"
           fi

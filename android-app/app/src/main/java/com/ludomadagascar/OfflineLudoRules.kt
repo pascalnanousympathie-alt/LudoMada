@@ -40,4 +40,7 @@ internal object OfflineLudoRules {
 
     fun hasWinner(positions: IntArray): Boolean =
         positions.size == TOKENS_PER_PLAYER && positions.all { it == FINISH_POSITION }
+
+    /** A completed offline game must not accept another roll or pawn move. */
+    fun canContinue(phase: String?): Boolean = phase != "FINISHED"
 }
