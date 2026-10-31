@@ -138,9 +138,15 @@ class StartupUiTest {
         val apiLevel = android.os.Build.VERSION.SDK_INT
         val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
         val file = if (apiLevel <= 28) {
-            instrumentation.uiAutomation.grantRuntimePermission(
-                context.packageName,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            // UiAutomation.grantRuntimePermission is not available on API 27.
+            // Use the shell package-manager command, supported on API 27/28.
+            val grantResult = device.executeShellCommand(
+                "pm grant ${context.packageName} android.permission.WRITE_EXTERNAL_STORAGE 2>&1; " +
+                    "echo LUDOMADA_PERMISSION_GRANT_EXIT:\$?"
+            )
+            assertTrue(
+                "WRITE_EXTERNAL_STORAGE grant failed on API $apiLevel: ${grantResult.trim()}",
+                grantResult.contains("LUDOMADA_PERMISSION_GRANT_EXIT:0")
             )
             val picturesDir = File(
                 android.os.Environment.getExternalStoragePublicDirectory(
