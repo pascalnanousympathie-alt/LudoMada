@@ -85,28 +85,40 @@ evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
 additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connected_android_test_additional_output"
 mkdir -p "$evidence_dir"
 
-# The instrumentation copies this API-specific image to shared Pictures
-# before teardown. UTP output remains a fallback for emulator variants.
+# Prefer the app-private screenshot: run-as avoids shell-UID access to the
+# app-specific external-media path. Keep UTP additional_output as a fallback.
+screenshot_remote="files/$screenshot_name"
 screenshot_local="$evidence_dir/ludomada-startup-offline.png"
-if ! timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
-  echo "ANDROID_SURFACE_SCREENSHOT_ADB_PULL_FAILED: direct emulator pull failed; checking UTP output"
+screenshot_source_kind=""
+if timeout 15s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_local"; then
+  if [[ -s "$screenshot_local" ]]; then
+    screenshot_source_kind="run-as"
+  else
+    rm -f "$screenshot_local"
+  fi
+fi
+
+if [[ ! -s "$screenshot_local" ]]; then
+  echo "ANDROID_SURFACE_SCREENSHOT_RUN_AS_FAILED: trying UTP additional_output"
   screenshot_source=""
   if [[ -d "$additional_output_root" ]]; then
     screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
   fi
   if [[ -n "$screenshot_source" ]]; then
     cp -- "$screenshot_source" "$screenshot_local"
+    screenshot_source_kind="utp"
   else
-    timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Android/media/com.ludomadagascar/additional_test_output || true
+    timeout 8s "$ADB" -s "$DEVICE" shell run-as com.ludomadagascar ls -la files || true
     if [[ -d "$additional_output_root" ]]; then
       find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
     else
       echo "UTP additional output directory is missing: $additional_output_root"
     fi
-    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: screenshot not retrievable from emulator or UTP output"
+    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: app-private and UTP outputs unavailable"
     exit 1
   fi
 fi
+echo "ANDROID_SURFACE_SCREENSHOT_SOURCE=$screenshot_source_kind"
 
 if ! python3 - "$screenshot_local" <<'PY'
 from pathlib import Path
