@@ -1,0 +1,43 @@
+config:
+  target: "http://127.0.0.1:3101"
+  http:
+    timeout: 15
+  payload:
+    path: "./loadtests/artillery/capacity-fixtures.csv"
+    fields:
+      - "gameId"
+      - "accessToken"
+    order: random
+    skipHeader: true
+  phases:
+    - duration: 10
+      arrivalRate: 250
+      rampTo: 1000
+      name: "Warm-up: 250 to 1k authenticated state reads/sec"
+    - duration: 10
+      arrivalRate: 1000
+      rampTo: 2500
+      name: "Ramp: 1k to 2.5k state reads/sec"
+    - duration: 10
+      arrivalRate: 2500
+      rampTo: 5000
+      name: "Ramp: 2.5k to 5k state reads/sec"
+    - duration: 10
+      arrivalRate: 5000
+      rampTo: 10000
+      name: "Ramp: 5k to 10k state reads/sec"
+    - duration: 30
+      arrivalRate: 10000
+      name: "Steady state: 10k authenticated state reads/sec"
+  ensure:
+    maxErrorRate: 0.1
+    p95: 250
+    p99: 500
+
+scenarios:
+  - name: "Participant-authorized authoritative game-state read"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
