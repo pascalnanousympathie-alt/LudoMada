@@ -10,7 +10,8 @@ The 13 application tables exist and all are empty. Supabase's advisor reports RL
 
 - `anon`: no `USAGE` on schema `public`; no `SELECT` or `INSERT` on `public."User"`.
 - `authenticated`: no `USAGE` on schema `public`; no `SELECT` or `INSERT` on `public."User"`.
-- `ludomada_render_staging`: `SELECT` and `INSERT` on `public."User"`; role is `LOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, and `NOBYPASSRLS`.
+- `ludomada_render_staging`: `SELECT`, `INSERT`, `UPDATE`, and `DELETE` privileges on all 13 application tables; role is `LOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, and `NOBYPASSRLS`.
+- A per-table privilege matrix confirmed all 13 tables return `false` for `anon SELECT` and `authenticated SELECT`, while the backend role has all four DML privileges. RLS is disabled on every one of the 13 tables.
 
 All 13 row counts were individually checked and are zero. No DDL or data write was performed.
 
