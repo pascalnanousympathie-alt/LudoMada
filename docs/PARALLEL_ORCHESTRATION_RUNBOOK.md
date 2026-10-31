@@ -23,7 +23,7 @@ Use this prompt structure for every coding agent:
 
 | Priority | Work item | Primary owner | Independent reviewer | Dependency / acceptance |
 |---|---|---|---|---|
-| P0 | Integrate API 27 screenshot fix from PR #158 | Android test-infrastructure agent | Android QA reviewer | PR #158 latest UI run passed API 30 + API 27 and valid app-private screenshots; reconcile onto current PR #156 head, then rerun both APIs on the integrated SHA |
+| P0 | Validate API 27 screenshot integration PR #161 | Android test-infrastructure agent | Android QA reviewer | Patch is ported from PR #158 onto PR #156 head `225c0a`; require both API legs and valid distinct app-private screenshot artifacts on PR #161 SHA `b599b7d` before acceptance |
 | P0 | Ramus renderer diagnostics gap | Ramus/test-infrastructure agent | 3D renderer reviewer (read-only) | Same candidate APK/session evidence; identify whether marker capture or app rendering failed; full smoke and framebuffer evidence pass |
 | P0 | Render Free + Supabase staging | Human owner for protected configuration; DevOps agent for code/docs | Security reviewer | Real service URL; `/health` and `/ready`; schema baseline preconditions; auth/CORS/rate limits; payment switches false |
 | P0 | Dependency/security closure | DevOps/security agent | Independent security reviewer | Current Trivy/OSV/Semgrep/Gitleaks evidence; no unreviewed dependency major changes |
@@ -63,7 +63,7 @@ Never mark a task PASS because a workflow was merely dispatched. `runner_id=0` o
 
 The earlier failure sequence was `UiAutomation.grantRuntimePermission` `NoSuchMethodError`, failed shell `pm grant`, then inability to create shared `Pictures/LudoMada`. Do not repeat these patches. PR #158 latest head `e9467b33395c0d9480c76c64e2fa99fc89dc69a4` moved capture to `context.filesDir`, retrieves the image with host-side `adb run-as` before Gradle tears down the package, validates PNG completeness, and passed the connected API 30 and API 27 runs. Evidence is in UI job `124614319105` and artifact `13052591683`.
 
-Next action is integration, not another speculative code patch: reconcile PR #158 with PR #156's latest head `225c0a239691d3514f5cace659ffe0984aa17f91`, rerun the UI workflow against the resulting SHA, confirm each API-specific PNG artifact, and preserve all UI assertions and API 27 coverage.
+The patch is now ported onto the exact PR #156 head in stacked Draft PR #161 at `b599b7de4447d017332d86a5735504e8dbd2375f`. Its Security Audit passed (`41229249973`); Android UI run `41229249488` was still in progress at the last check, beginning emulator image setup. Next action is to verify both API legs and PNG artifacts on this exact head, not to create another speculative patch. Preserve all UI assertions and API 27 coverage.
 
 ### Ramus renderer evidence
 
@@ -96,8 +96,9 @@ Terminal alternatives: `BLOCKED` (must name evidence and owner action), `REJECTE
 
 - PR #156 — current 3D integration candidate, Draft/Open, head `225c0a239691d3514f5cace659ffe0984aa17f91`. Backend, Android-final, unit, framebuffer and listed security checks passed; UI instrumentation failed only on API 27 because the old test still calls `UiAutomation.grantRuntimePermission` (`NoSuchMethodError`, `StartupUiTest.kt:141`). OSV Full Scan skipped. Earlier Ramus success is on predecessor SHA `2b513aa`, not proof for current head.
 - PR #157 — earlier API 27 storage-permission attempt; its run failed. Do not merge or repeat it.
-- PR #158 — latest UI screenshot fix, Draft/Open, head `e9467b33395c0d9480c76c64e2fa99fc89dc69a4`; API 30 and API 27 instrumentation plus both screenshot captures passed. It replaces the API 27 unsupported permission call with app-private screenshot capture and host-side `run-as`. It is based on predecessor `2b513aa` and must be integrated/retested on current PR #156 head.
-- PR #159 — Nginx/SSE proxy fix, Draft/Open, head `03aaf92504b17b58b18c602d44c0a5726d2974a0`; its backend, Android and security checks passed, while OSV Full Scan was skipped. It still needs independent review and real staging SSE verification; no production Nginx reload is implied.
+- PR #158 — source of the validated UI screenshot fix, Draft/Open, head `e9467b33395c0d9480c76c64e2fa99fc89dc69a4`; API 30 and API 27 instrumentation plus both PNG captures passed (run `41227405095`, artifact `13052591683`). The fix has been ported to PR #156's exact head in PR #161.
+- PR #159 — Nginx/SSE proxy fix, Draft/Open, head `03aaf92504b17b58b18c602d44c0a5726d2974a0`; backend, Android and listed security checks passed, while OSV Full Scan was skipped. Static review confirms HTTP/1.1 upstream and no Upgrade forwarding, while the backend keeps SSE unbuffered with a 25-second heartbeat. Real staging-proxy SSE verification is still required; no production Nginx reload is implied.
+- PR #161 — API 27 screenshot integration stacked on PR #156, Draft/Open, head `b599b7de4447d017332d86a5735504e8dbd2375f`; three files only. Security Audit passed; Android UI run `41229249488` was in progress at the last check. No merge.
 
 These are separate branches/PRs. Passing checks apply only to their exact head SHA; do not assume they have been merged into one release candidate.
 
