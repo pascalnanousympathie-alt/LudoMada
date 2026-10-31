@@ -11,7 +11,7 @@ Android app (Kotlin)
   └─ Authenticated intent API (roll / tokenIndex + expectedVersion + Idempotency-Key)
                          |
                          v
-Node.js 20 / TypeScript / Express API
+Node.js 24 LTS / TypeScript / Express API
   ├─ Authentication, validation, rate limits and audit events
   ├─ Authoritative Ludo rules engine and game command service
   ├─ PostgreSQL state repository and event append store
