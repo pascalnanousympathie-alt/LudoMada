@@ -13,8 +13,8 @@ describe("VPS Nginx proxy contract for game SSE", () => {
 
   test("keeps HTTP/1.1 upstream streaming without enabling protocol upgrades", () => {
     expect(nginx).toContain("proxy_http_version 1.1;");
-    expect(nginx).not.toMatch(/proxy_set_header\\s+Upgrade\\b/i);
-    expect(nginx).not.toMatch(/proxy_set_header\\s+Connection\\s+[\\"']upgrade[\\"']/i);
+    expect(nginx).not.toMatch(/proxy_set_header\s+Upgrade\b/i);
+    expect(nginx).not.toMatch(/proxy_set_header\s+Connection\s+["']upgrade["']/i);
   });
 
   test("preserves the backend's SSE flush and buffering controls", () => {
