@@ -132,34 +132,20 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep the canonical screenshot app-private, then stream it through
-        // run-as into shared Pictures before instrumentation teardown uninstalls
-        // the target package. UTP output remains a fallback for API variants.
+        // Capture directly into UTP additional output before instrumentation
+        // teardown. App-specific external media storage is writable by the test
+        // UID, avoiding run-as and shared-storage permission assumptions.
         val apiLevel = android.os.Build.VERSION.SDK_INT
         val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val file = File(context.filesDir, screenshotName)
-        assertTrue("App-private screenshot directory must exist", context.filesDir.exists())
-        device.takeScreenshot(file)
-        assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
-
-        val sharedScreenshot = "/sdcard/Pictures/LudoMada/$screenshotName"
-        val copyResult = device.executeShellCommand(
-            "mkdir -p /sdcard/Pictures/LudoMada && " +
-                "rm -f '$sharedScreenshot' && " +
-                "run-as com.ludomadagascar cat 'files/$screenshotName' > '$sharedScreenshot' && " +
-                "test -s '$sharedScreenshot' && " +
-                "echo LUDOMADA_SCREENSHOT_SHARED_COPY_PASS"
-        )
+        val mediaRoot = context.externalMediaDirs.firstOrNull()
+        assertNotNull("App-specific external media directory missing", mediaRoot)
+        val utpDir = File(mediaRoot!!, "additional_test_output")
         assertTrue(
-            "Screenshot must be copied before teardown; shell output: $copyResult",
-            copyResult.contains("LUDOMADA_SCREENSHOT_SHARED_COPY_PASS")
+            "UTP additional output directory could not be created",
+            utpDir.exists() || utpDir.mkdirs()
         )
-
-        context.externalMediaDirs.firstOrNull()?.let { mediaDir ->
-            val utpDir = File(mediaDir, "additional_test_output")
-            if (utpDir.exists() || utpDir.mkdirs()) {
-                runCatching { file.copyTo(File(utpDir, screenshotName), overwrite = true) }
-            }
-        }
+        val file = File(utpDir, screenshotName)
+        device.takeScreenshot(file)
+        assertTrue("UTP screenshot missing or too small", file.exists() && file.length() > 1000)
     }
 }

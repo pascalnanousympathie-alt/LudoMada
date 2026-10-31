@@ -85,8 +85,8 @@ evidence_dir="$GITHUB_WORKSPACE/android-app/app/build/ramus-evidence"
 additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connected_android_test_additional_output"
 mkdir -p "$evidence_dir"
 
-# The instrumentation streams the API-specific screenshot to shared
-# Pictures before teardown; pull it directly while retaining UTP as fallback.
+# The instrumentation writes the API-specific screenshot to UTP additional output
+# before teardown; prefer that artifact and retain shared Pictures as fallback.
 screenshot_remote="/sdcard/Pictures/LudoMada/$screenshot_name"
 screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 screenshot_source_kind=""
@@ -110,47 +110,44 @@ print(f"ANDROID_SURFACE_PNG_VALID bytes={len(data)} size={width}x{height}")
 PY
 }
 
-# Validate each candidate before selecting it. A non-empty run-as copy can
-# contain shell/error text rather than PNG bytes; that must not suppress UTP.
-if timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
+# Prefer the UTP additional-output file captured by instrumentation before
+# teardown. The shared-Pictures pull remains a fallback for emulator variants.
+screenshot_source=""
+if [[ -d "$additional_output_root" ]]; then
+  screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
+fi
+if [[ -n "$screenshot_source" ]]; then
+  cp -- "$screenshot_source" "$screenshot_local"
   if validate_png "$screenshot_local"; then
-    screenshot_source_kind="shared-pictures"
+    screenshot_source_kind="utp"
   else
-    echo "ANDROID_SURFACE_SCREENSHOT_SHARED_PULL_INVALID_PNG; trying UTP additional_output"
+    echo "ANDROID_SURFACE_SCREENSHOT_UTP_INVALID_PNG; trying shared Pictures"
     rm -f "$screenshot_local"
   fi
-else
-  rm -f "$screenshot_local"
 fi
 
 if [[ ! -s "$screenshot_local" ]]; then
-  echo "ANDROID_SURFACE_SCREENSHOT_SHARED_PULL_FAILED: trying UTP additional_output"
-  screenshot_source=""
-  if [[ -d "$additional_output_root" ]]; then
-    screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
-  fi
-  if [[ -n "$screenshot_source" ]]; then
-    cp -- "$screenshot_source" "$screenshot_local"
-    screenshot_source_kind="utp"
-    if ! validate_png "$screenshot_local"; then
-      echo "ANDROID_SURFACE_SCREENSHOT_UTP_INVALID_PNG"
+  echo "ANDROID_SURFACE_SCREENSHOT_UTP_UNAVAILABLE: trying shared Pictures"
+  if timeout 15s "$ADB" -s "$DEVICE" pull "$screenshot_remote" "$screenshot_local"; then
+    if validate_png "$screenshot_local"; then
+      screenshot_source_kind="shared-pictures"
+    else
+      echo "ANDROID_SURFACE_SCREENSHOT_SHARED_PULL_INVALID_PNG"
       rm -f "$screenshot_local"
-      exit 1
     fi
   else
-    timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Pictures/LudoMada || true
-    if [[ -d "$additional_output_root" ]]; then
-      find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
-    else
-      echo "UTP additional output directory is missing: $additional_output_root"
-    fi
-    echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: shared and UTP outputs unavailable"
-    exit 1
+    rm -f "$screenshot_local"
   fi
 fi
 
 if [[ -z "$screenshot_source_kind" ]]; then
-  echo "ANDROID_SURFACE_SCREENSHOT_SOURCE_UNSET"
+  timeout 8s "$ADB" -s "$DEVICE" shell ls -la /sdcard/Pictures/LudoMada || true
+  if [[ -d "$additional_output_root" ]]; then
+    find "$additional_output_root" -maxdepth 8 -type f -printf '%p %s bytes\n' | head -n 80 || true
+  else
+    echo "UTP additional output directory is missing: $additional_output_root"
+  fi
+  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: UTP and shared outputs unavailable"
   exit 1
 fi
 echo "ANDROID_SURFACE_SCREENSHOT_SOURCE=$screenshot_source_kind"
