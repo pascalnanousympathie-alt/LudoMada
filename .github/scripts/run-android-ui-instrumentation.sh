@@ -73,15 +73,39 @@ validate_png() {
 from pathlib import Path
 import struct
 import sys
+import zlib
 
 path = Path(sys.argv[1])
 data = path.read_bytes()
-if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
+if len(data) < 1024 or data[:8] != b"\x89PNG\r\n\x1a\n":
     print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_PNG bytes={len(data)} path={path}")
     raise SystemExit(1)
+
 width, height = struct.unpack(">II", data[16:24])
 if width < 1 or height < 1:
     print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_DIMENSIONS width={width} height={height}")
+    raise SystemExit(1)
+
+# Reject a partial read while UiDevice.takeScreenshot() is still writing.
+offset = 8
+has_iend = False
+while offset + 12 <= len(data):
+    chunk_length = struct.unpack(">I", data[offset:offset + 4])[0]
+    chunk_type = data[offset + 4:offset + 8]
+    chunk_end = offset + 12 + chunk_length
+    if chunk_end > len(data):
+        break
+    chunk_data = data[offset + 8:offset + 8 + chunk_length]
+    stored_crc = struct.unpack(">I", data[offset + 8 + chunk_length:chunk_end])[0]
+    if zlib.crc32(chunk_type + chunk_data) & 0xffffffff != stored_crc:
+        break
+    offset = chunk_end
+    if chunk_type == b"IEND":
+        has_iend = chunk_length == 0 and offset == len(data)
+        break
+
+if not has_iend:
+    print(f"ANDROID_SURFACE_SCREENSHOT_INCOMPLETE_PNG bytes={len(data)} path={path}")
     raise SystemExit(1)
 print(f"ANDROID_SURFACE_PNG_VALID bytes={len(data)} size={width}x{height}")
 PY
@@ -90,13 +114,18 @@ PY
 (
   for attempt in $(seq 1 600); do
     if timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_tmp" 2>/dev/null; then
-      if [[ -s "$screenshot_tmp" ]]; then
+      # adb may read app-private output before takeScreenshot() has finished.
+      # Accept only a complete PNG (>1 KB, valid chunk CRCs and terminal IEND).
+      if [[ -s "$screenshot_tmp" ]] && validate_png "$screenshot_tmp" >/dev/null 2>&1; then
         mv -- "$screenshot_tmp" "$screenshot_local"
-        echo "ANDROID_SURFACE_SCREENSHOT_CAPTURED_BEFORE_TEARDOWN"
+        echo "ANDROID_SURFACE_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
         exit 0
       fi
     fi
     rm -f "$screenshot_tmp"
+    if (( attempt % 30 == 0 )); then
+      echo "ANDROID_SURFACE_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
+    fi
     sleep 1
   done
   echo "ANDROID_SURFACE_SCREENSHOT_WATCH_TIMEOUT"
