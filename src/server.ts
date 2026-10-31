@@ -10,6 +10,7 @@ import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
 import { isCorsOriginAllowed } from "./corsPolicy";
+import { isCapacityLoadTestEnabled, isDisposableNativeTestDatabase, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled } from "./operationalModes";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
@@ -49,40 +50,25 @@ const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({ adapter });
 
-let pgPrewarmDone = false;
+const PERF_DIAGNOSTICS_ENABLED = isPerformanceDiagnosticsEnabled();
+const PG_POOL_DIAGNOSTICS_ENABLED = isPoolDiagnosticsEnabled();
 
-async function prewarmPgPool() {
-  if (pgPrewarmDone) return;
-
-  await Promise.all(
-    Array.from(
-      { length: 20 },
-      () => pool.query("SELECT 1")
-    )
-  );
-
-  pgPrewarmDone = true;
-
-  console.log("PG_POOL_PREWARM", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
+if (PG_POOL_DIAGNOSTICS_ENABLED) {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 1000).unref();
 }
-
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
 const app=express();
 
 
+if (PERF_DIAGNOSTICS_ENABLED) {
 // REQUEST_E2E_TIMING_STATE_V3
 app.use((req:any,res:any,next:any)=>{
   const isState =
@@ -110,6 +96,7 @@ app.use((req:any,res:any,next:any)=>{
 
   next();
 });
+}
 
 const JWT_SECRET: string = process.env.JWT_SECRET ?? "";
 if(JWT_SECRET.length < 32){
@@ -118,29 +105,15 @@ if(JWT_SECRET.length < 32){
 
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
-// Native integration tests need more than the normal per-IP request budget.
-// Only enable their higher test budget when running against the disposable
-// loopback PostgreSQL database created by the GitHub Actions Release Gate.
-function isDisposableNativeTestDatabase() {
-  if (
-    process.env.CI !== "true" ||
-    process.env.NATIVE_TEST_MODE !== "true" ||
-    NODE_ENV !== "staging"
-  ) return false;
+// Bypass high-volume API rate limiting only on the disposable loopback CI database.
+const nativeTestRateLimits = isDisposableNativeTestDatabase();
+const capacityLoadTestRequested = process.env.LUDOMADA_LOAD_TEST_MODE === "true";
+const capacityLoadTestEnabled = isCapacityLoadTestEnabled();
 
-  try {
-    const database = new URL(DATABASE_URL);
-    return (
-      ["127.0.0.1", "localhost"].includes(database.hostname) &&
-      database.port === "5432" &&
-      database.pathname === "/ludomada_ci"
-    );
-  } catch {
-    return false;
-  }
+if (capacityLoadTestRequested && !capacityLoadTestEnabled) {
+  throw new Error("LUDOMADA_LOAD_TEST_MODE_REQUIRES_DISPOSABLE_CI_DATABASE");
 }
 
-const nativeTestRateLimits = isDisposableNativeTestDatabase();
 const authRateLimitMax = nativeTestRateLimits ? 1000 : 20;
 const apiRateLimitMax = nativeTestRateLimits ? 10000 : 120;
 
@@ -210,9 +183,13 @@ const authRateLimit = rateLimit({
   message: { error: "Too many authentication attempts" }
 });
 
-// AUTH_TIMING_V1
+// AUTH_TIMING_V1 — detailed timing is opt-in, not a production hot-path side effect.
 function auth(req:any,res:any,next:any){
-  const authStart = process.hrtime.bigint();
+  const shouldMeasureAuth =
+    PERF_DIAGNOSTICS_ENABLED &&
+    req.path.startsWith("/api/games/") &&
+    req.path.endsWith("/state");
+  const authStart = shouldMeasureAuth ? process.hrtime.bigint() : 0n;
 
   try {
     const h=String(req.headers.authorization||"");
@@ -220,8 +197,8 @@ function auth(req:any,res:any,next:any){
     req.auth=verifyAccessToken(t,JWT_SECRET);
     req.userId=req.auth.sub;
 
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"OK"
@@ -230,8 +207,8 @@ function auth(req:any,res:any,next:any){
 
     next();
   } catch {
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"FAIL"
@@ -269,7 +246,7 @@ app.get("/ready",async(_req,res)=>{
   }
 });
 
-if (process.env.NODE_ENV !== "loadtest") {
+if (process.env.NODE_ENV !== "loadtest" && !capacityLoadTestEnabled) {
   app.use(rateLimit({
     windowMs: 60_000,
     max: apiRateLimitMax,
@@ -1900,7 +1877,7 @@ try{
       process.hrtime.bigint()-totalStart
     )/1e6;
 
-    console.log("STATE_DETAILED_TIMING",{
+    if (PERF_DIAGNOSTICS_ENABLED) console.log("STATE_DETAILED_TIMING",{
       routeBeforeQueryMs:Number(beforeQueryMs.toFixed(2)),
       queryMs:Number(queryMs.toFixed(2)),
       beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
