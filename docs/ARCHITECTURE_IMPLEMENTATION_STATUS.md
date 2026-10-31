@@ -26,7 +26,7 @@ PostgreSQL (Supabase staging target)
   └─ Prisma schema and separately operated migration history
 
 Container: Dockerfile -> node dist/server.js
-Staging blueprint: Render Free (service created; protected DB/CORS environment and readiness setup still pending) -> existing Supabase staging
+Staging blueprint: Render Free (service created; protected DB/JWT environment and readiness setup still pending) -> existing Supabase staging
 Edge/VPS: Nginx SSE proxy configuration (candidate PR; not deployed)
 CI: backend/native tests, Android build/UI tests, release gate, security scans
 ```
@@ -46,7 +46,7 @@ CI: backend/native tests, Android build/UI tests, release gate, security scans
 ## Explicitly incomplete / not live
 
 1. **3D release integration:** `LudoBoardView.kt` and `assets/3d/ludomada-gameplay-rev5.glb` are on PR #156, which remains Draft/Open. They are not yet part of the current `main` baseline. Do not call this released.
-2. **Staging host:** Render Free service `ludomada-api-staging` exists in Singapore (`srv-dbj32afb9u1s73ctr880`) with automatic deploy disabled. Its first Docker image build succeeded, but the container exited with `DATABASE_URL_IS_REQUIRED`; no protected `DATABASE_URL`, `CORS_ORIGINS` or `JWT_SECRET` has been set. The health check path also needs `/ready`. The service is not healthy and must not be treated as a live API.
+2. **Staging host:** Render Free service `ludomada-api-staging` exists in Singapore (`srv-dbj32afb9u1s73ctr880`) with automatic deploy disabled. Its first Docker image build succeeded, but the container exited with `DATABASE_URL_IS_REQUIRED`; no protected `DATABASE_URL` or `JWT_SECRET` has been set. CORS now defaults to an empty, deny-all browser allowlist for native Android. The health check path also needs `/ready`. The service is not healthy and must not be treated as a live API.
 3. **Database baseline:** the existing Supabase staging schema is present and empty, but `public._prisma_migrations` is absent. The exact read-only `prisma migrate diff` must be run with the real Session Pooler URL by the database owner before the six existing migrations are recorded. Do not run `prisma migrate deploy` blindly on the restored schema.
 4. **SSE horizontal fanout:** `src/realtime/gameEventHub.ts` uses an in-process Map, capped at 64 streams per game and 4 per user. It does not distribute events between multiple API instances and does not replay missed events. The durable PostgreSQL state remains authoritative; clients refetch the state snapshot. Before multi-instance deployment, add and test shared fanout (for example, Redis pub/sub or PostgreSQL LISTEN/NOTIFY with a defined reconnect/replay policy).
 5. **RLS defense-in-depth:** Supabase advisor flags RLS disabled on the 13 application tables. Fresh read-only checks confirmed `anon` and `authenticated` lack `public` schema USAGE and SELECT/INSERT privileges on `public.User`; the dedicated `ludomada_render_staging` role has required DML, has no `BYPASSRLS`, and all 13 tables remain empty. A proposed backend-only RLS policy model is documented in `docs/SUPABASE_RLS_STAGING_POLICY_REVIEW.md`; it has not been applied. Owner approval is required before adding policies and enabling RLS.
@@ -69,7 +69,7 @@ The API container runs `node dist/server.js`; it does **not** apply Prisma migra
 
 1. The dual-API screenshot fix has passed in PR #158 (API 30 and API 27 each 2/2, with separate valid 1080×1920 artifacts) and has been carried into the PR #156 candidate. Confirm the rerun on the latest PR #156 head.
 2. Confirm the Node 24 LTS Docker image build inside the Release Gate; then complete review of PR #156, PR #158 and PR #159. Merge only after explicit owner approval.
-3. In Render Protected Environment, set the exact Supabase IPv4 Session Pooler host/port 5432 URL with the existing least-privilege role, the exact UI `CORS_ORIGINS`, and a generated `JWT_SECRET`; set health check path `/ready`. Do not paste values into chat, GitHub or Linear.
+3. In Render Protected Environment, set the exact Supabase IPv4 Session Pooler host/port 5432 URL with the existing least-privilege role, and a generated `JWT_SECRET`; set health check path `/ready`. Keep `CORS_ORIGINS` empty for native Android, or set exact HTTPS origins only when a browser UI exists. Do not paste secrets into chat, GitHub or Linear.
 4. Run the read-only Prisma schema diff against that exact staging URL. Only after zero diff and all tables empty, perform the separately approved six-migration baseline.
 5. Obtain approval for the backend-only RLS policy model in `docs/SUPABASE_RLS_STAGING_POLICY_REVIEW.md`, apply it as a reviewed migration, then test access using the runtime role and verify public roles remain blocked.
 6. Verify staging `/health` and `/ready`, authentication, lobby/game flows, CORS, logs and all payment switches remain false.
