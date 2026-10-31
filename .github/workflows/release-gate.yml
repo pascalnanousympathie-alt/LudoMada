@@ -15,6 +15,10 @@ on:
       - "loadtests/**"
       - "package.json"
       - "package-lock.json"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/release-gate.yml"
 
 permissions:
@@ -74,6 +78,12 @@ jobs:
 
       - name: Build backend
         run: npm run build
+
+      - name: Build production Docker image (Node 24 LTS)
+        run: |
+          set -eu
+          docker build --pull --tag ludomada-api:release-gate .
+          docker run --rm --entrypoint node ludomada-api:release-gate --version | grep -E '^v24\\.'
 
       - name: Start staging API and verify readiness
         env:
