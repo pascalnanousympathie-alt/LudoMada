@@ -57,7 +57,7 @@ try {
   const games = Array.from({ length: gameCount }, () => ({
     id: "capacity-" + randomUUID(),
     creatorId: playerOne.id,
-    status: "PLAYING" as const,
+    status: "PLAYING",
     grossAmount: 1000n,
     commission: 100n,
     prizePool: 900n,
