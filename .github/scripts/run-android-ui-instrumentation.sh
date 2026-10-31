@@ -76,7 +76,7 @@ import sys
 
 path = Path(sys.argv[1])
 data = path.read_bytes()
-if len(data) < 33 or data[:8] != b"\\x89PNG\\r\\n\\x1a\\n":
+if len(data) < 33 or data[:8] != b"\x89PNG\r\n\x1a\n":
     print(f"ANDROID_SURFACE_SCREENSHOT_INVALID_PNG bytes={len(data)} path={path}")
     raise SystemExit(1)
 width, height = struct.unpack(">II", data[16:24])
