@@ -82,8 +82,8 @@ jobs:
 
       - name: Start staging API and verify readiness
         env:
-          LUDOMADA_LOAD_TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_capacity_test || false }}
-          PG_POOL_MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.run_capacity_test && '20' || '5' }}
+          LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') }}
+          PG_POOL_MAX: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') && '20' || '5' }}
         run: |
           set -eu
           nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
@@ -106,17 +106,17 @@ jobs:
         run: npm exec -- artillery run loadtests/artillery/loadtest-health-80rps.yml
 
       - name: Seed disposable authenticated game-state capacity fixtures
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_capacity_test }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') }}
         env:
           LUDOMADA_LOAD_TEST_MODE: "true"
         run: node scripts/seed-capacity-test-fixtures.mjs
 
       - name: Run authenticated game-state capacity profile (up to 10k RPS)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_capacity_test }}
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031') }}
         run: npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
 
       - name: Upload game-state capacity report
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_capacity_test }}
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031')) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ludomada-game-state-capacity-${{ github.run_id }}
@@ -125,7 +125,7 @@ jobs:
           retention-days: 7
 
       - name: Remove temporary capacity fixtures and JWT
-        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.run_capacity_test }}
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/10k-game-state-capacity-20261031')) }}
         run: rm -f loadtests/artillery/capacity-fixtures.csv
 
       - name: Upload API log
