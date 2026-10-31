@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
+import { isCorsOriginAllowed } from "./corsPolicy";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
@@ -158,9 +159,7 @@ const allowedOrigins = (process.env.CORS_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-if (NODE_ENV === "production" && allowedOrigins.length === 0) {
-  throw new Error("CORS_ORIGINS_IS_REQUIRED_IN_PRODUCTION");
-}
+// An empty allowlist is fail-closed for browsers. Native clients send no Origin.
 
 if (NODE_ENV === "production") {
   if (process.env.TRUST_PROXY !== "true") {
@@ -176,11 +175,7 @@ app.use(helmet());
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(origin)) {
+    if (isCorsOriginAllowed(origin, allowedOrigins)) {
       return callback(null, true);
     }
 
