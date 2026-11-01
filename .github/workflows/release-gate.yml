@@ -117,6 +117,12 @@ jobs:
           LUDOMADA_LOAD_TEST_MODE: "true"
         run: node scripts/seed-capacity-test-fixtures.mjs
 
+      - name: Capture authenticated game-state SQL plan on disposable database
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        env:
+          LUDOMADA_LOAD_TEST_MODE: "true"
+        run: node scripts/profile-capacity-state-query.mjs loadtests/artillery/capacity-fixtures.csv "$RUNNER_TEMP"
+
       - name: Run authenticated game-state capacity profile (up to 10k RPS)
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
         run: npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
@@ -130,7 +136,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ludomada-game-state-capacity-${{ github.run_id }}
-          path: ${{ runner.temp }}/ludomada-game-state-capacity.json
+          path: |
+            ${{ runner.temp }}/ludomada-game-state-capacity.json
+            ${{ runner.temp }}/ludomada-query-plan.json
           if-no-files-found: ignore
           retention-days: 7
 
