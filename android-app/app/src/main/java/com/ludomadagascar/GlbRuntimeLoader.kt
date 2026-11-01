@@ -47,7 +47,8 @@ internal class GlbRuntimeLoader(private val context: Context) {
         val baseColor: FloatArray,
         val metallic: Float,
         val roughness: Float,
-        val materialName: String
+        val materialName: String,
+        val doubleSided: Boolean
     )
 
     private data class Accessor(
@@ -177,7 +178,8 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 baseColor = baseColor,
                 metallic = pbr?.optDouble("metallicFactor", 0.0)?.toFloat() ?: 0f,
                 roughness = pbr?.optDouble("roughnessFactor", 1.0)?.toFloat() ?: 1f,
-                materialName = material?.optString("name", "") ?: ""
+                materialName = material?.optString("name", "") ?: "",
+                doubleSided = material?.optBoolean("doubleSided", false) ?: false
             )
         }
         require(out.isNotEmpty()) { "No accepted GLB parts in $assetPath" }
