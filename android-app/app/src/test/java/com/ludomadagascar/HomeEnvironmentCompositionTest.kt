@@ -32,6 +32,15 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun centrelineRockIsFilteredButPerimeterRocksRemain() {
+        assertTrue(HomeEnvironmentComposition.isHomeCentrelineOccluderPart("ENV_Rock_04"))
+        listOf("ENV_Rock_00","ENV_Rock_01","ENV_Rock_02","ENV_Rock_03")
+            .forEach { assertTrue(!HomeEnvironmentComposition.isHomeCentrelineOccluderPart(it)) }
+        listOf("ENV_Grass_00","ENV_Sky_Dome","ENV_Terrain_HighDetail")
+            .forEach { assertTrue(!HomeEnvironmentComposition.isHomeCentrelineOccluderPart(it)) }
+    }
+
+    @Test
     fun baobabPlacementIsPairedOnBothSidesAtFrontAndBack() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(trees[0].x, -trees[1].x, 0.25f)
