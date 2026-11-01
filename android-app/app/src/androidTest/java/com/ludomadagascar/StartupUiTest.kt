@@ -123,9 +123,11 @@ class StartupUiTest {
         } else {
             (24f * context.resources.displayMetrics.density).toInt()
         }
+        val safeAreaGap = (8f * context.resources.displayMetrics.density).toInt()
         assertTrue(
-            "Balance heading must be below the status bar (top=${balanceHeading.visibleBounds.top}, statusBarBottom=$statusBarBottom)",
-            balanceHeading.visibleBounds.top >= statusBarBottom
+            "Balance heading must clear the status bar plus an 8dp breathing gap " +
+                "(top=${balanceHeading.visibleBounds.top}, statusBarBottom=$statusBarBottom, gap=$safeAreaGap)",
+            balanceHeading.visibleBounds.top >= statusBarBottom + safeAreaGap
         )
         assertTrue(
             "3D renderer must certify a GLB-backed frame with a clean framebuffer",

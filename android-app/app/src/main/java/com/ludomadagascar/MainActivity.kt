@@ -81,8 +81,23 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
+        applyStatusBarSafeArea(content)
         addTopBar(title)
         return content
+    }
+
+    /**
+     * Use the actual system-bar inset instead of guessing a device-specific top margin.
+     * Returning the original insets lets child views continue receiving window insets.
+     */
+    private fun applyStatusBarSafeArea(content: View) {
+        if (android.os.Build.VERSION.SDK_INT < 20) return
+        window.decorView.setOnApplyWindowInsetsListener { _, insets ->
+            val safeTop = maxOf(dp(18), insets.systemWindowInsetTop + dp(8))
+            content.setPadding(dp(20), safeTop, dp(20), dp(20))
+            insets
+        }
+        window.decorView.requestApplyInsets()
     }
 
     private fun addTopBar(title:String) {
