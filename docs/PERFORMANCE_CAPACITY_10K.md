@@ -72,3 +72,21 @@ This separates the remaining bottleneck from the prior run: the cache removed su
 The next experiment raises Artillery's shared keep-alive pool from 2,048 to 4,096 and enables `config.http.extendedMetrics` to capture TCP/total timing phases. It retains all strict thresholds and does not change the API/database pool or bypass authorization. This is an experiment, not a capacity pass. The capacity artifact is `13069856828` and the API log artifact is `13069239526` from run `41271849087`.
 
 **Status remains NOT CERTIFIED.** The DB query and pool are no longer the dominant observed bottleneck in this cache-enabled run; the shared CI runner / HTTP concurrency path remains limiting. A dedicated independent load generator against the intended multi-instance topology is still required before production 10k claims.
+## Fourth measured benchmark — 2026-11-01 (cache enabled, 4,096-socket pool; failed)
+
+Release Gate run `41272226027` on head `c8b8d784957ac2159d0f6aad00aad5c3c527df8f` enabled extended HTTP metrics and used `config.http.pool: 4096`. It improved aggregate throughput over the 2,048-pool run but still failed the capacity SLO:
+
+- 300,334 VUs created; 206,130 HTTP 200 responses; 94,204 VUs failed (31.37%).
+- Aggregate observed request rate: 4,018 RPS; highest 10-second interval: 6,873 RPS.
+- p50 89.1 ms; p95 1,200.1 ms; p99 3,678.4 ms; max 15,199 ms.
+- Errors: `ERR_SOCKET_TIMEOUT` 93,077; `ECONNRESET` 1,127; `EADDRNOTAVAIL` 0.
+- Extended HTTP timing: `http.tcp` p95 4,403.8 ms / p99 11,274.1 ms; `http.total` p95 8,352 ms / p99 11,971.2 ms.
+- Cache entries 1,000; final cache hits 216,033 / misses 2,101 (99.04% hit ratio). PostgreSQL pool waitingCount remained 0; max observed total/idle connections was 46; API log had no database acquisition timeouts or state-query errors.
+
+The larger pool improved measured aggregate throughput from 1,429 to 4,018 RPS and eliminated ephemeral-port errors, but TCP-phase latency still grew to multiple seconds and the strict error/latency thresholds failed. This points to client-side shared-pool/runner connection pressure and/or event-loop contention; the database/cache no longer appears to be the dominant saturated component in this run.
+
+The next experiment raises the shared socket pool to 8,192 and records runner limits (`ulimit -n`, ephemeral-port range, CPU count, file-max, load average and memory) in the same Artillery step. It keeps the same 10k RPS target and strict SLO thresholds. If this shared-runner experiment still cannot achieve the target, the next valid test must use a separate load-generator host from the API/database; do not claim the application itself is certified from a co-located generator.
+
+Artifacts: capacity report `13069817523`, API logs `13069962253`, run `41272226027`.
+
+**Status remains NOT CERTIFIED.**
