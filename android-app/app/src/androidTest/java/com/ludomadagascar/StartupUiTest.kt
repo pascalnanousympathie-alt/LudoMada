@@ -110,7 +110,6 @@ class StartupUiTest {
             "Home must attach the live 3D scene and complete its first frame",
             device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
         )
-        captureHomePreviewScreenshot(device, context)
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
         tapHomeMusic(device, context)
