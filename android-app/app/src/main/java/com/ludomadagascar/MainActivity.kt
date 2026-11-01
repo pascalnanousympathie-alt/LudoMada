@@ -641,9 +641,8 @@ class MainActivity : Activity() {
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         host.animateState()
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+        add(label("Safidio mivantana eo amin’ny plateau ilay pion afaka mihetsika.",11f,false,Color.rgb(112,121,137)),22,0,2)
+        add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
@@ -740,9 +739,7 @@ class MainActivity : Activity() {
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
         add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         add(button("✨ Conseil IA",Color.rgb(111,70,186)){requestAiSuggestion()},48,2,4)
-        val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        add(label("✨ Tsindrio mivantana eo amin’ny plateau ilay pion miseho fa afaka mihetsika.",11f,false,Color.rgb(120,128,140)),24,0,2)
         updateBoard(host)
         startGameEventStream()
         root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
@@ -788,7 +785,7 @@ class MainActivity : Activity() {
             }
             val tokenIndex=j.optInt("tokenIndex",-1)
             status.text=if(tokenIndex in 0..3){
-                "✨ Conseil IA: jouez le pion ${tokenIndex+1}. Confirmez avec le bouton Pion correspondant."
+                "✨ Conseil IA : jouez le pion mis en évidence sur le plateau."
             }else{
                 "Tsy misy fihetsika ara-dalàna atolotry ny AI amin’izao fotoana izao."
             }
