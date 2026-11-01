@@ -38,3 +38,15 @@ Before claiming production 10k RPS, run mixed traffic from separate load generat
 Render Free remains a single-instance staging tier. The real Render/Supabase staging target remains unconfigured, so no production or real staging performance claim is made here.
 
 **Status:** not certified until the 10k authenticated-read benchmark and separate write/mixed-traffic benchmarks pass on the intended deployment topology.
+## First capacity profile evidence — 2026-10-31
+
+Run `41233161474` on PR #162 head `9f025ce2b18ebd3c9acb507ab9febee05a1bee37` completed its GitHub Actions job, but the raw Artillery report did **not** meet the 10k target or the configured SLO values:
+
+- 436,584 HTTP arrivals / virtual users were created; 234,569 returned HTTP 200; 202,015 virtual users failed (46.27%).
+- Aggregate observed request rate: 1,332 requests/second; highest 10-second interval: 1,984 requests/second. No interval reached 10,000 requests/second.
+- Aggregate response latency: p95 2,725 ms and p99 11,050.8 ms, exceeding the intended 250 ms / 500 ms limits.
+- Client errors: 102,340 `ERR_SOCKET_TIMEOUT`, 95,474 `EADDRNOTAVAIL`, and 4,201 `ECONNRESET`.
+
+The step was nevertheless marked successful, so the prior job-level PASS is not a capacity PASS. The old YAML used the legacy `config.ensure` block without registering the current `ensure` plugin. The test now uses the documented `config.plugins.ensure.thresholds` and strict conditions for minimum throughput and maximum failed-VU percentage. It is deliberately narrowed to a short warm-up followed by a 30-second 10k steady phase so the aggregate request-rate condition is meaningful.
+
+The first run shares one GitHub Actions runner between the API process, PostgreSQL service, and Artillery generator. `EADDRNOTAVAIL` plus socket timeouts strongly suggests the runner/client is also saturating; it does not isolate server capacity. The next exact-commit run must be read from the raw report and logs. A non-zero result is the correct outcome while the SLOs fail; do not relax thresholds to manufacture green CI.
