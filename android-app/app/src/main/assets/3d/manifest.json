@@ -78,5 +78,59 @@
     "LM_Pawn_Underside_Insert",
     "LM_Die_HydroChrome_Body"
   ],
-  "active_renderer": "native-gles3-premium"
+  "active_renderer": "native-gles3-premium",
+  "home_environment": {
+    "renderer": "LudoBoardView.SceneRenderer.homePreview",
+    "scene_glb": {
+      "path": "3d/ludomada-environment-final.glb",
+      "bytes": 346384
+    },
+    "baobab_glb": {
+      "path": "3d/environment/baobab-real.glb",
+      "bytes": 35024
+    },
+    "textures_max_dimension": 2048,
+    "textures": [
+      {
+        "path": "environment/textures/bark_diff_2k.jpg",
+        "bytes": 340354
+      },
+      {
+        "path": "environment/textures/bark_nor_gl_2k.jpg",
+        "bytes": 377169
+      },
+      {
+        "path": "environment/textures/bark_rough_2k.jpg",
+        "bytes": 108108
+      },
+      {
+        "path": "environment/textures/dirt_diff_2k.jpg",
+        "bytes": 361069
+      },
+      {
+        "path": "environment/textures/dirt_nor_gl_2k.jpg",
+        "bytes": 316106
+      },
+      {
+        "path": "environment/textures/dirt_rough_2k.jpg",
+        "bytes": 261529
+      },
+      {
+        "path": "environment/textures/grass_diff_2k.jpg",
+        "bytes": 263378
+      },
+      {
+        "path": "environment/textures/grass_nor_gl_2k.jpg",
+        "bytes": 491806
+      },
+      {
+        "path": "environment/textures/grass_rough_2k.jpg",
+        "bytes": 117775
+      },
+      {
+        "path": "environment/textures/safari_sunset_2k.jpg",
+        "bytes": 66231
+      }
+    ]
+  }
 }
