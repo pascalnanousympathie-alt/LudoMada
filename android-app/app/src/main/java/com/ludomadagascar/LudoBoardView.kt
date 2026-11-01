@@ -1791,52 +1791,61 @@ class LudoBoardView(
         private fun drawEnvironmentGlb(shadowPass:Boolean){
             if(envParts.isEmpty())return
             val parts=envParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
-            if(shadowPass){
-                for(part in parts){
-                    if(part.materialName=="ENV_Sky_HDRI")continue
-                    drawShadowMesh(part.mesh,part.transform)
+            // The authored environment is Z-up while the gameplay board is Y-up.
+            // Respect glTF doubleSided metadata for the inside-facing sky dome and
+            // all other environment materials that were authored double-sided.
+            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if(parts.any{it.doubleSided})GLES30.glDisable(GLES30.GL_CULL_FACE)
+            try {
+                if(shadowPass){
+                    for(part in parts){
+                        if(part.materialName=="ENV_Sky_HDRI")continue
+                        val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
+                        drawShadowMesh(part.mesh,model)
+                    }
+                }else{
+                    for(part in parts){
+                        val mn=part.materialName
+                        val skyPart=mn=="ENV_Sky_HDRI"
+                        val barkPart=mn=="ENV_Bark_PBR"
+                        val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
+                        val grassPart=mn=="ENV_Grass_PBR"
+                        val albedo=when{
+                            skyPart->envSkyTex
+                            barkPart->envBarkTex
+                            dirtPart->envDirtTex
+                            grassPart->envGrassTex
+                            else->neutralTex
+                        }
+                        val ntex=when{
+                            barkPart->envBarkNormalTex
+                            dirtPart->envDirtNormalTex
+                            grassPart->envGrassNormalTex
+                            else->normalTex
+                        }
+                        val rtex=when{
+                            barkPart->envBarkRoughTex
+                            dirtPart->envDirtRoughTex
+                            grassPart->envGrassRoughTex
+                            else->0
+                        }
+                        val rough=when{
+                            skyPart->1.0f
+                            barkPart->0.74f
+                            dirtPart->0.86f
+                            grassPart->0.92f
+                            else->0.82f
+                        }
+                        val metallic=if(skyPart)0f else part.metallic
+                        val unlit=skyPart
+                        val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
+                        drawMesh(part.mesh,model,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
+                    }
                 }
-                drawRealBaobabs(true)
-                return
+            } finally {
+                if(cullingWasEnabled)GLES30.glEnable(GLES30.GL_CULL_FACE) else GLES30.glDisable(GLES30.GL_CULL_FACE)
             }
-            for(part in parts){
-                val mn=part.materialName
-                val skyPart=mn=="ENV_Sky_HDRI"
-                val barkPart=mn=="ENV_Bark_PBR"
-                val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
-                val grassPart=mn=="ENV_Grass_PBR"
-                val albedo=when{
-                    skyPart->envSkyTex
-                    barkPart->envBarkTex
-                    dirtPart->envDirtTex
-                    grassPart->envGrassTex
-                    else->neutralTex
-                }
-                val ntex=when{
-                    barkPart->envBarkNormalTex
-                    dirtPart->envDirtNormalTex
-                    grassPart->envGrassNormalTex
-                    else->normalTex
-                }
-                val rtex=when{
-                    barkPart->envBarkRoughTex
-                    dirtPart->envDirtRoughTex
-                    grassPart->envGrassRoughTex
-                    dirtPart->envDirtRoughTex
-                    else->0
-                }
-                val rough=when{
-                    skyPart->1.0f
-                    barkPart->0.74f
-                    dirtPart->0.86f
-                    grassPart->0.92f
-                    else->0.82f
-                }
-                val metallic=if(skyPart)0f else part.metallic
-                val unlit=skyPart
-                drawMesh(part.mesh,part.transform,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
-            }
-            drawRealBaobabs(false)
+            drawRealBaobabs(shadowPass)
         }
 
         private fun drawRealBaobabs(shadowPass:Boolean){
