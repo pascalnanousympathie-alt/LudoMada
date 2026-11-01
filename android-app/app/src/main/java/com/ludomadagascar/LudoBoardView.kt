@@ -1794,10 +1794,13 @@ class LudoBoardView(
 
         private fun drawEnvironmentGlb(shadowPass:Boolean){
             if(envParts.isEmpty())return
-            // The environment GLB itself contains a decorative centreline baobab
-            // (branches/leaves/roots/trunk). Keep only terrain, rocks, grass and sky here;
-            // the four side-framed baobabs are rendered from baobab-real.glb below.
-            val visibleEnvironmentParts=envParts.filterKeys { !HomeEnvironmentComposition.isEmbeddedBaobabPart(it) }
+            // The environment GLB has authored baobab source nodes and a single central
+            // ENV_Rock_04 on x≈0/y≈8. Filter those occluders from both colour and shadow
+            // passes; retain the four perimeter rocks, terrain, grass and sky.
+            val visibleEnvironmentParts=envParts.filterKeys {
+                !HomeEnvironmentComposition.isEmbeddedBaobabPart(it) &&
+                    !HomeEnvironmentComposition.isHomeCentrelineOccluderPart(it)
+            }
             val parts=visibleEnvironmentParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
             // The authored environment is Z-up while the gameplay board is Y-up.
             // Respect glTF doubleSided metadata for the inside-facing sky dome and
