@@ -1,16 +1,13 @@
 package com.ludomadagascar
 
-import kotlin.math.PI
 import kotlin.math.floor
 import kotlin.math.roundToInt
-import kotlin.math.sin
 
 /**
  * Low-contrast, material-specific procedural albedo profiles for the mobile PBR board.
  * Only walnut receives directional grain; ivory, felt and metal stay visually quiet.
  */
 internal object PbrMaterialTextures {
-    private val tau = (2.0 * PI).toFloat()
 
     fun colorRgb(kind: Int, x: Int, y: Int, size: Int = 512): Int {
         require(size > 0) { "Texture size must be positive" }
@@ -19,17 +16,19 @@ internal object PbrMaterialTextures {
         val u = (safeX + 0.5f) / size.toFloat()
         val v = (safeY + 0.5f) / size.toFloat()
         val rgb = when (kind) {
-            // Walnut grain follows the board length, with restrained contrast and warped fibers.
+            // Multi-scale anisotropic value noise gives walnut a natural, non-periodic grain.
+            // The long-axis fields avoid the repeating sine bands that looked like diagonal striping.
             0 -> {
-                val warp = (valueNoise(u, v, 3, 12) - 0.5f) * 1.1f
-                val broad = sin((u * 8f + warp * 0.35f) * tau)
-                val fine = sin((u * 29f + warp * 1.1f + sin(v * tau * 6f) * 0.08f) * tau)
-                val pores = valueNoise(u, v, 56, 32) - 0.5f
-                val tone = broad * 0.30f + fine * 0.10f + pores * 0.07f
+                val broad = valueNoise(u, v, 9, 2) - 0.5f
+                val streak = valueNoise(u, v, 31, 8) - 0.5f
+                val pores = valueNoise(u, v, 112, 28) - 0.5f
+                val micro = hash(safeX / 2, safeY / 2) - 0.5f
+                val tone = (broad * 1.25f + streak * 0.65f + pores * 0.20f + micro * 0.08f)
+                    .coerceIn(-0.45f, 0.45f)
                 intArrayOf(
-                    channel(95f + tone * 18f),
-                    channel(47f + tone * 11f),
-                    channel(24f + tone * 6f)
+                    channel(96f + tone * 22f),
+                    channel(48f + tone * 13f),
+                    channel(25f + tone * 7f)
                 )
             }
             // Ivory cells use soft, near-neutral mottling rather than the walnut grain profile.

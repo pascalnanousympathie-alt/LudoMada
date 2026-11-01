@@ -19,7 +19,7 @@ class PbrMaterialTexturesTest {
     @Test
     fun walnutRetainsVisibleButRestrainedGrain() {
         val redRange = channelRange(0, 16)
-        assertTrue("walnut grain range=$redRange", redRange in 8..24)
+        assertTrue("walnut grain range=$redRange", redRange in 10..24)
     }
 
     private fun channelRange(kind: Int, shift: Int): Int {
