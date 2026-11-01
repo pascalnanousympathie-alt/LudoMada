@@ -83,6 +83,21 @@ function selfTestFramebufferReadback() {
     ["wrong label rejected", !parseFramebufferReadback(scene, "surface_backbuffer").ok],
     ["missing log rejected", !parseFramebufferReadback(null, "scene_fbo").ok]
   ];
+  const pbrHomeTree = { elements: [{ contentDesc:
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=41 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+  }] };
+  const fallbackHomeTree = { elements: [{ contentDesc:
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES2_GLB | ENV_PARTS=0 | BAOBAB_PARTS=0 | HERO_PARTS=6 | BOARD_PARTS=95"
+  }] };
+  const incompleteHomeTree = { elements: [{ contentDesc:
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=0 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+  }] };
+  cases.push(
+    ["complete GLES3 Home readiness marker", parseHomePreviewReadiness(pbrHomeTree).ok],
+    ["explicit GLES2 Home fallback marker", parseHomePreviewReadiness(fallbackHomeTree).ok],
+    ["incomplete GLES3 Home assets rejected", !parseHomePreviewReadiness(incompleteHomeTree).ok],
+    ["missing Home readiness marker rejected", !parseHomePreviewReadiness({ elements: [] }).ok]
+  );
   const failed = cases.filter(([, passed]) => !passed);
   for (const [name, passed] of cases) {
     console.log((passed ? "PASS " : "FAIL ") + name);
@@ -236,6 +251,32 @@ function readTree() {
 
 function treeHas(tree, value) {
   return treeLabels(tree).some((label) => label.includes(value));
+}
+
+function parseHomePreviewReadiness(tree) {
+  const marker = treeLabels(tree).find((label) => label.includes("HOME_3D_FRAME_COMPLETE"));
+  if (!marker) return { ok: false, reason: "missing_home_frame_marker" };
+  const renderer = marker.match(/RENDERER=([A-Z0-9_]+)/)?.[1] || "";
+  const readCount = (name) => {
+    const match = marker.match(new RegExp(name + "=(\\d+)"));
+    return match ? Number(match[1]) : 0;
+  };
+  const counts = {
+    environment: readCount("ENV_PARTS"),
+    baobab: readCount("BAOBAB_PARTS"),
+    hero: readCount("HERO_PARTS"),
+    board: readCount("BOARD_PARTS"),
+  };
+  if (renderer === "GLES3_PBR") {
+    const complete = Object.values(counts).every((value) => Number.isSafeInteger(value) && value > 0);
+    return { ok: complete, renderer, counts, reason: complete ? null : "incomplete_gles3_asset_counts" };
+  }
+  if (renderer === "GLES2_GLB") {
+    const complete = counts.hero > 0 && counts.board > 0 &&
+      counts.environment === 0 && counts.baobab === 0;
+    return { ok: complete, renderer, counts, reason: complete ? null : "invalid_gles2_fallback_counts" };
+  }
+  return { ok: false, renderer, counts, reason: "unknown_home_renderer" };
 }
 
 function modePickerIsVisible(tree) {
@@ -890,25 +931,18 @@ try {
 
   const homeReadyTree=waitForSnapshot("HOME_3D_FRAME_COMPLETE",15000);
   if (!homeReadyTree) throw new Error("Premium Home did not complete a live 3D renderer frame");
-  const homeRenderer=readRendererLogLines();
-  const homePbr=homeRenderer.lines.some((line)=>line.includes("HOME_PBR_FIRST_FRAME_COMPLETE"));
-  const homeFallback=homeRenderer.lines.some((line)=>line.includes("HOME_3D_FALLBACK_FRAME_COMPLETE"));
-  if (!homePbr && !homeFallback) {
-    throw new Error("Home accessibility readiness had no matching GLES renderer completion log: " +
-      JSON.stringify({ok:homeRenderer.ok,rendererLines:homeRenderer.lines.slice(-35)}));
+  // The renderer publishes this accessibility marker only after a clean GL framebuffer
+  // readback and successful required-asset checks. Use it as the contract instead of
+  // relying on cloud logcat retention/filter support for renderer log tags.
+  const homeReadiness=parseHomePreviewReadiness(homeReadyTree);
+  if (!homeReadiness.ok) {
+    throw new Error("Home renderer readiness marker failed acceptance: " +
+      JSON.stringify({reason:homeReadiness.reason,tree:treeLabels(homeReadyTree)}));
   }
-  if (homePbr) {
-    for (const marker of ["ENV_GLB_RUNTIME_LOAD_OK","BAOBAB_REAL_GLB_LOAD_OK","PBR_READBACK label=home_surface"]) {
-      if (!homeRenderer.lines.some((line)=>line.includes(marker))) {
-        throw new Error("GLES3 Home preview is missing visual evidence marker: " + marker);
-      }
-    }
-    console.log("HOME_GLES3_PBR_ENVIRONMENT_AND_BAOBAB PASS");
+  if (homeReadiness.renderer === "GLES3_PBR") {
+    console.log("HOME_GLES3_PBR_ENVIRONMENT_AND_BAOBAB PASS " + JSON.stringify(homeReadiness.counts));
   } else {
-    if (!homeRenderer.lines.some((line)=>line.includes("SAFE_READBACK label=surface"))) {
-      throw new Error("GLES2 Home fallback has no clean framebuffer readback");
-    }
-    console.log("HOME_GLES2_3D_FALLBACK PASS");
+    console.log("HOME_GLES2_3D_FALLBACK PASS " + JSON.stringify(homeReadiness.counts));
   }
   const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
   if (!homeShot.ok) throw new Error("Could not capture the live 3D Home screenshot");
