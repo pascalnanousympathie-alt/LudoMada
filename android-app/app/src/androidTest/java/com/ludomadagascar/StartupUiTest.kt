@@ -22,12 +22,13 @@ class StartupUiTest {
         assertTrue("Home content root must contain its root view", content.childCount > 0)
         val hero = content.getChildAt(0) as? PremiumHeroViewV2
         assertNotNull("Premium Home root must be a FrameLayout with a live renderer", hero)
-        assertTrue("Home must have only the 3D surface and native UI overlay", hero!!.childCount == 2)
-        assertTrue("First Home layer must be the live 3D board renderer", hero.getChildAt(0) is LudoBoardView)
+        val heroView = hero ?: throw AssertionError("Premium Home root is missing")
+        assertTrue("Home must have only the 3D surface and native UI overlay", heroView.childCount == 2)
+        assertTrue("First Home layer must be the live 3D board renderer", heroView.getChildAt(0) is LudoBoardView)
         assertTrue("The exposed renderer must be the actual background layer",
-            hero.homePreviewView === hero.getChildAt(0))
+            heroView.homePreviewView === heroView.getChildAt(0))
         assertTrue("The foreground layer must not draw a second board renderer",
-            hero.getChildAt(1) !is LudoBoardView)
+            heroView.getChildAt(1) !is LudoBoardView)
     }
 
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
