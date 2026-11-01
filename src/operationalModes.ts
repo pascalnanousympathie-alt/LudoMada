@@ -31,3 +31,11 @@ export function isCapacityLoadTestEnabled(env: Environment = process.env): boole
     return false;
   }
 }
+
+/**
+ * Permit a larger connection pool only in the explicit disposable CI load-test
+ * mode. Staging and production retain the conservative 20-connection ceiling.
+ */
+export function maximumPgPoolSize(env: Environment = process.env): number {
+  return isCapacityLoadTestEnabled(env) ? 60 : 20;
+}
