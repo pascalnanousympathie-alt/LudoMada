@@ -9,12 +9,12 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
-import { isCapacityLoadTestEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
+import { isCapacityLoadTestEnabled, isGameStateReadCacheEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
 import { GameStateRepository } from "./game/gameStateRepository";
-import { gameStateReadCache, type GameStateReadCacheEntry } from "./game/gameStateReadCache";
+import { gameStateReadCache, invalidateGameStateReadCache, type GameStateReadCacheEntry } from "./game/gameStateReadCache";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
 import { isValidEntryFee } from "./game/entryFees";
@@ -63,6 +63,7 @@ const prisma = new PrismaClient({ adapter });
 
 const PERF_DIAGNOSTICS_ENABLED = isPerformanceDiagnosticsEnabled();
 const PG_POOL_DIAGNOSTICS_ENABLED = isPoolDiagnosticsEnabled();
+const GAME_STATE_READ_CACHE_ENABLED = isGameStateReadCacheEnabled();
 
 if (PG_POOL_DIAGNOSTICS_ENABLED) {
   setInterval(() => {
@@ -1237,7 +1238,7 @@ app.post("/api/games/:gameId/join",auth,async(req:any,res)=>{
     }
 
     // The lobby participant list is part of the cached game-state read model.
-    gameStateReadCache.invalidate(req.params.gameId);
+    invalidateGameStateReadCache(req.params.gameId);
 
     const response={
       gameId:result.gameId,
@@ -1567,7 +1568,7 @@ app.post("/api/games/:gameId/start",auth,async(req:any,res)=>{
     }
 
     // The transition from WAITING to PLAYING creates the authoritative snapshot.
-    gameStateReadCache.invalidate(req.params.gameId);
+    invalidateGameStateReadCache(req.params.gameId);
 
     const response={
       gameId:result.game.id,
@@ -1818,7 +1819,9 @@ function gameStateReadResponse(entry: GameStateReadCacheEntry) {
 app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
   // Authentication is checked before this handler. A cache hit must still
   // prove the authenticated user belongs to the game before returning state.
-  const cached = gameStateReadCache.get(req.params.gameId);
+  const cached = GAME_STATE_READ_CACHE_ENABLED
+    ? gameStateReadCache.get(req.params.gameId)
+    : null;
   if (cached) {
     if (!gameStateReadCache.hasParticipant(cached, req.userId)) {
       return res.status(403).json({error:"Forbidden"});
@@ -1828,7 +1831,9 @@ app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
 
   // If a write commits while this database read is in flight, its invalidation
   // advances the generation and prevents the stale query result being cached.
-  const cacheGeneration = gameStateReadCache.generation();
+  const cacheGeneration = GAME_STATE_READ_CACHE_ENABLED
+    ? gameStateReadCache.generation()
+    : -1;
   const totalStart=process.hrtime.bigint();
   const routeStart=process.hrtime.bigint();
 
@@ -1905,7 +1910,7 @@ app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
       state: row.state as GameState
     };
 
-    gameStateReadCache.set(entry, cacheGeneration);
+    if (GAME_STATE_READ_CACHE_ENABLED) gameStateReadCache.set(entry, cacheGeneration);
 
     const beforeResponseMs=Number(process.hrtime.bigint()-routeStart)/1e6;
     const totalMs=Number(process.hrtime.bigint()-totalStart)/1e6;
