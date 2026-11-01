@@ -250,13 +250,17 @@ class LudoBoardView(
 
         stateAnimator?.cancel()
         var maxSteps = 0
+        var pawnMoved = false
         for (pi in 0..3) for (ti in 0..3) {
             val from = oldPos[pi][ti]
             val to = newPos[pi][ti]
+            if (PawnMoveSoundPolicy.shouldPlay(from, to)) pawnMoved = true
             if (from >= 0 && to > from) maxSteps = max(maxSteps, min(6, to - from))
             if (from < 0 && to >= 0) maxSteps = max(maxSteps, 1)
             if (from >= 0 && to < 0) maxSteps = max(maxSteps, 2)
         }
+        // A pawn sound belongs to a committed position change, not to a tap attempt.
+        if (pawnMoved && !homePreview) audio().play(0f, 0.62f, 520.0)
         val duration = (maxSteps * 120L + 320L).coerceAtLeast(320L)
 
         stateAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
@@ -473,11 +477,6 @@ class LudoBoardView(
             performClick()
             performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             pulseHaptic(18L, 120)
-            val pan = ((projected[best][0] / max(1f, width.toFloat())) * 2f - 1f).coerceIn(-1f, 1f)
-            val centerDx = (projected[best][0] - width * 0.5f) / max(1f, width * 0.5f)
-            val centerDy = (projected[best][1] - height * 0.5f) / max(1f, height * 0.5f)
-            val distance = kotlin.math.sqrt(centerDx * centerDx + centerDy * centerDy).coerceIn(0f, 1f)
-            audio().play(pan, 0.65f, 520.0, distance)
             onPawnTap?.invoke(best)
         }
         return true

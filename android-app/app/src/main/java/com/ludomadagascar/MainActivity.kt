@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
+    private var activityResumed = false
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
@@ -71,6 +72,7 @@ class MainActivity : Activity() {
         if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
+        syncMusicPlayback()
         val baseLeft=dp(20)
         val baseTop=dp(18)
         val baseRight=dp(20)
@@ -210,7 +212,7 @@ class MainActivity : Activity() {
     }
 
     private fun splash() {
-        currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
+        currentScreen="splash"; syncMusicPlayback(); root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
         root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
         add(label("Joue • Gagne • Profite",15f,false,Color.rgb(88,99,116)),28,0,8)
@@ -220,6 +222,7 @@ class MainActivity : Activity() {
 
     private fun login() {
         currentScreen="login"
+        syncMusicPlayback()
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
         root.background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(5,23,55),Color.rgb(11,70,145),Color.rgb(3,27,67)))
         setContentView(root)
@@ -240,7 +243,7 @@ class MainActivity : Activity() {
         add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
-        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
+        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();syncMusicPlayback();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
     }
 
     private fun googleSignup() {
@@ -281,6 +284,8 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
+        syncMusicPlayback()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
         when(currentScreen) {
@@ -290,12 +295,16 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        activityResumed = false
+        syncMusicPlayback()
         stopGameEventStream()
         pauseBoardViews()
         super.onPause()
     }
 
     override fun onDestroy() {
+        activityResumed = false
+        if(::music.isInitialized) music.stop()
         stopGameEventStream()
         super.onDestroy()
     }
@@ -320,6 +329,7 @@ class MainActivity : Activity() {
     private fun home() {
         pauseBoardViews()
         currentScreen="home"
+        syncMusicPlayback()
         setContentView(PremiumHeroViewV2(this))
         refreshAccountBalance()
     }
@@ -1087,9 +1097,14 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun syncMusicPlayback() {
+        if (!::music.isInitialized) return
+        val shouldPlay = GameMusicPolicy.shouldPlay(currentScreen, activityResumed) && music.enabled()
+        if (shouldPlay) music.start() else music.stop()
+    }
+
     private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
-    override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
-    override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
+    override fun onStop(){ activityResumed = false; if(::music.isInitialized) music.stop(); super.onStop() }
 
 }
