@@ -206,6 +206,10 @@ if(JWT_SECRET.length < 32){
   throw new Error("JWT_SECRET_MUST_BE_AT_LEAST_32_CHARACTERS");
 }
 
+// Parse the HMAC verification key once. jsonwebtoken 9.0.3 otherwise
+// attempts createPublicKey() on the string secret on every verify call.
+const JWT_SECRET_KEY = crypto.createSecretKey(Buffer.from(JWT_SECRET, "utf8"));
+
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
 const rawPort = process.env.PORT ?? "3000";
@@ -291,7 +295,7 @@ function auth(req:any,res:any,next:any){
   try {
     const h=String(req.headers.authorization||"");
     const t=h.startsWith("Bearer ")?h.slice(7):"";
-    req.auth=verifyAccessToken(t,JWT_SECRET);
+    req.auth=verifyAccessToken(t,JWT_SECRET_KEY);
     req.userId=req.auth.sub;
 
     if (shouldMeasureAuth) {
