@@ -108,6 +108,7 @@ jobs:
           path: |
             ramus-pre-assertion-screen.jpg
             ramus-screen.jpg
+            ramus-home-screen.jpg
           if-no-files-found: warn
           retention-days: 7
 
