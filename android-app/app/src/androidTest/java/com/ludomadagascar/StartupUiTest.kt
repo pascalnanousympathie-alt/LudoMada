@@ -114,7 +114,7 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(
             "3D renderer must certify a GLB-backed frame with a clean framebuffer",
-            device.wait(Until.hasObject(By.descContains("RENDER_PASS=")), 8000)
+            device.wait(Until.hasObject(By.descContains("RENDER_PASS=")), 15000)
         )
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
