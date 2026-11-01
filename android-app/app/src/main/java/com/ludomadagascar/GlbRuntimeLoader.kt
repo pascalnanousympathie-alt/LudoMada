@@ -8,6 +8,36 @@ import java.io.BufferedInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/**
+ * Normalizes the rev5 pawn nodes to the bottom-centre pawn pivot used by gameplay.
+ *
+ * The authored scene exported the base/body/collar/head with the same scene-space
+ * X/Z translation (-0.85m, -1.55m), while the underside insert is already centred.
+ * Removing that common export offset aligns the five visible parts around the base
+ * without changing their authored vertical spacing, scale, or geometry.
+ */
+internal object GameplayPawnGlbTransform {
+    private const val EXPORTED_PAWN_ORIGIN_X = -0.85f
+    private const val EXPORTED_PAWN_ORIGIN_Z = -1.55f
+
+    private val offsetPawnParts = setOf(
+        "LM_Pawn_Base_Weighted",
+        "LM_Pawn_Tapered_Body",
+        "LM_Pawn_Collar",
+        "LM_Pawn_Spherical_Head"
+    )
+
+    fun normalize(nodeName: String, source: FloatArray): FloatArray {
+        require(source.size == 16) { "glTF node transform must contain 16 values" }
+        val normalized = source.copyOf()
+        if (nodeName in offsetPawnParts) {
+            normalized[12] -= EXPORTED_PAWN_ORIGIN_X
+            normalized[14] -= EXPORTED_PAWN_ORIGIN_Z
+        }
+        return normalized
+    }
+}
+
 /** Lightweight glTF/GLB reader used by the GLES3 premium renderer. */
 internal class GlbRuntimeLoader(private val context: Context) {
     data class Part(
@@ -143,7 +173,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
             out[name] = Part(
                 name = name,
                 mesh = LudoBoardView.Mesh(positions, normals, indices, uvs),
-                transform = nodeTransform(node),
+                transform = GameplayPawnGlbTransform.normalize(name, nodeTransform(node)),
                 baseColor = baseColor,
                 metallic = pbr?.optDouble("metallicFactor", 0.0)?.toFloat() ?: 0f,
                 roughness = pbr?.optDouble("roughnessFactor", 1.0)?.toFloat() ?: 1f,
