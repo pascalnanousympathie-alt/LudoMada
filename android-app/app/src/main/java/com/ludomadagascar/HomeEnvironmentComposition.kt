@@ -22,6 +22,10 @@ internal object HomeEnvironmentComposition {
 
     fun baobabPlacements(): List<HomeBaobabPlacement> = placements
 
+    /** The environment GLB also contains a centreline baobab; the Home renderer uses side-framed real GLB instances instead. */
+    fun isEmbeddedBaobabPart(nodeName: String): Boolean =
+        nodeName.startsWith("ENV_Baobab_")
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
