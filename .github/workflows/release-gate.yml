@@ -91,6 +91,7 @@ jobs:
         env:
           LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
           LUDOMADA_PG_POOL_DIAGNOSTICS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
+          LUDOMADA_GAME_STATE_CACHE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
           PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && '60' || '5' }}
         run: |
           set -eu
@@ -124,6 +125,10 @@ jobs:
         env:
           LUDOMADA_LOAD_TEST_MODE: "true"
         run: node scripts/profile-capacity-state-query.mjs loadtests/artillery/capacity-fixtures.csv "$RUNNER_TEMP"
+
+      - name: Warm up participant-authorized game-state read cache
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        run: npm exec -- artillery run loadtests/artillery/loadtest-game-state-warmup.yml
 
       - name: Run authenticated game-state capacity profile (up to 10k RPS)
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
