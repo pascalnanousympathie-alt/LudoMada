@@ -167,7 +167,7 @@ jobs:
                     printf "API pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\n", $1,$2,$3,$4,$5
                   }
                   $6 == "node" && /artillery/ {
-                    printf "ARTILLERY pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\\n", $1,$2,$3,$4,$5
+                    printf "ARTILLERY pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\n", $1,$2,$3,$4,$5
                   }
                 '
                 printf 'TOP_PROCESSES\n'
