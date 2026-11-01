@@ -14,8 +14,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ramus-android-${{ github.ref }}
-  cancel-in-progress: true
+  # Ramus trial capacity is shared across branches; serialize all repo smoke runs.
+  group: ramus-android-global
+  cancel-in-progress: false
 
 jobs:
   emulator-test:
