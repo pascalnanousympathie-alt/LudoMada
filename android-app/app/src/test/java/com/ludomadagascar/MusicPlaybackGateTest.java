@@ -41,4 +41,24 @@ public class MusicPlaybackGateTest {
     assertTrue(second>first);
     assertTrue(gate.isCurrent(second));
   }
+
+  @Test public void staleWorkerCannotEndItsSuccessor() {
+    MusicPlaybackGate gate=new MusicPlaybackGate();
+    long first=gate.begin();
+    gate.end();
+    long second=gate.begin();
+    assertFalse(gate.endIfCurrent(first));
+    assertTrue(gate.isCurrent(second));
+    assertTrue(gate.endIfCurrent(second));
+    assertFalse(gate.isCurrent(second));
+  }
+
+  @Test public void completedWorkerFreesTheGateForRestart() {
+    MusicPlaybackGate gate=new MusicPlaybackGate();
+    long first=gate.begin();
+    assertTrue(gate.endIfCurrent(first));
+    long second=gate.begin();
+    assertTrue(second>first);
+    assertTrue(gate.isCurrent(second));
+  }
 }
