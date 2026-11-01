@@ -629,7 +629,7 @@ class MainActivity : Activity() {
     private fun startOffline(players:Int) {
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
-        offlineState=JSONObject().put("players",arr)
+        offlineState=JSONObject().put("players",arr).put("dice",0).put("phase","PLAYING")
         offlineGame(players)
     }
 
@@ -641,9 +641,8 @@ class MainActivity : Activity() {
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         host.animateState()
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+        add(label("Safidio mivantana eo amin’ny plateau ilay pion afaka mihetsika.",11f,false,Color.rgb(112,121,137)),22,0,2)
+        add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
@@ -660,7 +659,11 @@ class MainActivity : Activity() {
         return OfflineLudoRules.hasLegalMove(positions,dice)
     }
     private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
-        offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
+        offlineTurn=(offlineTurn+1)%players
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState
+        host.player=offlineTurn
         status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
     }
     private fun offlineRoll(host:LudoBoardView){
@@ -677,9 +680,13 @@ class MainActivity : Activity() {
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
+        offlineState?.put("dice",offlineDice)
+        host.state=offlineState
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
             offlineDice=0
+            offlineState?.put("dice",0)
+            host.state=offlineState
             root.postDelayed({if(currentScreen=="offline")advanceOfflineTurn(offlinePlayers,host)},550L)
             return
         }
@@ -718,7 +725,9 @@ class MainActivity : Activity() {
                 }
             }
         }
-        offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState;host.player=offlineTurn;host.animateState()
         val finalPositions=IntArray(minOf(OfflineLudoRules.TOKENS_PER_PLAYER,ts.length())) {
             ts.optJSONObject(it)?.optInt("pos",-1) ?: -1
         }
@@ -740,9 +749,7 @@ class MainActivity : Activity() {
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
         add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         add(button("✨ Conseil IA",Color.rgb(111,70,186)){requestAiSuggestion()},48,2,4)
-        val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        add(label("✨ Tsindrio mivantana eo amin’ny plateau ilay pion miseho fa afaka mihetsika.",11f,false,Color.rgb(120,128,140)),24,0,2)
         updateBoard(host)
         startGameEventStream()
         root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
@@ -788,7 +795,7 @@ class MainActivity : Activity() {
             }
             val tokenIndex=j.optInt("tokenIndex",-1)
             status.text=if(tokenIndex in 0..3){
-                "✨ Conseil IA: jouez le pion ${tokenIndex+1}. Confirmez avec le bouton Pion correspondant."
+                "✨ Conseil IA : jouez le pion mis en évidence sur le plateau."
             }else{
                 "Tsy misy fihetsika ara-dalàna atolotry ny AI amin’izao fotoana izao."
             }

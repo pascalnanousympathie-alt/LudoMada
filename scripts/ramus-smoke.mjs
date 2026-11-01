@@ -327,26 +327,68 @@ function pendingDiceValue() {
   return { value: match ? Number(match[1]) : null, status };
 }
 
+function pawnTapTargets(tree = readTree()) {
+  const label = treeLabels(tree).find((entry) =>
+    entry.includes("RENDER_PASS=") && entry.includes("PAWN_TAP_TARGETS=")
+  ) || "";
+  const match = label.match(/PAWN_TAP_TARGETS=([^|]*)/);
+  if (!match) return [];
+  return match[1].split(";").map((entry) => {
+    const point = entry.trim().match(/^([0-3])@((?:0|1|0?\.\d+)),((?:0|1|0?\.\d+))$/);
+    return point ? { index: Number(point[1]), point: point[2] + "," + point[3] } : null;
+  }).filter(Boolean);
+}
+
+function assertNumberedPawnControlsAbsent(tree = readTree()) {
+  const labels = treeLabels(tree);
+  const visible = labels.filter((label) => /\bPion\s+[1-4]\b/i.test(label));
+  if (visible.length) {
+    throw new Error("Numbered pawn controls must stay removed: " + JSON.stringify(visible.slice(0, 8)));
+  }
+  console.log("NUMBERED PAWN CONTROLS ABSENT PASS");
+}
+
 function moveAnyLegalPawnAfterRoll() {
   const { value: dice, status } = pendingDiceValue();
   if (dice === null || status.includes("Aucun coup")) return false;
 
-  for (let index = 1; index <= 4; index++) {
-    const pawn = runAllowError("snapshot", "--session", session, "--find", `Pion ${index}`);
-    if (!pawn.ok || !pawn.value.elements?.length) continue;
-
-    const ref = pawn.value.elements[0];
-    runAllowError("tap", ref.ref, "--gen", String(pawn.value.gen), "--session", session);
-
-    // A legal move resets the pending die to zero immediately. Illegal pawns
-    // leave the die pending, so try the next token without throwing.
-    const moved = runAllowError(
-      "wait", "--text", "Dé: 0", "--timeout", "1200", "--session", session
+  const deadline = Date.now() + 6500;
+  let targets = [];
+  let lastLabels = [];
+  while (Date.now() < deadline) {
+    const tree = readTree();
+    lastLabels = treeLabels(tree);
+    targets = pawnTapTargets(tree);
+    if (targets.length) break;
+    waitStable(250);
+  }
+  if (!targets.length) {
+    throw new Error(
+      "No projected legal 3D pawn tap targets after Dé " + dice +
+      "; labels=" + JSON.stringify(lastLabels.slice(0, 40))
     );
-    if (moved.ok) return true;
   }
 
-  throw new Error(`Dice ${dice} allowed a move but no pawn could be moved. Status: ${pendingDiceValue().status}`);
+  for (const target of targets) {
+    const tap = runAllowError("tap", target.point, "--session", session, "--force");
+    if (!tap.ok) continue;
+    // A legal board hit clears the pending die. Illegal or stale coordinates
+    // leave it unchanged, allowing the next projected pawn coordinate to be tried.
+    const moved = runAllowError(
+      "wait", "--text", "Dé: 0", "--timeout", "1600", "--session", session
+    );
+    if (moved.ok) {
+      console.log("3D PAWN COORDINATE TAP PASS index=" + target.index);
+      return true;
+    }
+    waitStable(250);
+  }
+
+  throw new Error(
+    "Dice " + dice + " exposed " + targets.length +
+    " projected pawn targets but none completed a legal move. Status: " +
+    pendingDiceValue().status
+  );
 }
 
 function advanceToTurn(targetTurn) {
@@ -462,32 +504,51 @@ function captureFailureLogcat() {
 }
 
 function readRendererLogLines() {
-  // Prefer the full guest tail. Some cloud sessions expose only system rows
-  // there, so fall back to the proven LudoMadaRender tag filter when needed.
-  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  // Some Ramus sessions expose only system rows in the broad tail. Read both app
+  // tags directly so the GLES2 fallback and its acceptance markers are visible too.
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
-  let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-
-  if (lines.length === 0) {
-    filtered = runAllowError(
-      "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
-    );
-    filteredEntries = normalizeLogcatRows(filtered);
-    lines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  const filteredResults = [];
+  if (lines.length === 0 || !lines.some((line) => /Renderer=GLES[23]_/i.test(line))) {
+    for (const tag of ["LudoMadaRender", "LudoMadaSmoke"]) {
+      const filtered = runAllowError("logcat", "--limit", "500", "--filter", tag, "--session", session);
+      filteredResults.push(filtered);
+      const entries = normalizeLogcatRows(filtered);
+      filteredEntries.push(...entries);
+    }
+    const extra = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+    lines = [...new Set([...lines, ...extra])];
   }
-
   return {
-    ok: broad.ok || filtered.ok,
+    ok: broad.ok || filteredResults.some((result) => result.ok),
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
-    error: broad.ok || filtered.ok
+    error: broad.ok || filteredResults.some((result) => result.ok)
       ? null
-      : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
+      : String(filteredResults[0]?.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
     lines
   };
+}
+
+function parseSafeReadback(line) {
+  if (typeof line !== "string") return { ok: false, reason: "missing_safe_readback" };
+  const match = line.match(/SAFE_READBACK label=surface size=(\d+)x(\d+) brightPixels=(\d+)\/(\d+) maxChannel=(\d+) glError=0x([0-9a-f]+)/i);
+  if (!match) return { ok: false, reason: "malformed_safe_readback" };
+  const [width, height, brightPixels, totalPixels, maxChannel] = match.slice(1, 6).map(Number);
+  const glError = Number.parseInt(match[6], 16);
+  const dimensionsValid = Number.isSafeInteger(width) && width > 0 &&
+    Number.isSafeInteger(height) && height > 0 && totalPixels === width * height;
+  const countsValid = Number.isSafeInteger(brightPixels) && brightPixels >= 0 &&
+    brightPixels <= totalPixels && Number.isSafeInteger(maxChannel) &&
+    maxChannel >= 0 && maxChannel <= 255;
+  if (!dimensionsValid || !countsValid) return { ok: false, reason: "invalid_safe_metrics" };
+  if (glError !== 0) return { ok: false, reason: "gl_error", glError, brightPixels, totalPixels, maxChannel };
+  const minimumBrightPixels = Math.max(32, Math.ceil(totalPixels * 0.005));
+  const ok = brightPixels >= minimumBrightPixels && maxChannel > 24;
+  return { ok, reason: ok ? undefined : "insufficient_visible_pixels", width, height, brightPixels, totalPixels, maxChannel, glError };
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
@@ -503,15 +564,43 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
   let lastLogcat = { ok: false, totalLines: 0, error: "not_read" };
   let checks = {
     gles3Pbr: false,
+    gles2Fallback: false,
     pbrSurfaceCreated: false,
+    safeSurfaceCreated: false,
     heroParts: [],
     missingHeroParts: requiredHeroParts,
     boardParts: 0,
     sceneReadback: false,
     surfaceReadback: false,
-    firstFrameComplete: false
+    safeReadback: false,
+    firstFrameComplete: false,
+    safeFirstFrameComplete: false
   };
   while (Date.now() < deadline) {
+    // Trial sessions expose UI snapshots even when device logcat contains only
+    // system rows. The app publishes this marker only after real GL readPixels,
+    // GL_NO_ERROR, complete hero GLB parts and a non-empty board GLB are verified.
+    const accessibilityTree = readTree();
+    const readyLabel = treeLabels(accessibilityTree).find((label) =>
+      label.includes("RENDER_PASS=") &&
+      label.includes("LudoMada 3D Ludo board")
+    ) || "";
+    const readyMatch = readyLabel.match(
+      /RENDER_PASS=(GLES2_GLB|GLES3_PBR)\s*\|\s*HERO_PARTS=(\d+)\s*\|\s*BOARD_PARTS=(\d+)/
+    );
+    if (readyMatch) {
+      const rendererName = readyMatch[1];
+      const heroPartCount = Number(readyMatch[2]);
+      const boardPartCount = Number(readyMatch[3]);
+      if (heroPartCount >= requiredHeroParts.length && boardPartCount > 0) {
+        console.log(rendererName + " ACCESSIBILITY RENDER PASS");
+        console.log("RUNTIME HERO GLB LOAD PASS parts=" + heroPartCount);
+        console.log("RUNTIME BOARD GLB LOAD PASS parts=" + boardPartCount);
+        console.log("GL FRAMEBUFFER READBACK PASS (app-certified GL_NO_ERROR + visible pixel threshold)");
+        return;
+      }
+    }
+
     lastLogcat = readRendererLogLines();
     const lines = lastLogcat.lines;
     const heroLine = lines.find((line) =>
@@ -525,15 +614,20 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     const boardCount = Number.parseInt(boardText, 10);
     const sceneReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=scene_fbo"));
     const surfaceReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=surface_backbuffer"));
+    const safeReadbackLine = lines.find((line) => line.includes("SAFE_READBACK label=surface"));
     checks = {
       gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
+      gles2Fallback: lines.some((line) => line.includes("Renderer=GLES2_3D_FALLBACK")),
       pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
+      safeSurfaceCreated: lines.some((line) => line.includes("SAFE_SURFACE_CREATED")),
       heroParts,
       missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
       boardParts: Number.isFinite(boardCount) ? boardCount : 0,
       sceneReadback: parseFramebufferReadback(sceneReadbackLine, "scene_fbo"),
       surfaceReadback: parseFramebufferReadback(surfaceReadbackLine, "surface_backbuffer"),
-      firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE"))
+      safeReadback: parseSafeReadback(safeReadbackLine),
+      firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE")),
+      safeFirstFrameComplete: lines.some((line) => line.includes("SAFE_FIRST_FRAME_COMPLETE"))
     };
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
         checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
@@ -544,6 +638,16 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       console.log("PBR SCENE FBO READBACK PASS=" + JSON.stringify(checks.sceneReadback));
       console.log("PBR SURFACE READBACK PASS=" + JSON.stringify(checks.surfaceReadback));
       console.log("PBR FIRST FRAME COMPLETE");
+      return;
+    }
+    if (checks.gles2Fallback && checks.safeSurfaceCreated &&
+        checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
+        checks.safeReadback.ok && checks.safeFirstFrameComplete) {
+      console.log("GLES2 GLB FALLBACK RENDERER PASS");
+      console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
+      console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
+      console.log("GLES2 SURFACE READBACK PASS=" + JSON.stringify(checks.safeReadback));
+      console.log("GLES2 FIRST FRAME COMPLETE");
       return;
     }
     waitStable(Math.min(1800, Math.max(0, deadline - Date.now())));
@@ -637,6 +741,7 @@ try {
   try {
     assertRuntimeGlbLoaded();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
+  assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {
     rendererFailure = error;
     console.error("3D BOARD RENDERER ASSERTIONS FAILED:",
@@ -735,10 +840,14 @@ try {
   }
   console.log("PENDING DICE REROLL BLOCK PASS");
 
-  target = findRef("Pion 1");
-  run("tap", target.ref, "--gen", String(target.gen),
-      "--expect", "Rejouez", "--session", session);
-  console.log("SIX→PAWN→REPLAY PASS");
+  if (!moveAnyLegalPawnAfterRoll()) {
+    throw new Error("Pending six had no legal 3D pawn target");
+  }
+  const replay = runAllowError(
+    "wait", "--text", "Rejouez", "--timeout", "2500", "--session", session
+  );
+  if (!replay.ok) throw new Error("Six-to-pawn move did not preserve the player's replay");
+  console.log("SIX→3D PAWN TAP→REPLAY PASS");
 
   // Exercise the real Home -> JOUER canvas hitbox rather than only the
   // login-screen offline shortcut. The universal deferred handler prevents

@@ -33,6 +33,18 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private fun portraitAwareVerticalFov(
+    aspect:Float,
+    targetHorizontalFov:Float,
+    landscapeVerticalFov:Float
+):Float {
+    if (aspect >= 1f) return landscapeVerticalFov
+    val safeAspect = aspect.coerceAtLeast(0.1f).toDouble()
+    val halfHorizontal = Math.toRadians(targetHorizontalFov.toDouble() * 0.5)
+    val vertical = 2.0 * Math.atan(Math.tan(halfHorizontal) / safeAspect)
+    return Math.toDegrees(vertical).toFloat().coerceIn(34f, 104f)
+}
+
 class LudoBoardView(
     context: Context,
     var onRollTap: (() -> Unit)? = null,
@@ -58,6 +70,7 @@ class LudoBoardView(
         }
         android.util.Log.i("LudoMadaSmoke", "BOARD_MARKER=" + value)
     }
+
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
@@ -106,6 +119,64 @@ class LudoBoardView(
         contentDescription = if (homePreview) "LudoMada 3D Home Preview" else "LudoMada 3D Ludo board"
         // Keep this accessibility marker stable; renderer diagnostics are already logged and persisted separately.
         if (homePreview) post { configureHomePreview() }
+    }
+
+    @Volatile private var rendererReadyDescription: String? = null
+    @Volatile private var latestPawnTargetSignature: String = ""
+
+    internal fun markRendererReady(rendererName:String, heroPartCount:Int, boardPartCount:Int) {
+        if (!BuildConfig.DEBUG || homePreview) return
+        val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount | BOARD_PARTS=$boardPartCount"
+        rendererReadyDescription = marker
+        post {
+            if (contentDescription != marker) contentDescription = marker
+        }
+    }
+
+    internal fun publishPawnTapTargets() {
+        if (!BuildConfig.DEBUG || homePreview) return
+        val marker = rendererReadyDescription ?: return
+        val activePlayer = player
+        val dice = state?.optInt("dice", 0) ?: 0
+        val players = state?.optJSONArray("players")
+        val tokens = players?.optJSONObject(activePlayer)?.optJSONArray("tokens")
+        val projected = if (activePlayer in 0..3) renderer.projectedTokens(activePlayer)
+            else Array(4) { FloatArray(2) { -1000f } }
+        val targets = ArrayList<Pair<Int, FloatArray>>(4)
+        if (activePlayer in 0..3 && dice in 1..6 && tokens != null) {
+            for (ti in 0..3) {
+                val pos = tokens.optJSONObject(ti)?.optInt("pos", -1) ?: -1
+                val legal = if (pos < 0) dice == 6 else pos + dice <= 57
+                val p = projected[ti]
+                if (legal && p[0].isFinite() && p[1].isFinite() &&
+                    p[0] >= 0f && p[0] < width.toFloat() &&
+                    p[1] >= 0f && p[1] < height.toFloat()) {
+                    targets.add(ti to floatArrayOf(p[0], p[1]))
+                }
+            }
+        }
+        val signature = targets.joinToString(";") { (index, p) ->
+            "$index@" + String.format(java.util.Locale.US, "%.1f,%.1f", p[0], p[1])
+        }
+        if (signature == latestPawnTargetSignature) return
+        latestPawnTargetSignature = signature
+        post {
+            if (rendererReadyDescription != marker) return@post
+            val origin = IntArray(2)
+            getLocationOnScreen(origin)
+            val metrics = resources.displayMetrics
+            val screenWidth = max(1, metrics.widthPixels).toFloat()
+            val screenHeight = max(1, metrics.heightPixels).toFloat()
+            val normalized = targets.mapNotNull { (index, p) ->
+                val x = (origin[0] + p[0]) / screenWidth
+                val y = (origin[1] + p[1]) / screenHeight
+                if (x in 0f..1f && y in 0f..1f) {
+                    "$index@" + String.format(java.util.Locale.US, "%.5f,%.5f", x, y)
+                } else null
+            }
+            val description = marker + " | PAWN_TAP_TARGETS=" + normalized.joinToString(";")
+            if (contentDescription != description) contentDescription = description
+        }
     }
 
     fun configureHomePreview() {
@@ -241,11 +312,12 @@ class LudoBoardView(
     private fun homeGrid(pi: Int, ti: Int): FloatArray {
         val c=2.5833335f
         val d=0.43f
+        // Player index order follows the authored board zones: Red, Green, Gold, Blue.
         val xy = arrayOf(
-            floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
             floatArrayOf(-c-d,c-d), floatArrayOf(-c+d,c-d), floatArrayOf(-c-d,c+d), floatArrayOf(-c+d,c+d),
-            floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d),
-            floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d)
+            floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
+            floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d),
+            floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d)
         )
         return xy[pi * 4 + ti].clone()
     }
@@ -337,11 +409,19 @@ class LudoBoardView(
                     }
                     return true
                 }
-                // The center die is part of the live Home scene; a tap rotates it
-                // just like the gameplay renderer without changing authoritative state.
-                if (nx >= 0.37f && nx <= 0.66f && ny >= 0.28f && ny <= 0.72f) {
-                    startDiceAnimation()
-                    return true
+                // Preview dice stay in the four player corners. Tapping any visible
+                // die rotates that die without mutating authoritative game state.
+                val projectedDice = renderer.projectedDice()
+                val dieHit = min(width, height) * 0.12f
+                for (pi in 0..3) {
+                    val p = projectedDice[pi]
+                    val dx = e.x - p[0]
+                    val dy = e.y - p[1]
+                    if (p[0] >= 0f && p[1] >= 0f && dx * dx + dy * dy <= dieHit * dieHit) {
+                        player = pi
+                        startDiceAnimation()
+                        return true
+                    }
                 }
             }
             return true
@@ -349,7 +429,6 @@ class LudoBoardView(
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
         if (BuildConfig.DEBUG) {
-            contentDescription = "LudoBoard3D|touch=" + e.x + "," + e.y + "|size=" + width + "x" + height + "|die0=" + projectedDice[0][0] + "," + projectedDice[0][1]
             try {
                 File(context.filesDir, "touch-debug.txt").appendText(
                     "touch=" + e.x + "," + e.y +
@@ -464,6 +543,7 @@ class LudoBoardView(
         private var width=1
         private var height=1
         private var program=0
+        private var firstFrameDiagnosticsCaptured=false
         private var uMvp=0
         private var uModel=0
         private var uCamera=0
@@ -480,6 +560,8 @@ class LudoBoardView(
         private lateinit var sphere:Mesh
         private lateinit var pawn:Mesh
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private val boardScaleXZ=1.6666667f
 
         private val pawnColors=intArrayOf(
             Color.rgb(219,59,66),Color.rgb(48,165,92),
@@ -494,6 +576,7 @@ class LudoBoardView(
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "SAFE_SURFACE_CREATED").apply()
             }
+            android.util.Log.i("LudoMadaRender","SAFE_SURFACE_CREATED")
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             GLES20.glDepthFunc(GLES20.GL_LEQUAL)
@@ -603,14 +686,24 @@ class LudoBoardView(
             disk=diskMesh(40)
             sphere=sphereMesh(16,10)
             pawn=pawnMesh()
+            val glbLoader=GlbRuntimeLoader(host.context)
             glbParts=runCatching{
-                GlbRuntimeLoader(host.context).loadHeroParts().also{
+                glbLoader.loadHeroParts().also{
                     android.util.Log.i("LudoMadaRender","GLB_RUNTIME_LOAD_OK parts="+it.keys.joinToString(","))
                     runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
                 }
             }.getOrElse{
                 android.util.Log.e("LudoMadaRender","GLB_RUNTIME_LOAD_FAILED",it)
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
+                emptyMap()
+            }
+            boardParts=runCatching{
+                glbLoader.loadBoardParts().also{
+                    android.util.Log.i("LudoMadaRender","BOARD_GLB_RUNTIME_LOAD_OK parts="+it.size)
+                    runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","BOARD_GLB_RUNTIME_LOAD_OK:"+it.size).apply()}
+                }
+            }.getOrElse{
+                android.util.Log.e("LudoMadaRender","BOARD_GLB_RUNTIME_LOAD_FAILED",it)
                 emptyMap()
             }
         }
@@ -628,9 +721,17 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            Matrix.perspectiveM(proj,0,if (homePreview) 34f else 32f,aspect,0.1f,60f)
+            val cameraY = if (homePreview) 8.4f else 13.2f
+            val cameraZ = if (homePreview) 9.4f else 4.2f
+            val gameplayHorizontalFov = if (aspect < 0.80f) 42f else 45f
+            val fov = portraitAwareVerticalFov(
+                aspect,
+                if (homePreview) 48f else gameplayHorizontalFov,
+                if (homePreview) 34f else 38f
+            )
+            Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
             Matrix.setLookAtM(
-                view,0,0f,8.4f,9.4f,
+                view,0,0f,cameraY,cameraZ,
                 0f,0.18f,0f,
                 0f,1f,0f
             )
@@ -642,7 +743,7 @@ class LudoBoardView(
             GLES20.glClearColor(0.008f,0.018f,0.045f,if (homePreview) 0f else 1f)
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             GLES20.glUseProgram(program)
-            GLES20.glUniform3f(uCamera,0f,8.4f,9.4f)
+            GLES20.glUniform3f(uCamera,0f,cameraY,cameraZ)
             GLES20.glUniform3f(uLight,-6.0f,14f,8f)
 
             // Home preview is a transparent live replacement over the supplied Home screenshot;
@@ -654,16 +755,61 @@ class LudoBoardView(
                 drawMesh(sphere,model(5.3f,3.15f,-5.8f,0.26f,0.26f,0.26f,0f),color(246,192,86,1f),0.12f,0.02f,0f,0.90f)
                 drawMesh(cube,model(0f,-0.48f,0f,5.45f,0.34f,5.45f,0f),color(66,26,8,1f),0.54f,0.10f,0f)
             }
-            drawMesh(cube,model(0f,-0.04f,0f,5.12f,0.12f,5.12f,0f),color(112,55,18,1f),0.42f,0.16f,0f)
-            drawMesh(cube,model(0f,0.095f,0f,4.82f,0.075f,4.82f,0f),color(182,112,42,1f),0.34f,0.18f,0f)
-            // Warm wood top matches the physical board in the reference; playable cells are
-            // layered separately above it in ivory, so the wood remains visible between lanes.
-            drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(154,86,30,1f),0.34f,0.14f,0.02f)
-
-            drawPath()
-            drawZones()
+            if (boardParts.isNotEmpty()) {
+                drawAuthoredBoard()
+                drawHomePawnSlots()
+            } else {
+                drawMesh(cube,model(0f,-0.04f,0f,5.12f,0.12f,5.12f,0f),color(112,55,18,1f),0.42f,0.16f,0f)
+                drawMesh(cube,model(0f,0.095f,0f,4.82f,0.075f,4.82f,0f),color(182,112,42,1f),0.34f,0.18f,0f)
+                drawMesh(cube,model(0f,0.17f,0f,4.48f,0.062f,4.48f,0f),color(154,86,30,1f),0.34f,0.14f,0.02f)
+                drawPath()
+                drawZones()
+            }
             drawPawns()
-            if (homePreview) drawDice(0) else drawDice()
+            drawDice()
+            logSafeFrameReadback()
+            host.publishPawnTapTargets()
+        }
+
+        private fun logSafeFrameReadback(){
+            if(!BuildConfig.DEBUG || firstFrameDiagnosticsCaptured)return
+            firstFrameDiagnosticsCaptured=true
+            runCatching {
+                val total=max(1,width*height)
+                val pixels=ByteBuffer.allocateDirect(total*4).order(ByteOrder.nativeOrder())
+                GLES20.glFinish()
+                GLES20.glReadPixels(0,0,width,height,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels)
+                val glError=GLES20.glGetError()
+                var brightPixels=0
+                var maxChannel=0
+                for(i in 0 until total){
+                    val off=i*4
+                    val r=pixels.get(off).toInt() and 0xff
+                    val g=pixels.get(off+1).toInt() and 0xff
+                    val b=pixels.get(off+2).toInt() and 0xff
+                    val peak=max(r,max(g,b))
+                    if(peak>24)brightPixels++
+                    maxChannel=max(maxChannel,peak)
+                }
+                android.util.Log.i(
+                    "LudoMadaRender",
+                    "SAFE_READBACK label=surface size="+width+"x"+height+
+                        " brightPixels="+brightPixels+"/"+total+
+                        " maxChannel="+maxChannel+
+                        " glError=0x"+glError.toString(16)
+                )
+                val expectedHeroParts=setOf(
+                    "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                    "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                )
+                if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24 &&
+                    glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
+                    android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
+                    host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                }
+            }.onFailure{
+                android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
+            }
         }
 
         private fun drawPath(){
@@ -720,23 +866,109 @@ class LudoBoardView(
                 }
                 drawMesh(disk,model(p[0],0.300f,p[1],0.30f,0.020f,0.30f,0f),color(32,24,20,0.30f),0.86f,0.02f,0f)
                 val ly=0.46f+lift[pi][ti]
-                // Bright lacquered 3D pawn silhouette, closer to the supplied reference.
-                drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.88f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.0f,0.16f)
-                drawMesh(sphere,model(p[0],ly+0.70f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
-                drawMesh(sphere,model(p[0]-0.05f,ly+0.84f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.90f),0.10f,0.35f,0.12f)
+                val body=glbParts["LM_Pawn_Tapered_Body"]
+                val head=glbParts["LM_Pawn_Spherical_Head"]
+                if(body!=null && head!=null){
+                    val b=bounce[pi][ti].coerceIn(0f,1f)
+                    val elastic=LudoMotionPhysics.elasticOut(b)
+                    val overshoot=elastic-b
+                    val backOvershoot=LudoMotionPhysics.backOut(b)-b
+                    val sx=0.72f*(1f-0.055f*overshoot)
+                    val sy=0.72f*(1f+0.115f*overshoot)
+                    val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
+                    val rz=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
+                    val rx=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                    listOf("LM_Pawn_Underside_Insert","LM_Pawn_Base_Weighted","LM_Pawn_Tapered_Body","LM_Pawn_Collar","LM_Pawn_Spherical_Head").forEach{name->
+                        glbParts[name]?.let{part->
+                            val m=heroPawnModel(part.transform,p[0],ly+PremiumVisualMotion.landingBounce(b),p[1],sx,sy,rz,rx)
+                            drawMesh(part.mesh,m,colorFromInt(pawnColors[pi],1f),0.22f,0.28f,0.04f,0.08f)
+                        }
+                    }
+                }else{
+                    drawMesh(pawn,model(p[0],ly,p[1],0.36f,0.88f,0.36f,0f),colorFromInt(pawnColors[pi],1f),0.18f,0.0f,0.16f)
+                    drawMesh(sphere,model(p[0],ly+0.70f,p[1],0.19f,0.19f,0.19f,0f),colorFromInt(pawnColors[pi],1f),0.14f,0.0f,0.15f)
+                    drawMesh(sphere,model(p[0]-0.05f,ly+0.84f,p[1]-0.09f,0.040f,0.030f,0.018f,0f),color(255,255,255,0.90f),0.10f,0.35f,0.12f)
+                }
+            }
+        }
+
+        private fun heroPawnModel(partTransform:FloatArray,x:Float,y:Float,z:Float,sx:Float,sy:Float,rotZ:Float,rotX:Float):FloatArray{
+            val root=FloatArray(16)
+            Matrix.setIdentityM(root,0)
+            Matrix.translateM(root,0,x,y,z)
+            Matrix.rotateM(root,0,rotZ,0f,0f,1f)
+            Matrix.rotateM(root,0,rotX,1f,0f,0f)
+            Matrix.scaleM(root,0,sx,sy,sx)
+            val out=FloatArray(16)
+            Matrix.multiplyMM(out,0,root,0,partTransform,0)
+            return out
+        }
+
+        private fun drawAuthoredBoard(){
+            val root=FloatArray(16)
+            Matrix.setIdentityM(root,0)
+            Matrix.translateM(root,0,-0.7f*boardScaleXZ,0.20f,0f)
+            Matrix.scaleM(root,0,boardScaleXZ,1f,boardScaleXZ)
+            for(part in boardParts.values.sortedWith(compareBy({it.materialName},{it.name}))){
+                val m=FloatArray(16)
+                Matrix.multiplyMM(m,0,root,0,part.transform,0)
+                val n=part.materialName
+                val c=when(n){
+                    "LM_Path_Red"->color(220,54,57,1f)
+                    "LM_Path_Green"->color(49,165,91,1f)
+                    "LM_Path_Gold"->color(237,179,44,1f)
+                    "LM_Path_Blue"->color(57,111,219,1f)
+                    "LM_Path_Ivory"->color(235,219,179,1f)
+                    "LM_Path_Dark"->color(17,18,21,1f)
+                    "LM_Board_Felt"->color(74,46,26,1f)
+                    "LM_Gold_Frame"->color(184,118,36,1f)
+                    "LM_Table_Lacquer"->color(102,48,19,1f)
+                    else->color(205,195,176,1f)
+                }
+                val rough=when(n){
+                    "LM_Gold_Frame"->0.22f
+                    "LM_Table_Lacquer"->0.32f
+                    "LM_Path_Red","LM_Path_Green","LM_Path_Gold","LM_Path_Blue"->0.34f
+                    "LM_Path_Ivory"->0.52f
+                    "LM_Board_Felt"->0.70f
+                    else->0.44f
+                }
+                val metal=if(n=="LM_Gold_Frame")0.84f else 0.06f
+                val emit=if(n=="LM_Gold_Frame")0.025f else 0.005f
+                drawMesh(part.mesh,m,c,rough,metal,emit,if(n=="LM_Gold_Frame")0.12f else 0f)
+            }
+        }
+
+        private fun drawHomePawnSlots(){
+            val c=2.5833335f
+            val offsets=floatArrayOf(-0.43f,0.43f)
+            val centers=arrayOf(floatArrayOf(-c,c),floatArrayOf(-c,-c),floatArrayOf(c,-c),floatArrayOf(c,c))
+            for(pi in 0..3)for(sx in offsets)for(sz in offsets){
+                val m=model(centers[pi][0]+sx,0.212f,centers[pi][1]+sz,0.26f,0.024f,0.26f,0f)
+                drawMesh(disk,m,colorFromInt(pawnColors[pi],0.72f),0.26f,0.14f,0.01f)
             }
         }
 
         private fun drawDice(onlyPi:Int = -1){
             for(pi in 0..3){
                 if (onlyPi >= 0 && pi != onlyPi) continue
-                val d=if(homePreview) floatArrayOf(0f,0f) else dieCenter(pi)
+                val d=dieCenter(pi)
                 val rot=if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
                 // Four compact chrome dice trays + hydro-plated die bodies.
                 drawMesh(die,model(d[0],0.24f,d[1],0.74f,0.11f,0.74f,0f),color(58,63,70,1f),0.12f,1.0f,0.015f,0.92f)
                 drawMesh(die,model(d[0],0.35f,d[1],0.60f,0.055f,0.60f,0f),color(175,181,188,1f),0.08f,1.0f,0.0f,0.96f)
-                val dieModel=model(d[0],0.75f,d[1],0.44f,0.44f,0.44f,rot)
-                drawMesh(die,dieModel,color(232,236,240,1f),0.045f,1.0f,0.018f,0.98f)
+                val dieModel=model(d[0],0.75f,d[1],0.52f,0.52f,0.52f,rot)
+                val glbDie=glbParts["LM_Die_HydroChrome_Body"]
+                if(glbDie!=null){
+                    val centered=model(-1.55f,-0.58f,0f,1f,1f,1f,0f)
+                    val local=FloatArray(16)
+                    Matrix.multiplyMM(local,0,centered,0,glbDie.transform,0)
+                    val authored=FloatArray(16)
+                    Matrix.multiplyMM(authored,0,dieModel,0,local,0)
+                    drawMesh(glbDie.mesh,authored,color(246,249,252,1f),0.07f,1.0f,0.018f,0.98f)
+                }else{
+                    drawMesh(die,dieModel,color(232,236,240,1f),0.045f,1.0f,0.018f,0.98f)
+                }
                 val value=if(pi==player)(state?.optInt("dice",0)?:0) else 1
                 val pip=0.19f
                 val positions=when(value){
@@ -779,14 +1011,11 @@ class LudoBoardView(
             return Mesh(v.toFloatArray(),n.toFloatArray(),idx.toShortArray())
         }
 
-        private fun dieCenter(pi:Int):FloatArray {
-            if (homePreview) return floatArrayOf(0f, 0f)
-            return when(pi){
-                0->floatArrayOf(-4.90f,-4.90f)
-                1->floatArrayOf(4.90f,-4.90f)
-                2->floatArrayOf(4.90f,4.90f)
-                else->floatArrayOf(-4.90f,4.90f)
-            }
+        private fun dieCenter(pi:Int):FloatArray = when(pi){
+            0->floatArrayOf(-3.55f,3.55f)
+            1->floatArrayOf(-3.55f,-3.55f)
+            2->floatArrayOf(3.55f,-3.55f)
+            else->floatArrayOf(3.55f,3.55f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
@@ -1025,7 +1254,7 @@ class LudoBoardView(
         private var boardTex=0
         private var neutralTex=0
         private var metalTex=0
-        private var normalTex=0
+        private var normalTex=0;private var woodNormalTex=0
         private var envCube=0
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
@@ -1091,7 +1320,7 @@ class LudoBoardView(
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);heroRing=ringMesh(64,1.02f,0.72f)
 
-            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
+            woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createFlatNormalTexture();woodNormalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
             // The authored outdoor environment is drawn only by the Home-preview path.
             // Avoid loading its 2K maps into ordinary gameplay surfaces.
             if (host.homePreview) {
@@ -1168,18 +1397,24 @@ class LudoBoardView(
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 8.2f
-            val baseCamZ=if (host.homePreview) 13.2f else 8.8f
+            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 13.2f
+            val baseCamZ=if (host.homePreview) 13.2f else if(land)8.8f else 4.2f
             val rollEnergy=if(!host.homePreview && player in 0..3)(1f-diceAnim).coerceIn(0f,1f) else 0f
             val shakeX=sin(now/6_000_000.0).toFloat()*rollEnergy*0.055f
             val shakeZ=cos(now/7_000_000.0).toFloat()*rollEnergy*0.040f
             val camZ=baseCamZ+shakeZ
-            val fov=if (host.homePreview) 38f else if(land)31f else 34f
+            val gameplayHorizontalFov=if(aspect<0.80f)42f else 45f
+            val fov=portraitAwareVerticalFov(
+                aspect,
+                if (host.homePreview) 48f else gameplayHorizontalFov,
+                if (host.homePreview) 38f else if(land)31f else 34f
+            )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            host.publishPawnTapTargets()
         }
-        private fun logFramebufferPixels(label:String,w:Int,h:Int){
+        private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
             val pixels=ByteBuffer.allocateDirect(safeW*safeH*4).order(ByteOrder.nativeOrder())
             GLES30.glFinish()
@@ -1210,6 +1445,8 @@ class LudoBoardView(
                 " meanRGB="+(sumR/total)+","+(sumG/total)+","+(sumB/total)+
                 " centerRGB="+cr+","+cg+","+cb+
                 " glError=0x"+glError.toString(16))
+            val minimumBright=max(32,(total*0.005f).toInt())
+            return glError==GLES30.GL_NO_ERROR && brightPixels>=minimumBright && maxChannel>24
         }
 
         private fun createSceneTargets(w:Int,h:Int){
@@ -1255,8 +1492,18 @@ class LudoBoardView(
             renderScene()
             renderPostProcess()
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
-                logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
-                android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                val validSurface=logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
+                val expectedHeroParts=setOf(
+                    "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                    "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                )
+                if(validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
+                    android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                    host.markRendererReady("GLES3_PBR",glbParts.size,boardParts.size)
+                }else{
+                    android.util.Log.e("LudoMadaRender","PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
+                        " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                }
                 firstFrameDiagnosticsCaptured=true
             }
         }
@@ -1270,19 +1517,17 @@ class LudoBoardView(
             for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
-        private fun dieCenterWorld(pi:Int):FloatArray = if(host.homePreview){
-            floatArrayOf(0f,boardTop+0.10f,0f)
-        }else when(pi){
-            0 -> floatArrayOf(-4.15f,boardTop+0.10f,4.15f)
-            1 -> floatArrayOf(-4.15f,boardTop+0.10f,-4.15f)
-            2 -> floatArrayOf(4.15f,boardTop+0.10f,-4.15f)
-            else -> floatArrayOf(4.15f,boardTop+0.10f,4.15f)
+        private fun dieCenterWorld(pi:Int):FloatArray = when(pi){
+            0 -> floatArrayOf(-3.55f,boardTop+0.10f,3.55f)
+            1 -> floatArrayOf(-3.55f,boardTop+0.10f,-3.55f)
+            2 -> floatArrayOf(3.55f,boardTop+0.10f,-3.55f)
+            else -> floatArrayOf(3.55f,boardTop+0.10f,3.55f)
         }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
                 if(homePreview) drawHomeEnvironmentShadows()
                 if(!homePreview)drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
-                if(!homePreview && boardParts.isNotEmpty()){
+                if(boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
@@ -1327,7 +1572,7 @@ class LudoBoardView(
             } else {
                 drawGameplayBackdrop()
             }
-            if(!homePreview && boardParts.isNotEmpty()){
+            if(boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
             }else{
@@ -1348,10 +1593,19 @@ class LudoBoardView(
                 }
             }
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
-            if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
+            for(pi in 0..3) drawDie(pi)
         }
         private fun drawGameplayBackdrop(){
-            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),floatArrayOf(0.025f,0.095f,0.24f,1f),0.72f,0.04f,1f,0f,0,false)
+            // The empty margins around the square board are part of the same premium
+            // tabletop, not a featureless navy void. Reuse the calibrated in-app wood
+            // albedo + normal maps so the gameplay camera reads as a real board on a table.
+            drawMesh(
+                cube,
+                identityAt(0f,-1.02f,0f,13f,0.08f,13f),
+                floatArrayOf(0.92f,0.82f,0.70f,1f),
+                0.48f,0.035f,1f,0.003f,5,false,
+                woodTex,woodNormalTex,0
+            )
         }
 
         private fun authoredBoardRoot():FloatArray{
@@ -1391,18 +1645,14 @@ class LudoBoardView(
                     else->0.34f
                 }
                 val metallic=if(mn=="LM_Gold_Frame")0.88f else 0.06f
-                val albedo=when{
-                    mn=="LM_Table_Lacquer"->woodTex
-                    mn=="LM_Path_Ivory"->boardTex
-                    else->0
-                }
-                val ntex=if(mn=="LM_Table_Lacquer")normalTex else 0
+                val albedo=when(mn){"LM_Table_Lacquer"->woodTex;"LM_Board_Felt"->neutralTex;else->boardTex}
+                val ntex=if(mn=="LM_Table_Lacquer")woodNormalTex else 0
                 drawMesh(part.mesh,m,color,rough,metallic,1f,if(mn=="LM_Gold_Frame")0.015f else 0f,5,false,albedo,ntex,0)
             }
         }
 
         private fun drawHomePawnSlots(shadowPass:Boolean){
-            val centers=arrayOf(floatArrayOf(-2.5833335f,-2.5833335f),floatArrayOf(-2.5833335f,2.5833335f),floatArrayOf(2.5833335f,2.5833335f),floatArrayOf(2.5833335f,-2.5833335f))
+            val centers=arrayOf(floatArrayOf(-2.5833335f,2.5833335f),floatArrayOf(-2.5833335f,-2.5833335f),floatArrayOf(2.5833335f,-2.5833335f),floatArrayOf(2.5833335f,2.5833335f))
             val offsets=arrayOf(-0.43f,0.43f)
             for(pi in 0..3)for(sx in offsets)for(sz in offsets){
                 val m=identityAt(centers[pi][0]+sx,boardTop+0.012f,centers[pi][1]+sz,0.26f,0.024f,0.26f)
@@ -1719,8 +1969,9 @@ class LudoBoardView(
         private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
         private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
-        private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
-        private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val rgb=PbrMaterialTextures.colorRgb(kind,x,y,size);data.put((rgb shr 16).toByte()).put((rgb shr 8).toByte()).put(rgb.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createFlatNormalTexture():Int{val data=ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());data.put(128.toByte()).put(128.toByte()).put(255.toByte()).put(255.toByte());data.position(0);return uploadTexture(1,data)}
+        private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val wave=sin(x*0.055+sin(y*0.025)*0.45);val nx=(128+wave*2.5+cos(y*0.065)*1.0).toInt().coerceIn(0,255);val ny=(128+cos(x*0.045+sin(y*0.03))*2.2+sin(y*0.07)*0.8).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createEnvironmentCubemap():Int{
             val size=64
             val ids=IntArray(1)
