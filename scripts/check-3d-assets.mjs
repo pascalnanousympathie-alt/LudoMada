@@ -43,6 +43,31 @@ checks.push(["active rev5 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["active rev5 asset size", packagedBytes === 867800]);
 checks.push(["active rev5 asset sha256", packagedSha256 === "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f"]);
 
+function jpegDimensions(filePath) {
+  const bytes = fs.readFileSync(filePath);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const startOfFrame = new Set([0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf]);
+  let offset = 2;
+  while (offset + 4 < bytes.length) {
+    if (bytes[offset] !== 0xff) { offset += 1; continue; }
+    while (bytes[offset] === 0xff) offset += 1;
+    const marker = bytes[offset++];
+    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) continue;
+    if (offset + 2 > bytes.length) return null;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+    if (startOfFrame.has(marker)) {
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5)
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
 const assetsRoot = path.resolve(root, "..");
 const homeEnvironment = manifest.home_environment ?? {};
 checks.push(["Home preview renderer declared", homeEnvironment.renderer === "LudoBoardView.SceneRenderer.homePreview"]);
@@ -62,7 +87,15 @@ const homeAssetResults = homeAssets.map((asset) => {
   checks.push(["Home asset path safe: " + String(asset.path), pathSafe]);
   checks.push(["Home asset present: " + String(asset.path), present]);
   checks.push(["Home asset size: " + String(asset.path), present && actualBytes === asset.bytes]);
-  return { path: asset.path, present, bytes: actualBytes, expectedBytes: asset.bytes };
+  const isHomeTexture = String(asset.path).startsWith("environment/textures/");
+  const dimensions = present && isHomeTexture ? jpegDimensions(targetPath) : null;
+  if (isHomeTexture) {
+    checks.push(["Home texture is valid JPEG: " + String(asset.path), dimensions !== null]);
+    checks.push(["Home texture fits 2K cap: " + String(asset.path),
+      dimensions !== null && dimensions.width <= homeEnvironment.textures_max_dimension &&
+      dimensions.height <= homeEnvironment.textures_max_dimension]);
+  }
+  return { path: asset.path, present, bytes: actualBytes, expectedBytes: asset.bytes, dimensions };
 });
 const homeTextureBytes = homeAssets
   .filter((asset) => String(asset.path).startsWith("environment/textures/"))
