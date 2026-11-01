@@ -1810,7 +1810,7 @@ class LudoBoardView(
             try {
                 if(shadowPass){
                     for(part in parts){
-                        if(part.materialName=="ENV_Sky_HDRI")continue
+                        if (!HomeEnvironmentComposition.castsHomeEnvironmentShadow(part.name)) continue
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
                         drawShadowMesh(part.mesh,model)
                     }
