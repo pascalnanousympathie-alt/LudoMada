@@ -104,11 +104,24 @@ class MainActivity : Activity() {
             }
             setOnClickListener{if(token.isNotBlank())wallet() else login()}
         }
-        balanceBox.addView(label("SOLDE DU COMPTE",8.5f,true,Color.WHITE))
-        topBalanceView=label("— Ar",12f,true,gold);topBalanceView!!.gravity=Gravity.CENTER
-        balanceBox.addView(topBalanceView,LinearLayout.LayoutParams(-2,dp(22)))
+        val balanceTitle=label("SOLDE MGA",8f,true,Color.WHITE).apply {
+            gravity=Gravity.CENTER
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.END
+            includeFontPadding=false
+            contentDescription="ACCOUNT_BALANCE_HEADER"
+        }
+        balanceBox.addView(balanceTitle,LinearLayout.LayoutParams(-1,dp(16)))
+        topBalanceView=label("— Ar",11f,true,gold).apply {
+            gravity=Gravity.CENTER
+            maxLines=1
+            ellipsize=android.text.TextUtils.TruncateAt.END
+            includeFontPadding=false
+            contentDescription="ACCOUNT_BALANCE_VALUE"
+        }
+        balanceBox.addView(topBalanceView,LinearLayout.LayoutParams(-1,dp(20)))
         bar.addView(balanceBox,LinearLayout.LayoutParams(dp(112),dp(48)))
-        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,0,0,dp(14))})
+        root.addView(bar,LinearLayout.LayoutParams(-1,-2).apply{setMargins(0,dp(10),0,dp(14))})
     }
     private fun card(title:String, body:String, accent:Int=royal): LinearLayout {
         val outer=LinearLayout(this).apply{
