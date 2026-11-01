@@ -929,8 +929,16 @@ try {
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
 
-  const homeReadyTree=waitForSnapshot("HOME_3D_FRAME_COMPLETE",15000);
-  if (!homeReadyTree) throw new Error("Premium Home did not complete a live 3D renderer frame");
+  const homeReadyWait=waitForSnapshot("HOME_3D_FRAME_COMPLETE",15000);
+  if (!homeReadyWait) throw new Error("Premium Home did not complete a live 3D renderer frame");
+  // --find is a reduced, query-scoped response and does not guarantee the complete
+  // contentDescription fields. Re-read the full accessibility tree before parsing
+  // renderer type and asset counts, so the acceptance check uses the actual node.
+  const homeReadyTree=readTree();
+  if (!homeReadyTree || !treeHas(homeReadyTree,"HOME_3D_FRAME_COMPLETE")) {
+    throw new Error("Full Home accessibility tree lost its renderer completion marker: " +
+      JSON.stringify({waitLabels:treeLabels(homeReadyWait),fullLabels:treeLabels(homeReadyTree)}));
+  }
   // The renderer publishes this accessibility marker only after a clean GL framebuffer
   // readback and successful required-asset checks. Use it as the contract instead of
   // relying on cloud logcat retention/filter support for renderer log tags.
