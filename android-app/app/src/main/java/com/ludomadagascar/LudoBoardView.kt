@@ -725,7 +725,7 @@ class LudoBoardView(
             val cameraZ = if (homePreview) 9.4f else 4.2f
             val fov = portraitAwareVerticalFov(
                 aspect,
-                if (homePreview) 48f else 45f,
+                if (homePreview) 48f else 40f,
                 if (homePreview) 34f else 38f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
@@ -1404,7 +1404,7 @@ class LudoBoardView(
             val camZ=baseCamZ+shakeZ
             val fov=portraitAwareVerticalFov(
                 aspect,
-                if (host.homePreview) 48f else 45f,
+                if (host.homePreview) 48f else 40f,
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
