@@ -254,11 +254,12 @@ class LudoBoardView(
     private fun homeGrid(pi: Int, ti: Int): FloatArray {
         val c=2.5833335f
         val d=0.43f
+        // Player index order follows the authored board zones: Red, Green, Gold, Blue.
         val xy = arrayOf(
-            floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
             floatArrayOf(-c-d,c-d), floatArrayOf(-c+d,c-d), floatArrayOf(-c-d,c+d), floatArrayOf(-c+d,c+d),
-            floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d),
-            floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d)
+            floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
+            floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d),
+            floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d)
         )
         return xy[pi * 4 + ti].clone()
     }
@@ -838,7 +839,7 @@ class LudoBoardView(
         private fun drawHomePawnSlots(){
             val c=2.5833335f
             val offsets=floatArrayOf(-0.43f,0.43f)
-            val centers=arrayOf(floatArrayOf(-c,-c),floatArrayOf(-c,c),floatArrayOf(c,c),floatArrayOf(c,-c))
+            val centers=arrayOf(floatArrayOf(-c,c),floatArrayOf(-c,-c),floatArrayOf(c,-c),floatArrayOf(c,c))
             for(pi in 0..3)for(sx in offsets)for(sz in offsets){
                 val m=model(centers[pi][0]+sx,0.212f,centers[pi][1]+sz,0.26f,0.024f,0.26f,0f)
                 drawMesh(disk,m,colorFromInt(pawnColors[pi],0.72f),0.26f,0.14f,0.01f)
@@ -1525,7 +1526,7 @@ class LudoBoardView(
         }
 
         private fun drawHomePawnSlots(shadowPass:Boolean){
-            val centers=arrayOf(floatArrayOf(-2.5833335f,-2.5833335f),floatArrayOf(-2.5833335f,2.5833335f),floatArrayOf(2.5833335f,2.5833335f),floatArrayOf(2.5833335f,-2.5833335f))
+            val centers=arrayOf(floatArrayOf(-2.5833335f,2.5833335f),floatArrayOf(-2.5833335f,-2.5833335f),floatArrayOf(2.5833335f,-2.5833335f),floatArrayOf(2.5833335f,2.5833335f))
             val offsets=arrayOf(-0.43f,0.43f)
             for(pi in 0..3)for(sx in offsets)for(sz in offsets){
                 val m=identityAt(centers[pi][0]+sx,boardTop+0.012f,centers[pi][1]+sz,0.26f,0.024f,0.26f)
