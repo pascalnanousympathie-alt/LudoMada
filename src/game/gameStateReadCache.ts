@@ -26,6 +26,8 @@ interface StoredEntry {
 export class GameStateReadCache {
   private readonly entries = new Map<string, StoredEntry>();
   private mutationGeneration = 0;
+  private hits = 0;
+  private misses = 0;
 
   constructor(
     private readonly ttlMs = 10_000,
@@ -46,13 +48,18 @@ export class GameStateReadCache {
 
   get(gameId: string): GameStateReadCacheEntry | null {
     const stored = this.entries.get(gameId);
-    if (!stored) return null;
-
-    if (stored.expiresAt <= this.now()) {
-      this.entries.delete(gameId);
+    if (!stored) {
+      this.misses++;
       return null;
     }
 
+    if (stored.expiresAt <= this.now()) {
+      this.entries.delete(gameId);
+      this.misses++;
+      return null;
+    }
+
+    this.hits++;
     // Refresh insertion order for bounded LRU eviction.
     this.entries.delete(gameId);
     this.entries.set(gameId, stored);
@@ -104,7 +111,9 @@ export class GameStateReadCache {
   metrics() {
     return {
       entries: this.entries.size,
-      generation: this.mutationGeneration
+      generation: this.mutationGeneration,
+      hits: this.hits,
+      misses: this.misses
     };
   }
 }
