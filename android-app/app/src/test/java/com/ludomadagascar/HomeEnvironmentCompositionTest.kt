@@ -15,6 +15,23 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun environmentGlbBaobabNodesAreFilteredButTerrainSkyAndGroundRemain() {
+        val embedded = listOf(
+            "ENV_Baobab_Branch_00",
+            "ENV_Baobab_LeafCluster_03",
+            "ENV_Baobab_Root_02",
+            "ENV_Baobab_Trunk"
+        )
+        embedded.forEach { assertTrue(HomeEnvironmentComposition.isEmbeddedBaobabPart(it)) }
+        listOf(
+            "ENV_Grass_00",
+            "ENV_Rock_00",
+            "ENV_Sky_Dome",
+            "ENV_Terrain_HighDetail"
+        ).forEach { assertTrue(!HomeEnvironmentComposition.isEmbeddedBaobabPart(it)) }
+    }
+
+    @Test
     fun baobabPlacementIsPairedOnBothSidesAtFrontAndBack() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(trees[0].x, -trees[1].x, 0.25f)
