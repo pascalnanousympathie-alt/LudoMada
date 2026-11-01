@@ -22,7 +22,7 @@ The benchmark now configures a global shared socket pool of 4,096. The API Postg
 
 The load profile uses the Artillery `ensure` plugin with strict conditions and a post-run JSON validator:
 
-- Actual aggregate request rate at least 10,000 RPS.
+- Configured steady-state arrival target: 10,000 RPS; minimum measured aggregate rate across the warm-up plus steady-state run: 9,000 RPS. The aggregate floor is lower because the report includes the intentional 5-second ramp from 1,000 to 10,000 RPS.
 - Failed virtual users plus non-200 responses at or below 0.1%.
 - p95 at or below 250 ms.
 - p99 at or below 500 ms.
