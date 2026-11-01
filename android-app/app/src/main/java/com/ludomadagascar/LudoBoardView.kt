@@ -1976,8 +1976,9 @@ class LudoBoardView(
             val t=if(pi==player)diceAnim else 1f
             val spin=PremiumVisualMotion.dieSpin(t)
             val value=dieValue(pi)
-            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
+            val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+            val sx=(1f-spin)*(720f+pi*55f)+idleRotation+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+idleRotation*0.62f+17f+pi*11f
             val anchor=identityAt(x,y,z,1f,1f,1f)
             Matrix.rotateM(anchor,0,sx,1f,0f,0f)
             Matrix.rotateM(anchor,0,sy,0f,1f,0f)
