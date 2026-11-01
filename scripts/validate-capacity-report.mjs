@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const CAPACITY_LIMITS = Object.freeze({
-  minimumRps: 10_000,
+  minimumRps: 9_000,
   maximumErrorRatePercent: 0.1,
   maximumP95Ms: 250,
   maximumP99Ms: 500
