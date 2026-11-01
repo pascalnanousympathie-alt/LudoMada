@@ -47,8 +47,12 @@ test("only the isolated CI capacity profile gets the larger PostgreSQL pool ceil
   expect(maximumPgPoolSize({ ...capacityEnv, NODE_ENV: "production" })).toBe(20);
 });
 
-test("process-local game-state read cache is disabled unless explicitly enabled", () => {
+test("process-local game-state cache is restricted to disposable CI capacity mode", () => {
   expect(isGameStateReadCacheEnabled({})).toBe(false);
-  expect(isGameStateReadCacheEnabled({ LUDOMADA_GAME_STATE_CACHE: "false" })).toBe(false);
-  expect(isGameStateReadCacheEnabled({ LUDOMADA_GAME_STATE_CACHE: "true" })).toBe(true);
+  expect(isGameStateReadCacheEnabled({ LUDOMADA_GAME_STATE_CACHE: "true" })).toBe(false);
+  expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "false" })).toBe(false);
+  expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true" })).toBe(true);
+  expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", CI: "false" })).toBe(false);
+  expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", NODE_ENV: "production" })).toBe(false);
+  expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci" })).toBe(false);
 });
