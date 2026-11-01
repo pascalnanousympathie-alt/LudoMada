@@ -1596,7 +1596,16 @@ class LudoBoardView(
             for(pi in 0..3) drawDie(pi)
         }
         private fun drawGameplayBackdrop(){
-            drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),floatArrayOf(0.025f,0.095f,0.24f,1f),0.72f,0.04f,1f,0f,0,false)
+            // The empty margins around the square board are part of the same premium
+            // tabletop, not a featureless navy void. Reuse the calibrated in-app wood
+            // albedo + normal maps so the gameplay camera reads as a real board on a table.
+            drawMesh(
+                cube,
+                identityAt(0f,-1.02f,0f,13f,0.08f,13f),
+                floatArrayOf(0.92f,0.82f,0.70f,1f),
+                0.48f,0.035f,1f,0.003f,5,false,
+                woodTex,normalTex,0
+            )
         }
 
         private fun authoredBoardRoot():FloatArray{
