@@ -1579,15 +1579,19 @@ class LudoBoardView(
                         "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
                         "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
                     )
+                    val visibleEnvironmentPartCount=envParts.keys.count {
+                        !HomeEnvironmentComposition.isEmbeddedBaobabPart(it)
+                    }
                     val complete=validSurface &&
                         glbParts.keys.containsAll(expectedHeroParts) &&
-                        boardParts.isNotEmpty() && envParts.isNotEmpty() && baobabParts.isNotEmpty()
+                        boardParts.isNotEmpty() && visibleEnvironmentPartCount>0 && baobabParts.isNotEmpty()
                     if (complete) {
                         android.util.Log.i("LudoMadaRender",
-                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+envParts.size+
+                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+visibleEnvironmentPartCount+
+                            " embeddedBaobabParts="+(envParts.size-visibleEnvironmentPartCount)+
                             " baobabParts="+baobabParts.size+
                             " heroParts="+glbParts.size+" boardParts="+boardParts.size)
-                        host.markHomePreviewReady("GLES3_PBR",envParts.size,baobabParts.size,glbParts.size,boardParts.size)
+                        host.markHomePreviewReady("GLES3_PBR",visibleEnvironmentPartCount,baobabParts.size,glbParts.size,boardParts.size)
                     } else {
                         android.util.Log.e("LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
@@ -1790,7 +1794,11 @@ class LudoBoardView(
 
         private fun drawEnvironmentGlb(shadowPass:Boolean){
             if(envParts.isEmpty())return
-            val parts=envParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
+            // The environment GLB itself contains a decorative centreline baobab
+            // (branches/leaves/roots/trunk). Keep only terrain, rocks, grass and sky here;
+            // the four side-framed baobabs are rendered from baobab-real.glb below.
+            val visibleEnvironmentParts=envParts.filterKeys { !HomeEnvironmentComposition.isEmbeddedBaobabPart(it) }
+            val parts=visibleEnvironmentParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
             // The authored environment is Z-up while the gameplay board is Y-up.
             // Respect glTF doubleSided metadata for the inside-facing sky dome and
             // all other environment materials that were authored double-sided.
