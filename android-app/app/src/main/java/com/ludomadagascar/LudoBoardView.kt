@@ -121,10 +121,61 @@ class LudoBoardView(
         if (homePreview) post { configureHomePreview() }
     }
 
+    @Volatile private var rendererReadyDescription: String? = null
+    @Volatile private var latestPawnTargetSignature: String = ""
+
     internal fun markRendererReady(rendererName:String, heroPartCount:Int, boardPartCount:Int) {
         if (!BuildConfig.DEBUG || homePreview) return
+        val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount | BOARD_PARTS=$boardPartCount"
+        rendererReadyDescription = marker
         post {
-            contentDescription = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount | BOARD_PARTS=$boardPartCount"
+            if (contentDescription != marker) contentDescription = marker
+        }
+    }
+
+    internal fun publishPawnTapTargets() {
+        if (!BuildConfig.DEBUG || homePreview) return
+        val marker = rendererReadyDescription ?: return
+        val activePlayer = player
+        val dice = state?.optInt("dice", 0) ?: 0
+        val players = state?.optJSONArray("players")
+        val tokens = players?.optJSONObject(activePlayer)?.optJSONArray("tokens")
+        val projected = if (activePlayer in 0..3) renderer.projectedTokens(activePlayer)
+            else Array(4) { FloatArray(2) { -1000f } }
+        val targets = ArrayList<Pair<Int, FloatArray>>(4)
+        if (activePlayer in 0..3 && dice in 1..6 && tokens != null) {
+            for (ti in 0..3) {
+                val pos = tokens.optJSONObject(ti)?.optInt("pos", -1) ?: -1
+                val legal = if (pos < 0) dice == 6 else pos + dice <= 57
+                val p = projected[ti]
+                if (legal && p[0].isFinite() && p[1].isFinite() &&
+                    p[0] >= 0f && p[0] < width.toFloat() &&
+                    p[1] >= 0f && p[1] < height.toFloat()) {
+                    targets.add(ti to floatArrayOf(p[0], p[1]))
+                }
+            }
+        }
+        val signature = targets.joinToString(";") { (index, p) ->
+            "$index@" + String.format(java.util.Locale.US, "%.1f,%.1f", p[0], p[1])
+        }
+        if (signature == latestPawnTargetSignature) return
+        latestPawnTargetSignature = signature
+        post {
+            if (rendererReadyDescription != marker) return@post
+            val origin = IntArray(2)
+            getLocationOnScreen(origin)
+            val metrics = resources.displayMetrics
+            val screenWidth = max(1, metrics.widthPixels).toFloat()
+            val screenHeight = max(1, metrics.heightPixels).toFloat()
+            val normalized = targets.mapNotNull { (index, p) ->
+                val x = (origin[0] + p[0]) / screenWidth
+                val y = (origin[1] + p[1]) / screenHeight
+                if (x in 0f..1f && y in 0f..1f) {
+                    "$index@" + String.format(java.util.Locale.US, "%.5f,%.5f", x, y)
+                } else null
+            }
+            val description = marker + " | PAWN_TAP_TARGETS=" + normalized.joinToString(";")
+            if (contentDescription != description) contentDescription = description
         }
     }
 
@@ -378,7 +429,6 @@ class LudoBoardView(
         if (e.actionMasked != MotionEvent.ACTION_UP || player !in 0..3) return true
         val projectedDice = renderer.projectedDice()
         if (BuildConfig.DEBUG) {
-            contentDescription = "LudoBoard3D|touch=" + e.x + "," + e.y + "|size=" + width + "x" + height + "|die0=" + projectedDice[0][0] + "," + projectedDice[0][1]
             try {
                 File(context.filesDir, "touch-debug.txt").appendText(
                     "touch=" + e.x + "," + e.y +
@@ -717,6 +767,7 @@ class LudoBoardView(
             drawPawns()
             drawDice()
             logSafeFrameReadback()
+            host.publishPawnTapTargets()
         }
 
         private fun logSafeFrameReadback(){
@@ -1359,6 +1410,7 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            host.publishPawnTapTargets()
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
