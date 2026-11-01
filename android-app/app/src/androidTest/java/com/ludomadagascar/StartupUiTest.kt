@@ -101,11 +101,13 @@ class StartupUiTest {
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
         tapHomeMusic(device, context)
+        device.waitForIdle()
         assertTrue(
             "Home music preference must change after the icon tap",
             musicPrefs.getBoolean("enabled", true) != originalMusicEnabled
         )
         tapHomeMusic(device, context)
+        device.waitForIdle()
         assertTrue(
             "Home music icon must restore the original preference",
             musicPrefs.getBoolean("enabled", true) == originalMusicEnabled
