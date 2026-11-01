@@ -38,7 +38,8 @@ describe("operational mode guards", () => {
 });
 
 test("only the isolated CI capacity profile gets the larger PostgreSQL pool ceiling", () => {
-  expect(maximumPgPoolSize(disposableCiEnv)).toBe(20);
+  const normalCiEnv = { ...disposableCiEnv, LUDOMADA_LOAD_TEST_MODE: "false" };
+  expect(maximumPgPoolSize(normalCiEnv)).toBe(20);
   const capacityEnv = { ...disposableCiEnv, LUDOMADA_LOAD_TEST_MODE: "true" };
   expect(maximumPgPoolSize(capacityEnv)).toBe(60);
   expect(maximumPgPoolSize({ ...capacityEnv, DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci" })).toBe(20);
