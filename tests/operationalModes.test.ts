@@ -1,5 +1,6 @@
 import {
   isCapacityLoadTestEnabled,
+  isGameStateReadCacheEnabled,
   isPerformanceDiagnosticsEnabled,
   isPoolDiagnosticsEnabled,
   maximumPgPoolSize
@@ -44,4 +45,10 @@ test("only the isolated CI capacity profile gets the larger PostgreSQL pool ceil
   expect(maximumPgPoolSize(capacityEnv)).toBe(60);
   expect(maximumPgPoolSize({ ...capacityEnv, DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci" })).toBe(20);
   expect(maximumPgPoolSize({ ...capacityEnv, NODE_ENV: "production" })).toBe(20);
+});
+
+test("process-local game-state read cache is disabled unless explicitly enabled", () => {
+  expect(isGameStateReadCacheEnabled({})).toBe(false);
+  expect(isGameStateReadCacheEnabled({ LUDOMADA_GAME_STATE_CACHE: "false" })).toBe(false);
+  expect(isGameStateReadCacheEnabled({ LUDOMADA_GAME_STATE_CACHE: "true" })).toBe(true);
 });
