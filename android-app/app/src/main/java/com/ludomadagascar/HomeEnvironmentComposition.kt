@@ -30,6 +30,10 @@ internal object HomeEnvironmentComposition {
     fun isHomeCentrelineOccluderPart(nodeName: String): Boolean =
         nodeName == "ENV_Rock_04"
 
+    /** Only perimeter rocks cast environment shadows; ground/grass/sky remain receivers/background. */
+    fun castsHomeEnvironmentShadow(nodeName: String): Boolean =
+        nodeName.startsWith("ENV_Rock_") && !isHomeCentrelineOccluderPart(nodeName)
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
