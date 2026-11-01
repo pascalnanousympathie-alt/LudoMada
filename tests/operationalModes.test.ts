@@ -1,7 +1,8 @@
 import {
   isCapacityLoadTestEnabled,
   isPerformanceDiagnosticsEnabled,
-  isPoolDiagnosticsEnabled
+  isPoolDiagnosticsEnabled,
+  maximumPgPoolSize
 } from "../src/operationalModes";
 
 const disposableCiEnv = {
@@ -34,4 +35,12 @@ describe("operational mode guards", () => {
     expect(isCapacityLoadTestEnabled({ ...disposableCiEnv, LUDOMADA_LOAD_TEST_MODE: "false" })).toBe(false);
     expect(isCapacityLoadTestEnabled({ DATABASE_URL: "not-a-url" })).toBe(false);
   });
+});
+
+test("only the isolated CI capacity profile gets the larger PostgreSQL pool ceiling", () => {
+  expect(maximumPgPoolSize(disposableCiEnv)).toBe(20);
+  const capacityEnv = { ...disposableCiEnv, LUDOMADA_LOAD_TEST_MODE: "true" };
+  expect(maximumPgPoolSize(capacityEnv)).toBe(60);
+  expect(maximumPgPoolSize({ ...capacityEnv, DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci" })).toBe(20);
+  expect(maximumPgPoolSize({ ...capacityEnv, NODE_ENV: "production" })).toBe(20);
 });
