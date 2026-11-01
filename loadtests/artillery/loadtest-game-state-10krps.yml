@@ -2,6 +2,8 @@ config:
   target: "http://127.0.0.1:3101"
   http:
     timeout: 15
+    # Share keep-alive agents across virtual users to prevent ephemeral-port exhaustion.
+    pool: 4096
   payload:
     path: "./capacity-fixtures.csv"
     fields:
@@ -23,9 +25,11 @@ config:
         - "http.response_time.p95": 250
         - "http.response_time.p99": 500
       conditions:
-        - expression: "http.request_rate >= 9000"
+        - expression: "http.request_rate >= 10000"
           strict: true
         - expression: "(vusers.failed / vusers.created) * 100 <= 0.1"
+          strict: true
+        - expression: "http.codes.200 == http.responses"
           strict: true
 
 scenarios:
