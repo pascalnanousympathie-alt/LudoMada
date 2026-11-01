@@ -30,7 +30,7 @@ export class GameStateReadCache {
   private misses = 0;
 
   constructor(
-    private readonly ttlMs = 10_000,
+    private readonly ttlMs = 60_000,
     private readonly maxEntries = 5_000,
     private readonly now: () => number = Date.now
   ) {
@@ -121,5 +121,7 @@ export class GameStateReadCache {
 export const gameStateReadCache = new GameStateReadCache();
 
 export function invalidateGameStateReadCache(gameId: string): void {
-  gameStateReadCache.invalidate(gameId);
+  if (process.env.LUDOMADA_GAME_STATE_CACHE === "true") {
+    gameStateReadCache.invalidate(gameId);
+  }
 }
