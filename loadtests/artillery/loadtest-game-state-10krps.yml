@@ -3,7 +3,7 @@ config:
   http:
     timeout: 15
     # Share keep-alive agents across virtual users to prevent ephemeral-port exhaustion.
-    pool: 4096
+    pool: 2048
   payload:
     path: "./capacity-fixtures.csv"
     fields:
@@ -12,9 +12,6 @@ config:
     order: random
     skipHeader: true
   phases:
-    - duration: 5
-      arrivalRate: 10000
-      name: "Warm-up at 10k authenticated state reads/sec"
     - duration: 30
       arrivalRate: 10000
       name: "Steady state: 10k authenticated state reads/sec"
