@@ -506,7 +506,7 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -887,6 +887,33 @@ try {
   console.log("JOUER→OFFLINE MENU PASS");
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
+
+  const homeReadyTree=waitForSnapshot("HOME_3D_FRAME_COMPLETE",15000);
+  if (!homeReadyTree) throw new Error("Premium Home did not complete a live 3D renderer frame");
+  const homeRenderer=readRendererLogLines();
+  const homePbr=homeRenderer.lines.some((line)=>line.includes("HOME_PBR_FIRST_FRAME_COMPLETE"));
+  const homeFallback=homeRenderer.lines.some((line)=>line.includes("HOME_3D_FALLBACK_FRAME_COMPLETE"));
+  if (!homePbr && !homeFallback) {
+    throw new Error("Home accessibility readiness had no matching GLES renderer completion log: " +
+      JSON.stringify({ok:homeRenderer.ok,rendererLines:homeRenderer.lines.slice(-35)}));
+  }
+  if (homePbr) {
+    for (const marker of ["ENV_GLB_RUNTIME_LOAD_OK","BAOBAB_REAL_GLB_LOAD_OK","PBR_READBACK label=home_surface"]) {
+      if (!homeRenderer.lines.some((line)=>line.includes(marker))) {
+        throw new Error("GLES3 Home preview is missing visual evidence marker: " + marker);
+      }
+    }
+    console.log("HOME_GLES3_PBR_ENVIRONMENT_AND_BAOBAB PASS");
+  } else {
+    if (!homeRenderer.lines.some((line)=>line.includes("SAFE_READBACK label=surface"))) {
+      throw new Error("GLES2 Home fallback has no clean framebuffer readback");
+    }
+    console.log("HOME_GLES2_3D_FALLBACK PASS");
+  }
+  const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
+  if (!homeShot.ok) throw new Error("Could not capture the live 3D Home screenshot");
+  console.log("HOME_3D_SCREENSHOT_CAPTURED");
+
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
