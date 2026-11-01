@@ -38,6 +38,23 @@ public class PremiumHeroViewV2 extends FrameLayout {
   }
 
   public LudoBoardView getHomePreviewView(){ return homePreview; }
+
+  /**
+   * The Home overlay is the foreground accessibility node and can mask its GL child.
+   * Mirror the renderer's certified readiness marker onto that visible Home node so
+   * UI automation can verify the real GLES frame without relying on logcat.
+   */
+  public void publishHomePreviewReady(String rendererMarker){
+    if(rendererMarker==null || rendererMarker.trim().isEmpty()) return;
+    final String description =
+      "LudoMada Premium Home | JOUER | TOURNOIS | MON WALLET | PROFIL | TUTORIELS | MODE DE JEU | EN LIGNE | HORS-LIGNE | " +
+      rendererMarker;
+    home.post(() -> {
+      if(!description.equals(home.getContentDescription())){
+        home.setContentDescription(description);
+      }
+    });
+  }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
   }
