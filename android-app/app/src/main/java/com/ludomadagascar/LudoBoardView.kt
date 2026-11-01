@@ -14,6 +14,8 @@ import android.opengl.Matrix
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import org.json.JSONArray
@@ -73,6 +75,14 @@ class LudoBoardView(
 
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
+    private val homeFrameHandler = Handler(Looper.getMainLooper())
+    private val homeFrameTick = object : Runnable {
+        override fun run() {
+            if (!homePreview || !isAttachedToWindow) return
+            requestRender()
+            homeFrameHandler.postDelayed(this, 33L)
+        }
+    }
 
     private fun deviceSupportsGles3(): Boolean {
         val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
@@ -113,7 +123,7 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = !homePreview
         isClickable = !homePreview
         contentDescription = if (homePreview) "LudoMada 3D Home Preview" else "LudoMada 3D Ludo board"
@@ -131,6 +141,14 @@ class LudoBoardView(
         post {
             if (contentDescription != marker) contentDescription = marker
         }
+    }
+
+    internal fun markHomePreviewReady(rendererName:String, environmentParts:Int, baobabPartCount:Int, heroPartCount:Int, boardPartCount:Int) {
+        if (!BuildConfig.DEBUG || !homePreview) return
+        val marker = "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=" + rendererName +
+            " | ENV_PARTS=" + environmentParts + " | BAOBAB_PARTS=" + baobabPartCount +
+            " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount
+        post { if (contentDescription != marker) contentDescription = marker }
     }
 
     internal fun publishPawnTapTargets() {
@@ -207,6 +225,19 @@ class LudoBoardView(
             }
         }
         return null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (homePreview) {
+            homeFrameHandler.removeCallbacks(homeFrameTick)
+            homeFrameHandler.post(homeFrameTick)
+        }
+    }
+
+    override fun onPause() {
+        homeFrameHandler.removeCallbacks(homeFrameTick)
+        super.onPause()
     }
 
     fun startDiceAnimation() {
@@ -502,6 +533,7 @@ class LudoBoardView(
     }
 
     override fun onDetachedFromWindow() {
+        homeFrameHandler.removeCallbacks(homeFrameTick)
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
@@ -804,7 +836,12 @@ class LudoBoardView(
                 if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24 &&
                     glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
                     android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
-                    host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                    if (host.homePreview) {
+                        android.util.Log.i("LudoMadaRender","HOME_3D_FALLBACK_FRAME_COMPLETE renderer=GLES2_GLB")
+                        host.markHomePreviewReady("GLES2_GLB",0,0,glbParts.size,boardParts.size)
+                    } else {
+                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                    }
                 }
             }.onFailure{
                 android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
@@ -952,7 +989,8 @@ class LudoBoardView(
             for(pi in 0..3){
                 if (onlyPi >= 0 && pi != onlyPi) continue
                 val d=dieCenter(pi)
-                val rot=if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
+                val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+                val rot=idleRotation+if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
                 // Four compact chrome dice trays + hydro-plated die bodies.
                 drawMesh(die,model(d[0],0.24f,d[1],0.74f,0.11f,0.74f,0f),color(58,63,70,1f),0.12f,1.0f,0.015f,0.92f)
                 drawMesh(die,model(d[0],0.35f,d[1],0.60f,0.055f,0.60f,0f),color(175,181,188,1f),0.08f,1.0f,0.0f,0.96f)
@@ -1249,6 +1287,7 @@ class LudoBoardView(
         private var sceneWidth=1
         private var sceneHeight=1
         private var firstFrameDiagnosticsCaptured=false
+        private var homePreviewFirstFrameCaptured=false
         private var woodTex=0
         private var boardTex=0
         private var neutralTex=0
@@ -1502,6 +1541,29 @@ class LudoBoardView(
                 drawWorld(false)
                 shader.endFrame()
                 drawParticles()
+                if (BuildConfig.DEBUG && !homePreviewFirstFrameCaptured) {
+                    val validSurface=logFramebufferPixels("home_surface",sceneWidth,sceneHeight)
+                    val expectedHeroParts=setOf(
+                        "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                        "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                    )
+                    val complete=validSurface &&
+                        glbParts.keys.containsAll(expectedHeroParts) &&
+                        boardParts.isNotEmpty() && envParts.isNotEmpty() && baobabParts.isNotEmpty()
+                    if (complete) {
+                        android.util.Log.i("LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+envParts.size+
+                            " baobabParts="+baobabParts.size+
+                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                        host.markHomePreviewReady("GLES3_PBR",envParts.size,baobabParts.size,glbParts.size,boardParts.size)
+                    } else {
+                        android.util.Log.e("LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
+                            " envParts="+envParts.size+" baobabParts="+baobabParts.size+
+                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                    }
+                    homePreviewFirstFrameCaptured=true
+                }
                 return
             }
             if(sceneFbo==0) createSceneTargets(sceneWidth,sceneHeight)
@@ -1866,8 +1928,9 @@ class LudoBoardView(
             val value=dieValue(pi)
             val t=if(pi==player)diceAnim else 1f
             val spin=PremiumVisualMotion.dieSpin(t)
-            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
+            val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+            val sx=(1f-spin)*(720f+pi*55f)+idleRotation+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+idleRotation*0.62f+17f+pi*11f
             val m=identityAt(p[0],p[1]+0.38f,p[2],0.52f,0.52f,0.52f)
             Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f)
             return m
