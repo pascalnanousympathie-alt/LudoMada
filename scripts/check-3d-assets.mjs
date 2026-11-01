@@ -42,6 +42,31 @@ checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) &&
 checks.push(["active rev5 asset file present", fs.existsSync(expectedAsset)]);
 checks.push(["active rev5 asset size", packagedBytes === 867800]);
 checks.push(["active rev5 asset sha256", packagedSha256 === "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f"]);
+
+const assetsRoot = path.resolve(root, "..");
+const homeEnvironment = manifest.home_environment ?? {};
+checks.push(["Home preview renderer declared", homeEnvironment.renderer === "LudoBoardView.SceneRenderer.homePreview"]);
+checks.push(["Home preview texture dimension declared", homeEnvironment.textures_max_dimension === 2048]);
+const homeAssets = [
+  homeEnvironment.scene_glb,
+  homeEnvironment.baobab_glb,
+  ...(Array.isArray(homeEnvironment.textures) ? homeEnvironment.textures : [])
+].filter(Boolean);
+const expectedHomeAssetCount = 12;
+checks.push(["Home environment asset inventory complete", homeAssets.length === expectedHomeAssetCount]);
+const homeAssetResults = homeAssets.map((asset) => {
+  const targetPath = typeof asset.path === "string" ? path.resolve(assetsRoot, asset.path) : "";
+  const pathSafe = targetPath.startsWith(assetsRoot + path.sep);
+  const present = pathSafe && fs.existsSync(targetPath) && fs.statSync(targetPath).isFile();
+  const actualBytes = present ? fs.statSync(targetPath).size : 0;
+  checks.push(["Home asset path safe: " + String(asset.path), pathSafe]);
+  checks.push(["Home asset present: " + String(asset.path), present]);
+  checks.push(["Home asset size: " + String(asset.path), present && actualBytes === asset.bytes]);
+  return { path: asset.path, present, bytes: actualBytes, expectedBytes: asset.bytes };
+});
+const homeTextureBytes = homeAssets
+  .filter((asset) => String(asset.path).startsWith("environment/textures/"))
+  .reduce((sum, asset) => sum + Number(asset.bytes || 0), 0);
 const failed = checks.filter(([, ok]) => !ok);
 const oversized = packagedFiles.filter((name) =>
   fs.statSync(path.join(root, name)).size > manifest.mobile_budgets.hero_glb_max_bytes
