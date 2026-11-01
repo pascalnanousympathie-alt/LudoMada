@@ -33,6 +33,18 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+private fun portraitAwareVerticalFov(
+    aspect:Float,
+    targetHorizontalFov:Float,
+    landscapeVerticalFov:Float
+):Float {
+    if (aspect >= 1f) return landscapeVerticalFov
+    val safeAspect = aspect.coerceAtLeast(0.1f).toDouble()
+    val halfHorizontal = Math.toRadians(targetHorizontalFov.toDouble() * 0.5)
+    val vertical = 2.0 * Math.atan(Math.tan(halfHorizontal) / safeAspect)
+    return Math.toDegrees(vertical).toFloat().coerceIn(34f, 78f)
+}
+
 class LudoBoardView(
     context: Context,
     var onRollTap: (() -> Unit)? = null,
@@ -59,17 +71,6 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaSmoke", "BOARD_MARKER=" + value)
     }
 
-    private fun portraitAwareVerticalFov(
-        aspect:Float,
-        targetHorizontalFov:Float,
-        landscapeVerticalFov:Float
-    ):Float {
-        if (aspect >= 1f) return landscapeVerticalFov
-        val safeAspect = aspect.coerceAtLeast(0.1f).toDouble()
-        val halfHorizontal = Math.toRadians(targetHorizontalFov.toDouble() * 0.5)
-        val vertical = 2.0 * Math.atan(Math.tan(halfHorizontal) / safeAspect)
-        return Math.toDegrees(vertical).toFloat().coerceIn(34f, 78f)
-    }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
