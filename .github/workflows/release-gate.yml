@@ -83,7 +83,7 @@ jobs:
       - name: Start staging API and verify readiness
         env:
           LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
-          PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && '20' || '5' }}
+          PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && '60' || '5' }}
         run: |
           set -eu
           nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
@@ -114,6 +114,10 @@ jobs:
       - name: Run authenticated game-state capacity profile (up to 10k RPS)
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
         run: npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
+
+      - name: Independently validate measured capacity and SLOs
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        run: node scripts/validate-capacity-report.mjs "$RUNNER_TEMP/ludomada-game-state-capacity.json"
 
       - name: Upload game-state capacity report
         if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
