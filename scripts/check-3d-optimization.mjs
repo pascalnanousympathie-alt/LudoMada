@@ -87,7 +87,14 @@ if (budget.runtimeTargets?.shadowMapDefault !== premium.shadowMap) fail("3D_OPT_
 console.log("3D_OPTIMIZATION_CONTRACT_PASS", JSON.stringify({
   sourceSceneBytes: sourceBytes,
   sourceSceneRevision: sourceScene.revision,
+
   bundledGlbs: bundled,
+  homeEnvironment: {
+    environmentGlbBytes: homeEnvironment.scene_glb.bytes,
+    baobabGlbBytes: homeEnvironment.baobab_glb.bytes,
+    textureBytes: homeTextureBytes,
+    textureDimensionMax: homeEnvironment.textures_max_dimension
+  },
   runtimePackaged: manifest.runtime_packaged,
   tiers: budget.tiers
 }));
