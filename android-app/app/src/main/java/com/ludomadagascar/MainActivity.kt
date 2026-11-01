@@ -629,7 +629,7 @@ class MainActivity : Activity() {
     private fun startOffline(players:Int) {
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
-        offlineState=JSONObject().put("players",arr)
+        offlineState=JSONObject().put("players",arr).put("dice",0).put("phase","PLAYING")
         offlineGame(players)
     }
 
@@ -659,7 +659,11 @@ class MainActivity : Activity() {
         return OfflineLudoRules.hasLegalMove(positions,dice)
     }
     private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
-        offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
+        offlineTurn=(offlineTurn+1)%players
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState
+        host.player=offlineTurn
         status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
     }
     private fun offlineRoll(host:LudoBoardView){
@@ -676,9 +680,13 @@ class MainActivity : Activity() {
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
+        offlineState?.put("dice",offlineDice)
+        host.state=offlineState
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
             offlineDice=0
+            offlineState?.put("dice",0)
+            host.state=offlineState
             root.postDelayed({if(currentScreen=="offline")advanceOfflineTurn(offlinePlayers,host)},550L)
             return
         }
@@ -717,7 +725,9 @@ class MainActivity : Activity() {
                 }
             }
         }
-        offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState;host.player=offlineTurn;host.animateState()
         val finalPositions=IntArray(minOf(OfflineLudoRules.TOKENS_PER_PLAYER,ts.length())) {
             ts.optJSONObject(it)?.optInt("pos",-1) ?: -1
         }
