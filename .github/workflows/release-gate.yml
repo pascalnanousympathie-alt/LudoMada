@@ -18,6 +18,8 @@ on:
       - "prisma/**"
       - "android-app/**"
       - "loadtests/**"
+      - "docs/PERFORMANCE_CAPACITY_10K.md"
+      - "scripts/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/release-gate.yml"
