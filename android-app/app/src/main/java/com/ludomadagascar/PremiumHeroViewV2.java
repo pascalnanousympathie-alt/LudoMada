@@ -123,8 +123,8 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,132,96,258,211,19,0xB20A2038,0x88D8B86D);
       t(c,"LE JEU QUI RASSEMBLE !",195,114,7.8f,gold2,true,true);
       t(c,"♛",195,139,18,gold,true,true);
-      t(c,"Ludo",181,165,24,gold2,true,true);
-      t(c,"Mada",219,165,24,Color.WHITE,true,true);
+      t(c,"Ludo",169,165,21,gold2,true,true);
+      t(c,"Mada",223,165,21,Color.WHITE,true,true);
       box(c,158,172,232,175,1.3f,red,0);box(c,158,175,232,178,1,Color.WHITE,0);box(c,158,178,232,181,1.3f,green,0);
       t(c,"Joue • Gagne • Grandis",195,195,8.7f,gold2,false,true);
       t(c,"2 à 4 joueurs  •  Classique",195,205,6.5f,0xE2FFFFFF,false,true);
