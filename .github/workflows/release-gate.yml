@@ -82,8 +82,10 @@ jobs:
       - name: Build backend
         run: npm run build
 
-      - name: Test capacity report validator
-        run: node --test scripts/validate-capacity-report.test.mjs
+      - name: Test capacity diagnostics and report validator
+        run: |
+          node --check scripts/profile-capacity-state-query.mjs
+          node --test scripts/validate-capacity-report.test.mjs
 
       - name: Start staging API and verify readiness
         env:
