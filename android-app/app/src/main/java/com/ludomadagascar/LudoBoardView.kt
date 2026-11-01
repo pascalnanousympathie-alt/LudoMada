@@ -720,10 +720,11 @@ class LudoBoardView(
 
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
-            // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            val cameraY = if (homePreview) 8.4f else 13.2f
-            val cameraZ = if (homePreview) 9.4f else 4.2f
-            val gameplayHorizontalFov = if (aspect < 0.80f) 42f else 45f
+            // Keep the GLES2 fallback on the same calibrated gameplay camera as GLES3.
+            val gameplayCamera = GameplayCameraProfile.forAspect(aspect)
+            val cameraY = if (homePreview) 8.4f else gameplayCamera.eyeY
+            val cameraZ = if (homePreview) 9.4f else gameplayCamera.eyeZ
+            val gameplayHorizontalFov = gameplayCamera.horizontalFov
             val fov = portraitAwareVerticalFov(
                 aspect,
                 if (homePreview) 48f else gameplayHorizontalFov,
@@ -732,7 +733,7 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
             Matrix.setLookAtM(
                 view,0,0f,cameraY,cameraZ,
-                0f,0.18f,0f,
+                0f,if (homePreview) 0.18f else gameplayCamera.targetY,0f,
                 0f,1f,0f
             )
             Matrix.multiplyMM(vp,0,proj,0,view,0)
@@ -1396,20 +1397,22 @@ class LudoBoardView(
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
-            // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 13.2f
-            val baseCamZ=if (host.homePreview) 13.2f else if(land)8.8f else 4.2f
+            val gameplayCamera=GameplayCameraProfile.forAspect(aspect)
+            // Portrait gameplay is deliberately oblique; do not regress to a near-top-down view.
+            val camY=if (host.homePreview) 9.6f else gameplayCamera.eyeY
+            val baseCamZ=if (host.homePreview) 13.2f else gameplayCamera.eyeZ
             val rollEnergy=if(!host.homePreview && player in 0..3)(1f-diceAnim).coerceIn(0f,1f) else 0f
             val shakeX=sin(now/6_000_000.0).toFloat()*rollEnergy*0.055f
             val shakeZ=cos(now/7_000_000.0).toFloat()*rollEnergy*0.040f
             val camZ=baseCamZ+shakeZ
-            val gameplayHorizontalFov=if(aspect<0.80f)42f else 45f
+            val gameplayHorizontalFov=gameplayCamera.horizontalFov
             val fov=portraitAwareVerticalFov(
                 aspect,
                 if (host.homePreview) 48f else gameplayHorizontalFov,
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
-            Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
+            val cameraTargetY=if(host.homePreview)0.12f else gameplayCamera.targetY
+            Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,cameraTargetY,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             host.publishPawnTapTargets()
