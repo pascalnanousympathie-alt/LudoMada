@@ -93,6 +93,7 @@ public final class CalmMusic {
     } catch(Exception ignored) {
       // Music is best-effort and must never interrupt gameplay or navigation.
     } finally {
+      sessions.endIfCurrent(session);
       if(local!=null) {
         try { local.stop(); } catch(Exception ignored) { }
         try { local.release(); } catch(Exception ignored) { }
