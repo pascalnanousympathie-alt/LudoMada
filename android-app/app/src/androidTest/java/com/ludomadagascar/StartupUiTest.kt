@@ -31,6 +31,18 @@ class StartupUiTest {
             heroView.getChildAt(1) !is LudoBoardView)
     }
 
+    private fun captureHomePreviewScreenshot(device: UiDevice, context: android.content.Context) {
+        val screenshotFile = File(context.filesDir, "ludomada-home-preview.png")
+        if (screenshotFile.exists()) {
+            assertTrue("Previous Home screenshot could not be removed", screenshotFile.delete())
+        }
+        assertTrue("Home preview screenshot capture failed", device.takeScreenshot(screenshotFile))
+        assertTrue(
+            "Home preview screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
+    }
+
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
         val home = device.findObject(By.descContains("LudoMada Premium Home"))
         val bounds = home.visibleBounds
@@ -83,6 +95,7 @@ class StartupUiTest {
             "Home must attach the live 3D scene and complete its first frame",
             device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
         )
+        captureHomePreviewScreenshot(device, context)
         tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
@@ -101,6 +114,7 @@ class StartupUiTest {
             "Returning from the lobby must render a fresh Home 3D framebuffer",
             device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
         )
+        captureHomePreviewScreenshot(device, context)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
