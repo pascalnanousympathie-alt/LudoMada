@@ -71,9 +71,24 @@ class MainActivity : Activity() {
         if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
+        val baseLeft=dp(20)
+        val baseTop=dp(18)
+        val baseRight=dp(20)
+        val baseBottom=dp(20)
         val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
+            orientation=LinearLayout.VERTICAL; setPadding(baseLeft,baseTop,baseRight,baseBottom)
             background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+        }
+        // Keep system status/navigation bars outside tappable content on both
+        // pre-edge-to-edge Android versions and newer edge-to-edge windows.
+        content.setOnApplyWindowInsetsListener { view, insets ->
+            view.setPadding(
+                baseLeft + insets.systemWindowInsetLeft,
+                baseTop + insets.systemWindowInsetTop,
+                baseRight + insets.systemWindowInsetRight,
+                baseBottom + insets.systemWindowInsetBottom
+            )
+            insets
         }
         root=content
         if(name=="board" || name=="offline") setContentView(root)
@@ -82,6 +97,7 @@ class MainActivity : Activity() {
             scroll.addView(content); setContentView(scroll)
         }
         addTopBar(title)
+        content.requestApplyInsets()
         return content
     }
 
