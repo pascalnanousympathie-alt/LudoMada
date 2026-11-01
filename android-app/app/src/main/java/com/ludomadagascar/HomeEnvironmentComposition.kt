@@ -26,6 +26,10 @@ internal object HomeEnvironmentComposition {
     fun isEmbeddedBaobabPart(nodeName: String): Boolean =
         nodeName.startsWith("ENV_Baobab_")
 
+    /** ENV_Rock_04 is authored on x≈0/y≈8 in Z-up space and projects behind the Home wordmark. */
+    fun isHomeCentrelineOccluderPart(nodeName: String): Boolean =
+        nodeName == "ENV_Rock_04"
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
