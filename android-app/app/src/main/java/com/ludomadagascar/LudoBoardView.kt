@@ -1544,7 +1544,7 @@ class LudoBoardView(
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
                 if(homePreview) drawHomeEnvironmentShadows()
-                if(!homePreview)/* Broad gameplay backdrop is intentionally excluded from shadow casting. */
+                /* Broad gameplay backdrop is intentionally excluded from shadow casting. */
                 if(boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
                     drawHomePawnSlots(true)
