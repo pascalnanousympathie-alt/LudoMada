@@ -29,13 +29,24 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL_IS_REQUIRED");
 }
 
-function poolSize(value: string | undefined, fallback: number) {
+const capacityLoadTestRequested = process.env.LUDOMADA_LOAD_TEST_MODE === "true";
+const capacityLoadTestEnabled = isCapacityLoadTestEnabled();
+
+if (capacityLoadTestRequested && !capacityLoadTestEnabled) {
+  throw new Error("LUDOMADA_LOAD_TEST_MODE_REQUIRES_DISPOSABLE_CI_DATABASE");
+}
+
+function poolSize(value: string | undefined, fallback: number, maximum: number) {
   const parsed = Number(value ?? fallback);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_${maximum}`);
+  }
   return parsed;
 }
 
-const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5);
+// The CI-only profile can use a larger pool against its isolated local Postgres.
+// All non-capacity environments retain the hard 20-connection ceiling.
+const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5, capacityLoadTestEnabled ? 60 : 20);
 
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
@@ -103,12 +114,6 @@ if(JWT_SECRET.length < 32){
 }
 
 const NODE_ENV = process.env.NODE_ENV ?? "development";
-const capacityLoadTestRequested = process.env.LUDOMADA_LOAD_TEST_MODE === "true";
-const capacityLoadTestEnabled = isCapacityLoadTestEnabled();
-
-if (capacityLoadTestRequested && !capacityLoadTestEnabled) {
-  throw new Error("LUDOMADA_LOAD_TEST_MODE_REQUIRES_DISPOSABLE_CI_DATABASE");
-}
 
 const rawPort = process.env.PORT ?? "3000";
 const port = Number(rawPort);
