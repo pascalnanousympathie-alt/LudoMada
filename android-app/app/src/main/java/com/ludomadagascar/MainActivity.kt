@@ -1116,6 +1116,16 @@ class MainActivity : Activity() {
 
     private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
+
+    private fun musicEnabledFromHome():Boolean = ::music.isInitialized && music.enabled()
+
+    private fun toggleMusicFromHome() {
+        if (!::music.isInitialized) return
+        music.toggle()
+        syncMusicPlayback()
+        updateMusicButton()
+        window.decorView.invalidate()
+    }
     override fun onStop(){ activityResumed = false; if(::music.isInitialized) music.stop(); super.onStop() }
 
 }

@@ -74,6 +74,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     try{Field f=getContext().getClass().getDeclaredField(n);f.setAccessible(true);Object v=f.get(getContext());return v instanceof Number?((Number)v).longValue():0;}catch(Throwable e){return 0;}
   }
 
+  private boolean bool(String n){
+    try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);return Boolean.TRUE.equals(m.invoke(getContext()));}
+    catch(Throwable e){return false;}
+  }
+
   private class HomeView extends View {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
@@ -106,23 +111,34 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,7,6,383,68,24,Color.rgb(9,25,71),Color.rgb(37,116,236));
       p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,11,blue);
       p.setColor(Color.WHITE);c.drawRect(d(59),d(26),d(78),d(36),p);p.setColor(Color.rgb(239,63,75));c.drawRect(d(59),d(26),d(78),d(31),p);p.setColor(Color.rgb(37,166,105));c.drawRect(d(59),d(31),d(78),d(36),p);
-      t(c,u.isEmpty()?"Player_Mada":u,84,31,12.5f,Color.WHITE,true,false);t(c,"Joueur LudoMada",84,50,8.5f,0xE1FFFFFF,false,false);
-      box(c,84,55,145,63,4,Color.rgb(5,18,48),Color.rgb(37,71,126));box(c,85,56,121,62,3,Color.rgb(34,221,112),0);
+      String displayName=u.trim().isEmpty()?"Player Mada":u.trim();
+      if(displayName.length()>9)displayName=displayName.substring(0,8)+"…";
+      t(c,displayName,84,31,10.5f,Color.WHITE,true,false);
+      t(c,"Joueur LudoMada",84,50,8.0f,0xE1FFFFFF,false,false);
       box(c,151,17,222,57,19,Color.rgb(10,35,84),Color.rgb(69,139,255));t(c,"C",164,43,13,gold2,true,true);t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
       box(c,250,17,309,57,19,Color.rgb(8,35,83),Color.rgb(55,151,239));t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);t(c,"—",291,42,10,Color.WHITE,true,true);box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
-      t(c,"♪",337,43,16,Color.WHITE,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
+      t(c,"♪",337,43,16,bool("musicEnabledFromHome")?Color.WHITE:0xFF7D8799,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
       if(tok.isEmpty()){box(c,279,69,371,92,11,Color.rgb(28,95,202),gold);t(c,"CONNEXION",325,85,7.5f,Color.WHITE,true,true);}
-      t(c,"LE JEU QUI RASSEMBLE !",195,103,8.5f,gold2,true,true);
-      t(c,"♛",195,125,27,gold,true,true);t(c,"Ludo",161,151,38,gold2,true,true);t(c,"Mada",226,151,38,Color.WHITE,true,true);
-      box(c,143,160,247,164,1.5f,red,0);box(c,143,164,247,168,1,Color.WHITE,0);box(c,143,168,247,172,1.5f,green,0);
-      t(c,"Joue • Gagne • Grandis",195,187,12.5f,gold2,false,true);t(c,"2 à 4 joueurs  •  Classique",195,202,7.7f,0xE2FFFFFF,false,true);
+      // Dedicated glass brand panel keeps the wordmark clear of the 3D baobab silhouette.
+      box(c,132,96,258,211,19,0xB20A2038,0x88D8B86D);
+      t(c,"LE JEU QUI RASSEMBLE !",195,114,7.8f,gold2,true,true);
+      t(c,"♛",195,139,18,gold,true,true);
+      t(c,"Ludo",169,165,21,gold2,true,true);
+      t(c,"Mada",223,165,21,Color.WHITE,true,true);
+      box(c,158,172,232,175,1.3f,red,0);box(c,158,175,232,178,1,Color.WHITE,0);box(c,158,178,232,181,1.3f,green,0);
+      t(c,"Joue • Gagne • Grandis",195,195,8.7f,gold2,false,true);
+      t(c,"2 à 4 joueurs  •  Classique",195,205,6.5f,0xE2FFFFFF,false,true);
 
       menu(c,8,110,126,158,Color.rgb(244,174,25),gold,"▶","JOUER","En ligne ou Hors-ligne");
       menu(c,8,164,126,212,Color.rgb(22,72,185),Color.rgb(45,135,255),"♛","TOURNOIS","Événements & classements");
       menu(c,8,218,126,266,Color.rgb(12,147,87),Color.rgb(29,223,137),"▣","MON WALLET","Dépôt / Retrait / Historique");
       menu(c,8,272,126,320,Color.rgb(102,30,202),Color.rgb(195,81,255),"●","PROFIL","Infos • Paramètres");
       menu(c,8,326,126,374,Color.rgb(12,131,183),Color.rgb(33,215,246),"▤","TUTORIELS","Apprends à jouer");
-      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));t(c,"BONUS DE BIENVENUE",324,125,9.5f,Color.WHITE,true,true);t(c,"Bonus à venir",324,145,11,gold2,true,true);t(c,"Offre future — aucun crédit fictif",324,158,6.6f,0xD8FFFFFF,false,true);box(c,286,147,363,169,11,Color.rgb(255,202,28),gold2);t(c,"BIENTÔT",324,162,8.5f,Color.rgb(75,35,2),true,true);
+      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));
+      t(c,"BONUS DE BIENVENUE",324,125,9.2f,Color.WHITE,true,true);
+      t(c,"Bonus à venir",324,143,10.5f,gold2,true,true);
+      box(c,286,150,363,169,10,Color.rgb(255,202,28),gold2);
+      t(c,"BIENTÔT",324,163,8.2f,Color.rgb(75,35,2),true,true);
       box(c,266,181,382,232,16,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MISE ACTUELLE",324,198,7.6f,Color.WHITE,true,true);t(c,fee+" Ar",324,219,11,gold2,true,true);t(c,"⌄",369,219,14,Color.WHITE,true,true);
       box(c,266,239,382,352,17,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MODE DE JEU",324,257,8,Color.WHITE,true,true);
       box(c,275,264,373,307,15,Color.rgb(24,105,223),Color.rgb(61,160,255));t(c,"◎",291,289,15,Color.WHITE,true,true);t(c,"En ligne",319,283,10,Color.WHITE,true,true);t(c,"Joueurs réels  ›",326,298,7.2f,0xD7FFFFFF,false,true);
@@ -143,6 +159,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
       if(x<0||x>390||y<0||y>710)return true;
       if(y<68){
+        if(x>=328&&x<346){call("toggleMusicFromHome");invalidate();return true;}
         if(x<170)call(tok.isEmpty()?"login":"profile"); else if(x<273)call(tok.isEmpty()?"login":"wallet"); else call("profile");
         return true;
       }

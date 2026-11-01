@@ -1579,15 +1579,19 @@ class LudoBoardView(
                         "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
                         "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
                     )
+                    val visibleEnvironmentPartCount=envParts.keys.count {
+                        !HomeEnvironmentComposition.isEmbeddedBaobabPart(it)
+                    }
                     val complete=validSurface &&
                         glbParts.keys.containsAll(expectedHeroParts) &&
-                        boardParts.isNotEmpty() && envParts.isNotEmpty() && baobabParts.isNotEmpty()
+                        boardParts.isNotEmpty() && visibleEnvironmentPartCount>0 && baobabParts.isNotEmpty()
                     if (complete) {
                         android.util.Log.i("LudoMadaRender",
-                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+envParts.size+
+                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+visibleEnvironmentPartCount+
+                            " embeddedBaobabParts="+(envParts.size-visibleEnvironmentPartCount)+
                             " baobabParts="+baobabParts.size+
                             " heroParts="+glbParts.size+" boardParts="+boardParts.size)
-                        host.markHomePreviewReady("GLES3_PBR",envParts.size,baobabParts.size,glbParts.size,boardParts.size)
+                        host.markHomePreviewReady("GLES3_PBR",visibleEnvironmentPartCount,baobabParts.size,glbParts.size,boardParts.size)
                     } else {
                         android.util.Log.e("LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
@@ -1790,7 +1794,14 @@ class LudoBoardView(
 
         private fun drawEnvironmentGlb(shadowPass:Boolean){
             if(envParts.isEmpty())return
-            val parts=envParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
+            // The environment GLB has authored baobab source nodes and a single central
+            // ENV_Rock_04 on x≈0/y≈8. Filter those occluders from both colour and shadow
+            // passes; retain the four perimeter rocks, terrain, grass and sky.
+            val visibleEnvironmentParts=envParts.filterKeys {
+                !HomeEnvironmentComposition.isEmbeddedBaobabPart(it) &&
+                    !HomeEnvironmentComposition.isHomeCentrelineOccluderPart(it)
+            }
+            val parts=visibleEnvironmentParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
             // The authored environment is Z-up while the gameplay board is Y-up.
             // Respect glTF doubleSided metadata for the inside-facing sky dome and
             // all other environment materials that were authored double-sided.
@@ -1799,7 +1810,7 @@ class LudoBoardView(
             try {
                 if(shadowPass){
                     for(part in parts){
-                        if(part.materialName=="ENV_Sky_HDRI")continue
+                        if (!HomeEnvironmentComposition.castsHomeEnvironmentShadow(part.name)) continue
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
                         drawShadowMesh(part.mesh,model)
                     }
@@ -1839,7 +1850,27 @@ class LudoBoardView(
                         val metallic=if(skyPart)0f else part.metallic
                         val unlit=skyPart
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
-                        drawMesh(part.mesh,model,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
+                        val environmentColor=when {
+                            barkPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.50f)
+                            dirtPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.25f)
+                            grassPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.18f)
+                            else -> part.baseColor
+                        }
+                        val environmentEmission=when {
+                            skyPart -> 0.10f
+                            barkPart -> 0.042f
+                            dirtPart -> 0.018f
+                            grassPart -> 0.014f
+                            else -> 0f
+                        }
+                        // Bark keeps casting a soft shadow but does not receive its own
+                        // low-resolution shadow-map acne; this prevents near-black trunks.
+                        drawMesh(
+                            part.mesh,model,environmentColor,rough,metallic,
+                            if(barkPart)0.99f else part.baseColor[3].coerceIn(.70f,1f),
+                            environmentEmission,6,unlit,albedo,ntex,rtex,
+                            receivesShadow = !skyPart && !barkPart
+                        )
                     }
                 }
             } finally {
@@ -1850,16 +1881,9 @@ class LudoBoardView(
 
         private fun drawRealBaobabs(shadowPass:Boolean){
             if(baobabParts.isEmpty())return
-            val instances=arrayOf(
-                floatArrayOf(0f,-1.05f,-5.55f,0.88f),
-                floatArrayOf(-7.6f,-1.02f,-7.35f,0.62f),
-                floatArrayOf(7.5f,-1.02f,-7.0f,0.66f),
-                floatArrayOf(-2.7f,-1.02f,-10.0f,0.48f),
-                floatArrayOf(4.2f,-1.02f,-10.1f,0.54f)
-            )
             val ordered=baobabParts.values.sortedBy{if(it.materialName=="scrub")1 else 0}
-            for(inst in instances){
-                val im=identityAt(inst[0],inst[1],inst[2],inst[3],inst[3],inst[3])
+            for(inst in HomeEnvironmentComposition.baobabPlacements()){
+                val im=identityAt(inst.x,inst.y,inst.z,inst.scale,inst.scale,inst.scale)
                 for(part in ordered){
                     val m=FloatArray(16)
                     Matrix.multiplyMM(m,0,im,0,part.transform,0)
@@ -1872,8 +1896,17 @@ class LudoBoardView(
                         val ntex=when{barkPart->envBarkNormalTex;scrubPart->envGrassNormalTex;else->normalTex}
                         val rtex=when{barkPart->envBarkRoughTex;scrubPart->envGrassRoughTex;else->0}
                         val rough=when{barkPart->0.76f;scrubPart->0.92f;else->0.82f}
-                        val base=part.baseColor
-                        drawMesh(part.mesh,m,base,rough,part.metallic,0.96f,0f,6,false,albedo,ntex,rtex)
+                        val base=HomeEnvironmentComposition.liftEnvironmentColor(
+                            part.baseColor,if(barkPart)1.50f else 1.16f
+                        )
+                        // Keep the bark warm and readable against the sunset HDRI.
+                        // The tree still casts a shadow, but avoids self-shadowing into a silhouette.
+                        drawMesh(
+                            part.mesh,m,base,rough,part.metallic,
+                            if(barkPart)0.99f else 0.96f,
+                            if(barkPart)0.045f else 0.014f,
+                            6,false,albedo,ntex,rtex,receivesShadow = !barkPart
+                        )
                     }
                 }
             }
