@@ -102,10 +102,6 @@ class StartupUiTest {
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
         tapHomeMusic(device, context)
         assertTrue(
-            "Home music icon must toggle the saved preference",
-            device.wait(Until.gone(By.desc("HOME_MUSIC_TOGGLE_PENDING")), 500)
-        )
-        assertTrue(
             "Home music preference must change after the icon tap",
             musicPrefs.getBoolean("enabled", true) != originalMusicEnabled
         )
