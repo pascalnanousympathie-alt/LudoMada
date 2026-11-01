@@ -161,16 +161,16 @@ jobs:
             sample=0
             while [ "$sample" -lt 120 ] && kill -0 "$api_pid" 2>/dev/null; do
               {
-                printf 'PROCESS_USAGE_SAMPLE=%s\\n' "$(date -u +%H:%M:%S)"
+                printf 'PROCESS_USAGE_SAMPLE=%s\n' "$(date -u +%H:%M:%S)"
                 ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm=,args= | awk '
-                  $6 == "node" && /dist\\/server.js/ {
-                    printf "API pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\\n", $1,$2,$3,$4,$5
+                  $6 == "node" && /dist\/server.js/ {
+                    printf "API pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\n", $1,$2,$3,$4,$5
                   }
                   $6 == "node" && /artillery/ {
                     printf "ARTILLERY pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\\n", $1,$2,$3,$4,$5
                   }
                 '
-                printf 'TOP_PROCESSES\\n'
+                printf 'TOP_PROCESSES\n'
                 ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm= --sort=-pcpu | head -n 8
               } >> "$process_usage_file"
               sample=$((sample + 1))
@@ -178,7 +178,7 @@ jobs:
             done
           ) &
           monitor_pid=$!
-          printf 'PROCESS_MONITOR_PID=%s\\n' "$monitor_pid"
+          printf 'PROCESS_MONITOR_PID=%s\n' "$monitor_pid"
           set +e
           npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
           artillery_exit=$?
