@@ -1,36 +1,40 @@
 # LudoMada — 10,000 RPS capacity gate
 
-## Existing 80 RPS check
+## First measured benchmark: failed
 
-`loadtests/artillery/loadtest-health-80rps.yml` calls only `GET /health` for 30 seconds at 80 arrivals/second. It is a liveness smoke check, not a gameplay capacity benchmark: no player authentication, game-state SQL, or command transaction is exercised.
+The first authenticated game-state benchmark (Release Gate run 351, commit `9f025ce2b18ebd3c9acb507ab9febee05a1bee37`) actually exercised the API and PostgreSQL. The Artillery artifact recorded:
 
-The Render Free staging service has not started because its protected `DATABASE_URL` is not configured. Its observed Render metrics are empty, so no real staging throughput, latency, CPU, memory, or database saturation has been measured.
+- Configured arrival target: 10,000 requests/second.
+- Observed aggregate throughput: 1,332 requests/second.
+- 436,584 requests created; 234,569 HTTP 200 responses; 202,015 failed virtual users (46.3%).
+- p95 2,725 ms; p99 11,050.8 ms.
+- Errors: EADDRNOTAVAIL 95,474; ERR_SOCKET_TIMEOUT 102,340; ECONNRESET 4,201.
 
-## New opt-in CI benchmark
+This is a **failed 10k capacity result**, even though the GitHub job was green. The previous Artillery test did not independently validate the JSON report, so CI status alone was not a reliable capacity gate.
 
-The Release Gate `workflow_dispatch` input `run_capacity_test=true` will:
+## Root cause found in the load generator
 
-- Seed 1,000 active two-player games in the ephemeral GitHub Actions PostgreSQL service.
-- Generate a short-lived JWT with the CI-only secret; store game IDs and JWTs in a mode-0600 fixture file which is deleted after the load test and never uploaded.
-- Send authenticated `GET /api/games/:gameId/state` requests across the seeded games.
-- Ramp 250 → 1,000 → 2,500 → 5,000 → 10,000 arrivals/second, then hold 10,000 for 30 seconds.
-- Enforce an error rate at or below 0.1%, p95 at or below 250 ms, and p99 at or below 500 ms.
+Artillery's HTTP engine creates a separate TCP agent per virtual user when `config.http.pool` is omitted. At hundreds of thousands of virtual users this opened/closed too many TCP sockets and exhausted local ephemeral ports, producing EADDRNOTAVAIL. Its engine source confirms that `config.http.pool` creates shared reusable HTTP agents; the default agent uses keep-alive.
 
-The high-volume switch is fail-closed: it requires `CI=true`, `NODE_ENV=staging`, `LUDOMADA_LOAD_TEST_MODE=true`, and a database URL pointing only to `127.0.0.1:5432/ludomada_ci` (or localhost). It cannot disable request limits against Render, Supabase, or production. No live database, wallet, payment, or user is touched.
+The benchmark now configures a global shared socket pool of 4,096. The API PostgreSQL pool is raised to 60 **only** when the strict CI guard confirms the ephemeral loopback `ludomada_ci` database. All non-capacity environments remain capped at 20, with the normal default of five (Render's configured value remains two).
 
-## Interpretation
+## Enforced acceptance criteria
 
-This first profile measures authenticated game-state reads only. API, PostgreSQL, and Artillery share one GitHub Actions runner, so the result is a diagnostic baseline and not a production 10k certification. A failed test must be diagnosed from request rate, errors, latency, CPU/memory and pool evidence; thresholds must not be relaxed to manufacture a pass.
+The load profile now uses Artillery's `ensure` plugin with strict conditions and an independent post-run JSON validator:
 
-It does not claim 10k `roll`/`move` writes per second. Those are transaction-heavy and append command, event and audit rows while locking one authoritative game-state row with `SELECT ... FOR UPDATE`. Per-game command serialization is intentional to preserve game order; aggregate write capacity must be tested separately across many games.
+- Actual aggregate request rate at least 10,000 RPS.
+- Failed virtual users plus non-200 responses at or below 0.1%.
+- p95 at or below 250 ms.
+- p99 at or below 500 ms.
 
-## Production requirements before certification
+The independent validator is covered by pass and deliberate-failure tests. The Artillery report is uploaded even if the load run or validator fails. The temporary JWT CSV is always deleted and never uploaded.
 
-1. Deploy on multi-instance compute with sufficient CPU/RAM and autoscaling; Render Free's 0.1 CPU/512 MB single-instance tier is for staging only.
-2. Budget PostgreSQL connections globally across all API instances and workers. Supabase Nano Free documents a 60-connection DB limit; increasing each Node pool independently risks exhausting it.
-3. Implement shared SSE fanout and reconnect/replay before horizontal API scaling. The current event hub is process-local.
-4. Use shared/distributed rate-limit storage; do not remove auth or production limits.
-5. Benchmark mixed traffic from a separate load generator against the actual staging topology: authenticated state reads, legal moves, lobby/list, roll/move transactions and SSE. Record p50/p95/p99, error/429 rates, CPU, memory, event-loop delay, pool waiting, DB connections and lock waits.
-6. Run soak, burst, restart/failure and multi-instance tests while checking game isolation, idempotency and command ordering.
+## Scope and limitations
 
-Until these checks pass against the real deployment topology, status remains **NOT CERTIFIED FOR 10,000 PRODUCTION RPS**.
+The benchmark still measures authenticated participant-authorized game-state **reads**, not 10k `roll`/`move` writes. Artillery, API and PostgreSQL share a GitHub-hosted runner in this CI profile, so this is a diagnostic benchmark, not proof of production multi-instance capacity.
+
+Before claiming production 10k RPS, run mixed traffic from separate load generators against the actual multi-instance topology; collect DB pool wait, connection count, CPU, memory, event-loop delay and lock data. Add shared SSE fanout/replay and distributed rate limiting before horizontally scaling the API.
+
+Render Free remains a single-instance staging tier. The real Render/Supabase staging target remains unconfigured, so no production or real staging performance claim is made here.
+
+**Status:** not certified until the 10k authenticated-read benchmark and separate write/mixed-traffic benchmarks pass on the intended deployment topology.
