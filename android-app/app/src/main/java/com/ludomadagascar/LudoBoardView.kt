@@ -753,7 +753,7 @@ class LudoBoardView(
                 if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24 &&
                     glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
                     android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
-                    host.markRendererReady("GLES2_GLb",glbParts.size,boardParts.size)
+                    host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
                 }
             }.onFailure{
                 android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
