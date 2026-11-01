@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'android-app/**'
+      - 'scripts/check-apk-3d-asset.mjs'
       - '.github/workflows/android-apk.yml'
 
 permissions:
