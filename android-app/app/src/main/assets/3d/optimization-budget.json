@@ -46,5 +46,11 @@
   "policy": {
     "gameStateIndependent": true,
     "runtimePackagedMustBeExplicit": true
+  },
+  "homeEnvironment": {
+    "environmentGlbMaxBytes": 2097152,
+    "baobabGlbMaxBytes": 1048576,
+    "textureDimensionMax": 2048,
+    "textureBytesMax": 3000000
   }
 }
