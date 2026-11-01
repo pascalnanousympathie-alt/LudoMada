@@ -80,6 +80,11 @@ jobs:
       - name: Build backend
         run: npm run build
 
+      - name: Test capacity report validator and operational mode guards
+        run: |
+          node --test scripts/validate-capacity-report.test.mjs
+          npm test -- --runInBand tests/operationalModes.test.ts
+
       - name: Start staging API and verify readiness
         env:
           LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
