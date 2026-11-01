@@ -90,3 +90,22 @@ The next experiment raises the shared socket pool to 8,192 and records runner li
 Artifacts: capacity report `13069817523`, API logs `13069962253`, run `41272226027`.
 
 **Status remains NOT CERTIFIED.**
+
+## Fifth measured benchmark — 2026-11-01 (cache enabled, 8,192-socket pool; failed)
+
+Release Gate run `41272731448` on head `1358c9be1a916d9dde0711099906fab578aa48bc` used `config.http.pool: 8192`, extended HTTP timing metrics, and recorded GitHub-hosted runner limits. The 10,000 arrivals/sec target and strict SLO gates were unchanged.
+
+- 300,334 VUs created; 195,856 HTTP 200 responses; 104,478 VUs failed (34.78%).
+- Aggregate observed request rate: 2,663 RPS; highest reported interval: 3,569 RPS.
+- HTTP response time: p50 147 ms, p95 391.6 ms, p99 6,838 ms, max 14,999 ms.
+- End-to-end `http.total`: p95 3,828.5 ms / p99 13,770.3 ms. TCP connect phase: p95 5,065.6 ms / p99 11,274.1 ms.
+- Errors: `ERR_SOCKET_TIMEOUT` 102,345; `ECONNRESET` 2,133.
+- Cache snapshot: 199,965 hits / 2,889 misses (98.58% hit ratio), with all 1,000 game entries populated.
+- PostgreSQL pool reached 60 connections and briefly peaked at 184 waiting requests during cache fill; waiting returned to zero after warm-up. API logs contained no pool-acquisition timeout or state-query error. The read-only SQL plan measured 0.202 ms execution / 0.58 ms planning.
+- Runner snapshot before load: 4 vCPUs, 15 GiB RAM, soft/hard file-descriptor limit 65,536, ephemeral port range 32,768–60,999 (28,232 ports), and file-max `9223372036854775807`. After load, `ss -s` reported 6,460 orphaned TCP sockets and 10,390 TIME_WAIT sockets; the TCP summary showed 60 established connections.
+
+The 8,192-pool result was worse than the preceding 4,096-pool run (4,018 RPS), so a larger configured pool is not a monotonic improvement. The late-run TCP and total-latency tails, socket timeouts, and post-run orphaned/TIME_WAIT sockets show connection-path pressure. Because Artillery, the Express API and PostgreSQL still share the same 4-vCPU runner, these data do **not** prove whether the dominant limit is the generator, API event loop, or their contention. Do not attribute the failure solely to PostgreSQL: the cache hit ratio was 98.58%, SQL execution was 0.202 ms, and there were no DB acquisition timeouts.
+
+The correct next diagnostic is an independently hosted load generator against an approved, separately hosted staging target. A second job on GitHub-hosted Actions cannot reach the first job's private loopback API without an explicit network path, so do not split the jobs and pretend that alone isolates the load generator. The real Render/Supabase staging target is not yet validated for this test; the current run only used disposable CI PostgreSQL and a loopback API. Keep the cache disabled by default and do not enable this process-local cache across replicas until shared invalidation exists.
+
+**Status remains NOT CERTIFIED.** The load step failed and independent SLO validation was skipped. V6.3 CI and the listed Security Audit checks passed on this exact head; OSV Full Scan was skipped. No production or staging deployment was performed. Artifacts: capacity report `13069644457`, API log `13070167432`, run `41272731448`.
