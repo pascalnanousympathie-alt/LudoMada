@@ -247,6 +247,9 @@ data class PremiumPostProcess(
     }
 }
 
+internal fun shadowReceiverUniform(receivesShadow: Boolean = true): Float =
+    if (receivesShadow) 1f else 0f
+
 object PremiumMaterialLighting {
     /** Single source of truth for calibrated Lane-C renderer targets. */
     object Calibration {
