@@ -1,25 +1,26 @@
 package com.ludomadagascar
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlin.math.abs
 
 class HomeEnvironmentCompositionTest {
     @Test
     fun baobabsFrameTheSceneWithoutBlockingTheBrandSightline() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
-        assertEquals(5, trees.size)
+        assertEquals(4, trees.size)
         assertTrue(HomeEnvironmentComposition.hasClearBrandSightline())
-        assertFalse(trees.any { kotlin.math.abs(it.x) < 2.5f && it.z in -9f..-4f && it.scale >= 0.42f })
+        assertTrue(trees.all { abs(it.x) >= 3.0f })
     }
 
     @Test
-    fun baobabPlacementIsSymmetricAtTheFrontEdges() {
+    fun baobabPlacementIsPairedOnBothSidesAtFrontAndBack() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(trees[0].x, -trees[1].x, 0.25f)
-        assertEquals(trees[0].z, trees[1].z, 0.25f)
-        assertEquals(trees[0].scale, trees[1].scale, 0.05f)
+        assertEquals(trees[0].z, trees[1].z, 0.35f)
+        assertEquals(trees[2].x, -trees[3].x, 0.25f)
+        assertEquals(trees[2].z, trees[3].z, 0.35f)
     }
 
     @Test
