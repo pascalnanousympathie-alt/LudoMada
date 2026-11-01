@@ -104,7 +104,7 @@ jobs:
             nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
           fi
           api_pid=$!
-          printf '%s\\n' "$api_pid" > "$RUNNER_TEMP/ludomada-api.pid"
+          printf '%s\n' "$api_pid" > "$RUNNER_TEMP/ludomada-api.pid"
           ready=0
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:3101/ready; then
