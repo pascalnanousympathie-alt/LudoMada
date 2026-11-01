@@ -171,7 +171,7 @@ jobs:
                   }
                 '
                 printf 'TOP_PROCESSES\n'
-                ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm= --sort=-pcpu | head -n 8
+                ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm= --sort=-pcpu | awk 'NR <= 8'
               } >> "$process_usage_file"
               sample=$((sample + 1))
               sleep 1
