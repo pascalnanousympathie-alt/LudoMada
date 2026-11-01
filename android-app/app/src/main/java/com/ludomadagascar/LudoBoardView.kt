@@ -58,6 +58,18 @@ class LudoBoardView(
         }
         android.util.Log.i("LudoMadaSmoke", "BOARD_MARKER=" + value)
     }
+
+    private fun portraitAwareVerticalFov(
+        aspect:Float,
+        targetHorizontalFov:Float,
+        landscapeVerticalFov:Float
+    ):Float {
+        if (aspect >= 1f) return landscapeVerticalFov
+        val safeAspect = aspect.coerceAtLeast(0.1f).toDouble()
+        val halfHorizontal = Math.toRadians(targetHorizontalFov.toDouble() * 0.5)
+        val vertical = 2.0 * Math.atan(Math.tan(halfHorizontal) / safeAspect)
+        return Math.toDegrees(vertical).toFloat().coerceIn(34f, 78f)
+    }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
@@ -337,11 +349,19 @@ class LudoBoardView(
                     }
                     return true
                 }
-                // The center die is part of the live Home scene; a tap rotates it
-                // just like the gameplay renderer without changing authoritative state.
-                if (nx >= 0.37f && nx <= 0.66f && ny >= 0.28f && ny <= 0.72f) {
-                    startDiceAnimation()
-                    return true
+                // Preview dice stay in the four player corners. Tapping any visible
+                // die rotates that die without mutating authoritative game state.
+                val projectedDice = renderer.projectedDice()
+                val dieHit = min(width, height) * 0.12f
+                for (pi in 0..3) {
+                    val p = projectedDice[pi]
+                    val dx = e.x - p[0]
+                    val dy = e.y - p[1]
+                    if (p[0] >= 0f && p[1] >= 0f && dx * dx + dy * dy <= dieHit * dieHit) {
+                        player = pi
+                        startDiceAnimation()
+                        return true
+                    }
                 }
             }
             return true
@@ -628,7 +648,12 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            Matrix.perspectiveM(proj,0,if (homePreview) 34f else 32f,aspect,0.1f,60f)
+            val fov = portraitAwareVerticalFov(
+                aspect,
+                if (homePreview) 42f else 48f,
+                if (homePreview) 34f else 38f
+            )
+            Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
             Matrix.setLookAtM(
                 view,0,0f,8.4f,9.4f,
                 0f,0.18f,0f,
@@ -663,7 +688,7 @@ class LudoBoardView(
             drawPath()
             drawZones()
             drawPawns()
-            if (homePreview) drawDice(0) else drawDice()
+            drawDice()
         }
 
         private fun drawPath(){
@@ -779,14 +804,11 @@ class LudoBoardView(
             return Mesh(v.toFloatArray(),n.toFloatArray(),idx.toShortArray())
         }
 
-        private fun dieCenter(pi:Int):FloatArray {
-            if (homePreview) return floatArrayOf(0f, 0f)
-            return when(pi){
-                0->floatArrayOf(-4.90f,-4.90f)
-                1->floatArrayOf(4.90f,-4.90f)
-                2->floatArrayOf(4.90f,4.90f)
-                else->floatArrayOf(-4.90f,4.90f)
-            }
+        private fun dieCenter(pi:Int):FloatArray = when(pi){
+            0->floatArrayOf(-3.05f,-3.05f)
+            1->floatArrayOf(3.05f,-3.05f)
+            2->floatArrayOf(3.05f,3.05f)
+            else->floatArrayOf(-3.05f,3.05f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
@@ -1174,7 +1196,11 @@ class LudoBoardView(
             val shakeX=sin(now/6_000_000.0).toFloat()*rollEnergy*0.055f
             val shakeZ=cos(now/7_000_000.0).toFloat()*rollEnergy*0.040f
             val camZ=baseCamZ+shakeZ
-            val fov=if (host.homePreview) 38f else if(land)31f else 34f
+            val fov=portraitAwareVerticalFov(
+                aspect,
+                if (host.homePreview) 42f else 48f,
+                if (host.homePreview) 38f else if(land)31f else 34f
+            )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
@@ -1270,19 +1296,17 @@ class LudoBoardView(
             for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
             return out
         }
-        private fun dieCenterWorld(pi:Int):FloatArray = if(host.homePreview){
-            floatArrayOf(0f,boardTop+0.10f,0f)
-        }else when(pi){
-            0 -> floatArrayOf(-4.15f,boardTop+0.10f,4.15f)
-            1 -> floatArrayOf(-4.15f,boardTop+0.10f,-4.15f)
-            2 -> floatArrayOf(4.15f,boardTop+0.10f,-4.15f)
-            else -> floatArrayOf(4.15f,boardTop+0.10f,4.15f)
+        private fun dieCenterWorld(pi:Int):FloatArray = when(pi){
+            0 -> floatArrayOf(-3.72f,boardTop+0.10f,3.72f)
+            1 -> floatArrayOf(-3.72f,boardTop+0.10f,-3.72f)
+            2 -> floatArrayOf(3.72f,boardTop+0.10f,-3.72f)
+            else -> floatArrayOf(3.72f,boardTop+0.10f,3.72f)
         }
         private fun drawWorld(shadowPass:Boolean){
             if(shadowPass){
                 if(homePreview) drawHomeEnvironmentShadows()
                 if(!homePreview)drawShadowMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f))
-                if(!homePreview && boardParts.isNotEmpty()){
+                if(boardParts.isNotEmpty()){
                     drawAuthoredBoard(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
@@ -1327,7 +1351,7 @@ class LudoBoardView(
             } else {
                 drawGameplayBackdrop()
             }
-            if(!homePreview && boardParts.isNotEmpty()){
+            if(boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
             }else{
@@ -1348,7 +1372,7 @@ class LudoBoardView(
                 }
             }
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
-            if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
+            for(pi in 0..3) drawDie(pi)
         }
         private fun drawGameplayBackdrop(){
             drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),floatArrayOf(0.025f,0.095f,0.24f,1f),0.72f,0.04f,1f,0f,0,false)
@@ -1391,11 +1415,7 @@ class LudoBoardView(
                     else->0.34f
                 }
                 val metallic=if(mn=="LM_Gold_Frame")0.88f else 0.06f
-                val albedo=when{
-                    mn=="LM_Table_Lacquer"->woodTex
-                    mn=="LM_Path_Ivory"->boardTex
-                    else->0
-                }
+                val albedo=if(mn=="LM_Table_Lacquer") woodTex else 0
                 val ntex=if(mn=="LM_Table_Lacquer")normalTex else 0
                 drawMesh(part.mesh,m,color,rough,metallic,1f,if(mn=="LM_Gold_Frame")0.015f else 0f,5,false,albedo,ntex,0)
             }
