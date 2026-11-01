@@ -27,7 +27,7 @@ The load profile uses the Artillery `ensure` plugin with strict conditions and a
 - p95 at or below 250 ms.
 - p99 at or below 500 ms.
 
-The independent validator has six Node.js tests covering a valid report and deliberate failures for low throughput, high error rate, non-200 responses, high p95/p99, and missing metrics. The previous raw report was run through it locally and correctly failed all four performance criteria. The Artillery report is uploaded even if the load run or validator fails. The temporary JWT CSV is always deleted and never uploaded.
+The independent validator has six Node.js tests covering a valid report and deliberate failures for low throughput, high error rate, non-200 responses, high p95/p99, and missing metrics. A synthetic fixture constructed from the previous run's observed aggregates was rejected by the validator; the next CI run will independently validate its raw Artillery JSON. The Artillery report is uploaded even if the load run or validator fails. The temporary JWT CSV is always deleted and never uploaded.
 
 ## Scope and limitations
 
@@ -38,3 +38,20 @@ Before claiming production 10k RPS, run mixed traffic against the real multi-ins
 Render Free remains a single-instance staging tier. The real Render/Supabase staging target remains unconfigured, so no production or real staging performance claim is made here.
 
 **Status:** not certified until the 10k authenticated-read benchmark and separate write/mixed-traffic benchmarks pass on the intended deployment topology.
+## Second measured benchmark — 2026-11-01 (failed)
+
+Release Gate run `41271085933` on head `627ac34988097d088cf7d7df55db5ce3a81bf1ff` used `http.pool: 4096` and held arrivals at 10,000 RPS during warm-up and steady-state. It still did not meet the SLOs:
+
+- 326,943 virtual users created; 132,621 HTTP 200 responses; 132,720 total HTTP responses (99 HTTP 500); 197,422 virtual users failed.
+- Aggregate throughput: 1,196 RPS.
+- p50 347.3 ms; p95 3,011.6 ms; p99 10,617.5 ms; max 21,170 ms.
+- Client errors: `EADDRNOTAVAIL` 81,351; `ERR_SOCKET_TIMEOUT` 114,365; `ECONNRESET` 1,706.
+- The API's PostgreSQL pool reached its configured maximum of 60 connections. Its `waitingCount` peaked at 8,940, and the API log recorded 4,457 `pg-pool` connection acquisition timeouts (`timeout exceeded when trying to connect`).
+
+This identifies two simultaneous pressure points, not a single server-only root cause: the generator still encountered local socket/ephemeral-port errors despite the 4,096 total-socket cap, while the API's 60-connection PostgreSQL pool accumulated a large waiting queue and timed out requests. The CI job runs Artillery, the API and PostgreSQL on one GitHub-hosted runner, so its result is not a clean isolated measurement of application capacity.
+
+The API endpoint is a single authenticated `GET /api/games/:gameId/state` backed by a raw PostgreSQL query that reads the game row and authoritative state, checks membership, and aggregates participant IDs/entry fee. Existing access paths include the Game primary key, AuthoritativeGameState gameId primary key, and GameParticipant unique `(gameId,userId)` index; the GameParticipant `(gameId,createdAt)` ordered aggregation index is not present in the current Prisma schema. No index or migration has been applied yet.
+
+To obtain query-level evidence before changing indexes or application behavior, the gate now runs a read-only `EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON)` for the exact authenticated state query against the disposable CI database after fixture seeding. It also records a safe `pg_stat_activity` connection-state snapshot; the query plan JSON is uploaded with the capacity report even if the load step fails. This does not touch Supabase staging or production.
+
+**Status remains NOT CERTIFIED.** The 10k RPS load step failed; independent SLO validation was skipped because Artillery exited non-zero. V6.3 CI and Security Audit passed, but neither is evidence of 10k capacity. A realistic final capacity test needs a dedicated/distributed generator separate from API/PostgreSQL resources; Artillery's own guidance says large, meaningful load tests should run from cloud workers rather than directly on CI nodes.
