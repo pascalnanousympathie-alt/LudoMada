@@ -2,6 +2,9 @@ config:
   target: "http://127.0.0.1:3101"
   http:
     timeout: 15
+    # Artillery otherwise creates a new Agent for each virtual user.
+    # A shared keep-alive pool prevents ephemeral-port exhaustion at high RPS.
+    pool: 4096
   payload:
     path: "./capacity-fixtures.csv"
     fields:
@@ -29,10 +32,14 @@ config:
     - duration: 30
       arrivalRate: 10000
       name: "Steady state: 10k authenticated state reads/sec"
-  ensure:
-    maxErrorRate: 0.1
-    p95: 250
-    p99: 500
+  plugins:
+    ensure:
+      conditions:
+        - expression: "http.request_rate >= 10000"
+        - expression: "http.response_time.p95 <= 250"
+        - expression: "http.response_time.p99 <= 500"
+        - expression: "vusers.failed / vusers.created <= 0.001"
+        - expression: "http.codes.200 == http.responses"
 
 scenarios:
   - name: "Participant-authorized authoritative game-state read"
