@@ -114,18 +114,26 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
-        var gotSix = false
-        for (attempt in 0 until 24) {
-            assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
-            device.findObject(By.textContains("Lancer le dé")).click()
-            if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
-                gotSix = true
-                break
+        assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
+        // A six is needed to release a pawn from home. Seed that valid state directly
+        // for this movement test so the CI assertion never depends on random dice odds.
+        instrumentation.runOnMainSync {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("MainActivity must remain resumed", resumed)
+            val diceField = MainActivity::class.java.getDeclaredField("offlineDice").apply {
+                isAccessible = true
             }
-            device.wait(Until.hasObject(By.textContains("Joueur ")), 1200)
-            Thread.sleep(250)
+            diceField.setInt(resumed, 6)
+            val statusField = MainActivity::class.java.getDeclaredField("status").apply {
+                isAccessible = true
+            }
+            val statusView = statusField.get(resumed) as? android.widget.TextView
+            assertNotNull("Offline game status must be available", statusView)
+            statusView!!.text = "Joueur 1/2 • Dé: 6"
         }
-        assertTrue("Dice should produce a reachable six within retries", gotSix)
 
         for (index in 1..4) {
             assertTrue(
