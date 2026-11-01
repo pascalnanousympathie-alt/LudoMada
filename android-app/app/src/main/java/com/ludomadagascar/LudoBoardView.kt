@@ -156,6 +156,14 @@ class LudoBoardView(
         }
     }
 
+    internal fun markHomePreviewNotReady() {
+        if (!BuildConfig.DEBUG || !homePreview) return
+        post {
+            contentDescription = "LudoMada 3D Home Preview"
+            (parent as? PremiumHeroViewV2)?.resetHomePreviewReady()
+        }
+    }
+
     internal fun publishPawnTapTargets() {
         if (!BuildConfig.DEBUG || homePreview) return
         val marker = rendererReadyDescription ?: return
@@ -608,6 +616,10 @@ class LudoBoardView(
             gl:javax.microedition.khronos.opengles.GL10?,
             cfg:javax.microedition.khronos.egl.EGLConfig?
         ){
+            // A recreated EGL context invalidates every previous GL object name.
+            firstFrameDiagnosticsCaptured = false
+            program = 0
+            if (host.homePreview) host.markHomePreviewNotReady()
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "SAFE_SURFACE_CREATED").apply()
@@ -1332,6 +1344,21 @@ class LudoBoardView(
         private val pawnScale=0.62f
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
+            // Context loss discards GL objects. Clear every cached name before rebuilding
+            // targets, textures and buffers; never reuse IDs from the old context.
+            firstFrameDiagnosticsCaptured = false
+            homePreviewFirstFrameCaptured = false
+            lastFrameNanos = 0L
+            woodTex = 0; boardTex = 0; neutralTex = 0; metalTex = 0
+            normalTex = 0; woodNormalTex = 0; envCube = 0
+            fallbackShadowTex = 0
+            envBarkTex = 0; envBarkNormalTex = 0; envBarkRoughTex = 0
+            envDirtTex = 0; envDirtNormalTex = 0; envDirtRoughTex = 0
+            envSkyTex = 0; envGrassTex = 0; envGrassNormalTex = 0; envGrassRoughTex = 0
+            sceneFbo = 0; sceneColorTex = 0; sceneDepthTex = 0
+            shadowFbo = 0; shadowTex = 0
+            particleVbo = 0
+            if (host.homePreview) host.markHomePreviewNotReady()
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
                 " fill=" + premiumLighting.fillIntensity +
