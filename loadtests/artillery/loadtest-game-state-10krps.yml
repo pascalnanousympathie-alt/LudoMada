@@ -13,9 +13,8 @@ config:
     skipHeader: true
   phases:
     - duration: 5
-      arrivalRate: 1000
-      rampTo: 10000
-      name: "Warm-up ramp: 1k to 10k authenticated state reads/sec"
+      arrivalRate: 10000
+      name: "Warm-up at 10k authenticated state reads/sec"
     - duration: 30
       arrivalRate: 10000
       name: "Steady state: 10k authenticated state reads/sec"
