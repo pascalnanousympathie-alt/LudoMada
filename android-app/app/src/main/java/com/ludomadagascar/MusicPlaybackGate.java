@@ -16,6 +16,14 @@ final class MusicPlaybackGate {
     return ++generation;
   }
 
+  /** End only the caller's generation; a stale worker cannot stop its successor. */
+  synchronized boolean endIfCurrent(long session) {
+    if (!playing || generation!=session) return false;
+    playing=false;
+    ++generation;
+    return true;
+  }
+
   synchronized boolean isCurrent(long session) {
     return playing && generation==session;
   }
