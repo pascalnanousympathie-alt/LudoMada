@@ -125,17 +125,17 @@ capture_app_private_screenshot() {
       # Accept only a complete PNG (>1 KB, valid chunk CRCs and terminal IEND).
       if [[ -s "$temp_path" ]] && validate_png "$temp_path" >/dev/null 2>&1; then
         mv -- "$temp_path" "$local_path"
-        echo "ANDROID_\${label}_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
+        echo "ANDROID_${label}_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
         return 0
       fi
     fi
     rm -f "$temp_path"
     if (( attempt % 30 == 0 )); then
-      echo "ANDROID_\${label}_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
+      echo "ANDROID_${label}_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
     fi
     sleep 1
   done
-  echo "ANDROID_\${label}_SCREENSHOT_WATCH_TIMEOUT"
+  echo "ANDROID_${label}_SCREENSHOT_WATCH_TIMEOUT"
   return 1
 }
 
