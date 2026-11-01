@@ -97,6 +97,10 @@ class StartupUiTest {
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
+        assertTrue(
+            "Returning from the lobby must render a fresh Home 3D framebuffer",
+            device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+        )
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
