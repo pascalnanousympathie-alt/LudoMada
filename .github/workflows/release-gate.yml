@@ -88,6 +88,7 @@ jobs:
       - name: Start staging API and verify readiness
         env:
           LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+          LUDOMADA_PG_POOL_DIAGNOSTICS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
           PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && '60' || '5' }}
         run: |
           set -eu
