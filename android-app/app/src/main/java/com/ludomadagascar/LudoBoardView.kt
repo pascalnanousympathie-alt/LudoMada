@@ -1840,16 +1840,16 @@ class LudoBoardView(
                         val unlit=skyPart
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
                         val environmentColor=when {
-                            barkPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.20f)
-                            dirtPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.12f)
-                            grassPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.08f)
+                            barkPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.50f)
+                            dirtPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.25f)
+                            grassPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.18f)
                             else -> part.baseColor
                         }
                         val environmentEmission=when {
                             skyPart -> 0.10f
-                            barkPart -> 0.018f
-                            dirtPart -> 0.010f
-                            grassPart -> 0.008f
+                            barkPart -> 0.042f
+                            dirtPart -> 0.018f
+                            grassPart -> 0.014f
                             else -> 0f
                         }
                         // Bark keeps casting a soft shadow but does not receive its own
@@ -1886,14 +1886,14 @@ class LudoBoardView(
                         val rtex=when{barkPart->envBarkRoughTex;scrubPart->envGrassRoughTex;else->0}
                         val rough=when{barkPart->0.76f;scrubPart->0.92f;else->0.82f}
                         val base=HomeEnvironmentComposition.liftEnvironmentColor(
-                            part.baseColor,if(barkPart)1.32f else 1.08f
+                            part.baseColor,if(barkPart)1.50f else 1.16f
                         )
                         // Keep the bark warm and readable against the sunset HDRI.
                         // The tree still casts a shadow, but avoids self-shadowing into a silhouette.
                         drawMesh(
                             part.mesh,m,base,rough,part.metallic,
                             if(barkPart)0.99f else 0.96f,
-                            if(barkPart)0.022f else 0.008f,
+                            if(barkPart)0.045f else 0.014f,
                             6,false,albedo,ntex,rtex,receivesShadow = !barkPart
                         )
                     }
