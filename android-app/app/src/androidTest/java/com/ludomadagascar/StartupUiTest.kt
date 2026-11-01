@@ -112,6 +112,21 @@ class StartupUiTest {
         device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
+        assertTrue("Balance heading must be visible", device.wait(
+            Until.hasObject(By.desc("ACCOUNT_BALANCE_HEADER")), 3000
+        ))
+        assertTrue("Balance label must fit its card", device.hasObject(By.text("SOLDE MGA")))
+        val balanceHeading = device.findObject(By.desc("ACCOUNT_BALANCE_HEADER"))
+        val statusBarId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        val statusBarBottom = if (statusBarId > 0) {
+            context.resources.getDimensionPixelSize(statusBarId)
+        } else {
+            (24f * context.resources.displayMetrics.density).toInt()
+        }
+        assertTrue(
+            "Balance heading must be below the status bar (top=${balanceHeading.visibleBounds.top}, statusBarBottom=$statusBarBottom)",
+            balanceHeading.visibleBounds.top >= statusBarBottom
+        )
         assertTrue(
             "3D renderer must certify a GLB-backed frame with a clean framebuffer",
             device.wait(Until.hasObject(By.descContains("RENDER_PASS=")), 15000)
