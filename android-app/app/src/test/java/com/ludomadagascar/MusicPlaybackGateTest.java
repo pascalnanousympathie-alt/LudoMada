@@ -12,13 +12,16 @@ public class MusicPlaybackGateTest {
     assertEquals(-1L,gate.begin());
   }
 
-  @Test public void stopInvalidatesThePreviouslyActiveWriter() {
+  @Test public void stopInvalidatesThePreviousWriterAndAllowsRestart() {
     MusicPlaybackGate gate=new MusicPlaybackGate();
     long first=gate.begin();
     long stopped=gate.end();
     assertTrue(stopped>first);
     assertFalse(gate.isCurrent(first));
-    assertEquals(-1L,gate.begin());
+    long second=gate.begin();
+    assertTrue("a stopped player must be restartable",second>stopped);
+    assertTrue(gate.isCurrent(second));
+    assertFalse(gate.isCurrent(first));
   }
 
   @Test public void restartingCreatesANewGenerationAndKeepsOldWorkersStale() {
