@@ -4,6 +4,10 @@ import android.graphics.Color
 import kotlin.math.max
 import kotlin.math.min
 
+internal object PbrShadowReception {
+    fun uniformValue(receivesShadow: Boolean): Float = if (receivesShadow) 1f else 0f
+}
+
 /**
  * Lane C only: physically based material, lighting and post-process contract.
  *
