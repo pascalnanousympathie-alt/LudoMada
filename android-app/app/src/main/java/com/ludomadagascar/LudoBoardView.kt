@@ -486,6 +486,7 @@ class LudoBoardView(
         private var width=1
         private var height=1
         private var program=0
+        private var firstFrameDiagnosticsCaptured=false
         private var uMvp=0
         private var uModel=0
         private var uCamera=0
@@ -518,6 +519,7 @@ class LudoBoardView(
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "SAFE_SURFACE_CREATED").apply()
             }
+            android.util.Log.i("LudoMadaRender","SAFE_SURFACE_CREATED")
             GLES20.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES20.glEnable(GLES20.GL_DEPTH_TEST)
             GLES20.glDepthFunc(GLES20.GL_LEQUAL)
@@ -707,6 +709,42 @@ class LudoBoardView(
             }
             drawPawns()
             drawDice()
+            logSafeFrameReadback()
+        }
+
+        private fun logSafeFrameReadback(){
+            if(!BuildConfig.DEBUG || firstFrameDiagnosticsCaptured)return
+            firstFrameDiagnosticsCaptured=true
+            runCatching {
+                val total=max(1,width*height)
+                val pixels=ByteBuffer.allocateDirect(total*4).order(ByteOrder.nativeOrder())
+                GLES20.glFinish()
+                GLES20.glReadPixels(0,0,width,height,GLES20.GL_RGBA,GLES20.GL_UNSIGNED_BYTE,pixels)
+                val glError=GLES20.glGetError()
+                var brightPixels=0
+                var maxChannel=0
+                for(i in 0 until total){
+                    val off=i*4
+                    val r=pixels.get(off).toInt() and 0xff
+                    val g=pixels.get(off+1).toInt() and 0xff
+                    val b=pixels.get(off+2).toInt() and 0xff
+                    val peak=max(r,max(g,b))
+                    if(peak>24)brightPixels++
+                    maxChannel=max(maxChannel,peak)
+                }
+                android.util.Log.i(
+                    "LudoMadaRender",
+                    "SAFE_READBACK label=surface size="+width+"x"+height+
+                        " brightPixels="+brightPixels+"/"+total+
+                        " maxChannel="+maxChannel+
+                        " glError=0x"+glError.toString(16)
+                )
+                if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24){
+                    android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
+                }
+            }.onFailure{
+                android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
+            }
         }
 
         private fun drawPath(){
