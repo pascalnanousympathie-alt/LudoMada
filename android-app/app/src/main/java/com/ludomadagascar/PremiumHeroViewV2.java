@@ -45,6 +45,11 @@ public class PremiumHeroViewV2 extends FrameLayout {
     try{Field f=getContext().getClass().getDeclaredField(n);f.setAccessible(true);Object v=f.get(getContext());return v instanceof Number?((Number)v).longValue():0;}catch(Throwable e){return 0;}
   }
 
+  private boolean bool(String n){
+    try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);return Boolean.TRUE.equals(m.invoke(getContext()));}
+    catch(Throwable e){return false;}
+  }
+
   private class HomeView extends View {
     Paint p=new Paint(3); float s=1f; int fee=500;
     int gold=Color.rgb(247,190,56), gold2=Color.rgb(255,224,122);
@@ -81,7 +86,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       box(c,84,55,145,63,4,Color.rgb(5,18,48),Color.rgb(37,71,126));box(c,85,56,121,62,3,Color.rgb(34,221,112),0);
       box(c,151,17,222,57,19,Color.rgb(10,35,84),Color.rgb(69,139,255));t(c,"C",164,43,13,gold2,true,true);t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
       box(c,250,17,309,57,19,Color.rgb(8,35,83),Color.rgb(55,151,239));t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);t(c,"—",291,42,10,Color.WHITE,true,true);box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
-      t(c,"♪",337,43,16,Color.WHITE,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
+      t(c,"♪",337,43,16,bool("musicEnabledFromHome")?Color.WHITE:0xFF7D8799,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
       if(tok.isEmpty()){box(c,279,69,371,92,11,Color.rgb(28,95,202),gold);t(c,"CONNEXION",325,85,7.5f,Color.WHITE,true,true);}
       t(c,"LE JEU QUI RASSEMBLE !",195,103,8.5f,gold2,true,true);
       t(c,"♛",195,125,27,gold,true,true);t(c,"Ludo",161,151,38,gold2,true,true);t(c,"Mada",226,151,38,Color.WHITE,true,true);
@@ -114,6 +119,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
       float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
       if(x<0||x>390||y<0||y>710)return true;
       if(y<68){
+        if(x>=328&&x<346){call("toggleMusicFromHome");invalidate();return true;}
         if(x<170)call(tok.isEmpty()?"login":"profile"); else if(x<273)call(tok.isEmpty()?"login":"wallet"); else call("profile");
         return true;
       }
