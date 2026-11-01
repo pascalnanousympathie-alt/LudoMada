@@ -55,3 +55,20 @@ The API endpoint is a single authenticated `GET /api/games/:gameId/state` backed
 To obtain query-level evidence before changing indexes or application behavior, the gate now runs `node --check` on the profiler and then a read-only `EXPLAIN (ANALYZE, BUFFERS, SETTINGS, FORMAT JSON)` for the exact authenticated state query against the disposable CI database after fixture seeding. It also records a safe `pg_stat_activity` connection-state snapshot; the query plan JSON is uploaded with the capacity report even if the load step fails. This does not touch Supabase staging or production.
 
 **Status remains NOT CERTIFIED.** The 10k RPS load step failed; independent SLO validation was skipped because Artillery exited non-zero. V6.3 CI and Security Audit passed, but neither is evidence of 10k capacity. A realistic final capacity test needs a dedicated/distributed generator separate from API/PostgreSQL resources; Artillery's own guidance says large, meaningful load tests should run from cloud workers rather than directly on CI nodes.
+## Third measured benchmark — 2026-11-01 (cache enabled; failed)
+
+Release Gate run `41271849087` on head `d76b75b11c3dc223fe5b339ab59e35f326409efd` enabled the process-local cache only for the guarded disposable CI capacity profile. It seeded 1,000 games, captured the SQL plan, warmed the cache at 1,000 arrivals/sec, then attempted 10,000 authenticated state reads/sec for 30 seconds. The profile still failed its SLO gate:
+
+- 300,334 VUs created; 181,651 HTTP 200 responses; 118,683 VUs failed (39.52%).
+- Aggregate observed request rate: 1,429 RPS; best 10-second interval: 4,412 RPS.
+- p50 55.2 ms; p95 1,064.4 ms; p99 3,605.5 ms; max 15,081 ms.
+- Errors: 118,023 `ERR_SOCKET_TIMEOUT`; 660 `ECONNRESET`; **zero** `EADDRNOTAVAIL`.
+- Cache contained all 1,000 game entries; final snapshot was 192,267 hits / 2,567 misses (98.68% hit ratio).
+- PostgreSQL pool waitingCount had median/p90 0 and maximum 9; no `STATE_TRUE_SINGLE_QUERY_ERROR` or `timeout exceeded when trying to connect` messages appeared in the API log. The pool's total/idle count returned to 14/14 at the last snapshot.
+- Read-only SQL plan for the exact state query: 0.246 ms execution, 0.735 ms planning, 18 shared buffer hits and zero shared reads. It used `Game_pkey`, `AuthoritativeGameState_gameId_stateVersion_idx`, and `GameParticipant_gameId_userId_key`; the participant aggregation sort handled two rows.
+
+This separates the remaining bottleneck from the prior run: the cache removed sustained database-pool starvation and socket ephemeral-port errors, but the combined API + Artillery job still cannot complete 10k HTTP requests/sec. The largest remaining client-side symptom is `ERR_SOCKET_TIMEOUT`; 10k virtual-user arrivals were created, but only 1,429 HTTP responses/sec were completed over the full observed window. Because the API and generator share one GitHub runner, the run still does not isolate API capacity from load-generator CPU, socket-pool or event-loop limits.
+
+The next experiment raises Artillery's shared keep-alive pool from 2,048 to 4,096 and enables `config.http.extendedMetrics` to capture TCP/total timing phases. It retains all strict thresholds and does not change the API/database pool or bypass authorization. This is an experiment, not a capacity pass. The capacity artifact is `13069856828` and the API log artifact is `13069239526` from run `41271849087`.
+
+**Status remains NOT CERTIFIED.** The DB query and pool are no longer the dominant observed bottleneck in this cache-enabled run; the shared CI runner / HTTP concurrency path remains limiting. A dedicated independent load generator against the intended multi-instance topology is still required before production 10k claims.
