@@ -3,13 +3,14 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { randomInt, randomUUID, createHash } from "node:crypto";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import bcrypt from "bcryptjs";
 import { PrismaClient, PaymentMethod, TransactionType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
-import { isCapacityLoadTestEnabled, isGameStateReadCacheEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
+import { isCapacityLoadTestEnabled, isCapacityRuntimeTelemetryEnabled, isGameStateReadCacheEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
@@ -79,6 +80,95 @@ const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
 const app=express();
+
+
+const CAPACITY_RUNTIME_TELEMETRY_ENABLED = isCapacityRuntimeTelemetryEnabled();
+
+if (CAPACITY_RUNTIME_TELEMETRY_ENABLED) {
+  const eventLoop = monitorEventLoopDelay({ resolution: 20 });
+  eventLoop.enable();
+
+  let previousCpu = process.cpuUsage();
+  let previousSampleAt = process.hrtime.bigint();
+  let activeStateReads = 0;
+  let completedStateReads = 0;
+  let failedStateReads = 0;
+  let abortedStateReads = 0;
+
+  // Aggregate request lifecycle counts; do not log individual hot-path requests.
+  app.use((req: any, res: any, next: any) => {
+    if (req.method !== "GET" || !req.path.startsWith("/api/games/") || !req.path.endsWith("/state")) {
+      return next();
+    }
+
+    activeStateReads += 1;
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      activeStateReads = Math.max(0, activeStateReads - 1);
+    };
+
+    res.once("finish", () => {
+      settle();
+      completedStateReads += 1;
+      if (res.statusCode >= 400) failedStateReads += 1;
+    });
+    res.once("close", () => {
+      if (!res.writableFinished) {
+        settle();
+        abortedStateReads += 1;
+      }
+    });
+    next();
+  });
+
+  setInterval(() => {
+    const now = process.hrtime.bigint();
+    const elapsedMs = Math.max(1, Number(now - previousSampleAt) / 1e6);
+    const cpu = process.cpuUsage(previousCpu);
+    previousCpu = process.cpuUsage();
+    previousSampleAt = now;
+    const cpuUserMs = cpu.user / 1000;
+    const cpuSystemMs = cpu.system / 1000;
+    const memory = process.memoryUsage();
+
+    console.log("CAPACITY_RUNTIME_SAMPLE", {
+      elapsedMs: Number(elapsedMs.toFixed(1)),
+      cpu: {
+        userMs: Number(cpuUserMs.toFixed(1)),
+        systemMs: Number(cpuSystemMs.toFixed(1)),
+        percentOfOneCore: Number((((cpuUserMs + cpuSystemMs) / elapsedMs) * 100).toFixed(1))
+      },
+      eventLoopDelayMs: {
+        mean: Number((eventLoop.mean / 1e6).toFixed(2)),
+        p95: Number((eventLoop.percentile(95) / 1e6).toFixed(2)),
+        p99: Number((eventLoop.percentile(99) / 1e6).toFixed(2)),
+        max: Number((eventLoop.max / 1e6).toFixed(2))
+      },
+      stateReads: {
+        active: activeStateReads,
+        completed: completedStateReads,
+        failed: failedStateReads,
+        clientAborted: abortedStateReads
+      },
+      memoryMb: {
+        rss: Number((memory.rss / 1048576).toFixed(1)),
+        heapUsed: Number((memory.heapUsed / 1048576).toFixed(1)),
+        heapTotal: Number((memory.heapTotal / 1048576).toFixed(1)),
+        external: Number((memory.external / 1048576).toFixed(1))
+      },
+      pgPool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount },
+      gameStateCache: gameStateReadCache.metrics()
+    });
+
+    completedStateReads = 0;
+    failedStateReads = 0;
+    abortedStateReads = 0;
+    eventLoop.reset();
+  }, 5000).unref();
+}
+
 
 
 if (PERF_DIAGNOSTICS_ENABLED) {

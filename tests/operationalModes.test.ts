@@ -1,5 +1,6 @@
 import {
   isCapacityLoadTestEnabled,
+  isCapacityRuntimeTelemetryEnabled,
   isGameStateReadCacheEnabled,
   isPerformanceDiagnosticsEnabled,
   isPoolDiagnosticsEnabled,
@@ -55,4 +56,23 @@ test("process-local game-state cache is restricted to disposable CI capacity mod
   expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", CI: "false" })).toBe(false);
   expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", NODE_ENV: "production" })).toBe(false);
   expect(isGameStateReadCacheEnabled({ ...disposableCiEnv, LUDOMADA_GAME_STATE_CACHE: "true", DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci" })).toBe(false);
+});
+
+
+test("runtime capacity telemetry requires the guarded disposable CI profile", () => {
+  expect(isCapacityRuntimeTelemetryEnabled({ ...disposableCiEnv })).toBe(false);
+  expect(isCapacityRuntimeTelemetryEnabled({
+    ...disposableCiEnv,
+    LUDOMADA_CAPACITY_RUNTIME_TELEMETRY: "true"
+  })).toBe(true);
+  expect(isCapacityRuntimeTelemetryEnabled({
+    ...disposableCiEnv,
+    LUDOMADA_CAPACITY_RUNTIME_TELEMETRY: "true",
+    CI: "false"
+  })).toBe(false);
+  expect(isCapacityRuntimeTelemetryEnabled({
+    ...disposableCiEnv,
+    LUDOMADA_CAPACITY_RUNTIME_TELEMETRY: "true",
+    DATABASE_URL: "postgresql://u:p@db.example.com:5432/ludomada_ci"
+  })).toBe(false);
 });

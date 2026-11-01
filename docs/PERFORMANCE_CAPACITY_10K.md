@@ -109,3 +109,22 @@ The 8,192-pool result was worse than the preceding 4,096-pool run (4,018 RPS), s
 The correct next diagnostic is an independently hosted load generator against an approved, separately hosted staging target. A second job on GitHub-hosted Actions cannot reach the first job's private loopback API without an explicit network path, so do not split the jobs and pretend that alone isolates the load generator. The real Render/Supabase staging target is not yet validated for this test; the current run only used disposable CI PostgreSQL and a loopback API. Keep the cache disabled by default and do not enable this process-local cache across replicas until shared invalidation exists.
 
 **Status remains NOT CERTIFIED.** The load step failed and independent SLO validation was skipped. V6.3 CI and the listed Security Audit checks passed on this exact head; OSV Full Scan was skipped. No production or staging deployment was performed. Artifacts: capacity report `13069644457`, API log `13070167432`, run `41272731448`.
+
+
+## Sixth measured benchmark — 2026-11-01 (8,192-socket pool; failed)
+
+Release Gate run `41274004862` on head `28092a3ad0b6a270f55f46553c058c55716bdae3` again seeded and warmed the 1,000-game authenticated-read fixture successfully, then failed the 10,000-arrival/sec load gate:
+
+- 300,334 VUs created; 195,019 HTTP 200 responses; 105,315 VUs failed (35.07%).
+- Aggregate observed request rate: 3,029 RPS.
+- HTTP response time: p95 757.6 ms; p99 10,201.2 ms; max 15,154 ms.
+- TCP connect: p95/p99 11,274.1 ms. End-to-end `http.total`: p95 3,828.5 ms / p99 14,917.2 ms.
+- Errors: `ERR_SOCKET_TIMEOUT` 103,624; `ECONNRESET` 1,127; `EADDRNOTAVAIL` 564.
+- Cache snapshot: 203,283 hits / 2,670 misses (98.71% hit ratio), all 1,000 entries populated. PostgreSQL pool waiting peaked at 298 during cache fill and returned to zero; no state-query or pool-acquisition timeout was logged.
+- The same 4-vCPU hosted runner still ran Artillery, Express and PostgreSQL together. Thus the measured 3,029 RPS is not a clean application-only throughput limit.
+
+### Runtime instrumentation added
+
+The next capacity run emits one API-process telemetry sample every five seconds, only when both the strict disposable-CI capacity guard and `LUDOMADA_CAPACITY_RUNTIME_TELEMETRY=true` are active. It records API process CPU time, event-loop delay percentiles, memory, state-read concurrency/outcomes, PostgreSQL pool counters and cache counters. It adds no public metrics endpoint and no per-request hot-path logging. The new guard has explicit tests for normal, local-CI and external-database environments.
+
+**Status remains NOT CERTIFIED.** This instrumentation is diagnostic, not a capacity fix. The next run must correlate API CPU/event-loop samples with Artillery's TCP timings; production certification still requires a separate load generator and approved staging topology.

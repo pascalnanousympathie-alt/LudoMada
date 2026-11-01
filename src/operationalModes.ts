@@ -48,3 +48,12 @@ export function maximumPgPoolSize(env: Environment = process.env): number {
 export function isGameStateReadCacheEnabled(env: Environment = process.env): boolean {
   return env.LUDOMADA_GAME_STATE_CACHE === "true" && isCapacityLoadTestEnabled(env);
 }
+
+
+/**
+ * Runtime telemetry is available only in the guarded disposable CI capacity mode.
+ * This prevents accidental enablement on Render, Supabase, or production.
+ */
+export function isCapacityRuntimeTelemetryEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_CAPACITY_RUNTIME_TELEMETRY === "true" && isCapacityLoadTestEnabled(env);
+}
