@@ -341,7 +341,7 @@ function pawnTapTargets(tree = readTree()) {
 
 function assertNumberedPawnControlsAbsent(tree = readTree()) {
   const labels = treeLabels(tree);
-  const visible = labels.filter((label) => /\\bPion\\s+[1-4]\\b/i.test(label));
+  const visible = labels.filter((label) => /\bPion\s+[1-4]\b/i.test(label));
   if (visible.length) {
     throw new Error("Numbered pawn controls must stay removed: " + JSON.stringify(visible.slice(0, 8)));
   }
