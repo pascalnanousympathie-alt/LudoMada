@@ -1,0 +1,25 @@
+config:
+  target: "http://127.0.0.1:3101"
+  http:
+    timeout: 10
+    # Warm the process-local snapshot cache with a bounded keep-alive pool.
+    pool: 512
+  payload:
+    path: "./capacity-fixtures.csv"
+    fields:
+      - "gameId"
+      - "accessToken"
+    order: random
+    skipHeader: true
+  phases:
+    - duration: 5
+      arrivalRate: 1000
+      name: "Warm up authenticated snapshots across 1,000 games"
+
+scenarios:
+  - name: "Warm participant-authorized game-state cache"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
