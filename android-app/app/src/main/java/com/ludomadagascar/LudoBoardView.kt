@@ -148,7 +148,12 @@ class LudoBoardView(
         val marker = "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=" + rendererName +
             " | ENV_PARTS=" + environmentParts + " | BAOBAB_PARTS=" + baobabPartCount +
             " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount
-        post { if (contentDescription != marker) contentDescription = marker }
+        post {
+            if (contentDescription != marker) contentDescription = marker
+            // HomeView is the visible accessibility node above this GLSurfaceView.
+            // Publish only this already-certified marker to that node as well.
+            (parent as? PremiumHeroViewV2)?.publishHomePreviewReady(marker)
+        }
     }
 
     internal fun publishPawnTapTargets() {
