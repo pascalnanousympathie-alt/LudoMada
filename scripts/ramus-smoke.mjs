@@ -262,10 +262,10 @@ function parseHomePreviewReadiness(tree) {
     return match ? Number(match[1]) : 0;
   };
   const counts = {
-    environment: readCount(/ENV_PARTS=(\\d+)/),
-    baobab: readCount(/BAOBAB_PARTS=(\\d+)/),
-    hero: readCount(/HERO_PARTS=(\\d+)/),
-    board: readCount(/BOARD_PARTS=(\\d+)/),
+    environment: readCount(/ENV_PARTS=(\d+)/),
+    baobab: readCount(/BAOBAB_PARTS=(\d+)/),
+    hero: readCount(/HERO_PARTS=(\d+)/),
+    board: readCount(/BOARD_PARTS=(\d+)/),
   };
   if (renderer === "GLES3_PBR") {
     const complete = Object.values(counts).every((value) => Number.isSafeInteger(value) && value > 0);
