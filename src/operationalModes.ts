@@ -39,3 +39,12 @@ export function isCapacityLoadTestEnabled(env: Environment = process.env): boole
 export function maximumPgPoolSize(env: Environment = process.env): number {
   return isCapacityLoadTestEnabled(env) ? 60 : 20;
 }
+
+/**
+ * The process-local read cache is an explicit single-instance optimization.
+ * Do not enable it on horizontally scaled deployments until shared invalidation
+ * is configured and verified.
+ */
+export function isGameStateReadCacheEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_GAME_STATE_CACHE === "true";
+}
