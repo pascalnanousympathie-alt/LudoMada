@@ -190,7 +190,7 @@ data class PremiumLightRig(
             ambientColor = floatArrayOf(0.12f, 0.15f, 0.22f),
             ambientIntensity = PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY,
             shadowBias = PremiumMaterialLighting.Calibration.SHADOW_BIAS,
-            shadowNormalBias = 0.0035f,
+            shadowNormalBias = 0.012f,
             shadowMapResolution = 512,
             iblIntensity = PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY
         )
@@ -208,7 +208,7 @@ data class PremiumLightRig(
             ambientColor = floatArrayOf(0.10f, 0.12f, 0.18f),
             ambientIntensity = 0.64f,
             shadowBias = 0.0022f,
-            shadowNormalBias = 0.0045f,
+            shadowNormalBias = 0.010f,
             shadowMapResolution = 256,
             iblIntensity = 0.62f
         )
