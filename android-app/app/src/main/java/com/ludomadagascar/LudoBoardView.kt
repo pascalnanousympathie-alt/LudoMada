@@ -805,10 +805,10 @@ class LudoBoardView(
         }
 
         private fun dieCenter(pi:Int):FloatArray = when(pi){
-            0->floatArrayOf(-3.05f,-3.05f)
-            1->floatArrayOf(3.05f,-3.05f)
-            2->floatArrayOf(3.05f,3.05f)
-            else->floatArrayOf(-3.05f,3.05f)
+            0->floatArrayOf(-3.05f,3.05f)
+            1->floatArrayOf(-3.05f,-3.05f)
+            2->floatArrayOf(3.05f,-3.05f)
+            else->floatArrayOf(3.05f,3.05f)
         }
 
         override fun projectedTokens(pi:Int):Array<FloatArray>{
@@ -1739,7 +1739,7 @@ class LudoBoardView(
         private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
         private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
-        private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
+        private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((105+38*grain+8*band).toInt().coerceIn(0,255),(52+18*grain+4*band).toInt().coerceIn(0,255),(25+10*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createEnvironmentCubemap():Int{
             val size=64
