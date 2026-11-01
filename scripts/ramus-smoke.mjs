@@ -257,15 +257,15 @@ function parseHomePreviewReadiness(tree) {
   const marker = treeLabels(tree).find((label) => label.includes("HOME_3D_FRAME_COMPLETE"));
   if (!marker) return { ok: false, reason: "missing_home_frame_marker" };
   const renderer = marker.match(/RENDERER=([A-Z0-9_]+)/)?.[1] || "";
-  const readCount = (name) => {
-    const match = marker.match(new RegExp(name + "=(\\d+)"));
+  const readCount = (pattern) => {
+    const match = marker.match(pattern);
     return match ? Number(match[1]) : 0;
   };
   const counts = {
-    environment: readCount("ENV_PARTS"),
-    baobab: readCount("BAOBAB_PARTS"),
-    hero: readCount("HERO_PARTS"),
-    board: readCount("BOARD_PARTS"),
+    environment: readCount(/ENV_PARTS=(\\d+)/),
+    baobab: readCount(/BAOBAB_PARTS=(\\d+)/),
+    hero: readCount(/HERO_PARTS=(\\d+)/),
+    board: readCount(/BOARD_PARTS=(\\d+)/),
   };
   if (renderer === "GLES3_PBR") {
     const complete = Object.values(counts).every((value) => Number.isSafeInteger(value) && value > 0);
