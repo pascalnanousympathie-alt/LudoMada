@@ -11,12 +11,13 @@ internal data class HomeBaobabPlacement(
 )
 
 internal object HomeEnvironmentComposition {
+    // Baobabs deliberately frame both sides of the Home scene. The centreline
+    // stays empty at every depth so the wordmark and tabletop never sit behind a trunk.
     private val placements = listOf(
-        HomeBaobabPlacement(-7.4f, -1.05f, -5.8f, 0.62f),
-        HomeBaobabPlacement(7.2f, -1.05f, -5.9f, 0.64f),
-        HomeBaobabPlacement(-4.2f, -1.02f, -10.5f, 0.42f),
-        HomeBaobabPlacement(4.1f, -1.02f, -10.7f, 0.44f),
-        HomeBaobabPlacement(0f, -1.02f, -13.6f, 0.32f)
+        HomeBaobabPlacement(-7.2f, -1.05f, -5.8f, 0.58f),
+        HomeBaobabPlacement(7.1f, -1.05f, -6.1f, 0.60f),
+        HomeBaobabPlacement(-8.6f, -1.02f, -11.8f, 0.43f),
+        HomeBaobabPlacement(8.7f, -1.02f, -12.0f, 0.45f)
     )
 
     fun baobabPlacements(): List<HomeBaobabPlacement> = placements
@@ -33,7 +34,5 @@ internal object HomeEnvironmentComposition {
         )
     }
 
-    fun hasClearBrandSightline(): Boolean = placements.none {
-        abs(it.x) < 2.5f && it.z in -9.0f..-4.0f && it.scale >= 0.42f
-    }
+    fun hasClearBrandSightline(): Boolean = placements.all { abs(it.x) >= 3.0f }
 }
