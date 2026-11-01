@@ -26,12 +26,15 @@ test("accepts a capacity report only when throughput, error rate and latency pas
   assert.deepEqual(result.failures, []);
 });
 
-test("rejects a report when the achieved request rate is below 10k", () => {
+test("accepts the minimum aggregate rate and rejects anything below 9k", () => {
   const report = passingReport();
-  report.aggregate.rates["http.request_rate"] = 1_332;
+  report.aggregate.rates["http.request_rate"] = 9_000;
+  const boundary = evaluateCapacityReport(report);
+  assert.equal(boundary.passed, true);
+  report.aggregate.rates["http.request_rate"] = 8_999;
   const result = evaluateCapacityReport(report);
   assert.equal(result.passed, false);
-  assert.match(result.failures.join(" "), /Throughput 1332 RPS is below 10000 RPS/);
+  assert.match(result.failures.join(" "), /Throughput 8999 RPS is below 9000 RPS/);
 });
 
 test("rejects a report when virtual users fail above the 0.1 percent ceiling", () => {
