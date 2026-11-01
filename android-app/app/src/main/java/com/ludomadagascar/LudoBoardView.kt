@@ -121,6 +121,13 @@ class LudoBoardView(
         if (homePreview) post { configureHomePreview() }
     }
 
+    internal fun markRendererReady(rendererName:String, heroPartCount:Int, boardPartCount:Int) {
+        if (!BuildConfig.DEBUG || homePreview) return
+        post {
+            contentDescription = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount | BOARD_PARTS=$boardPartCount"
+        }
+    }
+
     fun configureHomePreview() {
         if (!homePreview) return
         val players = JSONArray()
@@ -664,11 +671,11 @@ class LudoBoardView(
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
             val aspect=width.toFloat()/height.toFloat()
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
-            val cameraY = if (homePreview) 8.4f else 9.8f
-            val cameraZ = if (homePreview) 9.4f else 5.7f
+            val cameraY = if (homePreview) 8.4f else 13.2f
+            val cameraZ = if (homePreview) 9.4f else 4.2f
             val fov = portraitAwareVerticalFov(
                 aspect,
-                if (homePreview) 48f else 54f,
+                if (homePreview) 48f else 45f,
                 if (homePreview) 34f else 38f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
@@ -739,8 +746,14 @@ class LudoBoardView(
                         " maxChannel="+maxChannel+
                         " glError=0x"+glError.toString(16)
                 )
-                if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24){
+                val expectedHeroParts=setOf(
+                    "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                    "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                )
+                if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24 &&
+                    glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
                     android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
+                    host.markRendererReady("GLES2_GLb",glbParts.size,boardParts.size)
                 }
             }.onFailure{
                 android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
@@ -1332,22 +1345,22 @@ class LudoBoardView(
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
-            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 9.8f
-            val baseCamZ=if (host.homePreview) 13.2f else if(land)8.8f else 5.7f
+            val camY=if (host.homePreview) 9.6f else if(land)11.8f else 13.2f
+            val baseCamZ=if (host.homePreview) 13.2f else if(land)8.8f else 4.2f
             val rollEnergy=if(!host.homePreview && player in 0..3)(1f-diceAnim).coerceIn(0f,1f) else 0f
             val shakeX=sin(now/6_000_000.0).toFloat()*rollEnergy*0.055f
             val shakeZ=cos(now/7_000_000.0).toFloat()*rollEnergy*0.040f
             val camZ=baseCamZ+shakeZ
             val fov=portraitAwareVerticalFov(
                 aspect,
-                if (host.homePreview) 48f else 54f,
+                if (host.homePreview) 48f else 45f,
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
         }
-        private fun logFramebufferPixels(label:String,w:Int,h:Int){
+        private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
             val pixels=ByteBuffer.allocateDirect(safeW*safeH*4).order(ByteOrder.nativeOrder())
             GLES30.glFinish()
@@ -1378,6 +1391,8 @@ class LudoBoardView(
                 " meanRGB="+(sumR/total)+","+(sumG/total)+","+(sumB/total)+
                 " centerRGB="+cr+","+cg+","+cb+
                 " glError=0x"+glError.toString(16))
+            val minimumBright=max(32,(total*0.005f).toInt())
+            return glError==GLES30.GL_NO_ERROR && brightPixels>=minimumBright && maxChannel>24
         }
 
         private fun createSceneTargets(w:Int,h:Int){
@@ -1423,8 +1438,18 @@ class LudoBoardView(
             renderScene()
             renderPostProcess()
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
-                logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
-                android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                val validSurface=logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
+                val expectedHeroParts=setOf(
+                    "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                    "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                )
+                if(validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
+                    android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                    host.markRendererReady("GLES3_PBR",glbParts.size,boardParts.size)
+                }else{
+                    android.util.Log.e("LudoMadaRender","PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
+                        " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                }
                 firstFrameDiagnosticsCaptured=true
             }
         }
