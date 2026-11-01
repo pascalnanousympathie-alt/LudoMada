@@ -28,6 +28,12 @@ public class PremiumHeroViewV2 extends FrameLayout {
     addView(homePreview,new FrameLayout.LayoutParams(-1,-1));
     home=new HomeView(c);
     home.setBackgroundColor(Color.TRANSPARENT);
+    home.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    home.setFocusable(true);
+    home.setClickable(true);
+    home.setContentDescription(
+      "LudoMada Premium Home | JOUER | TOURNOIS | MON WALLET | PROFIL | TUTORIELS | MODE DE JEU | EN LIGNE | HORS-LIGNE"
+    );
     addView(home,new FrameLayout.LayoutParams(-1,-1));
   }
 
