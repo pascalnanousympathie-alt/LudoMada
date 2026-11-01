@@ -327,26 +327,68 @@ function pendingDiceValue() {
   return { value: match ? Number(match[1]) : null, status };
 }
 
+function pawnTapTargets(tree = readTree()) {
+  const label = treeLabels(tree).find((entry) =>
+    entry.includes("RENDER_PASS=") && entry.includes("PAWN_TAP_TARGETS=")
+  ) || "";
+  const match = label.match(/PAWN_TAP_TARGETS=([^|]*)/);
+  if (!match) return [];
+  return match[1].split(";").map((entry) => {
+    const point = entry.trim().match(/^([0-3])@((?:0|1|0?\.\d+)),((?:0|1|0?\.\d+))$/);
+    return point ? { index: Number(point[1]), point: point[2] + "," + point[3] } : null;
+  }).filter(Boolean);
+}
+
+function assertNumberedPawnControlsAbsent(tree = readTree()) {
+  const labels = treeLabels(tree);
+  const visible = labels.filter((label) => /\\bPion\\s+[1-4]\\b/i.test(label));
+  if (visible.length) {
+    throw new Error("Numbered pawn controls must stay removed: " + JSON.stringify(visible.slice(0, 8)));
+  }
+  console.log("NUMBERED PAWN CONTROLS ABSENT PASS");
+}
+
 function moveAnyLegalPawnAfterRoll() {
   const { value: dice, status } = pendingDiceValue();
   if (dice === null || status.includes("Aucun coup")) return false;
 
-  for (let index = 1; index <= 4; index++) {
-    const pawn = runAllowError("snapshot", "--session", session, "--find", `Pion ${index}`);
-    if (!pawn.ok || !pawn.value.elements?.length) continue;
-
-    const ref = pawn.value.elements[0];
-    runAllowError("tap", ref.ref, "--gen", String(pawn.value.gen), "--session", session);
-
-    // A legal move resets the pending die to zero immediately. Illegal pawns
-    // leave the die pending, so try the next token without throwing.
-    const moved = runAllowError(
-      "wait", "--text", "Dé: 0", "--timeout", "1200", "--session", session
+  const deadline = Date.now() + 6500;
+  let targets = [];
+  let lastLabels = [];
+  while (Date.now() < deadline) {
+    const tree = readTree();
+    lastLabels = treeLabels(tree);
+    targets = pawnTapTargets(tree);
+    if (targets.length) break;
+    waitStable(250);
+  }
+  if (!targets.length) {
+    throw new Error(
+      "No projected legal 3D pawn tap targets after Dé " + dice +
+      "; labels=" + JSON.stringify(lastLabels.slice(0, 40))
     );
-    if (moved.ok) return true;
   }
 
-  throw new Error(`Dice ${dice} allowed a move but no pawn could be moved. Status: ${pendingDiceValue().status}`);
+  for (const target of targets) {
+    const tap = runAllowError("tap", target.point, "--session", session, "--force");
+    if (!tap.ok) continue;
+    // A legal board hit clears the pending die. Illegal or stale coordinates
+    // leave it unchanged, allowing the next projected pawn coordinate to be tried.
+    const moved = runAllowError(
+      "wait", "--text", "Dé: 0", "--timeout", "1600", "--session", session
+    );
+    if (moved.ok) {
+      console.log("3D PAWN COORDINATE TAP PASS index=" + target.index);
+      return true;
+    }
+    waitStable(250);
+  }
+
+  throw new Error(
+    "Dice " + dice + " exposed " + targets.length +
+    " projected pawn targets but none completed a legal move. Status: " +
+    pendingDiceValue().status
+  );
 }
 
 function advanceToTurn(targetTurn) {
@@ -699,6 +741,7 @@ try {
   try {
     assertRuntimeGlbLoaded();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
+  assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {
     rendererFailure = error;
     console.error("3D BOARD RENDERER ASSERTIONS FAILED:",
@@ -797,10 +840,14 @@ try {
   }
   console.log("PENDING DICE REROLL BLOCK PASS");
 
-  target = findRef("Pion 1");
-  run("tap", target.ref, "--gen", String(target.gen),
-      "--expect", "Rejouez", "--session", session);
-  console.log("SIX→PAWN→REPLAY PASS");
+  if (!moveAnyLegalPawnAfterRoll()) {
+    throw new Error("Pending six had no legal 3D pawn target");
+  }
+  const replay = runAllowError(
+    "wait", "--text", "Rejouez", "--timeout", "2500", "--session", session
+  );
+  if (!replay.ok) throw new Error("Six-to-pawn move did not preserve the player's replay");
+  console.log("SIX→3D PAWN TAP→REPLAY PASS");
 
   // Exercise the real Home -> JOUER canvas hitbox rather than only the
   // login-screen offline shortcut. The universal deferred handler prevents
