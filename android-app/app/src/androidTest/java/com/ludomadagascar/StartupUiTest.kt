@@ -127,9 +127,28 @@ class StartupUiTest {
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
-        assertTrue(device.hasObject(By.text("Pion 1")))
-        device.findObject(By.text("Pion 1")).click()
-        assertTrue("A six gives the player another turn after the pawn move",
+        for (index in 1..4) {
+            assertTrue(
+                "Numbered pawn control must not be visible: Pion $index",
+                !device.hasObject(By.text("Pion $index"))
+            )
+        }
+        instrumentation.runOnMainSync {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("MainActivity must remain resumed", resumed)
+            val hostField = MainActivity::class.java.getDeclaredField("offlineHost").apply {
+                isAccessible = true
+            }
+            val board = hostField.get(resumed) as? LudoBoardView
+            assertNotNull("Offline 3D board must remain the pawn input surface", board)
+            val pawnTap = board!!.onPawnTap
+            assertNotNull("3D board pawn-tap callback must be wired", pawnTap)
+            pawnTap!!.invoke(0)
+        }
+        assertTrue("A six gives the player another turn after tapping the board pawn",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
         // Keep the screenshot app-private. The host CI helper retrieves it with
