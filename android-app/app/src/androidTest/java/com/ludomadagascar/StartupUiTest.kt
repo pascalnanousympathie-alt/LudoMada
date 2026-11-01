@@ -16,6 +16,33 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+    private fun assertLiveHomeComposition(activity: MainActivity) {
+        val content = activity.window.decorView
+            .findViewById<android.view.ViewGroup>(android.R.id.content)
+        assertTrue("Home content root must contain its root view", content.childCount > 0)
+        val hero = content.getChildAt(0) as? PremiumHeroViewV2
+        assertNotNull("Premium Home root must be a FrameLayout with a live renderer", hero)
+        val heroView = hero ?: throw AssertionError("Premium Home root is missing")
+        assertTrue("Home must have only the 3D surface and native UI overlay", heroView.childCount == 2)
+        assertTrue("First Home layer must be the live 3D board renderer", heroView.getChildAt(0) is LudoBoardView)
+        assertTrue("The exposed renderer must be the actual background layer",
+            heroView.homePreviewView === heroView.getChildAt(0))
+        assertTrue("The foreground layer must not draw a second board renderer",
+            heroView.getChildAt(1) !is LudoBoardView)
+    }
+
+    private fun captureHomePreviewScreenshot(device: UiDevice, context: android.content.Context) {
+        val screenshotFile = File(context.filesDir, "ludomada-home-preview.png")
+        if (screenshotFile.exists()) {
+            assertTrue("Previous Home screenshot could not be removed", screenshotFile.delete())
+        }
+        assertTrue("Home preview screenshot capture failed", device.takeScreenshot(screenshotFile))
+        assertTrue(
+            "Home preview screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
+    }
+
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
         val home = device.findObject(By.descContains("LudoMada Premium Home"))
         val bounds = home.visibleBounds
@@ -63,6 +90,11 @@ class StartupUiTest {
 
         assertTrue("Premium Home did not appear",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
+        instrumentation.runOnMainSync { assertLiveHomeComposition(activity!!) }
+        assertTrue(
+            "Home must attach the live 3D scene and complete its first frame",
+            device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+        )
         tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
@@ -77,6 +109,11 @@ class StartupUiTest {
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
+        assertTrue(
+            "Returning from the lobby must render a fresh Home 3D framebuffer",
+            device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+        )
+        captureHomePreviewScreenshot(device, context)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",

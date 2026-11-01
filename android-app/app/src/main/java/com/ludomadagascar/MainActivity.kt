@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
+    private var homePreviewHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var gameModeOverlay: FrameLayout? = null
     private var movePending = false
@@ -72,6 +73,7 @@ class MainActivity : Activity() {
         if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
+        if(name!="home") homePreviewHost=null
         syncMusicPlayback()
         val baseLeft=dp(20)
         val baseTop=dp(18)
@@ -212,6 +214,8 @@ class MainActivity : Activity() {
     }
 
     private fun splash() {
+        pauseBoardViews()
+        homePreviewHost=null
         currentScreen="splash"; syncMusicPlayback(); root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
         root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
@@ -221,6 +225,8 @@ class MainActivity : Activity() {
     }
 
     private fun login() {
+        pauseBoardViews()
+        homePreviewHost=null
         currentScreen="login"
         syncMusicPlayback()
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
@@ -289,6 +295,7 @@ class MainActivity : Activity() {
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
         when(currentScreen) {
+            "home" -> homePreviewHost?.onResume()
             "board" -> boardHost?.onResume()
             "offline" -> offlineHost?.onResume()
         }
@@ -306,6 +313,7 @@ class MainActivity : Activity() {
         activityResumed = false
         if(::music.isInitialized) music.stop()
         stopGameEventStream()
+        pauseBoardViews()
         super.onDestroy()
     }
 
@@ -324,13 +332,16 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun pauseBoardViews() { boardHost?.onPause(); offlineHost?.onPause() }
+    private fun pauseBoardViews() { homePreviewHost?.onPause(); boardHost?.onPause(); offlineHost?.onPause() }
 
     private fun home() {
         pauseBoardViews()
         currentScreen="home"
         syncMusicPlayback()
-        setContentView(PremiumHeroViewV2(this))
+        val hero=PremiumHeroViewV2(this)
+        homePreviewHost=hero.homePreviewView
+        setContentView(hero)
+        if(activityResumed) homePreviewHost?.onResume()
         refreshAccountBalance()
     }
 

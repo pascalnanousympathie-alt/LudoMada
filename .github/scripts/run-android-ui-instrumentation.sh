@@ -14,6 +14,7 @@ if [[ ! "$api_level" =~ ^[0-9]+$ ]]; then
 fi
 screenshot_name="ludomada-startup-offline-api-$api_level.png"
 screenshot_remote="files/$screenshot_name"
+home_screenshot_remote="files/ludomada-home-preview.png"
 
 "$ADB" start-server >/dev/null 2>&1 || true
 ready=0
@@ -66,7 +67,9 @@ additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connecte
 mkdir -p "$evidence_dir"
 screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 screenshot_tmp="$evidence_dir/.ludomada-startup-offline.png.tmp"
-rm -f "$screenshot_local" "$screenshot_tmp"
+home_screenshot_local="$evidence_dir/ludomada-home-preview.png"
+home_screenshot_tmp="$evidence_dir/.ludomada-home-preview.png.tmp"
+rm -f "$screenshot_local" "$screenshot_tmp" "$home_screenshot_local" "$home_screenshot_tmp"
 
 validate_png() {
   python3 - "$1" <<'PY'
@@ -111,27 +114,35 @@ print(f"ANDROID_SURFACE_PNG_VALID bytes={len(data)} size={width}x{height}")
 PY
 }
 
-(
+capture_app_private_screenshot() {
+  local remote_path="$1"
+  local local_path="$2"
+  local temp_path="$3"
+  local label="$4"
   for attempt in $(seq 1 600); do
-    if timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_tmp" 2>/dev/null; then
+    if timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$remote_path" > "$temp_path" 2>/dev/null; then
       # adb may read app-private output before takeScreenshot() has finished.
       # Accept only a complete PNG (>1 KB, valid chunk CRCs and terminal IEND).
-      if [[ -s "$screenshot_tmp" ]] && validate_png "$screenshot_tmp" >/dev/null 2>&1; then
-        mv -- "$screenshot_tmp" "$screenshot_local"
-        echo "ANDROID_SURFACE_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
-        exit 0
+      if [[ -s "$temp_path" ]] && validate_png "$temp_path" >/dev/null 2>&1; then
+        mv -- "$temp_path" "$local_path"
+        echo "ANDROID_${label}_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
+        return 0
       fi
     fi
-    rm -f "$screenshot_tmp"
+    rm -f "$temp_path"
     if (( attempt % 30 == 0 )); then
-      echo "ANDROID_SURFACE_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
+      echo "ANDROID_${label}_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
     fi
     sleep 1
   done
-  echo "ANDROID_SURFACE_SCREENSHOT_WATCH_TIMEOUT"
-  exit 1
-) &
+  echo "ANDROID_${label}_SCREENSHOT_WATCH_TIMEOUT"
+  return 1
+}
+
+capture_app_private_screenshot "$screenshot_remote" "$screenshot_local" "$screenshot_tmp" "GAMEPLAY" &
 screenshot_watcher_pid=$!
+capture_app_private_screenshot "$home_screenshot_remote" "$home_screenshot_local" "$home_screenshot_tmp" "HOME_3D" &
+home_screenshot_watcher_pid=$!
 
 cd android-app
 set +e
@@ -143,9 +154,10 @@ test_status=$?
 set -e
 
 if [[ "$test_status" -ne 0 ]]; then
-  kill "$screenshot_watcher_pid" 2>/dev/null || true
+  kill "$screenshot_watcher_pid" "$home_screenshot_watcher_pid" 2>/dev/null || true
   wait "$screenshot_watcher_pid" 2>/dev/null || true
-  rm -f "$screenshot_tmp"
+  wait "$home_screenshot_watcher_pid" 2>/dev/null || true
+  rm -f "$screenshot_tmp" "$home_screenshot_tmp"
   echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: Gradle exit code $test_status"
   "$ADB" devices -l || true
   timeout 8s "$ADB" -s "$DEVICE" shell getprop sys.boot_completed || true
@@ -155,24 +167,17 @@ if [[ "$test_status" -ne 0 ]]; then
   exit "$test_status"
 fi
 
-# The watcher should have completed before Gradle's post-test uninstall.
-# Stop it immediately when there is no capture; UTP is the bounded fallback.
-screenshot_source_kind=""
-if [[ -s "$screenshot_local" ]]; then
-  wait "$screenshot_watcher_pid" 2>/dev/null || true
-  if validate_png "$screenshot_local"; then
-    screenshot_source_kind="app-private-run-as-before-teardown"
-  else
-    rm -f "$screenshot_local"
-  fi
-else
-  kill "$screenshot_watcher_pid" 2>/dev/null || true
-  wait "$screenshot_watcher_pid" 2>/dev/null || true
-fi
+# Both app-private screenshots are captured before connectedDebugAndroidTest uninstalls
+# the target APK. The Home screenshot is taken only after its renderer resumes on return.
+wait "$screenshot_watcher_pid" 2>/dev/null || true
+wait "$home_screenshot_watcher_pid" 2>/dev/null || true
 
-if [[ -z "$screenshot_source_kind" ]]; then
+screenshot_source_kind=""
+if [[ -s "$screenshot_local" ]] && validate_png "$screenshot_local"; then
+  screenshot_source_kind="app-private-run-as-before-teardown"
+else
   rm -f "$screenshot_local" "$screenshot_tmp"
-  echo "ANDROID_SURFACE_SCREENSHOT_RUN_AS_WATCH_FAILED: checking UTP output fallback"
+  echo "ANDROID_GAMEPLAY_SCREENSHOT_RUN_AS_WATCH_FAILED: checking UTP output fallback"
   screenshot_source=""
   if [[ -d "$additional_output_root" ]]; then
     screenshot_source="$(find "$additional_output_root" -type f -name "$screenshot_name" -size +1k -print -quit)"
@@ -187,10 +192,35 @@ if [[ -z "$screenshot_source_kind" ]]; then
   fi
 fi
 
+home_screenshot_source_kind=""
+if [[ -s "$home_screenshot_local" ]] && validate_png "$home_screenshot_local"; then
+  home_screenshot_source_kind="app-private-run-as-before-teardown"
+else
+  rm -f "$home_screenshot_local" "$home_screenshot_tmp"
+  echo "ANDROID_HOME_SCREENSHOT_RUN_AS_WATCH_FAILED: checking UTP output fallback"
+  home_screenshot_source=""
+  if [[ -d "$additional_output_root" ]]; then
+    home_screenshot_source="$(find "$additional_output_root" -type f -name "ludomada-home-preview.png" -size +1k -print -quit)"
+  fi
+  if [[ -n "$home_screenshot_source" ]]; then
+    cp -- "$home_screenshot_source" "$home_screenshot_local"
+    if validate_png "$home_screenshot_local"; then
+      home_screenshot_source_kind="utp"
+    else
+      rm -f "$home_screenshot_local"
+    fi
+  fi
+fi
+
 if [[ -z "$screenshot_source_kind" ]]; then
-  echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: pre-teardown run-as and UTP outputs unavailable"
+  echo "ANDROID_GAMEPLAY_SCREENSHOT_PULL_FAILED: pre-teardown run-as and UTP outputs unavailable"
   exit 1
 fi
-echo "ANDROID_SURFACE_SCREENSHOT_SOURCE=$screenshot_source_kind"
+if [[ -z "$home_screenshot_source_kind" ]]; then
+  echo "ANDROID_HOME_SCREENSHOT_PULL_FAILED: Home 3D screenshot is required evidence"
+  exit 1
+fi
+echo "ANDROID_GAMEPLAY_SCREENSHOT_SOURCE=$screenshot_source_kind"
+echo "ANDROID_HOME_SCREENSHOT_SOURCE=$home_screenshot_source_kind"
 echo "API_LEVEL=$api_level"
-echo "ANDROID_SURFACE_SCREENSHOT_CAPTURE_PASS"
+echo "ANDROID_GAMEPLAY_AND_HOME_SCREENSHOTS_CAPTURE_PASS"

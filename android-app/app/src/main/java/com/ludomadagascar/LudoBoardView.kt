@@ -14,6 +14,8 @@ import android.opengl.Matrix
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import org.json.JSONArray
@@ -73,6 +75,14 @@ class LudoBoardView(
 
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
+    private val homeFrameHandler = Handler(Looper.getMainLooper())
+    private val homeFrameTick = object : Runnable {
+        override fun run() {
+            if (!homePreview || !isAttachedToWindow) return
+            requestRender()
+            homeFrameHandler.postDelayed(this, 33L)
+        }
+    }
 
     private fun deviceSupportsGles3(): Boolean {
         val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
@@ -113,7 +123,7 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = !homePreview
         isClickable = !homePreview
         contentDescription = if (homePreview) "LudoMada 3D Home Preview" else "LudoMada 3D Ludo board"
@@ -130,6 +140,27 @@ class LudoBoardView(
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker
+        }
+    }
+
+    internal fun markHomePreviewReady(rendererName:String, environmentParts:Int, baobabPartCount:Int, heroPartCount:Int, boardPartCount:Int) {
+        if (!BuildConfig.DEBUG || !homePreview) return
+        val marker = "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=" + rendererName +
+            " | ENV_PARTS=" + environmentParts + " | BAOBAB_PARTS=" + baobabPartCount +
+            " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount
+        post {
+            if (contentDescription != marker) contentDescription = marker
+            // HomeView is the visible accessibility node above this GLSurfaceView.
+            // Publish only this already-certified marker to that node as well.
+            (parent as? PremiumHeroViewV2)?.publishHomePreviewReady(marker)
+        }
+    }
+
+    internal fun markHomePreviewNotReady() {
+        if (!BuildConfig.DEBUG || !homePreview) return
+        post {
+            contentDescription = "LudoMada 3D Home Preview"
+            (parent as? PremiumHeroViewV2)?.resetHomePreviewReady()
         }
     }
 
@@ -207,6 +238,19 @@ class LudoBoardView(
             }
         }
         return null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (homePreview) {
+            homeFrameHandler.removeCallbacks(homeFrameTick)
+            homeFrameHandler.post(homeFrameTick)
+        }
+    }
+
+    override fun onPause() {
+        homeFrameHandler.removeCallbacks(homeFrameTick)
+        super.onPause()
     }
 
     fun startDiceAnimation() {
@@ -502,6 +546,7 @@ class LudoBoardView(
     }
 
     override fun onDetachedFromWindow() {
+        homeFrameHandler.removeCallbacks(homeFrameTick)
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
@@ -571,6 +616,10 @@ class LudoBoardView(
             gl:javax.microedition.khronos.opengles.GL10?,
             cfg:javax.microedition.khronos.egl.EGLConfig?
         ){
+            // A recreated EGL context invalidates every previous GL object name.
+            firstFrameDiagnosticsCaptured = false
+            program = 0
+            if (host.homePreview) host.markHomePreviewNotReady()
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "SAFE_SURFACE_CREATED").apply()
@@ -804,7 +853,12 @@ class LudoBoardView(
                 if(glError==GLES20.GL_NO_ERROR && brightPixels>total/200 && maxChannel>24 &&
                     glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
                     android.util.Log.i("LudoMadaRender","SAFE_FIRST_FRAME_COMPLETE")
-                    host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                    if (host.homePreview) {
+                        android.util.Log.i("LudoMadaRender","HOME_3D_FALLBACK_FRAME_COMPLETE renderer=GLES2_GLB")
+                        host.markHomePreviewReady("GLES2_GLB",0,0,glbParts.size,boardParts.size)
+                    } else {
+                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                    }
                 }
             }.onFailure{
                 android.util.Log.e("LudoMadaRender","SAFE_READBACK_FAILED",it)
@@ -952,7 +1006,8 @@ class LudoBoardView(
             for(pi in 0..3){
                 if (onlyPi >= 0 && pi != onlyPi) continue
                 val d=dieCenter(pi)
-                val rot=if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
+                val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+                val rot=idleRotation+if(pi==player) ((1f-diceAnim)*32f + if(pi%2==0) -7f else 7f) else 0f
                 // Four compact chrome dice trays + hydro-plated die bodies.
                 drawMesh(die,model(d[0],0.24f,d[1],0.74f,0.11f,0.74f,0f),color(58,63,70,1f),0.12f,1.0f,0.015f,0.92f)
                 drawMesh(die,model(d[0],0.35f,d[1],0.60f,0.055f,0.60f,0f),color(175,181,188,1f),0.08f,1.0f,0.0f,0.96f)
@@ -1249,6 +1304,7 @@ class LudoBoardView(
         private var sceneWidth=1
         private var sceneHeight=1
         private var firstFrameDiagnosticsCaptured=false
+        private var homePreviewFirstFrameCaptured=false
         private var woodTex=0
         private var boardTex=0
         private var neutralTex=0
@@ -1288,6 +1344,21 @@ class LudoBoardView(
         private val pawnScale=0.62f
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
+            // Context loss discards GL objects. Clear every cached name before rebuilding
+            // targets, textures and buffers; never reuse IDs from the old context.
+            firstFrameDiagnosticsCaptured = false
+            homePreviewFirstFrameCaptured = false
+            lastFrameNanos = 0L
+            woodTex = 0; boardTex = 0; neutralTex = 0; metalTex = 0
+            normalTex = 0; woodNormalTex = 0; envCube = 0
+            fallbackShadowTex = 0
+            envBarkTex = 0; envBarkNormalTex = 0; envBarkRoughTex = 0
+            envDirtTex = 0; envDirtNormalTex = 0; envDirtRoughTex = 0
+            envSkyTex = 0; envGrassTex = 0; envGrassNormalTex = 0; envGrassRoughTex = 0
+            sceneFbo = 0; sceneColorTex = 0; sceneDepthTex = 0
+            shadowFbo = 0; shadowTex = 0
+            particleVbo = 0
+            if (host.homePreview) host.markHomePreviewNotReady()
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
                 " fill=" + premiumLighting.fillIntensity +
@@ -1502,6 +1573,29 @@ class LudoBoardView(
                 drawWorld(false)
                 shader.endFrame()
                 drawParticles()
+                if (BuildConfig.DEBUG && !homePreviewFirstFrameCaptured) {
+                    val validSurface=logFramebufferPixels("home_surface",sceneWidth,sceneHeight)
+                    val expectedHeroParts=setOf(
+                        "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
+                        "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
+                    )
+                    val complete=validSurface &&
+                        glbParts.keys.containsAll(expectedHeroParts) &&
+                        boardParts.isNotEmpty() && envParts.isNotEmpty() && baobabParts.isNotEmpty()
+                    if (complete) {
+                        android.util.Log.i("LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+envParts.size+
+                            " baobabParts="+baobabParts.size+
+                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                        host.markHomePreviewReady("GLES3_PBR",envParts.size,baobabParts.size,glbParts.size,boardParts.size)
+                    } else {
+                        android.util.Log.e("LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
+                            " envParts="+envParts.size+" baobabParts="+baobabParts.size+
+                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+                    }
+                    homePreviewFirstFrameCaptured=true
+                }
                 return
             }
             if(sceneFbo==0) createSceneTargets(sceneWidth,sceneHeight)
@@ -1697,52 +1791,61 @@ class LudoBoardView(
         private fun drawEnvironmentGlb(shadowPass:Boolean){
             if(envParts.isEmpty())return
             val parts=envParts.values.sortedBy { if(it.materialName=="ENV_Sky_HDRI") 0 else 1 }
-            if(shadowPass){
-                for(part in parts){
-                    if(part.materialName=="ENV_Sky_HDRI")continue
-                    drawShadowMesh(part.mesh,part.transform)
+            // The authored environment is Z-up while the gameplay board is Y-up.
+            // Respect glTF doubleSided metadata for the inside-facing sky dome and
+            // all other environment materials that were authored double-sided.
+            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if(parts.any{it.doubleSided})GLES30.glDisable(GLES30.GL_CULL_FACE)
+            try {
+                if(shadowPass){
+                    for(part in parts){
+                        if(part.materialName=="ENV_Sky_HDRI")continue
+                        val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
+                        drawShadowMesh(part.mesh,model)
+                    }
+                }else{
+                    for(part in parts){
+                        val mn=part.materialName
+                        val skyPart=mn=="ENV_Sky_HDRI"
+                        val barkPart=mn=="ENV_Bark_PBR"
+                        val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
+                        val grassPart=mn=="ENV_Grass_PBR"
+                        val albedo=when{
+                            skyPart->envSkyTex
+                            barkPart->envBarkTex
+                            dirtPart->envDirtTex
+                            grassPart->envGrassTex
+                            else->neutralTex
+                        }
+                        val ntex=when{
+                            barkPart->envBarkNormalTex
+                            dirtPart->envDirtNormalTex
+                            grassPart->envGrassNormalTex
+                            else->normalTex
+                        }
+                        val rtex=when{
+                            barkPart->envBarkRoughTex
+                            dirtPart->envDirtRoughTex
+                            grassPart->envGrassRoughTex
+                            else->0
+                        }
+                        val rough=when{
+                            skyPart->1.0f
+                            barkPart->0.74f
+                            dirtPart->0.86f
+                            grassPart->0.92f
+                            else->0.82f
+                        }
+                        val metallic=if(skyPart)0f else part.metallic
+                        val unlit=skyPart
+                        val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
+                        drawMesh(part.mesh,model,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
+                    }
                 }
-                drawRealBaobabs(true)
-                return
+            } finally {
+                if(cullingWasEnabled)GLES30.glEnable(GLES30.GL_CULL_FACE) else GLES30.glDisable(GLES30.GL_CULL_FACE)
             }
-            for(part in parts){
-                val mn=part.materialName
-                val skyPart=mn=="ENV_Sky_HDRI"
-                val barkPart=mn=="ENV_Bark_PBR"
-                val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
-                val grassPart=mn=="ENV_Grass_PBR"
-                val albedo=when{
-                    skyPart->envSkyTex
-                    barkPart->envBarkTex
-                    dirtPart->envDirtTex
-                    grassPart->envGrassTex
-                    else->neutralTex
-                }
-                val ntex=when{
-                    barkPart->envBarkNormalTex
-                    dirtPart->envDirtNormalTex
-                    grassPart->envGrassNormalTex
-                    else->normalTex
-                }
-                val rtex=when{
-                    barkPart->envBarkRoughTex
-                    dirtPart->envDirtRoughTex
-                    grassPart->envGrassRoughTex
-                    dirtPart->envDirtRoughTex
-                    else->0
-                }
-                val rough=when{
-                    skyPart->1.0f
-                    barkPart->0.74f
-                    dirtPart->0.86f
-                    grassPart->0.92f
-                    else->0.82f
-                }
-                val metallic=if(skyPart)0f else part.metallic
-                val unlit=skyPart
-                drawMesh(part.mesh,part.transform,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
-            }
-            drawRealBaobabs(false)
+            drawRealBaobabs(shadowPass)
         }
 
         private fun drawRealBaobabs(shadowPass:Boolean){
@@ -1866,8 +1969,9 @@ class LudoBoardView(
             val value=dieValue(pi)
             val t=if(pi==player)diceAnim else 1f
             val spin=PremiumVisualMotion.dieSpin(t)
-            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
+            val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+            val sx=(1f-spin)*(720f+pi*55f)+idleRotation+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+idleRotation*0.62f+17f+pi*11f
             val m=identityAt(p[0],p[1]+0.38f,p[2],0.52f,0.52f,0.52f)
             Matrix.rotateM(m,0,sx,1f,0f,0f);Matrix.rotateM(m,0,sy,0f,1f,0f)
             return m
@@ -1913,8 +2017,9 @@ class LudoBoardView(
             val t=if(pi==player)diceAnim else 1f
             val spin=PremiumVisualMotion.dieSpin(t)
             val value=dieValue(pi)
-            val sx=(1f-spin)*(720f+pi*55f)+if(value%2==0)12f+pi*7f else 31f+pi*5f
-            val sy=(1f-spin)*(430f+pi*37f)+17f+pi*11f
+            val idleRotation=if(homePreview) ((System.nanoTime()/12_000_000L)%360L).toFloat() else 0f
+            val sx=(1f-spin)*(720f+pi*55f)+idleRotation+if(value%2==0)12f+pi*7f else 31f+pi*5f
+            val sy=(1f-spin)*(430f+pi*37f)+idleRotation*0.62f+17f+pi*11f
             val anchor=identityAt(x,y,z,1f,1f,1f)
             Matrix.rotateM(anchor,0,sx,1f,0f,0f)
             Matrix.rotateM(anchor,0,sy,0f,1f,0f)
