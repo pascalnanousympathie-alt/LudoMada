@@ -535,6 +535,30 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     safeFirstFrameComplete: false
   };
   while (Date.now() < deadline) {
+    // Trial sessions expose UI snapshots even when device logcat contains only
+    // system rows. The app publishes this marker only after real GL readPixels,
+    // GL_NO_ERROR, complete hero GLB parts and a non-empty board GLB are verified.
+    const accessibilityTree = readTree();
+    const readyLabel = treeLabels(accessibilityTree).find((label) =>
+      label.includes("RENDER_PASS=") &&
+      label.includes("LudoMada 3D Ludo board")
+    ) || "";
+    const readyMatch = readyLabel.match(
+      /RENDER_PASS=(GLES2_GLB|GLES3_PBR)\s*\|\s*HERO_PARTS=(\d+)\s*\|\s*BOARD_PARTS=(\d+)/
+    );
+    if (readyMatch) {
+      const rendererName = readyMatch[1];
+      const heroPartCount = Number(readyMatch[2]);
+      const boardPartCount = Number(readyMatch[3]);
+      if (heroPartCount >= requiredHeroParts.length && boardPartCount > 0) {
+        console.log(rendererName + " ACCESSIBILITY RENDER PASS");
+        console.log("RUNTIME HERO GLB LOAD PASS parts=" + heroPartCount);
+        console.log("RUNTIME BOARD GLB LOAD PASS parts=" + boardPartCount);
+        console.log("GL FRAMEBUFFER READBACK PASS (app-certified GL_NO_ERROR + visible pixel threshold)");
+        return;
+      }
+    }
+
     lastLogcat = readRendererLogLines();
     const lines = lastLogcat.lines;
     const heroLine = lines.find((line) =>
