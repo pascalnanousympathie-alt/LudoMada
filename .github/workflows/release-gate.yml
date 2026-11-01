@@ -183,7 +183,7 @@ jobs:
             fi
           fi
           profile_count="$(find "$RUNNER_TEMP/ludomada-cpu-profile" -maxdepth 1 -type f -name '*.cpuprofile' -size +0c 2>/dev/null | wc -l | tr -d ' ')"
-          printf 'CAPACITY_CPU_PROFILE_COUNT=%s\\n' "$profile_count"
+          printf 'CAPACITY_CPU_PROFILE_COUNT=%s\n' "$profile_count"
           test "$profile_count" -ge 1
 
       - name: Independently validate measured capacity and SLOs
