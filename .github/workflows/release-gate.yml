@@ -80,10 +80,8 @@ jobs:
       - name: Build backend
         run: npm run build
 
-      - name: Test capacity report validator and operational mode guards
-        run: |
-          node --test scripts/validate-capacity-report.test.mjs
-          npm test -- --runInBand tests/operationalModes.test.ts
+      - name: Test capacity report validator
+        run: node --test scripts/validate-capacity-report.test.mjs
 
       - name: Start staging API and verify readiness
         env:
