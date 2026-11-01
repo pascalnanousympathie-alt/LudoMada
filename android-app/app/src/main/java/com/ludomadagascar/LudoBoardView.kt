@@ -1839,7 +1839,27 @@ class LudoBoardView(
                         val metallic=if(skyPart)0f else part.metallic
                         val unlit=skyPart
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
-                        drawMesh(part.mesh,model,part.baseColor,rough,metallic,part.baseColor[3].coerceIn(.45f,1f),if(skyPart)0.10f else 0f,6,unlit,albedo,ntex,rtex)
+                        val environmentColor=when {
+                            barkPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.20f)
+                            dirtPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.12f)
+                            grassPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.08f)
+                            else -> part.baseColor
+                        }
+                        val environmentEmission=when {
+                            skyPart -> 0.10f
+                            barkPart -> 0.018f
+                            dirtPart -> 0.010f
+                            grassPart -> 0.008f
+                            else -> 0f
+                        }
+                        // Bark keeps casting a soft shadow but does not receive its own
+                        // low-resolution shadow-map acne; this prevents near-black trunks.
+                        drawMesh(
+                            part.mesh,model,environmentColor,rough,metallic,
+                            if(barkPart)0.99f else part.baseColor[3].coerceIn(.70f,1f),
+                            environmentEmission,6,unlit,albedo,ntex,rtex,
+                            receivesShadow = !skyPart && !barkPart
+                        )
                     }
                 }
             } finally {
@@ -1850,16 +1870,9 @@ class LudoBoardView(
 
         private fun drawRealBaobabs(shadowPass:Boolean){
             if(baobabParts.isEmpty())return
-            val instances=arrayOf(
-                floatArrayOf(0f,-1.05f,-5.55f,0.88f),
-                floatArrayOf(-7.6f,-1.02f,-7.35f,0.62f),
-                floatArrayOf(7.5f,-1.02f,-7.0f,0.66f),
-                floatArrayOf(-2.7f,-1.02f,-10.0f,0.48f),
-                floatArrayOf(4.2f,-1.02f,-10.1f,0.54f)
-            )
             val ordered=baobabParts.values.sortedBy{if(it.materialName=="scrub")1 else 0}
-            for(inst in instances){
-                val im=identityAt(inst[0],inst[1],inst[2],inst[3],inst[3],inst[3])
+            for(inst in HomeEnvironmentComposition.baobabPlacements()){
+                val im=identityAt(inst.x,inst.y,inst.z,inst.scale,inst.scale,inst.scale)
                 for(part in ordered){
                     val m=FloatArray(16)
                     Matrix.multiplyMM(m,0,im,0,part.transform,0)
@@ -1872,8 +1885,17 @@ class LudoBoardView(
                         val ntex=when{barkPart->envBarkNormalTex;scrubPart->envGrassNormalTex;else->normalTex}
                         val rtex=when{barkPart->envBarkRoughTex;scrubPart->envGrassRoughTex;else->0}
                         val rough=when{barkPart->0.76f;scrubPart->0.92f;else->0.82f}
-                        val base=part.baseColor
-                        drawMesh(part.mesh,m,base,rough,part.metallic,0.96f,0f,6,false,albedo,ntex,rtex)
+                        val base=HomeEnvironmentComposition.liftEnvironmentColor(
+                            part.baseColor,if(barkPart)1.32f else 1.08f
+                        )
+                        // Keep the bark warm and readable against the sunset HDRI.
+                        // The tree still casts a shadow, but avoids self-shadowing into a silhouette.
+                        drawMesh(
+                            part.mesh,m,base,rough,part.metallic,
+                            if(barkPart)0.99f else 0.96f,
+                            if(barkPart)0.022f else 0.008f,
+                            6,false,albedo,ntex,rtex,receivesShadow = !barkPart
+                        )
                     }
                 }
             }
