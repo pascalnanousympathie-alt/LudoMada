@@ -14,6 +14,7 @@ import { isCapacityLoadTestEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagn
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
 import { GameStateRepository } from "./game/gameStateRepository";
+import { gameStateReadCache, type GameStateReadCacheEntry } from "./game/gameStateReadCache";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
 import { isValidEntryFee } from "./game/entryFees";
@@ -68,7 +69,8 @@ if (PG_POOL_DIAGNOSTICS_ENABLED) {
     console.log("PG_POOL_STATUS", {
       total: pool.totalCount,
       idle: pool.idleCount,
-      waiting: pool.waitingCount
+      waiting: pool.waitingCount,
+      gameStateCache: gameStateReadCache.metrics()
     });
   }, 1000).unref();
 }
@@ -1234,6 +1236,9 @@ app.post("/api/games/:gameId/join",auth,async(req:any,res)=>{
       throw new Error("GAME_JOIN_RETRY_FAILED");
     }
 
+    // The lobby participant list is part of the cached game-state read model.
+    gameStateReadCache.invalidate(req.params.gameId);
+
     const response={
       gameId:result.gameId,
       status:"WAITING",
@@ -1561,6 +1566,9 @@ app.post("/api/games/:gameId/start",auth,async(req:any,res)=>{
       throw new Error("GAME_START_RETRY_FAILED");
     }
 
+    // The transition from WAITING to PLAYING creates the authoritative snapshot.
+    gameStateReadCache.invalidate(req.params.gameId);
+
     const response={
       gameId:result.game.id,
       status:"PLAYING",
@@ -1791,13 +1799,40 @@ app.get("/api/games/:gameId/ai-suggestion",auth,async(req:any,res:any)=>{
   }
 });
 
+function gameStateReadResponse(entry: GameStateReadCacheEntry) {
+  const state = entry.state;
+  return {
+    gameId: entry.gameId,
+    status: entry.status,
+    entryFee: entry.entryFee ?? "0",
+    creatorId: entry.creatorId,
+    winnerId: entry.winnerId,
+    participants: entry.participants,
+    ...(state && typeof state === "object" ? state : {}),
+    stateVersion: state.stateVersion,
+    players: state.players ?? [],
+    state
+  };
+}
+
 app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
+  // Authentication is checked before this handler. A cache hit must still
+  // prove the authenticated user belongs to the game before returning state.
+  const cached = gameStateReadCache.get(req.params.gameId);
+  if (cached) {
+    if (!gameStateReadCache.hasParticipant(cached, req.userId)) {
+      return res.status(403).json({error:"Forbidden"});
+    }
+    return res.json(gameStateReadResponse(cached));
+  }
+
+  // If a write commits while this database read is in flight, its invalidation
+  // advances the generation and prevents the stale query result being cached.
+  const cacheGeneration = gameStateReadCache.generation();
   const totalStart=process.hrtime.bigint();
+  const routeStart=process.hrtime.bigint();
 
-      const routeStart=process.hrtime.bigint();
-try{
-    const beforeQueryMs=Number(process.hrtime.bigint()-routeStart)/1e6;
-
+  try {
     const queryStart=process.hrtime.bigint();
 
     const rows:any[]=await prisma.$queryRawUnsafe(`
@@ -1806,7 +1841,6 @@ try{
         g.status::text AS "status",
         g."creatorId" AS "creatorId",
         g."winnerId" AS "winnerId",
-
         (
           SELECT gp."entryFee"::text
           FROM "GameParticipant" gp
@@ -1814,13 +1848,10 @@ try{
           ORDER BY gp."createdAt" ASC
           LIMIT 1
         ) AS "entryFee",
-
         COALESCE(
           (
             SELECT json_agg(
-              json_build_object(
-                'userId', gp."userId"
-              )
+              json_build_object('userId', gp."userId")
               ORDER BY gp."createdAt" ASC
             )
             FROM "GameParticipant" gp
@@ -1828,29 +1859,21 @@ try{
           ),
           '[]'::json
         ) AS "participants",
-
         ags.state AS "state"
-
       FROM "Game" g
-
       LEFT JOIN "AuthoritativeGameState" ags
         ON ags."gameId" = g.id
-
       WHERE g.id = $1
-
         AND EXISTS (
           SELECT 1
           FROM "GameParticipant" gp_auth
           WHERE gp_auth."gameId" = g.id
             AND gp_auth."userId" = $2
         )
-
       LIMIT 1
     `,req.params.gameId,req.userId);
 
-    const queryMs=Number(
-      process.hrtime.bigint()-queryStart
-    )/1e6;
+    const queryMs=Number(process.hrtime.bigint()-queryStart)/1e6;
 
     if(!rows.length){
       const exists:any[]=await prisma.$queryRawUnsafe(`
@@ -1868,45 +1891,38 @@ try{
     }
 
     const row=rows[0];
-
     if(row.state===null || row.state===undefined){
       return res.status(404).json({error:"Game state not found"});
     }
 
-    const beforeResponseMs=Number(
-      process.hrtime.bigint()-routeStart
-    )/1e6;
+    const entry: GameStateReadCacheEntry = {
+      gameId: String(row.gameId),
+      status: String(row.status),
+      entryFee: row.entryFee == null ? null : String(row.entryFee),
+      creatorId: String(row.creatorId),
+      winnerId: row.winnerId == null ? null : String(row.winnerId),
+      participants: Array.isArray(row.participants) ? row.participants : [],
+      state: row.state as GameState
+    };
 
-    const totalMs=Number(
-      process.hrtime.bigint()-totalStart
-    )/1e6;
+    gameStateReadCache.set(entry, cacheGeneration);
+
+    const beforeResponseMs=Number(process.hrtime.bigint()-routeStart)/1e6;
+    const totalMs=Number(process.hrtime.bigint()-totalStart)/1e6;
 
     if (PERF_DIAGNOSTICS_ENABLED) console.log("STATE_DETAILED_TIMING",{
-      routeBeforeQueryMs:Number(beforeQueryMs.toFixed(2)),
+      cache:"MISS",
+      routeBeforeQueryMs:Number(queryStart-routeStart)/1e6,
       queryMs:Number(queryMs.toFixed(2)),
       beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
       totalMs:Number(totalMs.toFixed(2)),
-      participantsCount:Array.isArray(row.participants)
-        ? row.participants.length
-        : 0
-    });return res.json({
-      gameId:row.gameId,
-      status:row.status,
-      entryFee:row.entryFee ?? "0",
-      creatorId:row.creatorId,
-      winnerId:row.winnerId,
-      participants:row.participants ?? [],
-      ...(row.state && typeof row.state === "object" ? row.state : {}),
-      stateVersion:row.state?.stateVersion,
-      players:row.state?.players ?? [],
-      state:row.state
+      participantsCount:entry.participants.length
     });
 
-  }catch(e){
+    return res.json(gameStateReadResponse(entry));
+  } catch(e) {
     console.error("STATE_TRUE_SINGLE_QUERY_ERROR",e);
-    return res.status(500).json({
-      error:"Internal server error"
-    });
+    return res.status(500).json({error:"Internal server error"});
   }
 });
 app.get("/api/games/:gameId/legal-moves",auth,async(req:any,res)=>{
