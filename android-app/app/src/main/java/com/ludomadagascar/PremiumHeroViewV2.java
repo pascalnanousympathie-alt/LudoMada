@@ -1,31 +1,37 @@
 package com.ludomadagascar;
 
-import android.app.Activity;
 import android.content.Context;
 import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
 import android.view.*;
 import android.widget.*;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
-public class PremiumHeroViewV2 extends View {
+public class PremiumHeroViewV2 extends FrameLayout {
   private final HomeView home;
-  public PremiumHeroViewV2(Context c){super(c);setLayerType(LAYER_TYPE_SOFTWARE,null);home=new HomeView(c);}
-  @Override protected void onAttachedToWindow(){super.onAttachedToWindow();invalidate();}
-  @Override protected void onDraw(Canvas c){
-    setContentDescription("LudoMada Premium Home | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
-    home.layout(0,0,getWidth(),getHeight());
-    home.draw(c);
+  private final LudoBoardView homePreview;
+
+  public PremiumHeroViewV2(Context c){
+    super(c);
+    setClipChildren(false);
+    setClipToPadding(false);
+    setBackground(new GradientDrawable(
+      GradientDrawable.Orientation.TL_BR,
+      new int[]{Color.rgb(3,16,56),Color.rgb(74,20,78)}
+    ));
+    setContentDescription("LudoMada Premium Home | LudoMada 3D Home Preview | Player profile | coins | gems | Joue. Gagne. Grandis | En ligne | Hors-ligne | Wallet");
+    // The real GLES scene sits behind the transparent native UI overlay. It owns
+    // the rev5 board, GLB pawns/dice, outdoor Madagascar environment and baobabs.
+    homePreview=new LudoBoardView(c,null,null,true);
+    homePreview.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+    addView(homePreview,new FrameLayout.LayoutParams(-1,-1));
+    home=new HomeView(c);
+    home.setBackgroundColor(Color.TRANSPARENT);
+    addView(home,new FrameLayout.LayoutParams(-1,-1));
   }
-  @Override public boolean onTouchEvent(MotionEvent e){return home.onTouchEvent(e);}
-  private void install() {
-    if(!(getParent() instanceof ViewGroup))return;
-    Activity a=(Activity)getContext(); ViewGroup host=(ViewGroup)getParent();
-    host.removeAllViews();
-    FrameLayout f=new FrameLayout(a); f.setBackgroundColor(Color.rgb(7,8,37));
-    host.addView(f,new ViewGroup.LayoutParams(-1,-1));
-    f.addView(home,new FrameLayout.LayoutParams(-1,-1));
-  }
+
+  public LudoBoardView getHomePreviewView(){ return homePreview; }
   private void call(String n){
     try{Method m=getContext().getClass().getDeclaredMethod(n);m.setAccessible(true);m.invoke(getContext());}catch(Throwable ignored){}
   }
@@ -60,29 +66,13 @@ public class PremiumHeroViewV2 extends View {
     void menu(Canvas c,float l,float y,float r,float b,int fill,int stroke,String icon,String title,String sub){
       box(c,l,y,r,b,16,fill,stroke);t(c,icon,l+17,(y+b)/2f+2,18,gold2,true,true);t(c,title,l+34,y+21,10.5f,Color.WHITE,true,false);t(c,sub,l+34,y+36,7.5f,0xD8FFFFFF,false,false);
     }
-    void board(Canvas c){
-      box(c,122,214,268,392,25,Color.rgb(243,235,216),Color.rgb(208,166,68));
-      p.setShader(new LinearGradient(d(122),d(214),d(268),d(392),Color.rgb(255,255,255),Color.rgb(231,222,203),Shader.TileMode.CLAMP));c.drawRoundRect(d(122),d(214),d(268),d(392),d(25),d(25),p);p.setShader(null);
-      float x0=129,y0=221,cs=34.5f;
-      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(0.7f));p.setColor(0x88999999);
-      for(int i=0;i<=4;i++){c.drawLine(d(x0+i*cs),d(y0),d(x0+i*cs),d(y0+138),p);c.drawLine(d(x0),d(y0+i*cs),d(x0+138),d(y0+i*cs),p);}p.setStyle(Paint.Style.FILL);
-      p.setColor(red);c.drawRect(d(x0),d(y0),d(x0+69),d(y0+69),p);p.setColor(blue);c.drawRect(d(x0+69),d(y0),d(x0+138),d(y0+69),p);p.setColor(green);c.drawRect(d(x0+69),d(y0+69),d(x0+138),d(y0+138),p);p.setColor(yellow);c.drawRect(d(x0),d(y0+69),d(x0+69),d(y0+138),p);
-      pawn(c,x0+34.5f,y0+34.5f,17,red);pawn(c,x0+103.5f,y0+34.5f,17,blue);pawn(c,x0+34.5f,y0+103.5f,17,yellow);pawn(c,x0+103.5f,y0+103.5f,17,green);
-      float phase=(System.currentTimeMillis()%2200L)/2200f; float angle=(float)Math.sin(phase*Math.PI*2.0)*7.0f; c.save();c.rotate(angle,d(200),d(297));
-      box(c,176,273,224,321,10,Color.WHITE,Color.rgb(132,127,119));p.setColor(Color.DKGRAY);float[][]q={{-7,-9},{7,-9},{0,0},{-7,9},{7,9}};for(float[]v:q)c.drawCircle(d(200+v[0]),d(297+v[1]),d(2.5f),p);c.restore();postInvalidateDelayed(50);
-    }
     @Override protected void onDraw(Canvas c){
       float den=getResources().getDisplayMetrics().density;
       s=Math.min(getWidth()/(390f*den),getHeight()/(710f*den));
       float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(getHeight()-710f*sc)/2f;
       c.save();c.translate(ox,oy);
-      p.setShader(new LinearGradient(0,0,0,d(710),Color.rgb(3,16,56),Color.rgb(74,20,78),Shader.TileMode.CLAMP));c.drawRect(0,0,d(390),d(710),p);
-      p.setShader(new RadialGradient(d(195),d(255),d(280),Color.rgb(22,112,226),Color.TRANSPARENT,Shader.TileMode.CLAMP));c.drawCircle(d(195),d(255),d(280),p);p.setShader(null);
-      p.setColor(0x223C8FE8);c.drawCircle(d(77),d(190),d(88),p);p.setColor(0x2848D5B1);c.drawCircle(d(329),d(246),d(105),p);
-      Path m=new Path();m.moveTo(d(0),d(318));m.lineTo(d(62),d(250));m.lineTo(d(104),d(301));m.lineTo(d(151),d(252));m.lineTo(d(207),d(311));m.lineTo(d(271),d(247));m.lineTo(d(325),d(300));m.lineTo(d(390),d(242));m.lineTo(d(390),d(365));m.lineTo(d(0),d(365));m.close();p.setColor(0x55224B8D);c.drawPath(m,p);
-      p.setShader(new RadialGradient(d(55),d(555),d(42),Color.rgb(255,205,88),0x00FFC95C,Shader.TileMode.CLAMP));c.drawCircle(d(55),d(555),d(42),p);p.setShader(null);
-      p.setColor(0x5532141E);c.drawRect(d(37),d(548),d(44),d(640),p);c.drawCircle(d(28),d(545),d(18),p);c.drawCircle(d(47),d(540),d(22),p);c.drawCircle(d(15),d(548),d(15),p);
-      p.setColor(0x48201418);c.drawRect(d(354),d(560),d(361),d(640),p);c.drawCircle(d(343),d(555),d(20),p);c.drawCircle(d(364),d(550),d(24),p);c.drawCircle(d(379),d(558),d(16),p);
+      // Leave the scene transparent so the live GLES environment remains visible.
+      p.setShader(null);
       String u=str("username"),tok=str("token");long bal=lng("accountBalanceMGA");
       box(c,7,6,383,68,24,Color.rgb(9,25,71),Color.rgb(37,116,236));
       p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,11,blue);
@@ -97,7 +87,7 @@ public class PremiumHeroViewV2 extends View {
       t(c,"♛",195,125,27,gold,true,true);t(c,"Ludo",161,151,38,gold2,true,true);t(c,"Mada",226,151,38,Color.WHITE,true,true);
       box(c,143,160,247,164,1.5f,red,0);box(c,143,164,247,168,1,Color.WHITE,0);box(c,143,168,247,172,1.5f,green,0);
       t(c,"Joue • Gagne • Grandis",195,187,12.5f,gold2,false,true);t(c,"2 à 4 joueurs  •  Classique",195,202,7.7f,0xE2FFFFFF,false,true);
-      board(c);
+
       menu(c,8,110,126,158,Color.rgb(244,174,25),gold,"▶","JOUER","En ligne ou Hors-ligne");
       menu(c,8,164,126,212,Color.rgb(22,72,185),Color.rgb(45,135,255),"♛","TOURNOIS","Événements & classements");
       menu(c,8,218,126,266,Color.rgb(12,147,87),Color.rgb(29,223,137),"▣","MON WALLET","Dépôt / Retrait / Historique");
