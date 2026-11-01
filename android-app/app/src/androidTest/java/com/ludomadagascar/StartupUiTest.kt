@@ -110,8 +110,12 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
-        assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
+        assertTrue("3D board surface missing", device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
+        assertTrue(
+            "3D renderer must certify a GLB-backed frame with a clean framebuffer",
+            device.wait(Until.hasObject(By.descContains("RENDER_PASS=")), 8000)
+        )
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
