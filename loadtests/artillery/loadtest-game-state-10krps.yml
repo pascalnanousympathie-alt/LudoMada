@@ -3,7 +3,7 @@ config:
   http:
     timeout: 15
     # Share keep-alive agents across virtual users to prevent ephemeral-port exhaustion.
-    pool: 4096
+    pool: 8192
     extendedMetrics: true
   payload:
     path: "./capacity-fixtures.csv"
