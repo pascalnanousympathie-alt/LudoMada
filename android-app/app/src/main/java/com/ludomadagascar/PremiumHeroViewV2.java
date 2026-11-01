@@ -9,6 +9,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 public class PremiumHeroViewV2 extends FrameLayout {
+  private static final String HOME_ACCESSIBILITY_BASE =
+      "LudoMada Premium Home | JOUER | TOURNOIS | MON WALLET | PROFIL | TUTORIELS | MODE DE JEU | EN LIGNE | HORS-LIGNE";
   private final HomeView home;
   private final LudoBoardView homePreview;
 
@@ -31,9 +33,7 @@ public class PremiumHeroViewV2 extends FrameLayout {
     home.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
     home.setFocusable(true);
     home.setClickable(true);
-    home.setContentDescription(
-      "LudoMada Premium Home | JOUER | TOURNOIS | MON WALLET | PROFIL | TUTORIELS | MODE DE JEU | EN LIGNE | HORS-LIGNE"
-    );
+    home.setContentDescription(HOME_ACCESSIBILITY_BASE);
     addView(home,new FrameLayout.LayoutParams(-1,-1));
   }
 
@@ -46,12 +46,18 @@ public class PremiumHeroViewV2 extends FrameLayout {
    */
   public void publishHomePreviewReady(String rendererMarker){
     if(rendererMarker==null || rendererMarker.trim().isEmpty()) return;
-    final String description =
-      "LudoMada Premium Home | JOUER | TOURNOIS | MON WALLET | PROFIL | TUTORIELS | MODE DE JEU | EN LIGNE | HORS-LIGNE | " +
-      rendererMarker;
+    final String description = HOME_ACCESSIBILITY_BASE + " | " + rendererMarker;
     home.post(() -> {
       if(!description.equals(home.getContentDescription())){
         home.setContentDescription(description);
+      }
+    });
+  }
+
+  public void resetHomePreviewReady(){
+    home.post(() -> {
+      if(!HOME_ACCESSIBILITY_BASE.equals(home.getContentDescription())){
+        home.setContentDescription(HOME_ACCESSIBILITY_BASE);
       }
     });
   }
