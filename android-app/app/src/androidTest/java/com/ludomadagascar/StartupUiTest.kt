@@ -43,6 +43,21 @@ class StartupUiTest {
         )
     }
 
+    private fun tapHomeMusic(device: UiDevice, context: android.content.Context) {
+        val home = device.findObject(By.descContains("LudoMada Premium Home"))
+        val bounds = home.visibleBounds
+        val density = context.resources.displayMetrics.density
+        val scale = minOf(
+            bounds.width() / (390f * density),
+            bounds.height() / (710f * density)
+        ) * density
+        val xOffset = (bounds.width() - 390f * scale) / 2f
+        val yOffset = (bounds.height() - 710f * scale) / 2f
+        val x = bounds.left + (xOffset + 337f * scale).toInt()
+        val y = bounds.top + (yOffset + 43f * scale).toInt()
+        assertTrue("Home music icon tap should be accepted", device.click(x, y))
+    }
+
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
         val home = device.findObject(By.descContains("LudoMada Premium Home"))
         val bounds = home.visibleBounds
@@ -94,6 +109,20 @@ class StartupUiTest {
         assertTrue(
             "Home must attach the live 3D scene and complete its first frame",
             device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+        )
+        val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
+        val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
+        tapHomeMusic(device, context)
+        device.waitForIdle()
+        assertTrue(
+            "Home music preference must change after the icon tap",
+            musicPrefs.getBoolean("enabled", true) != originalMusicEnabled
+        )
+        tapHomeMusic(device, context)
+        device.waitForIdle()
+        assertTrue(
+            "Home music icon must restore the original preference",
+            musicPrefs.getBoolean("enabled", true) == originalMusicEnabled
         )
         tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
