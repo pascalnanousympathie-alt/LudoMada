@@ -9,7 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
-import { isCapacityLoadTestEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled } from "./operationalModes";
+import { isCapacityLoadTestEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
@@ -46,7 +46,7 @@ function poolSize(value: string | undefined, fallback: number, maximum: number) 
 
 // The CI-only profile can use a larger pool against its isolated local Postgres.
 // All non-capacity environments retain the hard 20-connection ceiling.
-const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5, capacityLoadTestEnabled ? 60 : 20);
+const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5, maximumPgPoolSize());
 
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
