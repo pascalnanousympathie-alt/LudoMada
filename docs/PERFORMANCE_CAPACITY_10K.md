@@ -16,13 +16,13 @@ This is a **failed 10k capacity result**, even though the GitHub job was green. 
 
 Artillery's HTTP engine creates a separate TCP agent per virtual user when `config.http.pool` is omitted. At hundreds of thousands of virtual users this opened/closed too many TCP sockets and exhausted local ephemeral ports, producing `EADDRNOTAVAIL`. Its engine source confirms that `config.http.pool` creates shared reusable HTTP agents; the default agent uses keep-alive.
 
-The benchmark now configures a global shared socket pool of 4,096. The API PostgreSQL pool is raised to 60 **only** when the strict CI guard confirms the ephemeral loopback `ludomada_ci` database. All non-capacity environments remain capped at 20, with the normal default of five (Render's configured value remains two).
+The benchmark now configures a global shared socket pool of 4,096 and holds the 10,000 RPS arrival rate through both its warm-up and steady-state phases, so the aggregate validator can enforce the full target without a ramp-induced averaging penalty. The API PostgreSQL pool is raised to 60 **only** when the strict CI guard confirms the ephemeral loopback `ludomada_ci` database. All non-capacity environments remain capped at 20, with the normal default of five (Render's configured value remains two).
 
 ## Enforced acceptance criteria
 
 The load profile uses the Artillery `ensure` plugin with strict conditions and a post-run JSON validator:
 
-- Configured steady-state arrival target: 10,000 RPS; minimum measured aggregate rate across the warm-up plus steady-state run: 9,000 RPS. The aggregate floor is lower because the report includes the intentional 5-second ramp from 1,000 to 10,000 RPS.
+- Both the 5-second warm-up and 30-second steady phase now run at 10,000 RPS, so the minimum measured aggregate rate for the complete profile is 10,000 RPS.
 - Failed virtual users plus non-200 responses at or below 0.1%.
 - p95 at or below 250 ms.
 - p99 at or below 500 ms.
