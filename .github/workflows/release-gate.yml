@@ -132,7 +132,26 @@ jobs:
 
       - name: Run authenticated game-state capacity profile (up to 10k RPS)
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
-        run: npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
+        run: |
+          printf "RUNNER_NPROC="; getconf _NPROCESSORS_ONLN
+          printf "RUNNER_ULIMIT_SOFT="; ulimit -Sn
+          printf "RUNNER_ULIMIT_HARD="; ulimit -Hn
+          printf "RUNNER_EPHEMERAL_PORT_RANGE="; cat /proc/sys/net/ipv4/ip_local_port_range
+          printf "RUNNER_FILE_MAX="; cat /proc/sys/fs/file-max
+          printf "RUNNER_LOADAVG="; cat /proc/loadavg
+          free -h
+          soft_limit=$(ulimit -Sn)
+          hard_limit=$(ulimit -Hn)
+          desired_limit=16384
+          if [ "$hard_limit" != "unlimited" ] && [ "$hard_limit" -lt "$desired_limit" ]; then desired_limit="$hard_limit"; fi
+          if [ "$soft_limit" != "unlimited" ] && [ "$soft_limit" -lt "$desired_limit" ]; then ulimit -n "$desired_limit"; fi
+          printf "ARTILLERY_ULIMIT_EFFECTIVE="; ulimit -Sn
+          set +e
+          npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
+          artillery_exit=$?
+          printf "RUNNER_SOCKET_SUMMARY_AFTER_TEST\n"
+          ss -s || true
+          exit "$artillery_exit"
 
       - name: Independently validate measured capacity and SLOs
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
