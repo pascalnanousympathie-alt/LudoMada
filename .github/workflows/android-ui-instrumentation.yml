@@ -108,6 +108,11 @@ jobs:
             mkdir -p android-app/app/build/ramus-evidence/api30
             cp -- "$source_file" android-app/app/build/ramus-evidence/api30/ludomada-startup-offline.png
           fi
+          home_source_file="android-app/app/build/ramus-evidence/ludomada-home-preview.png"
+          if [[ -s "$home_source_file" ]]; then
+            mkdir -p android-app/app/build/ramus-evidence/api30
+            cp -- "$home_source_file" android-app/app/build/ramus-evidence/api30/ludomada-home-preview.png
+          fi
 
       - name: Run connected Android UI instrumentation tests (Android 8.1 / API 27)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
@@ -135,6 +140,11 @@ jobs:
           if [[ -s "$source_file" ]]; then
             mkdir -p android-app/app/build/ramus-evidence/api27
             cp -- "$source_file" android-app/app/build/ramus-evidence/api27/ludomada-startup-offline.png
+          fi
+          home_source_file="android-app/app/build/ramus-evidence/ludomada-home-preview.png"
+          if [[ -s "$home_source_file" ]]; then
+            mkdir -p android-app/app/build/ramus-evidence/api27
+            cp -- "$home_source_file" android-app/app/build/ramus-evidence/api27/ludomada-home-preview.png
           fi
 
       - name: Upload instrumentation reports
