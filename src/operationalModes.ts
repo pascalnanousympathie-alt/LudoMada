@@ -46,5 +46,5 @@ export function maximumPgPoolSize(env: Environment = process.env): number {
  * is configured and verified.
  */
 export function isGameStateReadCacheEnabled(env: Environment = process.env): boolean {
-  return env.LUDOMADA_GAME_STATE_CACHE === "true";
+  return env.LUDOMADA_GAME_STATE_CACHE === "true" && isCapacityLoadTestEnabled(env);
 }
