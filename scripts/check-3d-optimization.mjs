@@ -52,6 +52,29 @@ const bundled = fs.readdirSync(root)
     return { name, bytes };
   });
 
+
+const homeEnvironment = manifest.home_environment ?? {};
+const homeBudget = budget.homeEnvironment ?? {};
+if (homeEnvironment.renderer !== "LudoBoardView.SceneRenderer.homePreview") {
+  fail("3D_OPT_HOME_RENDERER_MISSING", homeEnvironment.renderer);
+}
+if (!homeEnvironment.scene_glb || !homeEnvironment.baobab_glb ||
+    !Array.isArray(homeEnvironment.textures) || homeEnvironment.textures.length !== 10) {
+  fail("3D_OPT_HOME_ASSET_INVENTORY_MISSING");
+}
+if (homeEnvironment.textures_max_dimension !== homeBudget.textureDimensionMax) {
+  fail("3D_OPT_HOME_TEXTURE_DIMENSION_MISMATCH", homeEnvironment.textures_max_dimension, homeBudget.textureDimensionMax);
+}
+if (Number(homeEnvironment.scene_glb.bytes) > Number(homeBudget.environmentGlbMaxBytes)) {
+  fail("3D_OPT_HOME_ENVIRONMENT_GLB_BUDGET_FAIL", homeEnvironment.scene_glb.bytes, homeBudget.environmentGlbMaxBytes);
+}
+if (Number(homeEnvironment.baobab_glb.bytes) > Number(homeBudget.baobabGlbMaxBytes)) {
+  fail("3D_OPT_HOME_BAOBAB_GLB_BUDGET_FAIL", homeEnvironment.baobab_glb.bytes, homeBudget.baobabGlbMaxBytes);
+}
+const homeTextureBytes = homeEnvironment.textures.reduce((sum, asset) => sum + Number(asset.bytes || 0), 0);
+if (!Number.isFinite(Number(homeBudget.textureBytesMax)) || homeTextureBytes > Number(homeBudget.textureBytesMax)) {
+  fail("3D_OPT_HOME_TEXTURE_BUDGET_FAIL", homeTextureBytes, homeBudget.textureBytesMax);
+}
 const safe = budget.tiers?.MOBILE_SAFE;
 const balanced = budget.tiers?.BALANCED;
 const premium = budget.tiers?.PREMIUM;
