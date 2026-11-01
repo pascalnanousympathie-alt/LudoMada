@@ -1464,7 +1464,25 @@ class LudoBoardView(
         }
         private fun checkFramebuffer(name:String){val status=GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER);if(status!=GLES30.GL_FRAMEBUFFER_COMPLETE)throw IllegalStateException("framebuffer $name incomplete: 0x"+status.toString(16))}
         private fun renderShadowMap(){
-            ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            ensureShadowTargets()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo)
+            GLES30.glViewport(0,0,shadowSize,shadowSize)
+            GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT)
+            // Small caster-side offset complements receiver normal bias and prevents
+            // depth quantization from self-shadowing the broad tabletop surfaces.
+            GLES30.glEnable(GLES30.GL_POLYGON_OFFSET_FILL)
+            GLES30.glPolygonOffset(1.25f,2.0f)
+            GLES30.glColorMask(false,false,false,false)
+            try {
+                shadowShader.begin(lightVp)
+                drawWorld(true)
+                shadowShader.end()
+            } finally {
+                GLES30.glColorMask(true,true,true,true)
+                GLES30.glDisable(GLES30.GL_POLYGON_OFFSET_FILL)
+                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
+                GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            }
         }
         private fun renderScene(){
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
