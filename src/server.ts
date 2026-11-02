@@ -3,16 +3,19 @@ import helmet from "helmet";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import { randomInt, randomUUID, createHash } from "node:crypto";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import bcrypt from "bcryptjs";
 import { PrismaClient, PaymentMethod, TransactionType } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
+import { isCapacityLoadTestEnabled, isCapacityRuntimeTelemetryEnabled, isGameStateReadCacheEnabled, isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled, maximumPgPoolSize } from "./operationalModes";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
 import { GameStateRepository } from "./game/gameStateRepository";
+import { gameStateReadCache, invalidateGameStateReadCache, type GameStateReadCacheEntry } from "./game/gameStateReadCache";
 import { AuthoritativeCommandService } from "./game/authoritativeCommandService";
 import { appendGameEvent } from "./game/gameEventStore";
 import { isValidEntryFee } from "./game/entryFees";
@@ -28,13 +31,24 @@ if (!DATABASE_URL) {
   throw new Error("DATABASE_URL_IS_REQUIRED");
 }
 
-function poolSize(value: string | undefined, fallback: number) {
+const capacityLoadTestRequested = process.env.LUDOMADA_LOAD_TEST_MODE === "true";
+const capacityLoadTestEnabled = isCapacityLoadTestEnabled();
+
+if (capacityLoadTestRequested && !capacityLoadTestEnabled) {
+  throw new Error("LUDOMADA_LOAD_TEST_MODE_REQUIRES_DISPOSABLE_CI_DATABASE");
+}
+
+function poolSize(value: string | undefined, fallback: number, maximum: number) {
   const parsed = Number(value ?? fallback);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) throw new Error("PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_20");
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`PG_POOL_MAX_MUST_BE_AN_INTEGER_1_TO_${maximum}`);
+  }
   return parsed;
 }
 
-const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5);
+// The CI-only profile can use a larger pool against its isolated local Postgres.
+// All non-capacity environments retain the hard 20-connection ceiling.
+const pgPoolMax = poolSize(process.env.PG_POOL_MAX, 5, maximumPgPoolSize());
 
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
@@ -48,40 +62,116 @@ const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({ adapter });
 
-let pgPrewarmDone = false;
+const PERF_DIAGNOSTICS_ENABLED = isPerformanceDiagnosticsEnabled();
+const PG_POOL_DIAGNOSTICS_ENABLED = isPoolDiagnosticsEnabled();
+const GAME_STATE_READ_CACHE_ENABLED = isGameStateReadCacheEnabled();
 
-async function prewarmPgPool() {
-  if (pgPrewarmDone) return;
-
-  await Promise.all(
-    Array.from(
-      { length: 20 },
-      () => pool.query("SELECT 1")
-    )
-  );
-
-  pgPrewarmDone = true;
-
-  console.log("PG_POOL_PREWARM", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
+if (PG_POOL_DIAGNOSTICS_ENABLED) {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+      gameStateCache: gameStateReadCache.metrics()
+    });
+  }, 1000).unref();
 }
-
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
 const app=express();
 
 
+const CAPACITY_RUNTIME_TELEMETRY_ENABLED = isCapacityRuntimeTelemetryEnabled();
+
+if (CAPACITY_RUNTIME_TELEMETRY_ENABLED) {
+  const eventLoop = monitorEventLoopDelay({ resolution: 20 });
+  eventLoop.enable();
+
+  let previousCpu = process.cpuUsage();
+  let previousSampleAt = process.hrtime.bigint();
+  let activeStateReads = 0;
+  let completedStateReads = 0;
+  let failedStateReads = 0;
+  let abortedStateReads = 0;
+
+  // Aggregate request lifecycle counts; do not log individual hot-path requests.
+  app.use((req: any, res: any, next: any) => {
+    if (req.method !== "GET" || !req.path.startsWith("/api/games/") || !req.path.endsWith("/state")) {
+      return next();
+    }
+
+    activeStateReads += 1;
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      activeStateReads = Math.max(0, activeStateReads - 1);
+    };
+
+    res.once("finish", () => {
+      settle();
+      completedStateReads += 1;
+      if (res.statusCode >= 400) failedStateReads += 1;
+    });
+    res.once("close", () => {
+      if (!res.writableFinished) {
+        settle();
+        abortedStateReads += 1;
+      }
+    });
+    next();
+  });
+
+  setInterval(() => {
+    const now = process.hrtime.bigint();
+    const elapsedMs = Math.max(1, Number(now - previousSampleAt) / 1e6);
+    const cpu = process.cpuUsage(previousCpu);
+    previousCpu = process.cpuUsage();
+    previousSampleAt = now;
+    const cpuUserMs = cpu.user / 1000;
+    const cpuSystemMs = cpu.system / 1000;
+    const memory = process.memoryUsage();
+
+    console.log("CAPACITY_RUNTIME_SAMPLE", {
+      elapsedMs: Number(elapsedMs.toFixed(1)),
+      cpu: {
+        userMs: Number(cpuUserMs.toFixed(1)),
+        systemMs: Number(cpuSystemMs.toFixed(1)),
+        percentOfOneCore: Number((((cpuUserMs + cpuSystemMs) / elapsedMs) * 100).toFixed(1))
+      },
+      eventLoopDelayMs: {
+        mean: Number((eventLoop.mean / 1e6).toFixed(2)),
+        p95: Number((eventLoop.percentile(95) / 1e6).toFixed(2)),
+        p99: Number((eventLoop.percentile(99) / 1e6).toFixed(2)),
+        max: Number((eventLoop.max / 1e6).toFixed(2))
+      },
+      stateReads: {
+        active: activeStateReads,
+        completed: completedStateReads,
+        failed: failedStateReads,
+        clientAborted: abortedStateReads
+      },
+      memoryMb: {
+        rss: Number((memory.rss / 1048576).toFixed(1)),
+        heapUsed: Number((memory.heapUsed / 1048576).toFixed(1)),
+        heapTotal: Number((memory.heapTotal / 1048576).toFixed(1)),
+        external: Number((memory.external / 1048576).toFixed(1))
+      },
+      pgPool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount },
+      gameStateCache: gameStateReadCache.metrics()
+    });
+
+    completedStateReads = 0;
+    failedStateReads = 0;
+    abortedStateReads = 0;
+    eventLoop.reset();
+  }, 5000).unref();
+}
+
+
+
+if (PERF_DIAGNOSTICS_ENABLED) {
 // REQUEST_E2E_TIMING_STATE_V3
 app.use((req:any,res:any,next:any)=>{
   const isState =
@@ -109,11 +199,16 @@ app.use((req:any,res:any,next:any)=>{
 
   next();
 });
+}
 
 const JWT_SECRET: string = process.env.JWT_SECRET ?? "";
 if(JWT_SECRET.length < 32){
   throw new Error("JWT_SECRET_MUST_BE_AT_LEAST_32_CHARACTERS");
 }
+
+// Parse the HMAC verification key once. jsonwebtoken 9.0.3 otherwise
+// attempts createPublicKey() on the string secret on every verify call.
+const JWT_SECRET_KEY = crypto.createSecretKey(Buffer.from(JWT_SECRET, "utf8"));
 
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
@@ -189,18 +284,22 @@ const authRateLimit = rateLimit({
   message: { error: "Too many authentication attempts" }
 });
 
-// AUTH_TIMING_V1
+// AUTH_TIMING_V1 — request timing is opt-in, not a synchronous hot-path log.
 function auth(req:any,res:any,next:any){
-  const authStart = process.hrtime.bigint();
+  const shouldMeasureAuth =
+    PERF_DIAGNOSTICS_ENABLED &&
+    req.path.startsWith("/api/games/") &&
+    req.path.endsWith("/state");
+  const authStart = shouldMeasureAuth ? process.hrtime.bigint() : 0n;
 
   try {
     const h=String(req.headers.authorization||"");
     const t=h.startsWith("Bearer ")?h.slice(7):"";
-    req.auth=verifyAccessToken(t,JWT_SECRET);
+    req.auth=verifyAccessToken(t,JWT_SECRET_KEY);
     req.userId=req.auth.sub;
 
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"OK"
@@ -209,8 +308,8 @@ function auth(req:any,res:any,next:any){
 
     next();
   } catch {
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"FAIL"
@@ -248,7 +347,7 @@ app.get("/ready",async(_req,res)=>{
   }
 });
 
-if (process.env.NODE_ENV !== "loadtest") {
+if (!capacityLoadTestEnabled) {
   app.use(rateLimit({
     windowMs: 60_000,
     max: 120,
@@ -1232,6 +1331,9 @@ app.post("/api/games/:gameId/join",auth,async(req:any,res)=>{
       throw new Error("GAME_JOIN_RETRY_FAILED");
     }
 
+    // The lobby participant list is part of the cached game-state read model.
+    invalidateGameStateReadCache(req.params.gameId);
+
     const response={
       gameId:result.gameId,
       status:"WAITING",
@@ -1559,6 +1661,9 @@ app.post("/api/games/:gameId/start",auth,async(req:any,res)=>{
       throw new Error("GAME_START_RETRY_FAILED");
     }
 
+    // The transition from WAITING to PLAYING creates the authoritative snapshot.
+    invalidateGameStateReadCache(req.params.gameId);
+
     const response={
       gameId:result.game.id,
       status:"PLAYING",
@@ -1789,13 +1894,44 @@ app.get("/api/games/:gameId/ai-suggestion",auth,async(req:any,res:any)=>{
   }
 });
 
+function gameStateReadResponse(entry: GameStateReadCacheEntry) {
+  const state = entry.state;
+  return {
+    gameId: entry.gameId,
+    status: entry.status,
+    entryFee: entry.entryFee ?? "0",
+    creatorId: entry.creatorId,
+    winnerId: entry.winnerId,
+    participants: entry.participants,
+    ...(state && typeof state === "object" ? state : {}),
+    stateVersion: state.stateVersion,
+    players: state.players ?? [],
+    state
+  };
+}
+
 app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
+  // Authentication is checked before this handler. A cache hit must still
+  // prove the authenticated user belongs to the game before returning state.
+  const cached = GAME_STATE_READ_CACHE_ENABLED
+    ? gameStateReadCache.get(req.params.gameId)
+    : null;
+  if (cached) {
+    if (!gameStateReadCache.hasParticipant(cached, req.userId)) {
+      return res.status(403).json({error:"Forbidden"});
+    }
+    return res.json(gameStateReadResponse(cached));
+  }
+
+  // If a write commits while this database read is in flight, its invalidation
+  // advances the generation and prevents the stale query result being cached.
+  const cacheGeneration = GAME_STATE_READ_CACHE_ENABLED
+    ? gameStateReadCache.generation()
+    : -1;
   const totalStart=process.hrtime.bigint();
+  const routeStart=process.hrtime.bigint();
 
-      const routeStart=process.hrtime.bigint();
-try{
-    const beforeQueryMs=Number(process.hrtime.bigint()-routeStart)/1e6;
-
+  try {
     const queryStart=process.hrtime.bigint();
 
     const rows:any[]=await prisma.$queryRawUnsafe(`
@@ -1804,7 +1940,6 @@ try{
         g.status::text AS "status",
         g."creatorId" AS "creatorId",
         g."winnerId" AS "winnerId",
-
         (
           SELECT gp."entryFee"::text
           FROM "GameParticipant" gp
@@ -1812,13 +1947,10 @@ try{
           ORDER BY gp."createdAt" ASC
           LIMIT 1
         ) AS "entryFee",
-
         COALESCE(
           (
             SELECT json_agg(
-              json_build_object(
-                'userId', gp."userId"
-              )
+              json_build_object('userId', gp."userId")
               ORDER BY gp."createdAt" ASC
             )
             FROM "GameParticipant" gp
@@ -1826,29 +1958,21 @@ try{
           ),
           '[]'::json
         ) AS "participants",
-
         ags.state AS "state"
-
       FROM "Game" g
-
       LEFT JOIN "AuthoritativeGameState" ags
         ON ags."gameId" = g.id
-
       WHERE g.id = $1
-
         AND EXISTS (
           SELECT 1
           FROM "GameParticipant" gp_auth
           WHERE gp_auth."gameId" = g.id
             AND gp_auth."userId" = $2
         )
-
       LIMIT 1
     `,req.params.gameId,req.userId);
 
-    const queryMs=Number(
-      process.hrtime.bigint()-queryStart
-    )/1e6;
+    const queryMs=Number(process.hrtime.bigint()-queryStart)/1e6;
 
     if(!rows.length){
       const exists:any[]=await prisma.$queryRawUnsafe(`
@@ -1866,45 +1990,38 @@ try{
     }
 
     const row=rows[0];
-
     if(row.state===null || row.state===undefined){
       return res.status(404).json({error:"Game state not found"});
     }
 
-    const beforeResponseMs=Number(
-      process.hrtime.bigint()-routeStart
-    )/1e6;
+    const entry: GameStateReadCacheEntry = {
+      gameId: String(row.gameId),
+      status: String(row.status),
+      entryFee: row.entryFee == null ? null : String(row.entryFee),
+      creatorId: String(row.creatorId),
+      winnerId: row.winnerId == null ? null : String(row.winnerId),
+      participants: Array.isArray(row.participants) ? row.participants : [],
+      state: row.state as GameState
+    };
 
-    const totalMs=Number(
-      process.hrtime.bigint()-totalStart
-    )/1e6;
+    if (GAME_STATE_READ_CACHE_ENABLED) gameStateReadCache.set(entry, cacheGeneration);
 
-    console.log("STATE_DETAILED_TIMING",{
-      routeBeforeQueryMs:Number(beforeQueryMs.toFixed(2)),
+    const beforeResponseMs=Number(process.hrtime.bigint()-routeStart)/1e6;
+    const totalMs=Number(process.hrtime.bigint()-totalStart)/1e6;
+
+    if (PERF_DIAGNOSTICS_ENABLED) console.log("STATE_DETAILED_TIMING",{
+      cache:"MISS",
+      routeBeforeQueryMs:Number(queryStart-routeStart)/1e6,
       queryMs:Number(queryMs.toFixed(2)),
       beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
       totalMs:Number(totalMs.toFixed(2)),
-      participantsCount:Array.isArray(row.participants)
-        ? row.participants.length
-        : 0
-    });return res.json({
-      gameId:row.gameId,
-      status:row.status,
-      entryFee:row.entryFee ?? "0",
-      creatorId:row.creatorId,
-      winnerId:row.winnerId,
-      participants:row.participants ?? [],
-      ...(row.state && typeof row.state === "object" ? row.state : {}),
-      stateVersion:row.state?.stateVersion,
-      players:row.state?.players ?? [],
-      state:row.state
+      participantsCount:entry.participants.length
     });
 
-  }catch(e){
+    return res.json(gameStateReadResponse(entry));
+  } catch(e) {
     console.error("STATE_TRUE_SINGLE_QUERY_ERROR",e);
-    return res.status(500).json({
-      error:"Internal server error"
-    });
+    return res.status(500).json({error:"Internal server error"});
   }
 });
 app.get("/api/games/:gameId/legal-moves",auth,async(req:any,res)=>{

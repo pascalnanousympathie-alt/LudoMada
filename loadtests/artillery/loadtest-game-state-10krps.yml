@@ -1,0 +1,38 @@
+config:
+  target: "http://127.0.0.1:3101"
+  http:
+    timeout: 15
+    # Share keep-alive agents across virtual users to prevent ephemeral-port exhaustion.
+    pool: 8192
+    extendedMetrics: true
+  payload:
+    path: "./capacity-fixtures.csv"
+    fields:
+      - "gameId"
+      - "accessToken"
+    order: random
+    skipHeader: true
+  phases:
+    - duration: 30
+      arrivalRate: 10000
+      name: "Steady state: 10k authenticated state reads/sec"
+  plugins:
+    ensure:
+      thresholds:
+        - "http.response_time.p95": 250
+        - "http.response_time.p99": 500
+      conditions:
+        - expression: "http.request_rate >= 10000"
+          strict: true
+        - expression: "(vusers.failed / vusers.created) * 100 <= 0.1"
+          strict: true
+        - expression: "http.codes.200 == http.responses"
+          strict: true
+
+scenarios:
+  - name: "Participant-authorized authoritative game-state read"
+    flow:
+      - get:
+          url: "/api/games/{{ gameId }}/state"
+          headers:
+            Authorization: "Bearer {{ accessToken }}"
