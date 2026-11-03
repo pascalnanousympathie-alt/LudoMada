@@ -41,6 +41,14 @@ internal object HomeEnvironmentComposition {
      */
     fun castsHomeBaobabShadows(): Boolean = false
 
+    /**
+     * HDRI panoramas are already authored with their final color balance.
+     * Preserve the source albedo only for the sky; ordinary PBR surfaces keep
+     * the shared shader's neutral blend.
+     */
+    fun usesSourceAlbedo(materialName: String): Boolean =
+        materialName == "ENV_Sky_HDRI"
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
