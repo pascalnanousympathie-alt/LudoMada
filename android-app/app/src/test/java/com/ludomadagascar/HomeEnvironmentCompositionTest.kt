@@ -62,6 +62,13 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun homeTerrainShadowAblationKeepsRockAndGrassReceiversEnabled() {
+        assertTrue(!HomeEnvironmentComposition.receivesHomeEnvironmentShadow("ENV_Terrain_HighDetail"))
+        listOf("ENV_Rock_00", "ENV_Rock_01", "ENV_Grass_00")
+            .forEach { assertTrue(HomeEnvironmentComposition.receivesHomeEnvironmentShadow(it)) }
+    }
+
+    @Test
     fun baobabPlacementIsPairedOnBothSidesAtFrontAndBack() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(trees[0].x, -trees[1].x, 0.25f)
