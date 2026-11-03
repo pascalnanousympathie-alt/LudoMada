@@ -34,6 +34,13 @@ internal object HomeEnvironmentComposition {
     fun castsHomeEnvironmentShadow(nodeName: String): Boolean =
         nodeName.startsWith("ENV_Rock_") && !isHomeCentrelineOccluderPart(nodeName)
 
+    /**
+     * A/B diagnostic: exclude large Home baobab instances from the low-resolution
+     * environment shadow map while leaving perimeter-rock and gameplay shadows intact.
+     * Keep false until a full-screen Ramus comparison confirms the ground/horizon benefit.
+     */
+    fun castsHomeBaobabShadows(): Boolean = false
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
