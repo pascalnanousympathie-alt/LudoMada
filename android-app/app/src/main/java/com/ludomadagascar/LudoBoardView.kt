@@ -2426,6 +2426,7 @@ class LudoBoardView(
         val n:FloatBuffer=ByteBuffer.allocateDirect(normals.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(normals);position(0)}
         val uv:FloatBuffer=ByteBuffer.allocateDirect(uvData.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(uvData);position(0)}
         val i:ShortBuffer=ByteBuffer.allocateDirect(indices.size*2).order(ByteOrder.nativeOrder()).asShortBuffer().apply{put(indices);position(0)}
+        internal fun uvsCopy(): FloatArray = uvData.copyOf()
     }
 
     private class PbrShader(private val renderer:SceneRenderer){
