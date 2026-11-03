@@ -71,6 +71,17 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun onlyHomeSkyPanoramaPreservesItsAuthoredAlbedo() {
+        assertTrue(HomeEnvironmentComposition.usesSourceAlbedo("ENV_Sky_HDRI"))
+        listOf(
+            "ENV_Ground_PBR",
+            "ENV_Rock_PBR",
+            "ENV_Grass_PBR",
+            "ENV_Bark_PBR"
+        ).forEach { assertTrue(!HomeEnvironmentComposition.usesSourceAlbedo(it)) }
+    }
+
+    @Test
     fun liftedEnvironmentColorIsWarmClampedAndPreservesAlpha() {
         val source = floatArrayOf(0.20f, 0.18f, 0.12f, 0.82f)
         val result = HomeEnvironmentComposition.liftEnvironmentColor(source, 1.30f)
