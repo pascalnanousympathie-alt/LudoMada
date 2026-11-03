@@ -1090,7 +1090,7 @@ function sanitizeResult(profile, raw) {
       task,
       exitCode: Math.max(-1, Math.min(255, raw.exitCode)),
       timedOut: Boolean(raw.timedOut),
-      durationMs: Number.isInteger(raw.durationMs) ? Math.max(0, Math.min(600000, raw.durationMs)) : 0,
+      durationMs: Number.isInteger(raw.durationMs) ? Math.max(0, Math.min(900000, raw.durationMs)) : 0,
       stdout: redactSensitive(String(raw.stdout || "")).slice(-6000),
       stderr: redactSensitive(String(raw.stderr || "")).slice(-2500)
     };
