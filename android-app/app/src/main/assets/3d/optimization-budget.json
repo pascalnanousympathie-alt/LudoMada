@@ -1,0 +1,50 @@
+{
+  "schema": "ludomada-mobile-3d-budget-v2",
+  "sourceScene": {
+    "provider": "Higgsfield 3D Jutsu",
+    "projectId": "083cab86-9817-4ddc-8d12-92d9212d008b",
+    "revision": 5,
+    "sourceGlbBytes": 867800,
+    "materialCalibration": "PremiumMaterialLighting.Calibration"
+  },
+  "glbBytes": {
+    "heroMax": 8388608,
+    "propMax": 2097152
+  },
+  "geometry": {
+    "preferMeshopt": true,
+    "preferDraco": true,
+    "sharedMeshes": true,
+    "lodRequiredForLargeProps": true
+  },
+  "textures": {
+    "preferKtx2Basis": true,
+    "maxGameplayTextureDimension": 2048,
+    "avoidUncompressed4K": true
+  },
+  "runtimeTargets": {
+    "shadowMapDefault": 512,
+    "particleCapDefault": 128
+  },
+  "tiers": {
+    "MOBILE_SAFE": {
+      "shadowMap": 256,
+      "maxParticles": 48,
+      "postEffects": "reduced"
+    },
+    "BALANCED": {
+      "shadowMap": 384,
+      "maxParticles": 96,
+      "postEffects": "moderate"
+    },
+    "PREMIUM": {
+      "shadowMap": 512,
+      "maxParticles": 128,
+      "postEffects": "full"
+    }
+  },
+  "policy": {
+    "gameStateIndependent": true,
+    "runtimePackagedMustBeExplicit": true
+  }
+}

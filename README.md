@@ -148,18 +148,18 @@ V6.1 replaces the in-memory game-state dependency for roll/move commands with:
 - PostgreSQL `AuthoritativeGameState` snapshots
 - PostgreSQL `GameCommand` idempotency records
 - durable `GameEvent` append records
-- `SERIALIZABLE` transactions
-- `SELECT ... FOR UPDATE` row locking
+- PostgreSQL `READ COMMITTED` transactions with a per-game `SELECT ... FOR UPDATE` row lock
 - state-version conflict detection
 - duplicate command replay returning the original result
+- bounded retry/backoff for database serialization conflicts
 
-This prevents two API instances from concurrently mutating the same game state and lets state survive process restarts. Production deployment should still run Prisma migrations, add retry/backoff for serialization failures, and load-test the locking strategy.
+The lock is acquired on the durable `AuthoritativeGameState` row inside the same transaction as the command, game-row update, idempotency record and event append. This serializes commands for the same game across API instances and lets the state survive process restarts. The implementation uses explicit row locking under `READ COMMITTED`; it does **not** set the transaction isolation level to `SERIALIZABLE`. Load-test this exact locking strategy before production scaling.
 
 ## V6.2 — Production hardening
 Added Prisma migration baseline, integration/concurrency/security test suites,
-and a production security/reliability checklist. The tests are intentionally
-safe templates until a disposable PostgreSQL test database and CI environment
-are configured; they do not claim a completed security audit.
+and a production security/reliability checklist. The TypeScript unit suite runs in CI; PostgreSQL-backed native HTTP/game/economy
+scenarios are added to the Release Gate in V6.3. These checks do not replace an
+external penetration test or formal security audit.
 
 ## V6.3 — Reproducible CI / PostgreSQL test environment
 
@@ -168,11 +168,15 @@ Added:
 - `.env.test.example`
 - Docker Compose test database
 - GitHub Actions CI workflow
-- `npm run ci` and `npm run test:all`
+- `npm run ci`, `npm run test:all`, and `npm run test:native`
+- serialized native HTTP/4-player/concurrency/idempotency tests in the Release Gate
 - test matrix documentation
 
-This makes the migration/test pipeline reproducible. It does not claim that a
-security audit or production load test has been completed.
+The TypeScript unit suite and the native PostgreSQL-backed integration suite
+are separate gates. The native suite runs only against the disposable CI
+PostgreSQL service after the API is healthy. Passing these CI gates does not
+claim that a security audit, external penetration test, legal review, or
+production deployment has been completed.
 
 ## V6.4 — Load / Security Release Gate
 
@@ -184,15 +188,14 @@ must not be aimed at production real-money systems.
 ## V6.5 — Staging deployment package
 
 Added a containerized staging path:
-- Node 20 production container
+- Node 24 LTS production container
 - PostgreSQL 16 staging compose stack
-- Prisma migration on startup
+- explicit Prisma migration CLI command (`npm run db:migrate`)
 - staging environment template
 - staging deployment/rollback runbook
 - build/start scripts
 
-This is a staging deployment package, not a claim that payment-provider,
-penetration-test, legal, or production approval gates are complete.
+The API container starts `node dist/server.js`; it does **not** run schema migrations on startup. Migrations are a separate owner-controlled operation. The Render staging blueprint deliberately keeps automatic deployment off and uses a runtime database role without schema `CREATE`; baseline the existing empty Supabase staging schema only through `docs/PRISMA_STAGING_BASELINE.md`.
 
 
 ## Real-time game updates and AI move hints

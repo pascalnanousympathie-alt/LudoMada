@@ -21,7 +21,7 @@ services:
       - key: DATABASE_URL
         sync: false
       - key: CORS_ORIGINS
-        sync: false
+        value: ""
       - key: PAYMENTS_MVOLA_LIVE_ENABLED
         value: "false"
       - key: PAYMENTS_MVOLA_SANDBOX_ENABLED

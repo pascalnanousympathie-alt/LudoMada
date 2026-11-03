@@ -1,6 +1,103 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
+function parseFramebufferReadback(line, expectedLabel) {
+  if (typeof line !== "string") {
+    return { ok: false, reason: "missing_readback" };
+  }
+
+  const match = line.match(
+    /PBR_READBACK label=([a-z_]+) size=(\d+)x(\d+) brightPixels=(\d+)\/(\d+) maxChannel=(\d+) meanRGB=(\d+),(\d+),(\d+) centerRGB=(\d+),(\d+),(\d+) glError=0x([0-9a-f]+)\b/i
+  );
+  if (!match || match[1] !== expectedLabel) {
+    return { ok: false, reason: "malformed_readback" };
+  }
+
+  const values = match.slice(2).map((value, index) =>
+    index === 11 ? Number.parseInt(value, 16) : Number(value)
+  );
+  const [width, height, brightPixels, totalPixels, maxChannel,
+    meanR, meanG, meanB, centerR, centerG, centerB, glError] = values;
+  const channels = [meanR, meanG, meanB, centerR, centerG, centerB];
+  const dimensionsValid = Number.isSafeInteger(width) && width > 0 &&
+    Number.isSafeInteger(height) && height > 0 &&
+    Number.isSafeInteger(totalPixels) && totalPixels === width * height;
+  const countsValid = Number.isSafeInteger(brightPixels) &&
+    brightPixels >= 0 && brightPixels <= totalPixels;
+  const channelsValid = [maxChannel, ...channels].every((value) =>
+    Number.isSafeInteger(value) && value >= 0 && value <= 255
+  );
+  const glErrorValid = Number.isSafeInteger(glError) && glError >= 0;
+
+  if (!dimensionsValid || !countsValid || !channelsValid || !glErrorValid) {
+    return { ok: false, reason: "invalid_readback_metrics" };
+  }
+
+  const minimumBrightPixels = Math.max(32, Math.ceil(totalPixels * 0.005));
+  if (glError !== 0) {
+    return { ok: false, reason: "gl_error", glError, brightPixels, totalPixels, maxChannel };
+  }
+  if (maxChannel <= 24 || brightPixels < minimumBrightPixels) {
+    return {
+      ok: false,
+      reason: "insufficient_non_dark_pixels",
+      brightPixels,
+      totalPixels,
+      minimumBrightPixels,
+      maxChannel
+    };
+  }
+
+  return {
+    ok: true,
+    label: expectedLabel,
+    width,
+    height,
+    brightPixels,
+    totalPixels,
+    brightRatio: Number((brightPixels / totalPixels).toFixed(4)),
+    maxChannel,
+    meanRGB: [meanR, meanG, meanB],
+    centerRGB: [centerR, centerG, centerB],
+    glError
+  };
+}
+
+function selfTestFramebufferReadback() {
+  const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
+  const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
+  const black = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=0/657150 maxChannel=11 meanRGB=2,4,11 centerRGB=2,4,11 glError=0x0";
+  const glFailure = scene.replace("glError=0x0", "glError=0x502");
+  const sparse = scene.replace("brightPixels=369149/657150", "brightPixels=100/657150");
+  const inconsistentSize = scene.replace("brightPixels=369149/657150", "brightPixels=369149/600000");
+  const impossibleCount = scene.replace("brightPixels=369149/657150", "brightPixels=700000/657150");
+
+  const cases = [
+    ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
+    ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
+    ["black frame rejected", !parseFramebufferReadback(black, "scene_fbo").ok],
+    ["GL error rejected", !parseFramebufferReadback(glFailure, "scene_fbo").ok],
+    ["sparse pixels rejected", !parseFramebufferReadback(sparse, "scene_fbo").ok],
+    ["inconsistent dimensions rejected", !parseFramebufferReadback(inconsistentSize, "scene_fbo").ok],
+    ["pixel count overflow rejected", !parseFramebufferReadback(impossibleCount, "scene_fbo").ok],
+    ["wrong label rejected", !parseFramebufferReadback(scene, "surface_backbuffer").ok],
+    ["missing log rejected", !parseFramebufferReadback(null, "scene_fbo").ok]
+  ];
+  const failed = cases.filter(([, passed]) => !passed);
+  for (const [name, passed] of cases) {
+    console.log((passed ? "PASS " : "FAIL ") + name);
+  }
+  if (failed.length) {
+    throw new Error("Framebuffer readback self-test failed: " + failed.map(([name]) => name).join(", "));
+  }
+  console.log("FRAMEBUFFER READBACK SELF-TEST PASS (" + cases.length + " cases)");
+}
+
+if (process.argv.includes("--test-framebuffer-readback")) {
+  selfTestFramebufferReadback();
+  process.exit(0);
+}
+
 const cli = process.env.RAMUS_CLI;
 const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
@@ -25,10 +122,12 @@ function runCli(...args) {
   const timeout = command === "session"
     ? 45000
     : command === "screenshot"
-      ? 20000
-      : command === "wait"
-        ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
-        : 12000;
+      ? 30000
+      : command === "logcat"
+        ? 15000
+        : command === "wait"
+          ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
+          : 12000;
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -275,11 +374,219 @@ function advanceToTurn(targetTurn) {
 
 let session = "";
 let success = false;
+let failureLogcatCaptured = false;
+
+function normalizeLogcatRows(result) {
+  const value = result?.value ?? {};
+  const rows = Array.isArray(value.lines)
+    ? value.lines
+    : Array.isArray(value.logs)
+      ? value.logs
+      : [];
+  return rows.map((entry) => {
+    if (typeof entry === "string") {
+      return { line: entry, tag: "", stream: "", priority: "", fields: [] };
+    }
+    if (!entry || typeof entry !== "object") {
+      return { line: "", tag: "", stream: "", priority: "", fields: [] };
+    }
+    return {
+      line: [entry.stamp, entry.stream, entry.priority, entry.tag, entry.text, entry.message]
+        .filter((part) => part !== undefined && part !== null && part !== "")
+        .join(" "),
+      tag: typeof entry.tag === "string" ? entry.tag : "",
+      stream: typeof entry.stream === "string" ? entry.stream : "",
+      priority: typeof entry.priority === "string" ? entry.priority : "",
+      fields: Object.keys(entry).sort()
+    };
+  }).filter((entry) => entry.line);
+}
+
+function redactLogLine(line) {
+  return String(line).replace(
+    /(authorization|access[_-]?token|refresh[_-]?token|password|client[_-]?secret|api[_-]?key)(["'\s:=]+)[^",\s}]+/gi,
+    "$1$2[redacted]"
+  );
+}
+
+function captureFailureLogcat() {
+  if (!session || failureLogcatCaptured) return;
+  failureLogcatCaptured = true;
+
+  // Read the unfiltered guest tail once. Ramus applies --filter to text/stream;
+  // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
+  const broad = runAllowError("logcat", "--limit", "500", "--session", session);
+  const entries = normalizeLogcatRows(broad);
+  // Preserve the filtered tag response as independent evidence; some cloud guest
+  // sessions expose only system-stream rows through the unfiltered endpoint.
+  const filtered = runAllowError(
+    "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
+  );
+  const filteredEntries = normalizeLogcatRows(filtered);
+  const combinedEntries = [...entries, ...filteredEntries];
+  const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i;
+  const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  console.error("RAMUS_LOGCAT_UNFILTERED_SUMMARY=" + JSON.stringify({
+    ok: broad.ok,
+    error: broad.ok ? null : String(broad.value?.error || "logcat_error").slice(0, 80),
+    lineCount: entries.length,
+    firstEntryFields: entries[0]?.fields ?? [],
+    tailMetadata: entries.slice(-20).map((entry) => ({
+      tag: entry.tag,
+      stream: entry.stream,
+      priority: entry.priority,
+      lineLength: entry.line.length,
+      appRelated: relevantPattern.test(entry.line),
+      rendererRelated: rendererPattern.test(entry.line)
+    }))
+  }));
+  console.error("RAMUS_LOGCAT_FILTERED_SUMMARY=" + JSON.stringify({
+    ok: filtered.ok,
+    lineCount: filteredEntries.length,
+    rendererLines: filteredEntries.filter((entry) => rendererPattern.test(entry.line)).length,
+    error: filtered.ok ? null : String(filtered.value?.error || "logcat_error").slice(0, 80)
+  }));
+
+  const relevant = combinedEntries
+    .map((entry) => entry.line)
+    .filter((line) => relevantPattern.test(line))
+    .slice(-220)
+    .map(redactLogLine);
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_BEGIN");
+  if (relevant.length === 0) {
+    console.error("No app, activity, renderer or low-memory lines found in the unfiltered guest log tail.");
+  } else {
+    console.error(relevant.join("\n"));
+  }
+  console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
+}
+
+function readRendererLogLines() {
+  // Prefer the full guest tail. Some cloud sessions expose only system rows
+  // there, so fall back to the proven LudoMadaRender tag filter when needed.
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  const broad = runAllowError("logcat", "--limit", "500", "--session", session);
+  const broadEntries = normalizeLogcatRows(broad);
+  let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  let filtered = { ok: false, value: { error: "not_needed" } };
+  let filteredEntries = [];
+
+  if (lines.length === 0) {
+    filtered = runAllowError(
+      "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
+    );
+    filteredEntries = normalizeLogcatRows(filtered);
+    lines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  }
+
+  return {
+    ok: broad.ok || filtered.ok,
+    totalLines: broadEntries.length,
+    filteredLines: filteredEntries.length,
+    error: broad.ok || filtered.ok
+      ? null
+      : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
+    lines
+  };
+}
+
+function assertRuntimeGlbLoaded(timeoutMs = 16000) {
+  const deadline = Date.now() + timeoutMs;
+  const requiredHeroParts = [
+    "LM_Pawn_Base_Weighted",
+    "LM_Pawn_Collar",
+    "LM_Pawn_Spherical_Head",
+    "LM_Pawn_Tapered_Body",
+    "LM_Pawn_Underside_Insert",
+    "LM_Die_HydroChrome_Body"
+  ];
+  let lastLogcat = { ok: false, totalLines: 0, error: "not_read" };
+  let checks = {
+    gles3Pbr: false,
+    pbrSurfaceCreated: false,
+    heroParts: [],
+    missingHeroParts: requiredHeroParts,
+    boardParts: 0,
+    sceneReadback: false,
+    surfaceReadback: false,
+    firstFrameComplete: false
+  };
+  while (Date.now() < deadline) {
+    lastLogcat = readRendererLogLines();
+    const lines = lastLogcat.lines;
+    const heroLine = lines.find((line) =>
+      line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
+      !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")
+    );
+    const heroText = heroLine?.split("GLB_RUNTIME_LOAD_OK parts=")[1] || "";
+    const heroParts = heroText.split(",").map((part) => part.trim()).filter(Boolean);
+    const boardLine = lines.find((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
+    const boardText = boardLine?.split("BOARD_GLB_RUNTIME_LOAD_OK parts=")[1] || "";
+    const boardCount = Number.parseInt(boardText, 10);
+    const sceneReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=scene_fbo"));
+    const surfaceReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=surface_backbuffer"));
+    checks = {
+      gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
+      pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
+      heroParts,
+      missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
+      boardParts: Number.isFinite(boardCount) ? boardCount : 0,
+      sceneReadback: parseFramebufferReadback(sceneReadbackLine, "scene_fbo"),
+      surfaceReadback: parseFramebufferReadback(surfaceReadbackLine, "surface_backbuffer"),
+      firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE"))
+    };
+    if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
+        checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
+        checks.sceneReadback.ok && checks.surfaceReadback.ok && checks.firstFrameComplete) {
+      console.log("GLES3 PBR RENDERER PASS");
+      console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
+      console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
+      console.log("PBR SCENE FBO READBACK PASS=" + JSON.stringify(checks.sceneReadback));
+      console.log("PBR SURFACE READBACK PASS=" + JSON.stringify(checks.surfaceReadback));
+      console.log("PBR FIRST FRAME COMPLETE");
+      return;
+    }
+    waitStable(Math.min(1800, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("Runtime GLB/frame verification failed: " +
+    JSON.stringify({ checks, logcat: {
+      ok: lastLogcat.ok,
+      totalLines: lastLogcat.totalLines,
+      rendererLines: lastLogcat.lines.length,
+      error: lastLogcat.error
+    } }));
+}
+
+function safeRamusMetadata(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { valueType: typeof value };
+  }
+  const summary = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (/token|secret|password|credential|api[_-]?key|authorization/i.test(key)) continue;
+    if (/duration|expires|remaining|limit|status|state|mode|trial|plan|ttl|timeout|started|created|message/i.test(key) &&
+        ["string", "number", "boolean"].includes(typeof entry)) {
+      summary[key] = entry;
+    }
+  }
+  summary.availableFields = Object.keys(value)
+    .filter((key) => !/token|secret|password|credential|api[_-]?key|authorization/i.test(key))
+    .slice(0, 30);
+  return summary;
+}
+
 try {
-  if (!process.env.RAMUS_API_KEY) run("trial");
+  if (!process.env.RAMUS_API_KEY) {
+    console.log("RAMUS_AUTH_MODE=trial");
+    const trialInfo = run("trial");
+    console.log("RAMUS_TRIAL_METADATA=" + JSON.stringify(safeRamusMetadata(trialInfo)));
+  } else {
+    console.log("RAMUS_AUTH_MODE=api_key");
+  }
   const started = run("session", "start", "--apk", apk, "--wait");
   session = started.session;
-  console.log(`Ramus session: ${session}`);
+  console.log("RAMUS_SESSION_STARTED");
+  console.log("RAMUS_SESSION_METADATA=" + JSON.stringify(safeRamusMetadata(started)));
 
   let target = findRef("👥 Jouer hors-ligne");
   run("tap", target.ref, "--gen", String(target.gen),
@@ -289,6 +596,64 @@ try {
   target = findRef("👤 2 joueurs");
   run("tap", target.ref, "--gen", String(target.gen), "--session", session);
   console.log("2-PLAYER MENU PASS");
+  const boardSurface = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
+  if (!treeHas(boardSurface, "LudoMada 3D Ludo board")) {
+    console.error("3D_BOARD_ACCESSIBILITY_DIAGNOSTICS:" + JSON.stringify(treeLabels(boardSurface)).slice(0, 7000));
+    captureFailureLogcat();
+    const evidence = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+    if (evidence.ok) console.error("3D_BOARD_SCREENSHOT_CAPTURED");
+    else console.error("3D_BOARD_SCREENSHOT_CAPTURE_FAILED:" + JSON.stringify(evidence.value));
+
+    // Distinguish a retired/backgrounded Ramus session from an app process that
+    // cannot relaunch after the offline-board transition. Keep the original
+    // failure screenshot above before attempting this read-only recovery launch.
+    const recovery = runAllowError("app", "launch", "--session", session);
+    console.error("RAMUS_POST_FAILURE_APP_LAUNCH=" + JSON.stringify({
+      ok: recovery.ok,
+      error: typeof recovery.value?.error === "string" ? recovery.value.error.slice(0, 120) : null,
+      status: typeof recovery.value?.status === "string" ? recovery.value.status.slice(0, 120) : null
+    }));
+    waitStable(1000);
+    const recoveryTree = readTree();
+    console.error("RAMUS_POST_FAILURE_TREE=" + JSON.stringify({
+      screen: recoveryTree?.screen || null,
+      labels: treeLabels(recoveryTree).slice(0, 30).map(label => label.slice(0, 120))
+    }).slice(0, 5000));
+    const recoveryShot = runAllowError("screenshot", "--session", session, "--out", "ramus-recovery-screen.jpg");
+    console.error(recoveryShot.ok ? "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURED" : "RAMUS_POST_FAILURE_SCREENSHOT_CAPTURE_FAILED");
+    captureFailureLogcat();
+    throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
+  }
+  console.log("3D BOARD SURFACE PASS");
+  // Preserve an early capture even if renderer validation fails, but keep it
+  // separate: GLSurfaceView may still be loading assets at this point.
+  const preBoardShot = runAllowError(
+    "screenshot", "--session", session, "--out", "ramus-pre-assertion-screen.jpg"
+  );
+  if (preBoardShot.ok) console.log("3D BOARD PRE-ASSERTION SCREENSHOT CAPTURED");
+  else console.error("3D BOARD PRE-ASSERTION SCREENSHOT FAILED");
+
+  let rendererFailure = null;
+  try {
+    assertRuntimeGlbLoaded();
+    console.log("3D BOARD RENDERER ASSERTIONS PASS");
+  } catch (error) {
+    rendererFailure = error;
+    console.error("3D BOARD RENDERER ASSERTIONS FAILED:",
+      String(error?.message || error).slice(0, 1600));
+  }
+
+  // The final gameplay screenshot must be taken after the renderer's bounded
+  // GLB/readback wait, on both success and failure paths.
+  const boardShot = runAllowError("screenshot", "--session", session, "--out", "ramus-screen.jpg");
+  if (!boardShot.ok) {
+    console.error("Could not capture post-render 3D board evidence: " +
+      String(boardShot.value?.error || boardShot.value?.message || "unknown").slice(0, 240));
+  } else {
+    console.log("3D BOARD POST-RENDER SCREENSHOT CAPTURED");
+  }
+  if (rendererFailure) throw rendererFailure;
+  if (!boardShot.ok) throw new Error("Could not capture post-render 3D board screenshot");
 
   // Verify the 4-player mode and its complete turn rotation.
   target = findRef("← Hors-ligne");
@@ -337,11 +702,13 @@ try {
   console.log("2-PLAYER RESET PASS");
 
   let gotSix = false;
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 48; i++) {
     target = findRef("Lancer le dé");
     run("tap", target.ref, "--gen", String(target.gen), "--session", session);
 
-    const six = waitForSix(3000);
+    const six = waitForSix(2200);
+    const diceStatus = pendingDiceValue().status;
+    console.log("RAMUS_DICE_ROLL_ATTEMPT=" + (i + 1) + " STATUS=" + diceStatus.slice(0, 100));
     if (six) {
       gotSix = true;
       break;
@@ -351,7 +718,7 @@ try {
     // a little time to settle before the next observation.
     runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
   }
-  if (!gotSix) throw new Error("No six within 24 cloud-emulator rolls");
+  if (!gotSix) throw new Error("No six within 48 cloud-emulator rolls; last status: " + pendingDiceValue().status);
   console.log("DICE SIX PASS");
 
   // A pending die must be immutable until the player chooses a pawn.
@@ -411,10 +778,12 @@ try {
   console.log("JOUER→OFFLINE MENU PASS");
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
-  run("screenshot", "--session", session, "--out", "ramus-screen.jpg");
   success = true;
   console.log("RAMUS_SMOKE_PASS");
 } finally {
+  if (session && !success && !failureLogcatCaptured) {
+    captureFailureLogcat();
+  }
   if (session) {
     try { run("session", "end", "--session", session); }
     catch (e) { console.error("session end:", e.message); }

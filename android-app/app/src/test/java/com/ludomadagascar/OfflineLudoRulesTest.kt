@@ -70,4 +70,11 @@ class OfflineLudoRulesTest {
         assertFalse(OfflineLudoRules.hasWinner(intArrayOf(57, 57, 57, 56)))
         assertFalse(OfflineLudoRules.hasWinner(intArrayOf(57, 57, 57)))
     }
+
+    @Test
+    fun completedGameRejectsFurtherOfflineActions() {
+        assertTrue(OfflineLudoRules.canContinue(null))
+        assertTrue(OfflineLudoRules.canContinue("PLAYING"))
+        assertFalse(OfflineLudoRules.canContinue("FINISHED"))
+    }
 }

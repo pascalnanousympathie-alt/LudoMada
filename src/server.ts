@@ -9,6 +9,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import pg from "pg";
 import { z } from "zod";
 import { issueAccessToken, verifyAccessToken, hashToken, requestId, audit, clientIp, requireRole } from "./security";
+import { isCorsOriginAllowed } from "./corsPolicy";
 
 import { newGame , legalMoves, GameState} from "./game/ludoEngine";
 import { LUDO_MADA_RULESET_V1 } from "./game/ruleset";
@@ -117,6 +118,32 @@ if(JWT_SECRET.length < 32){
 
 const NODE_ENV = process.env.NODE_ENV ?? "development";
 
+// Native integration tests need more than the normal per-IP request budget.
+// Only enable their higher test budget when running against the disposable
+// loopback PostgreSQL database created by the GitHub Actions Release Gate.
+function isDisposableNativeTestDatabase() {
+  if (
+    process.env.CI !== "true" ||
+    process.env.NATIVE_TEST_MODE !== "true" ||
+    NODE_ENV !== "staging"
+  ) return false;
+
+  try {
+    const database = new URL(DATABASE_URL);
+    return (
+      ["127.0.0.1", "localhost"].includes(database.hostname) &&
+      database.port === "5432" &&
+      database.pathname === "/ludomada_ci"
+    );
+  } catch {
+    return false;
+  }
+}
+
+const nativeTestRateLimits = isDisposableNativeTestDatabase();
+const authRateLimitMax = nativeTestRateLimits ? 1000 : 20;
+const apiRateLimitMax = nativeTestRateLimits ? 10000 : 120;
+
 const rawPort = process.env.PORT ?? "3000";
 const port = Number(rawPort);
 
@@ -132,9 +159,7 @@ const allowedOrigins = (process.env.CORS_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-if (NODE_ENV === "production" && allowedOrigins.length === 0) {
-  throw new Error("CORS_ORIGINS_IS_REQUIRED_IN_PRODUCTION");
-}
+// An empty allowlist is fail-closed for browsers. Native clients send no Origin.
 
 if (NODE_ENV === "production") {
   if (process.env.TRUST_PROXY !== "true") {
@@ -150,11 +175,7 @@ app.use(helmet());
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    if (allowedOrigins.includes(origin)) {
+    if (isCorsOriginAllowed(origin, allowedOrigins)) {
       return callback(null, true);
     }
 
@@ -182,7 +203,7 @@ app.use((req:any,res,next)=>{
 
 const authRateLimit = rateLimit({
   windowMs: 15 * 60_000,
-  max: 20,
+  max: authRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req:any) => req.path + ":" + String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown"),
@@ -251,7 +272,7 @@ app.get("/ready",async(_req,res)=>{
 if (process.env.NODE_ENV !== "loadtest") {
   app.use(rateLimit({
     windowMs: 60_000,
-    max: 120,
+    max: apiRateLimitMax,
     standardHeaders: true,
     legacyHeaders: false
   }));

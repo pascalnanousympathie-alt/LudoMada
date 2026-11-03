@@ -3,10 +3,12 @@ name: Android Emulator Automated Tests
 on:
   workflow_dispatch:
   push:
-    # Workflow-only edits deliberately do not consume the cloud Android smoke-test quota.
+    # Android runtime changes and Ramus smoke-harness edits need end-to-end emulator validation.
+    # Other script-only changes continue through the lightweight framebuffer contract workflow.
     paths:
       - 'android-app/**'
       - 'scripts/ramus-smoke.mjs'
+      - '.github/workflows/android-emulator-test.yml'
 
 permissions:
   contents: read
@@ -51,6 +53,12 @@ jobs:
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
+      - name: Verify bundled 3D scene manifest and mobile budgets
+        run: |
+          set -eu
+          node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
+
       - name: Build debug APK
         working-directory: android-app
         run: |
@@ -58,6 +66,12 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify 3D model is packaged in the debug APK
+        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Validate framebuffer readback acceptance checks
+        run: node scripts/ramus-smoke.mjs --test-framebuffer-readback
 
       - name: Install Ramus CLI
         run: |
@@ -91,7 +105,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ramus-android-evidence
-          path: ramus-screen.jpg
+          path: |
+            ramus-pre-assertion-screen.jpg
+            ramus-screen.jpg
           if-no-files-found: warn
           retention-days: 7
 

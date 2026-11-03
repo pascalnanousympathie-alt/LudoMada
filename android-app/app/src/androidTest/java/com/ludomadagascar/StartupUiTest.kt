@@ -110,13 +110,14 @@ class StartupUiTest {
         assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("Lancer le dé")), 5000))
+        assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
+        assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
 
         var gotSix = false
         for (attempt in 0 until 24) {
-            assertTrue("Dice button must remain reachable", device.hasObject(By.text("Lancer le dé")))
-            device.findObject(By.text("Lancer le dé")).click()
+            assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
+            device.findObject(By.textContains("Lancer le dé")).click()
             if (device.wait(Until.hasObject(By.textContains("Dé: 6")), 800)) {
                 gotSix = true
                 break
@@ -131,10 +132,19 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        val screenshotDir = context.getExternalFilesDir(null) ?: context.cacheDir
-        assertTrue("Screenshot directory must exist or be creatable", screenshotDir.exists() || screenshotDir.mkdirs())
-        val file = File(screenshotDir, "ludomada-startup-offline.png")
-        device.takeScreenshot(file)
-        assertTrue("Startup/offline screenshot missing", file.exists() && file.length() > 1000)
+        // Keep the screenshot app-private. The host CI helper retrieves it with
+        // adb exec-out run-as, avoiding API-specific shared-storage permissions
+        // and Android 8.1 emulator restrictions on public Pictures directories.
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotFile = File(context.filesDir, screenshotName)
+        if (screenshotFile.exists()) {
+            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
+        }
+        device.takeScreenshot(screenshotFile)
+        assertTrue(
+            "Startup screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
     }
 }
