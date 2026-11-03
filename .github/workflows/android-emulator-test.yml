@@ -51,6 +51,12 @@ jobs:
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
+      - name: Verify bundled 3D scene manifest and mobile budgets
+        run: |
+          set -eu
+          node scripts/check-3d-assets.mjs
+          node scripts/check-3d-optimization.mjs
+
       - name: Build debug APK
         working-directory: android-app
         run: |
@@ -58,6 +64,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify 3D model is packaged in the debug APK
+        run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Install Ramus CLI
         run: |

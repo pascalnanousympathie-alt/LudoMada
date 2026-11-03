@@ -29,6 +29,17 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up Node.js for 3D asset verification
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - name: Verify bundled 3D scene manifest and mobile budgets
+        run: |
+          set -eu
+          node ../scripts/check-3d-assets.mjs app/src/main/assets/3d
+          node ../scripts/check-3d-optimization.mjs app/src/main/assets/3d
+
       - name: Set up Java 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
         with:
@@ -52,6 +63,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Verify 3D model is packaged in the debug APK
+        run: node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/debug/app-debug.apk
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

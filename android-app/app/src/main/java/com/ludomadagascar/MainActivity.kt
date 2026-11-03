@@ -68,6 +68,7 @@ class MainActivity : Activity() {
         setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
+        if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
         val content=LinearLayout(this).apply {
@@ -266,10 +267,15 @@ class MainActivity : Activity() {
         super.onResume()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
+        when(currentScreen) {
+            "board" -> boardHost?.onResume()
+            "offline" -> offlineHost?.onResume()
+        }
     }
 
     override fun onPause() {
         stopGameEventStream()
+        pauseBoardViews()
         super.onPause()
     }
 
@@ -293,7 +299,10 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun pauseBoardViews() { boardHost?.onPause(); offlineHost?.onPause() }
+
     private fun home() {
+        pauseBoardViews()
         currentScreen="home"
         setContentView(PremiumHeroViewV2(this))
         refreshAccountBalance()
@@ -352,7 +361,7 @@ class MainActivity : Activity() {
         }.setNegativeButton("Fermer",null).show()
     }
 
-    private fun wallet() {
+    internal fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
         walletBalanceView=label("— Ar",27f,true,Color.rgb(35,150,84));walletBalanceView!!.gravity=Gravity.CENTER
@@ -419,7 +428,8 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
-    private fun gameModeDialog() {
+    @kotlin.jvm.JvmName("gameModeDialog")
+    internal fun gameModeDialog() {
         // PremiumHeroViewV2 invokes this while handling a canvas touch. Defer every
         // caller before mutating the Activity content hierarchy.
         window.decorView.post { showGameModeOverlay() }
@@ -627,7 +637,7 @@ class MainActivity : Activity() {
         page("offline","Ludo hors-ligne")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
-        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
+        val host=LudoBoardView(this, onRollTap = { offlineHost?.let { offlineRoll(it) } }, onPawnTap = { tokenIndex -> offlineHost?.let { offlineMove(it, players, tokenIndex) } });host.state=offlineState;host.player=offlineTurn;offlineHost=host
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         host.animateState()
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
@@ -717,7 +727,7 @@ class MainActivity : Activity() {
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
-        val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        val host=LudoBoardView(this, onRollTap = { if(currentScreen=="board") roll() }, onPawnTap = { tokenIndex -> if(currentScreen=="board") move(tokenIndex) }); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         status=st
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
         add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
@@ -1046,291 +1056,6 @@ class MainActivity : Activity() {
         }
     }
 
-    private inner class LudoBoardView(context:Context):View(context){
-        var state:JSONObject?=null;var player=-1;private val paints=Array(4){Paint(Paint.ANTI_ALIAS_FLAG)}
-        private val cols=intArrayOf(Color.rgb(218,60,65),Color.rgb(42,155,86),Color.rgb(232,178,34),Color.rgb(54,105,205))
-        private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
-        private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-        private var stateAnimator:android.animation.ValueAnimator?=null
-        private var diceRolling=false
-        private var dicePhase=0f
-        private val jumpLift=Array(4){FloatArray(4)}
-        init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
-        override fun onDraw(canvas:Canvas){
-            super.onDraw(canvas)
-            val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
-            val ox=(w-s)/2f; val oy=(h-s)/2f; val cell=s/15f
-            val board=Paint(Paint.ANTI_ALIAS_FLAG)
-            board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
-            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(24).toFloat(),dp(24).toFloat(),board)
-            board.clearShadowLayer(); board.shader=null
-            drawZone(canvas,ox,oy,0,0,Color.rgb(220,60,66),cell)
-            drawZone(canvas,ox,oy,9,0,Color.rgb(42,158,92),cell)
-            drawZone(canvas,ox,oy,0,9,Color.rgb(238,184,43),cell)
-            drawZone(canvas,ox,oy,9,9,Color.rgb(58,109,211),cell)
-            val pathPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(246,248,251);style=Paint.Style.FILL}
-            val pathStroke=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(222,228,236);style=Paint.Style.STROKE;strokeWidth=dp(0.8f).toFloat();setStrokeCap(Paint.Cap.ROUND)}
-            for((r,c) in visualPath()){drawCell(canvas,ox,oy,cell,r,c,pathPaint,pathStroke)}
-            val homePaints=arrayOf(
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55DC3C42},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x5542AE68},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55EEB82B},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x553A79D5}
-            )
-            for(i in 1..5){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[0])}
-            for(i in 9..13){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[1])}
-            for(i in 9..13){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[2])}
-            for(i in 1..5){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[3])}
-            val starCells=arrayOf(1 to 6,6 to 1,8 to 13,13 to 8)
-            for((r,c) in starCells){drawSafe(canvas,ox,oy,cell,r,c)}
-            drawCenter(canvas,ox,oy,cell)
-            drawDie(canvas,ox+7.5f*cell,oy+7.5f*cell,cell)
-            drawStartMarkers(canvas,ox,oy,cell)
-            drawTokens(canvas,ox,oy,cell)
-        }
-        private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,color:Int,cell:Float){
-            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color}
-            outer.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x33000000)
-            c.drawRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,outer)
-            outer.clearShadowLayer()
-            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE}
-            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(12).toFloat(),dp(12).toFloat(),inner)
-            val shade=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x12000000}
-            c.drawRoundRect(ox+(r+1.15f)*cell,oy+(col+1.2f)*cell,ox+(r+4.85f)*cell,oy+(col+4.85f)*cell,dp(10).toFloat(),dp(10).toFloat(),shade)
-            val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            for((sx,sy) in sockets){
-                val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
-                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x17000000}
-                c.drawCircle(cx,cy,cell*.53f,ring)
-                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;alpha=120}
-                c.drawCircle(cx,cy,cell*.40f,hole)
-            }
-        }
-
-        private fun drawTokens(c:Canvas,ox:Float,oy:Float,cell:Float){
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
-                val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
-                val lift=jumpLift[pi][ti]
-                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player)
-                if(pi==player && tokenCanMoveForUi(pi,ti)) drawLegalHint(c,ox+cc*cell,oy+(rr-lift)*cell,cell)
-            }
-        }
-        private fun tokenCoord(pi:Int,ti:Int):FloatArray{
-            val fallback=arrayOf(
-                arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f),
-                arrayOf(10.8f to 1.8f,13.2f to 1.8f,10.8f to 4.2f,13.2f to 4.2f),
-                arrayOf(1.8f to 10.8f,4.2f to 10.8f,1.8f to 13.2f,4.2f to 13.2f),
-                arrayOf(10.8f to 10.8f,13.2f to 10.8f,10.8f to 13.2f,13.2f to 13.2f))
-            var rr=fallback[pi][ti].first;var cc=fallback[pi][ti].second
-            val ps=state?.optJSONArray("players");val ts=ps?.optJSONObject(pi)?.optJSONArray("tokens")
-            val pos=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            if(pos in 0..51){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-            else if(pos in 52..57){
-                val finish=arrayOf(
-                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f))
-                val k=(pos-52)*2;rr=finish[pi][k];cc=finish[pi][k+1]
-            }
-            return floatArrayOf(rr,cc)
-        }
-        fun animateState(){
-            val targets=Array(4){Array(4){FloatArray(2)}}
-            val oldPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-            val newPos=Array(4){IntArray(4){-1}}
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                targets[pi][ti][0]=q[0];targets[pi][ti][1]=q[1]
-                val ts=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")
-                newPos[pi][ti]=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(display[pi][ti][0].isNaN()){
-                    display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]
-                }
-                oldPos[pi][ti]=lastPos[pi][ti]
-                if(oldPos[pi][ti]==Int.MIN_VALUE) lastPos[pi][ti]=newPos[pi][ti]
-            }
-            stateAnimator?.cancel()
-            var maxSteps=0
-            for(pi in 0..3)for(ti in 0..3){
-                val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
-            }
-            val duration=maxSteps*125L+340L
-            stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
-                this.duration=duration
-                interpolator=android.view.animation.DecelerateInterpolator(1.5f)
-                addUpdateListener{va->
-                    val f=va.animatedValue as Float
-                    for(pi in 0..3)for(ti in 0..3){
-                        val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                        if(from>=0 && to>from){
-                            val span=(to-from).coerceAtLeast(1)
-                            val u=f*span
-                            val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
-                            val local=u-step
-                            jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
-                            val base=((pi*13)+from+step)%52
-                            val q1=visualPath()[base]
-                            val q2=visualPath()[(base+1)%52]
-                            display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
-                            display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
-                        }else if(f>=1f){
-                            jumpLift[pi][ti]=0f
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                        }
-                    }
-                    invalidate()
-                }
-                addListener(object:android.animation.AnimatorListenerAdapter(){
-                    override fun onAnimationEnd(animation:android.animation.Animator){
-                        for(pi in 0..3)for(ti in 0..3){
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                            jumpLift[pi][ti]=0f
-                            lastPos[pi][ti]=newPos[pi][ti]
-                        }
-                        invalidate()
-                    }
-                })
-                start()
-            }
-        }
-
-        private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
-            val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),stroke)
-        }
-        private fun drawSafe(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int){
-            val cx=ox+(col+.5f)*cell;val cy=oy+(r+.5f)*cell
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(205,211,221)}
-            c.drawCircle(cx,cy,cell*.28f,p);p.color=Color.WHITE;c.drawCircle(cx,cy,cell*.18f,p)
-            p.color=Color.rgb(159,170,187);val star=Path()
-            for(i in 0..9){val a=-Math.PI/2+i*Math.PI/5;val rad=if(i%2==0)cell*.27f else cell*.12f;val x=cx+(kotlin.math.cos(a)*rad).toFloat();val y=cy+(kotlin.math.sin(a)*rad).toFloat();if(i==0)star.moveTo(x,y)else star.lineTo(x,y)}
-            star.close();c.drawPath(star,p)
-        }
-        private fun drawCenter(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val pts=arrayOf(floatArrayOf(ox+6*cell,oy+6*cell,ox+9*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+6*cell,ox+9*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+9*cell,ox+6*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+6*cell,oy+9*cell,ox+6*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell))
-            for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
-            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
-            c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
-        }
-        private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val rolling=diceRolling
-            val phase=(System.currentTimeMillis()%900L)/900f
-            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val size=cell*1.34f
-            c.save()
-            val angle=if(rolling)(Math.sin(phase*Math.PI*4.0)*13.0).toFloat() else 0f
-            c.rotate(angle,cx,cy)
-            val die=Paint(Paint.ANTI_ALIAS_FLAG)
-            die.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x88000000)
-            die.shader=LinearGradient(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,Color.WHITE,Color.rgb(216,222,232),Shader.TileMode.CLAMP)
-            c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die)
-            die.clearShadowLayer();die.shader=null
-            die.style=Paint.Style.STROKE;die.strokeWidth=dp(1f).toFloat();die.color=Color.rgb(144,151,164);c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die);die.style=Paint.Style.FILL;die.color=Color.rgb(35,39,49)
-            val d=size*.23f
-            val pts=when(face){
-                1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)
-            }
-            for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
-            c.restore()
-        }
-        fun isDiceRolling():Boolean = diceRolling
-        fun startDiceAnimation(){
-            if(diceRolling)return
-            diceRolling=true;dicePhase=0f
-            val start=System.currentTimeMillis()
-            fun tick(){
-                if(!diceRolling)return
-                dicePhase=((System.currentTimeMillis()-start)/650f).coerceIn(0f,1f)
-                invalidate()
-                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},45L)
-            }
-            tick()
-        }
-        private fun drawStartMarkers(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val starts=arrayOf(6 to 1,1 to 8,8 to 13,13 to 6)
-            for(i in starts.indices){
-                val (r,col)=starts[i];val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i];alpha=90}
-                c.drawRoundRect(ox+col*cell+dp(1f),oy+r*cell+dp(1f),ox+(col+1)*cell-dp(1f),oy+(r+1)*cell-dp(1f),dp(4f).toFloat(),dp(4f).toFloat(),p)
-                val mark=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat()}
-                c.drawCircle(ox+(col+.5f)*cell,oy+(r+.5f)*cell,cell*.22f,mark)
-            }
-        }
-        private fun drawLegalHint(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xFFEBC348.toInt();style=Paint.Style.STROKE;strokeWidth=dp(2.2f).toFloat()}
-            c.drawCircle(cx,cy,cell*.39f,p)
-            p.style=Paint.Style.FILL; p.color=0x55EBC348
-            c.drawCircle(cx,cy,cell*.44f,p)
-        }
-        private fun tokenCanMoveForUi(pi:Int,ti:Int):Boolean{
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            if(pi!=activePlayer)return false
-            val dice=if(currentScreen=="offline") offlineDice else state?.optInt("dice",0)?:0
-            if(dice !in 1..6)return false
-            val ps=if(currentScreen=="offline") offlineState?.optJSONArray("players") else state?.optJSONArray("players")
-            val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            return if(pos<0) dice==6 else pos+dice<=57
-        }
-        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
-            val rad=cell*.31f
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
-            shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
-            val body=Paint(Paint.ANTI_ALIAS_FLAG)
-            body.shader=RadialGradient(cx-rad*.32f,cy-rad*.38f,rad*.95f,color,Color.rgb((Color.red(color)*.45f).toInt(),(Color.green(color)*.45f).toInt(),(Color.blue(color)*.45f).toInt()),Shader.TileMode.CLAMP)
-            c.drawCircle(cx,cy,rad,body);body.shader=null
-            if(active){val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.7f).toFloat()};c.drawCircle(cx,cy,rad+dp(2f),glow)}
-            val hi=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x99FFFFFF.toInt()};c.drawCircle(cx-rad*.30f,cy-rad*.34f,rad*.18f,hi)
-        }
-        private fun visualPath():List<Pair<Int,Int>>{
-            return listOf(
-                6 to 0,6 to 1,6 to 2,6 to 3,6 to 4,6 to 5,5 to 6,4 to 6,3 to 6,2 to 6,1 to 6,0 to 6,
-                0 to 7,0 to 8,1 to 8,2 to 8,3 to 8,4 to 8,5 to 8,6 to 9,6 to 10,6 to 11,6 to 12,6 to 13,6 to 14,
-                7 to 14,8 to 14,8 to 13,8 to 12,8 to 11,8 to 10,8 to 9,9 to 8,10 to 8,11 to 8,12 to 8,13 to 8,14 to 8,
-                14 to 7,14 to 6,13 to 6,12 to 6,11 to 6,10 to 6,9 to 6,8 to 5,8 to 4,8 to 3,8 to 2,8 to 1,8 to 0,7 to 0
-            )
-        }
-        override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
-            if(e.action==MotionEvent.ACTION_UP && player in 0..3){
-                val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
-                val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
-                if(touched>=0){
-                    performClick()
-                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else requestMove(touched)
-                    return true
-                }
-            }
-            return true
-        }
-        override fun performClick():Boolean{super.performClick();return true}
-        private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
-            val activeState=if(currentScreen=="offline") offlineState else state
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            val ps=activeState?.optJSONArray("players")
-            val tokens=ps?.optJSONObject(activePlayer)?.optJSONArray("tokens")
-            val fallback=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            var best=-1; var bestD2=Float.MAX_VALUE
-            for(ti in 0..3){
-                var rr=fallback[ti].first; var cc=fallback[ti].second
-                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(pos>=0){val q=visualPath()[(activePlayer*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-                val dx=x-(ox+cc*cell); val dy=y-(oy+rr*cell); val d2=dx*dx+dy*dy
-                if(d2<bestD2){bestD2=d2;best=ti}
-            }
-            return if(best>=0 && bestD2 <= (cell*0.82f)*(cell*0.82f)) best else -1
-        }
-        private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
-    }
     private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
     override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
