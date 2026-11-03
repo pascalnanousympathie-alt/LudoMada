@@ -89,6 +89,26 @@ class HomeEnvironmentCoordinateSpaceTest {
         )
     }
 
+    @Test
+    fun skyPanoramaUvsCompensateForSharedShaderTilingScale() {
+        val source = floatArrayOf(0f, 0f, 0.9791667f, 1f, 0.5f, 0.25f)
+        val corrected = HomeEnvironmentCoordinateSpace.correctSkyPanoramaUvsForShader(source)
+
+        assertEquals(0f, corrected[0], 0.0001f)
+        assertEquals(0f, corrected[1], 0.0001f)
+        assertEquals(0.48958335f, corrected[2], 0.0001f)
+        assertEquals(0.5f, corrected[3], 0.0001f)
+        assertEquals(0.25f, corrected[4], 0.0001f)
+        assertEquals(0.125f, corrected[5], 0.0001f)
+        assertEquals(0.9791667f, source[2], 0.0001f)
+        assertEquals(1f, source[3], 0.0001f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsIncompleteSkyPanoramaUvPairs() {
+        HomeEnvironmentCoordinateSpace.correctSkyPanoramaUvsForShader(floatArrayOf(0f, 1f, 0.5f))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNonMatrixTransforms() {
         HomeEnvironmentCoordinateSpace.toYUpTransform(floatArrayOf(1f, 2f, 3f))

@@ -97,23 +97,39 @@ internal class GlbRuntimeLoader(private val context: Context) {
         loadParts("3d/ludomada-environment-final.glb") {
             it.startsWith("ENV_") && !it.startsWith("ENV_Baobab_")
         }.mapValues { (_, part) ->
-            if (part.materialName != "ENV_Ground_PBR") {
-                part
-            } else {
-                // This authored terrain's +Z normals/winding point down after
-                // the scene's -Z-up to +Y-up conversion. Flip only this surface.
-                val orientation = HomeEnvironmentCoordinateSpace.faceGroundTowardWorldUp(
-                    part.mesh.normals,
-                    part.mesh.indices
-                )
-                part.copy(
-                    mesh = LudoBoardView.Mesh(
-                        part.mesh.positions,
-                        orientation.normals,
-                        orientation.indices,
+            when (part.materialName) {
+                "ENV_Ground_PBR" -> {
+                    // This authored terrain's +Z normals/winding point down after
+                    // the scene's -Z-up to +Y-up conversion. Flip only this surface.
+                    val orientation = HomeEnvironmentCoordinateSpace.faceGroundTowardWorldUp(
+                        part.mesh.normals,
+                        part.mesh.indices
+                    )
+                    part.copy(
+                        mesh = LudoBoardView.Mesh(
+                            part.mesh.positions,
+                            orientation.normals,
+                            orientation.indices,
+                            part.mesh.uvsCopy()
+                        )
+                    )
+                }
+                "ENV_Sky_HDRI" -> {
+                    // The GLB sky already spans UV 0..1; compensate for the
+                    // renderer's global *2 albedo scale so the panorama is not tiled.
+                    val panoramaUvs = HomeEnvironmentCoordinateSpace.correctSkyPanoramaUvsForShader(
                         part.mesh.uvsCopy()
                     )
-                )
+                    part.copy(
+                        mesh = LudoBoardView.Mesh(
+                            part.mesh.positions,
+                            part.mesh.normals,
+                            part.mesh.indices,
+                            panoramaUvs
+                        )
+                    )
+                }
+                else -> part
             }
         }
 

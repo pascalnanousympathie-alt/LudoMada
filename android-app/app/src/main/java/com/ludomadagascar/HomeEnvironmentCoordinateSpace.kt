@@ -56,6 +56,18 @@ internal object HomeEnvironmentCoordinateSpace {
         return GroundSurfaceOrientation(correctedNormals, correctedIndices)
     }
 
+    /**
+     * The shared PBR fragment shader samples albedo at vUv * 2.0 for tiled
+     * materials. The authored sky dome already uses a complete 0..1 equirectangular
+     * panorama, so halve only its UVs to keep that HDRI mapped exactly once.
+     */
+    fun correctSkyPanoramaUvsForShader(uvs: FloatArray): FloatArray {
+        require(uvs.isNotEmpty() && uvs.size % 2 == 0) {
+            "sky panorama UVs must contain complete pairs"
+        }
+        return FloatArray(uvs.size) { index -> uvs[index] * 0.5f }
+    }
+
     fun transformPoint(matrix: FloatArray, x: Float, y: Float, z: Float): FloatArray {
         require(matrix.size == 16) { "glTF transform must be a 4x4 matrix" }
         return floatArrayOf(
