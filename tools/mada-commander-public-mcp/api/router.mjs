@@ -8,7 +8,7 @@ import {
   PAIR_CODE_TTL_SECONDS, WEB_SESSION_TTL_SECONDS,
   REQUIRED_SCOPE, allowedList, escapeHtml, getPublicBase, hashToken,
   isSafeProjectAlias, isSafeProjectLabel, mcpResourceUrl, parseBearer, parseBodyText,
-  parseCookies, pkceChallenge, randomToken, redactSensitive,
+  parseCookies, parseOAuthScopes, pkceChallenge, randomToken, redactSensitive,
   safeEqual, setSecurityHeaders
 } from "../lib/security.mjs";
 import { PUBLIC_TOOLS, authChallenge, executePublicTool } from "../lib/tools.mjs";
@@ -228,13 +228,6 @@ async function clientIdAllowed(clientId) {
   return Boolean(await getCimdMetadata(clientId));
 }
 
-function parseScopes(raw) {
-  const scopes = String(raw || REQUIRED_SCOPE).split(/\s+/).filter(Boolean);
-  const unique = [...new Set(scopes)];
-  if (unique.length !== 1 || unique[0] !== REQUIRED_SCOPE) return null;
-  return unique;
-}
-
 let lastCleanupAt = 0;
 async function cleanupExpiredRecords() {
   const now = Date.now();
@@ -430,14 +423,14 @@ async function handleOAuthAuthorize(req, res, url) {
   const verifierChallenge = url.searchParams.get("code_challenge") || "";
   const challengeMethod = url.searchParams.get("code_challenge_method") || "";
   const resource = url.searchParams.get("resource") || "";
-  const scopes = parseScopes(url.searchParams.get("scope") || REQUIRED_SCOPE);
+  const scopes = parseOAuthScopes(url.searchParams.get("scope") || REQUIRED_SCOPE);
   if (responseType !== "code") return jsonError(res, 400, "unsupported_response_type");
   if (!await clientIdAllowed(clientId)) return jsonError(res, 400, "unauthorized_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
   if (!await clientRedirectAllowed(clientId, redirectUri)) return jsonError(res, 400, "invalid_request", "Redirect URI is not registered for this OAuth client.");
   if (state.length < 16 || state.length > 1024) return jsonError(res, 400, "invalid_request", "A strong OAuth state value is required.");
   if (challengeMethod !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(verifierChallenge)) return oauthErrorRedirect(res, redirectUri, state, "invalid_request", "PKCE S256 is required.");
   if (!resource || resource !== mcpResourceUrl()) return oauthErrorRedirect(res, redirectUri, state, "invalid_target", "The resource must match the public MCP service.");
-  if (!scopes) return oauthErrorRedirect(res, redirectUri, state, "invalid_scope", "Only the mada:workspace scope is supported.");
+  if (!scopes) return oauthErrorRedirect(res, redirectUri, state, "invalid_scope", "Only the mada:workspace scope and optional offline_access refresh scope are supported.");
   const txnId = crypto.randomUUID();
   await query(
     "INSERT INTO mada_oauth_authorization_requests (transaction_id, client_id, redirect_uri, client_state, code_challenge, scope, resource, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,now() + interval '60 minutes')",
@@ -753,7 +746,7 @@ async function handleAuthServerMetadata(res) {
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
     token_endpoint_auth_methods_supported: ["none"],
-    scopes_supported: [REQUIRED_SCOPE],
+    scopes_supported: [REQUIRED_SCOPE, "offline_access"],
     client_id_metadata_document_supported: CIMD_ENABLED,
     authorization_response_iss_parameter_supported: true
   });

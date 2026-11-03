@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import { createServer } from "node:http";
 import { PUBLIC_TOOLS, authChallenge, executePublicTool } from "../lib/tools.mjs";
-import { hashToken, pkceChallenge, safeEqual, isSafeProjectAlias, isSafeProjectLabel } from "../lib/security.mjs";
+import { hashToken, pkceChallenge, safeEqual, isSafeProjectAlias, isSafeProjectLabel, parseOAuthScopes } from "../lib/security.mjs";
 import { workspaceList, workspaceRead, workspaceWrite, runApprovedTask, validateOperaAddress } from "../lib/agent-operations.mjs";
 import vercelHandler, { handleRequest, isTrustedCimdUrl, isApprovedChatGptRedirect, validateCimdMetadata } from "../api/router.mjs";
 
@@ -76,6 +76,16 @@ test("PKCE S256 and hashed token helpers are deterministic and do not reveal the
   assert.equal(safeEqual("abc", "abc"), true);
   assert.equal(safeEqual("abc", "abd"), false);
   assert.equal(safeEqual("abc", "longer"), false);
+});
+
+test("OAuth scopes require workspace access and optionally support refresh continuity", () => {
+  assert.deepEqual(parseOAuthScopes("mada:workspace"), ["mada:workspace"]);
+  assert.deepEqual(parseOAuthScopes("mada:workspace offline_access"), ["mada:workspace", "offline_access"]);
+  assert.deepEqual(parseOAuthScopes("offline_access mada:workspace"), ["offline_access", "mada:workspace"]);
+  assert.deepEqual(parseOAuthScopes("mada:workspace mada:workspace offline_access"), ["mada:workspace", "offline_access"]);
+  assert.equal(parseOAuthScopes("offline_access"), null);
+  assert.equal(parseOAuthScopes("mada:workspace admin"), null);
+  assert.equal(parseOAuthScopes("mada:workspace read:anything"), null);
 });
 
 test("CIMD accepts only fixed HTTPS ChatGPT metadata URL shapes and callbacks", () => {
@@ -250,6 +260,7 @@ test("live MCP HTTP surface initializes, lists tools, and challenges unauthentic
   assert.equal(authMeta.status, 200);
   const authDoc = await authMeta.json();
   assert.equal(authDoc.issuer, process.env.MADA_PUBLIC_BASE_URL);
+  assert.deepEqual(authDoc.scopes_supported, ["mada:workspace", "offline_access"]);
   assert.ok(authDoc.code_challenge_methods_supported.includes("S256"));
   assert.equal(authDoc.authorization_response_iss_parameter_supported, true);
   assert.ok(authDoc.revocation_endpoint.endsWith("/oauth/revoke"));

@@ -1,6 +1,20 @@
 import crypto from "node:crypto";
 
 export const REQUIRED_SCOPE = "mada:workspace";
+export const OPTIONAL_OAUTH_SCOPES = Object.freeze(["offline_access"]);
+
+/**
+ * Parse OAuth authorization-request scopes without treating refresh access
+ * as an MCP tool permission. The resource still requires mada:workspace;
+ * offline_access only requests refresh-token continuity.
+ */
+export function parseOAuthScopes(raw) {
+  const scopes = String(raw || REQUIRED_SCOPE).split(/\s+/).filter(Boolean);
+  const unique = [...new Set(scopes)];
+  if (!unique.includes(REQUIRED_SCOPE)
+    || unique.some(scope => scope !== REQUIRED_SCOPE && !OPTIONAL_OAUTH_SCOPES.includes(scope))) return null;
+  return unique;
+}
 export const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 // Refresh tokens have no automatic expiry: users revoke connected apps from the account dashboard.
 export const WEB_SESSION_TTL_SECONDS = 400 * 24 * 60 * 60;
