@@ -1869,7 +1869,8 @@ class LudoBoardView(
                             part.mesh,model,environmentColor,rough,metallic,
                             if(barkPart)0.99f else part.baseColor[3].coerceIn(.70f,1f),
                             environmentEmission,6,unlit,albedo,ntex,rtex,
-                            receivesShadow = !skyPart && !barkPart
+                            receivesShadow = !skyPart && !barkPart &&
+                                HomeEnvironmentComposition.receivesHomeEnvironmentShadow(part.name)
                         )
                     }
                 }

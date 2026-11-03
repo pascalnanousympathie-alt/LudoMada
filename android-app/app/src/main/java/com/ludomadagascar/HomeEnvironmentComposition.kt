@@ -41,6 +41,13 @@ internal object HomeEnvironmentComposition {
      */
     fun castsHomeBaobabShadows(): Boolean = false
 
+    /**
+     * A/B diagnostic: prevent the broad Home terrain from sampling the shadow map.
+     * Perimeter rocks and grass retain their existing receiver policy.
+     */
+    fun receivesHomeEnvironmentShadow(nodeName: String): Boolean =
+        nodeName != "ENV_Terrain_HighDetail"
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
