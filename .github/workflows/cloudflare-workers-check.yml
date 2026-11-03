@@ -1,0 +1,107 @@
+name: Cloudflare Workers compatibility check
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare/**"
+      - "wrangler.jsonc"
+      - "src/**"
+      - "prisma/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/cloudflare-workers-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-workers-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worker-dry-run:
+    # Use the repository's already-registered ARM64 runner while GitHub-hosted
+    # ubuntu-latest jobs are failing before their first step. This job only
+    # builds and locally smoke-tests the Worker; it never deploys to Cloudflare.
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 35
+    env:
+      DATABASE_URL: postgresql://u0_a214@127.0.0.1:5432/ludomada_ci
+      NODE_ENV: test
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      NODE_OPTIONS: --max-old-space-size=768
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+      - name: Use runner Linux Node
+        run: echo "/data/data/com.termux/files/home/actions-runner/externals/node24/bin" >> "$GITHUB_PATH"
+      - run: node -v && npm -v
+      - run: npm ci --ignore-scripts --prefer-offline --no-audit --no-fund
+      - run: npx prisma generate
+      - run: npm run build
+      - name: Bundle the Worker without deploying
+        run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/ludomada-worker-build --config wrangler.jsonc
+      - name: Smoke test local Worker and PostgreSQL readiness
+        env:
+          WORKER_SMOKE_JWT_SECRET: "local-only-smoke-secret-for-ludomada-workers-2026"
+          WORKER_SMOKE_CORS_ORIGINS: "http://127.0.0.1:8787"
+        run: |
+          set -eu
+          log="$RUNNER_TEMP/ludomada-worker-smoke.log"
+          health="$RUNNER_TEMP/ludomada-worker-health.json"
+          npx --yes wrangler@4 dev \
+            --local \
+            --ip 127.0.0.1 \
+            --port 8787 \
+            --show-interactive-dev-session=false \
+            --var "DATABASE_URL:$DATABASE_URL" \
+            --var "JWT_SECRET:$WORKER_SMOKE_JWT_SECRET" \
+            --var "CORS_ORIGINS:$WORKER_SMOKE_CORS_ORIGINS" \
+            --log-level info > "$log" 2>&1 &
+          wrangler_pid=$!
+          cleanup() {
+            pkill -TERM -f '[w]rangler.*dev --local.*--port 8787' 2>/dev/null || true
+            kill "$wrangler_pid" 2>/dev/null || true
+            wait "$wrangler_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          healthy=0
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8787/health > "$health" 2>/dev/null; then
+              healthy=1
+              break
+            fi
+            if ! kill -0 "$wrangler_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            echo "Worker /health smoke failed; Wrangler output follows"
+            cat "$log"
+            # Wrangler keeps its own diagnostic log outside RUNNER_TEMP. Include
+            # the newest one so a local Worker startup failure is diagnosable
+            # from the GitHub Actions run instead of requiring phone access.
+            wrangler_log_dir="$HOME/.config/.wrangler/logs"
+            latest_wrangler_log="$(ls -t "$wrangler_log_dir"/wrangler-*.log 2>/dev/null | head -n 1 || true)"
+            if [ -n "$latest_wrangler_log" ] && [ -f "$latest_wrangler_log" ]; then
+              echo "---- Latest Wrangler internal log: $latest_wrangler_log ----"
+              tail -n 160 "$latest_wrangler_log" | sed -E \
+                -e 's/(DATABASE_URL|JWT_SECRET|CORS_ORIGINS)=([^[:space:]]+)/\1=[REDACTED]/g' \
+                -e 's/(Bearer )[A-Za-z0-9._~-]+/\1[REDACTED]/g'
+            else
+              echo "No Wrangler internal log found in $wrangler_log_dir"
+            fi
+            exit 1
+          fi
+          cat "$health"
+          echo
+          if ! curl -fsS http://127.0.0.1:8787/ready; then
+            echo "Worker /ready PostgreSQL smoke failed; Wrangler output follows"
+            cat "$log"
+            exit 1
+          fi
+          echo

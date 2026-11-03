@@ -41,3 +41,6 @@ loadtests/artillery/.tmp-*
 .ludomada-signing/
 
 _artifacts/
+
+# Cloudflare Wrangler local secret variables (never commit)
+.dev.vars
