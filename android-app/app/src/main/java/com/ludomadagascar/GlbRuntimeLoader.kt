@@ -96,6 +96,25 @@ internal class GlbRuntimeLoader(private val context: Context) {
     fun loadEnvironmentParts(): Map<String, Part> =
         loadParts("3d/ludomada-environment-final.glb") {
             it.startsWith("ENV_") && !it.startsWith("ENV_Baobab_")
+        }.mapValues { (_, part) ->
+            if (part.materialName != "ENV_Ground_PBR") {
+                part
+            } else {
+                // This authored terrain's +Z normals/winding point down after
+                // the scene's -Z-up to +Y-up conversion. Flip only this surface.
+                val orientation = HomeEnvironmentCoordinateSpace.faceGroundTowardWorldUp(
+                    part.mesh.normals,
+                    part.mesh.indices
+                )
+                part.copy(
+                    mesh = LudoBoardView.Mesh(
+                        part.mesh.positions,
+                        orientation.normals,
+                        orientation.indices,
+                        part.mesh.uvsCopy()
+                    )
+                )
+            }
         }
 
     fun loadBaobabParts(): Map<String, Part> =
