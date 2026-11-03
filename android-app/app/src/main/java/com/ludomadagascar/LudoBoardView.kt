@@ -1888,7 +1888,10 @@ class LudoBoardView(
                     val m=FloatArray(16)
                     Matrix.multiplyMM(m,0,im,0,part.transform,0)
                     if(shadowPass){
-                        drawShadowMesh(part.mesh,m)
+                        // A/B isolate: test whether side-framed baobab shadows darken the Home ground.
+                        if(HomeEnvironmentComposition.castsHomeBaobabShadows()) {
+                            drawShadowMesh(part.mesh,m)
+                        }
                     }else{
                         val barkPart=part.materialName=="timber"
                         val scrubPart=part.materialName=="scrub"

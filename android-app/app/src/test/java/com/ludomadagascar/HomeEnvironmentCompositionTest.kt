@@ -54,6 +54,14 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun homeBaobabShadowAblationLeavesPerimeterRockCastersEnabled() {
+        assertTrue(!HomeEnvironmentComposition.castsHomeBaobabShadows())
+        listOf("ENV_Rock_00", "ENV_Rock_01", "ENV_Rock_02", "ENV_Rock_03")
+            .forEach { assertTrue(HomeEnvironmentComposition.castsHomeEnvironmentShadow(it)) }
+        assertTrue(!HomeEnvironmentComposition.castsHomeEnvironmentShadow("ENV_Rock_04"))
+    }
+
+    @Test
     fun baobabPlacementIsPairedOnBothSidesAtFrontAndBack() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(trees[0].x, -trees[1].x, 0.25f)
