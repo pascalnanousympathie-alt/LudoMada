@@ -49,6 +49,21 @@ internal object HomeEnvironmentComposition {
     fun usesSourceAlbedo(materialName: String): Boolean =
         materialName == "ENV_Sky_HDRI"
 
+    /**
+     * The authored ENV_Ground_PBR factor (0.16, 0.09, 0.035) is much darker
+     * than the sandy dirt texture it tints. Lift this one terrain material into
+     * a readable warm-earth range without changing the shared shader or other parts.
+     */
+    fun liftHomeGroundAlbedo(source: FloatArray): FloatArray {
+        require(source.size == 4) { "ground colour must be RGBA" }
+        return floatArrayOf(
+            (source[0] * 3.0f * 1.10f).coerceIn(0f, 1f),
+            (source[1] * 3.0f * 1.20f).coerceIn(0f, 1f),
+            (source[2] * 3.0f * 1.80f).coerceIn(0f, 1f),
+            source[3].coerceIn(0f, 1f)
+        )
+    }
+
     /** Warmly lifts dark authored environment albedo without changing alpha or exceeding display range. */
     fun liftEnvironmentColor(source: FloatArray, multiplier: Float): FloatArray {
         require(source.size == 4) { "environment colour must be RGBA" }
