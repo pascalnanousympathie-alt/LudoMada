@@ -69,10 +69,10 @@ class StartupUiTest {
         val xOffset = (bounds.width() - 390f * scale) / 2f
         val yOffset = (bounds.height() - 710f * scale) / 2f
 
-        // The Home canvas defines JOUER at logical x=8..126, y=110..158.
-        // Convert that real hitbox to screen pixels instead of tapping the whole View center.
-        val x = bounds.left + (xOffset + 65f * scale).toInt()
-        val y = bounds.top + (yOffset + 132f * scale).toInt()
+        // The compact Home canvas places JOUER at logical x=48..342, y=441..495.
+        // Tap its centre so the instrumentation follows the real primary CTA hitbox.
+        val x = bounds.left + (xOffset + 195f * scale).toInt()
+        val y = bounds.top + (yOffset + 468f * scale).toInt()
         assertTrue("Home JOUER tap should be accepted", device.click(x, y))
     }
 
