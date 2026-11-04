@@ -105,83 +105,133 @@ public class PremiumHeroViewV2 extends FrameLayout {
       s=Math.min(getWidth()/(390f*den),getHeight()/(710f*den));
       float sc=s*den, ox=(getWidth()-390f*sc)/2f, oy=(getHeight()-710f*sc)/2f;
       c.save();c.translate(ox,oy);
-      // Leave the scene transparent so the live GLES environment remains visible.
+      // Keep the live GLES scene as the visual hero. Native UI uses only compact,
+      // translucent controls and deliberately leaves the central board sightline open.
       p.setShader(null);
       String u=str("username"),tok=str("token");long bal=lng("accountBalanceMGA");
-      box(c,7,6,383,68,24,Color.rgb(9,25,71),Color.rgb(37,116,236));
-      p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);pawn(c,37,38,11,blue);
-      p.setColor(Color.WHITE);c.drawRect(d(59),d(26),d(78),d(36),p);p.setColor(Color.rgb(239,63,75));c.drawRect(d(59),d(26),d(78),d(31),p);p.setColor(Color.rgb(37,166,105));c.drawRect(d(59),d(31),d(78),d(36),p);
+
+      // Compact glass identity / wallet bar.
+      box(c,7,6,383,68,24,0xE6091947,Color.rgb(37,116,236));
+      p.setColor(0x223D9DFF);c.drawCircle(d(37),d(37),d(27),p);
+      p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(d(2));p.setColor(gold2);
+      c.drawCircle(d(37),d(37),d(25),p);p.setStyle(Paint.Style.FILL);
+      pawn(c,37,38,11,blue);
+      p.setColor(Color.WHITE);c.drawRect(d(59),d(26),d(78),d(36),p);
+      p.setColor(Color.rgb(239,63,75));c.drawRect(d(59),d(26),d(78),d(31),p);
+      p.setColor(Color.rgb(37,166,105));c.drawRect(d(59),d(31),d(78),d(36),p);
       String displayName=u.trim().isEmpty()?"Player Mada":u.trim();
       if(displayName.length()>9)displayName=displayName.substring(0,8)+"…";
       t(c,displayName,84,31,10.5f,Color.WHITE,true,false);
       t(c,"Joueur LudoMada",84,50,8.0f,0xE1FFFFFF,false,false);
-      box(c,151,17,222,57,19,Color.rgb(10,35,84),Color.rgb(69,139,255));t(c,"C",164,43,13,gold2,true,true);t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
-      box(c,250,17,309,57,19,Color.rgb(8,35,83),Color.rgb(55,151,239));t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);t(c,"—",291,42,10,Color.WHITE,true,true);box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
-      t(c,"♪",337,43,16,bool("musicEnabledFromHome")?Color.WHITE:0xFF7D8799,true,true);t(c,"◖",350,43,14,Color.WHITE,true,true);t(c,"FR",362,43,7.5f,Color.WHITE,true,true);t(c,"⚙",376,43,15,Color.WHITE,true,true);
-      if(tok.isEmpty()){box(c,279,69,371,92,11,Color.rgb(28,95,202),gold);t(c,"CONNEXION",325,85,7.5f,Color.WHITE,true,true);}
-      // Dedicated glass brand panel keeps the wordmark clear of the 3D baobab silhouette.
-      box(c,132,96,258,211,19,0xB20A2038,0x88D8B86D);
-      t(c,"LE JEU QUI RASSEMBLE !",195,114,7.8f,gold2,true,true);
-      t(c,"♛",195,139,18,gold,true,true);
-      t(c,"Ludo",169,165,21,gold2,true,true);
-      t(c,"Mada",223,165,21,Color.WHITE,true,true);
-      box(c,158,172,232,175,1.3f,red,0);box(c,158,175,232,178,1,Color.WHITE,0);box(c,158,178,232,181,1.3f,green,0);
-      t(c,"Joue • Gagne • Grandis",195,195,8.7f,gold2,false,true);
-      t(c,"2 à 4 joueurs  •  Classique",195,205,6.5f,0xE2FFFFFF,false,true);
+      box(c,151,17,222,57,19,0xEE0A2354,Color.rgb(69,139,255));
+      t(c,"C",164,43,13,gold2,true,true);
+      t(c,bal>0?formatBal(bal):"0",201,42,10,Color.WHITE,true,true);
+      box(c,224,20,246,54,16,gold,0);t(c,"+",235,44,15,Color.rgb(75,42,4),true,true);
+      box(c,250,17,309,57,19,0xEE082353,Color.rgb(55,151,239));
+      t(c,"◆",263,43,16,Color.rgb(49,205,255),true,true);
+      t(c,"—",291,42,10,Color.WHITE,true,true);
+      box(c,311,20,327,54,14,gold,0);t(c,"+",319,43,12,Color.rgb(75,42,4),true,true);
+      t(c,"♪",337,43,16,bool("musicEnabledFromHome")?Color.WHITE:0xFF7D8799,true,true);
+      t(c,"◖",350,43,14,Color.WHITE,true,true);
+      t(c,"FR",362,43,7.5f,Color.WHITE,true,true);
+      t(c,"⚙",376,43,15,Color.WHITE,true,true);
+      if(tok.isEmpty()){
+        box(c,279,69,371,92,11,0xEF1C5FC8,gold);
+        t(c,"CONNEXION",325,85,7.5f,Color.WHITE,true,true);
+      }
 
-      menu(c,8,110,126,158,Color.rgb(244,174,25),gold,"▶","JOUER","En ligne ou Hors-ligne");
-      menu(c,8,164,126,212,Color.rgb(22,72,185),Color.rgb(45,135,255),"♛","TOURNOIS","Événements & classements");
-      menu(c,8,218,126,266,Color.rgb(12,147,87),Color.rgb(29,223,137),"▣","MON WALLET","Dépôt / Retrait / Historique");
-      menu(c,8,272,126,320,Color.rgb(102,30,202),Color.rgb(195,81,255),"●","PROFIL","Infos • Paramètres");
-      menu(c,8,326,126,374,Color.rgb(12,131,183),Color.rgb(33,215,246),"▤","TUTORIELS","Apprends à jouer");
-      box(c,266,107,382,174,17,Color.rgb(60,10,69),Color.rgb(255,180,40));
-      t(c,"BONUS DE BIENVENUE",324,125,9.2f,Color.WHITE,true,true);
-      t(c,"Bonus à venir",324,143,10.5f,gold2,true,true);
-      box(c,286,150,363,169,10,Color.rgb(255,202,28),gold2);
-      t(c,"BIENTÔT",324,163,8.2f,Color.rgb(75,35,2),true,true);
-      box(c,266,181,382,232,16,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MISE ACTUELLE",324,198,7.6f,Color.WHITE,true,true);t(c,fee+" Ar",324,219,11,gold2,true,true);t(c,"⌄",369,219,14,Color.WHITE,true,true);
-      box(c,266,239,382,352,17,Color.rgb(8,34,79),Color.rgb(38,126,247));t(c,"MODE DE JEU",324,257,8,Color.WHITE,true,true);
-      box(c,275,264,373,307,15,Color.rgb(24,105,223),Color.rgb(61,160,255));t(c,"◎",291,289,15,Color.WHITE,true,true);t(c,"En ligne",319,283,10,Color.WHITE,true,true);t(c,"Joueurs réels  ›",326,298,7.2f,0xD7FFFFFF,false,true);
-      box(c,275,311,373,346,15,Color.rgb(126,40,226),Color.rgb(191,89,255));t(c,"♟",291,333,15,Color.WHITE,true,true);t(c,"Hors-ligne",323,327,9.5f,Color.WHITE,true,true);t(c,"2 à 4 joueurs  ›",326,340,7.1f,0xD7FFFFFF,false,true);
-      box(c,7,397,383,447,18,Color.rgb(8,20,59),Color.rgb(33,111,225));t(c,"♛  CHOISISSEZ VOTRE MISE",195,414,9.7f,gold2,true,true);
-      int[]fs={500,1000,2000,5000,10000,20000};for(int i=0;i<6;i++){int f=fs[i];float l=10+i*61.5f;boolean a=f==fee;box(c,l,420,l+55,443,9,a?Color.rgb(255,193,29):Color.rgb(13,37,83),a?Color.WHITE:Color.rgb(40,118,230));t(c,f<1000?f+" Ar":(f/1000)+"K Ar",l+27.5f,436,7,a?Color.rgb(74,35,0):Color.WHITE,true,true);}
-      String[]n={"ROOM PRIVÉE","CLASSEMENT","ANTI-TRICHE","SUPPORT"},sub={"Crée ta partie","Top joueurs","Jeu équitable","Assistance 24/7"},ic={"🎲","♛","✓","◉"};
-      for(int i=0;i<4;i++){float l=8+i*94.5f;box(c,l,466,l+88,535,16,Color.rgb(7,31,72),Color.rgb(39,115,230));t(c,ic[i],l+44,491,17,i==2?green:gold2,true,true);t(c,n[i],l+44,510,6.9f,Color.WHITE,true,true);t(c,sub[i],l+44,526,6.3f,0xD6FFFFFF,false,true);}
-      t(c,"Madagasikara  •  Miray amin’ny LudoMada",195,577,8.5f,gold2,false,true);
-      float by=640;box(c,6,by,384,by+65,23,Color.rgb(5,15,49),Color.rgb(39,112,230));
-      String[]labs={"Accueil","Jeux","Événements","Social","Boutique"},icons={"⌂","🎲","♛","♟","🛒"};for(int i=0;i<5;i++){float xx=43+i*76;boolean a=i==0;if(a)box(c,xx-31,by+5,xx+31,by+60,19,Color.rgb(26,23,67),gold);t(c,icons[i],xx,by+29,16,a?gold2:Color.WHITE,true,true);t(c,labs[i],xx,by+49,7.4f,a?gold2:0xE3FFFFFF,true,true);}
+      // Small brand label only; no central logo card or side panels over the 3D board.
+      box(c,92,82,298,112,15,0x88071935,0x55D8B86D);
+      t(c,"LUDOMADA  •  MADAGASCAR",195,95,8.5f,gold2,true,true);
+      t(c,"Le Ludo qui rassemble",195,106,7.4f,0xE8FFFFFF,false,true);
+
+      // The 3D environment and board remain unobstructed from y=113 to y=438.
+
+      // One clear primary action replaces the former five large left menus and right mode panel.
+      box(c,48,441,342,495,20,0xF2F2B536,gold2);
+      t(c,"JOUER",195,464,16,Color.rgb(62,34,5),true,true);
+      t(c,"EN LIGNE  •  HORS-LIGNE",195,482,8.2f,Color.rgb(80,47,9),true,true);
+
+      // Compact stake selector: preserve all six MGA amounts without covering the board.
+      box(c,7,505,383,573,18,0xE6091947,Color.rgb(33,111,225));
+      t(c,"CHOISISSEZ VOTRE MISE",195,521,8.8f,gold2,true,true);
+      int[]fs={500,1000,2000,5000,10000,20000};
+      for(int i=0;i<6;i++){
+        int f=fs[i];float l=10+i*61.5f;boolean a=f==fee;
+        box(c,l,531,l+55,559,10,
+            a?Color.rgb(255,193,29):0xD90D2A5B,
+            a?Color.WHITE:Color.rgb(40,118,230));
+        t(c,f<1000?f+" Ar":(f/1000)+"K Ar",l+27.5f,549,7,
+            a?Color.rgb(74,35,0):Color.WHITE,true,true);
+      }
+
+      // Secondary destinations are kept low and visually quiet.
+      String[]n={"ROOM","RANG","GUIDE","SOCIAL"};
+      String[]sub={"Privée","Joueurs","Tutoriel","Amis"};
+      String[]ic={"🎲","♛","✓","◉"};
+      for(int i=0;i<4;i++){
+        float l=8+i*94.5f;
+        box(c,l,582,l+88,626,13,0xB8071F48,0x883977C5);
+        t(c,ic[i],l+15,609,13,i==2?green:gold2,true,true);
+        t(c,n[i],l+53,601,6.9f,Color.WHITE,true,true);
+        t(c,sub[i],l+53,615,6.3f,0xD6FFFFFF,false,true);
+      }
+
+      t(c,"Madagasikara  •  Miray amin’ny LudoMada",195,635,7.4f,gold2,false,true);
+      float by=640;
+      box(c,6,by,384,by+65,23,0xF2050F31,Color.rgb(39,112,230));
+      String[]labs={"Accueil","Jeux","Événements","Social","Boutique"};
+      String[]icons={"⌂","🎲","♛","♟","🛒"};
+      for(int i=0;i<5;i++){
+        float xx=43+i*76;boolean a=i==0;
+        if(a)box(c,xx-31,by+5,xx+31,by+60,19,0xF21A1743,gold);
+        t(c,icons[i],xx,by+29,16,a?gold2:Color.WHITE,true,true);
+        t(c,labs[i],xx,by+49,7.4f,a?gold2:0xE3FFFFFF,true,true);
+      }
       c.restore();
     }
     private String formatBal(long v){return String.format(java.util.Locale.getDefault(),"%,d",v).replace(',',' ');}
     @Override public boolean onTouchEvent(MotionEvent e){
       if(e.getAction()!=MotionEvent.ACTION_UP)return true;
-      float den=getResources().getDisplayMetrics().density,sc=s*den,ox=(getWidth()-390f*sc)/2f,oy=(getHeight()-710f*sc)/2f;
-      float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;String tok=str("token");
+      float den=getResources().getDisplayMetrics().density,sc=s*den,
+          ox=(getWidth()-390f*sc)/2f,oy=(getHeight()-710f*sc)/2f;
+      float x=(e.getX()-ox)/sc,y=(e.getY()-oy)/sc;
+      String tok=str("token");
       if(x<0||x>390||y<0||y>710)return true;
+
       if(y<68){
         if(x>=328&&x<346){call("toggleMusicFromHome");invalidate();return true;}
-        if(x<170)call(tok.isEmpty()?"login":"profile"); else if(x<273)call(tok.isEmpty()?"login":"wallet"); else call("profile");
+        if(x<170)call(tok.isEmpty()?"login":"profile");
+        else if(x<273)call(tok.isEmpty()?"login":"wallet");
+        else call("profile");
         return true;
       }
       if(y>=69&&y<95&&x>270){call("login");return true;}
-      if(y>=145&&y<176&&x>270){call("wallet");return true;}
-      if(y>=108&&y<159&&x<130){call("gameModeDialog");return true;}
-      if(y>=164&&y<213&&x<130){call("events");return true;}
-      if(y>=218&&y<267&&x<130){call("wallet");return true;}
-      if(y>=272&&y<321&&x<130){call("profile");return true;}
-      if(y>=326&&y<376&&x<130){call("tutorials");return true;}
-      if(y>=264&&y<309&&x>270){call("lobby");return true;}
-      if(y>=311&&y<350&&x>270){call("offlineMenu");return true;}
-      if(y>=300&&y<395&&x>=115&&x<=275){call("gameModeDialog");return true;}
-      if(y>=397&&y<448){
-        int[]fs={500,1000,2000,5000,10000,20000};int i=(int)((x-10)/61.5f);i=Math.max(0,Math.min(5,i));fee=fs[i];set("entryFee",fee);invalidate();return true;
+
+      // Main CTA; the 3D scene itself stays a passive, unobstructed Home preview.
+      if(y>=438&&y<499&&x>=35&&x<=355){call("gameModeDialog");return true;}
+
+      if(y>=505&&y<573){
+        int[]fs={500,1000,2000,5000,10000,20000};
+        int i=(int)((x-10)/61.5f);i=Math.max(0,Math.min(5,i));
+        fee=fs[i];set("entryFee",fee);invalidate();return true;
       }
-      if(y>=466&&y<541){
-        int i=(int)(x/94.5f);if(i==0)call("joinDialog");else if(i==1)call("events");else if(i==2)call("tutorials");else call("social");return true;
+      if(y>=580&&y<630){
+        int i=Math.max(0,Math.min(3,(int)(x/94.5f)));
+        if(i==0)call("joinDialog");
+        else if(i==1)call("events");
+        else if(i==2)call("tutorials");
+        else call("social");
+        return true;
       }
-      float by=640;
-      if(y>=by&&y<=by+66){
-        int i=(int)(x/76f);if(i==0)call("home");else if(i==1)call("gameModeDialog");else if(i==2)call("events");else if(i==3)call("social");else call("shop");return true;
+      if(y>=640&&y<=706){
+        int i=Math.max(0,Math.min(4,(int)(x/76f)));
+        if(i==0)call("home");
+        else if(i==1)call("gameModeDialog");
+        else if(i==2)call("events");
+        else if(i==3)call("social");
+        else call("shop");
+        return true;
       }
       return true;
     }
