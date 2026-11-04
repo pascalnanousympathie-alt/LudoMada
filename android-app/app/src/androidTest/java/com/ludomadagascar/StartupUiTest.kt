@@ -324,15 +324,22 @@ class StartupUiTest {
         // adb exec-out run-as, avoiding API-specific shared-storage permissions
         // and Android 8.1 emulator restrictions on public Pictures directories.
         val apiLevel = android.os.Build.VERSION.SDK_INT
-        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotName = "ludomada-startup-offline.png"
         val screenshotFile = File(context.filesDir, screenshotName)
         if (screenshotFile.exists()) {
             assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
         }
-        device.takeScreenshot(screenshotFile)
         assertTrue(
-            "Startup screenshot missing or too small",
+            "Startup screenshot capture failed on API $apiLevel",
+            device.takeScreenshot(screenshotFile)
+        )
+        assertTrue(
+            "Startup screenshot missing or too small on API $apiLevel",
             screenshotFile.exists() && screenshotFile.length() > 1000
+        )
+        android.util.Log.i(
+            "LudoMadaTest",
+            "STARTUP_SCREENSHOT_SAVED api=$apiLevel name=$screenshotName bytes=${screenshotFile.length()}"
         )
     }
 }
