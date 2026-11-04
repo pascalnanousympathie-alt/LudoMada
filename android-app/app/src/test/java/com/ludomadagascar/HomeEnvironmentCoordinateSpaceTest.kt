@@ -88,6 +88,56 @@ class HomeEnvironmentCoordinateSpaceTest {
         assertEquals(5f, sourceUvs[2], 0f)
     }
 
+    @Test
+    fun groundReliefIsExaggeratedAroundItsMidpointWithoutChangingMeanElevation() {
+        val positions = floatArrayOf(
+            -2f, -3f, -0.5f,
+            2f, -3f, 0.5f,
+            0f, 3f, 0f
+        )
+        val normals = floatArrayOf(
+            0f, 0.2f, -0.98f,
+            0f, 0f, -1f,
+            0.1f, 0f, -0.995f
+        )
+        val expanded = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            positions,
+            normals,
+            floatArrayOf(0f, 0f, 1f, 0f, 0.5f, 1f),
+            scale = 4f,
+            reliefScale = 3f
+        )
+
+        assertEquals(-8f, expanded.positions[0], 0f)
+        assertEquals(-1.5f, expanded.positions[2], 0f)
+        assertEquals(1.5f, expanded.positions[5], 0f)
+        assertEquals(0f, expanded.positions[8], 0f)
+        assertEquals(0f, (expanded.positions[2] + expanded.positions[5] + expanded.positions[8]) / 3f, 0.0001f)
+
+        // The inverse-transpose scale must keep transformed normals normalized.
+        for (i in expanded.normals.indices step 3) {
+            val length = kotlin.math.sqrt(
+                expanded.normals[i] * expanded.normals[i] +
+                    expanded.normals[i + 1] * expanded.normals[i + 1] +
+                    expanded.normals[i + 2] * expanded.normals[i + 2]
+            )
+            assertEquals(1f, length, 0.0001f)
+        }
+        assertEquals(-0.5f, positions[2], 0f)
+        assertEquals(0.5f, positions[5], 0f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonPositiveGroundReliefScale() {
+        HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            floatArrayOf(0f, 0f, 0f),
+            floatArrayOf(0f, 0f, -1f),
+            floatArrayOf(0f, 1f),
+            scale = 4f,
+            reliefScale = 0f
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNonPositiveGroundFootprintScale() {
         HomeEnvironmentCoordinateSpace.expandGroundFootprint(

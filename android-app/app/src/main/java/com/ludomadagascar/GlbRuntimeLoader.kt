@@ -109,7 +109,8 @@ internal class GlbRuntimeLoader(private val context: Context) {
                         part.mesh.positions,
                         orientation.normals,
                         part.mesh.uvsCopy(),
-                        scale = 4f
+                        scale = 4f,
+                        reliefScale = 3f
                     )
                     part.copy(
                         mesh = LudoBoardView.Mesh(
