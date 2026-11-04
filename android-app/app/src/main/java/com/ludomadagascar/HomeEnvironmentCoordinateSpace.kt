@@ -92,9 +92,9 @@ internal object HomeEnvironmentCoordinateSpace {
             "ground vertical relief scale must be finite and positive"
         }
 
-        var meanHeight = 0.0
+        var meanHeight = 0f
         for (i in positions.indices step 3) meanHeight += positions[i + 2]
-        meanHeight = (meanHeight / (positions.size / 3)).toFloat()
+        meanHeight /= (positions.size / 3).toFloat()
 
         val expandedPositions = positions.copyOf()
         for (i in expandedPositions.indices step 3) {
