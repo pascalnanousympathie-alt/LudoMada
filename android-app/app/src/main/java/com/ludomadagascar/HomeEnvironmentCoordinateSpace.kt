@@ -10,6 +10,12 @@ internal data class GroundSurfaceOrientation(
     val indices: ShortArray
 )
 
+internal data class GroundFootprintGeometry(
+    val positions: FloatArray,
+    val normals: FloatArray,
+    val uvs: FloatArray
+)
+
 internal object HomeEnvironmentCoordinateSpace {
     private val zUpToYUp = floatArrayOf(
         1f, 0f, 0f, 0f,
@@ -54,6 +60,53 @@ internal object HomeEnvironmentCoordinateSpace {
             correctedIndices[i + 2] = second
         }
         return GroundSurfaceOrientation(correctedNormals, correctedIndices)
+    }
+
+    /**
+     * Expands the terrain in its authored X/Y plane (the gameplay world's X/Z
+     * after Z-up conversion) while keeping vertical relief unchanged. UVs scale
+     * with the footprint to preserve dirt texel density; normals use the inverse
+     * horizontal scale and are renormalized for the broader, gentler terrain.
+     */
+    fun expandGroundFootprint(
+        positions: FloatArray,
+        normals: FloatArray,
+        uvs: FloatArray,
+        scale: Float
+    ): GroundFootprintGeometry {
+        require(positions.isNotEmpty() && positions.size % 3 == 0) {
+            "ground positions must contain complete XYZ vertices"
+        }
+        require(normals.size == positions.size) {
+            "ground normal count must match positions"
+        }
+        require(uvs.size == positions.size / 3 * 2) {
+            "ground UV count must match positions"
+        }
+        require(scale.isFinite() && scale > 0f) {
+            "ground footprint scale must be finite and positive"
+        }
+
+        val expandedPositions = positions.copyOf()
+        for (i in expandedPositions.indices step 3) {
+            expandedPositions[i] *= scale
+            expandedPositions[i + 1] *= scale
+        }
+
+        val expandedNormals = FloatArray(normals.size)
+        for (i in normals.indices step 3) {
+            val nx = normals[i] / scale
+            val ny = normals[i + 1] / scale
+            val nz = normals[i + 2]
+            val length = kotlin.math.sqrt(nx * nx + ny * ny + nz * nz)
+            require(length > 0.000001f) { "ground normal must be non-zero" }
+            expandedNormals[i] = nx / length
+            expandedNormals[i + 1] = ny / length
+            expandedNormals[i + 2] = nz / length
+        }
+
+        val expandedUvs = FloatArray(uvs.size) { index -> uvs[index] * scale }
+        return GroundFootprintGeometry(expandedPositions, expandedNormals, expandedUvs)
     }
 
     /**
