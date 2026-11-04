@@ -114,6 +114,22 @@ jobs:
             cp -- "$home_source_file" android-app/app/build/ramus-evidence/api30/ludomada-home-preview.png
           fi
 
+      - name: Preserve API 30 instrumentation diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="android-app/app/build/ramus-evidence/api30/diagnostics"
+          mkdir -p "$destination"
+          for source in outputs/androidTest-results/connected reports/androidTests/connected; do
+            source_path="android-app/app/build/$source"
+            if [[ -d "$source_path" ]]; then
+              target="$destination/$(basename "$source")"
+              mkdir -p "$target"
+              cp -a "$source_path/." "$target/"
+            fi
+          done
+
       - name: Run connected Android UI instrumentation tests (Android 8.1 / API 27)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
@@ -146,6 +162,22 @@ jobs:
             mkdir -p android-app/app/build/ramus-evidence/api27
             cp -- "$home_source_file" android-app/app/build/ramus-evidence/api27/ludomada-home-preview.png
           fi
+
+      - name: Preserve API 27 instrumentation diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          destination="android-app/app/build/ramus-evidence/api27/diagnostics"
+          mkdir -p "$destination"
+          for source in outputs/androidTest-results/connected reports/androidTests/connected; do
+            source_path="android-app/app/build/$source"
+            if [[ -d "$source_path" ]]; then
+              target="$destination/$(basename "$source")"
+              mkdir -p "$target"
+              cp -a "$source_path/." "$target/"
+            fi
+          done
 
       - name: Upload instrumentation reports
         if: always()

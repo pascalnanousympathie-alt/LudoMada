@@ -88,6 +88,47 @@ class HomeEnvironmentCoordinateSpaceTest {
         assertEquals(5f, sourceUvs[2], 0f)
     }
 
+    @Test
+    fun verticalReliefExpandsAroundTheMeanAndUsesInverseTransposeNormals() {
+        val sourcePositions = floatArrayOf(
+            -12f, -12f, 0.6f,
+            12f, -12f, 0.7f
+        )
+        val sourceNormals = floatArrayOf(
+            0.6f, 0f, -0.8f,
+            0f, 0f, -1f
+        )
+        val sourceUvs = floatArrayOf(0f, 1f, 5f, -4f)
+
+        val expanded = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            sourcePositions,
+            sourceNormals,
+            sourceUvs,
+            scale = 4f,
+            verticalReliefScale = 2f
+        )
+
+        assertEquals(0.55f, expanded.positions[2], 0.0001f)
+        assertEquals(0.75f, expanded.positions[5], 0.0001f)
+        assertEquals(0.3511f, expanded.normals[0], 0.001f)
+        assertEquals(0f, expanded.normals[1], 0.0001f)
+        assertEquals(-0.9363f, expanded.normals[2], 0.001f)
+        assertEquals(-1f, expanded.normals[5], 0f)
+        assertEquals(0.6f, sourcePositions[2], 0f)
+        assertEquals(0.7f, sourcePositions[5], 0f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonPositiveVerticalReliefScale() {
+        HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            floatArrayOf(0f, 0f, 0f),
+            floatArrayOf(0f, 0f, -1f),
+            floatArrayOf(0f, 1f),
+            scale = 1f,
+            verticalReliefScale = 0f
+        )
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNonPositiveGroundFootprintScale() {
         HomeEnvironmentCoordinateSpace.expandGroundFootprint(

@@ -109,7 +109,11 @@ internal class GlbRuntimeLoader(private val context: Context) {
                         part.mesh.positions,
                         orientation.normals,
                         part.mesh.uvsCopy(),
-                        scale = 4f
+                        scale = 4f,
+                        // The authored terrain was designed at the same footprint
+                        // scale. Expanding only X/Z flattens it by 4x; restore part
+                        // of its native vertical proportion without shifting its mean.
+                        verticalReliefScale = 1.6f
                     )
                     part.copy(
                         mesh = LudoBoardView.Mesh(
