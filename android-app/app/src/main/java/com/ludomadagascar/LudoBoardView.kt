@@ -1555,24 +1555,19 @@ class LudoBoardView(
             }
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",sceneWidth,sceneHeight)
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
         private fun renderDirectFrame(){
             if (host.homePreview) {
+                // Route Home through the same calibrated scene FBO and post-process
+                // pipeline as gameplay. The scene FBO is cleared with alpha=0 in
+                // renderScene(), and PostShader preserves that alpha for the Home UI.
                 renderShadowMap()
-                GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
-                GLES30.glViewport(0,0,sceneWidth,sceneHeight)
-                GLES30.glEnable(GLES30.GL_BLEND)
-                GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
-                GLES30.glClearColor(0f,0f,0f,0f)
-                GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-                shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
-                drawWorld(false)
-                shader.endFrame()
-                drawParticles()
+                renderScene()
+                renderPostProcess()
                 if (BuildConfig.DEBUG && !homePreviewFirstFrameCaptured) {
                     val validSurface=logFramebufferPixels("home_surface",sceneWidth,sceneHeight)
                     val expectedHeroParts=setOf(
@@ -2501,7 +2496,7 @@ class LudoBoardView(
             val fs="""#version 300 es
                 precision highp float;uniform sampler2D uScene,uDepth;uniform vec2 uInvRes;uniform float uSsao,uBloom;in vec2 vUv;layout(location=0)out vec4 fragColor;
                 float luma(vec3 c){return dot(c,vec3(0.299,0.587,0.114));}vec3 aces(vec3 x){const float a=2.51;const float b=0.03;const float c=2.43;const float d=0.59;const float e=0.14;return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);}
-                void main(){vec3 base=texture(uScene,vUv).rgb,bl=vec3(0);float w[5]=float[](0.32,0.20,0.12,0.08,0.05);for(int i=1;i<=4;i++){vec2 p=uInvRes*float(i)*1.6;bl+=(texture(uScene,vUv+vec2(p.x,0)).rgb+texture(uScene,vUv-vec2(p.x,0)).rgb+texture(uScene,vUv+vec2(0,p.y)).rgb+texture(uScene,vUv-vec2(0,p.y)).rgb)*w[i];}bl*=max(luma(base)-0.68,0.0)*uBloom;float d0=texture(uDepth,vUv).r,occ=0.0;vec2 o[8]=vec2[](vec2(1,0),vec2(-1,0),vec2(0,1),vec2(0,-1),vec2(1,1),vec2(-1,1),vec2(1,-1),vec2(-1,-1));for(int i=0;i<8;i++){float dn=texture(uDepth,vUv+o[i]*uInvRes*2.0).r;occ+=smoothstep(0.0,0.025,max(0.0,dn-d0));}float ao=1.0-clamp(occ/8.0*uSsao,0.0,0.34);vec3 color=aces((base+bl)*ao);color=pow(max(color,vec3(0)),vec3(0.4545));float y=luma(color);color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);fragColor=vec4(color,1.0);}
+                void main(){vec4 sceneSample=texture(uScene,vUv);if(sceneSample.a<=0.001){fragColor=vec4(0.0);return;}vec3 base=sceneSample.rgb,bl=vec3(0);float w[5]=float[](0.32,0.20,0.12,0.08,0.05);for(int i=1;i<=4;i++){vec2 p=uInvRes*float(i)*1.6;bl+=(texture(uScene,vUv+vec2(p.x,0)).rgb+texture(uScene,vUv-vec2(p.x,0)).rgb+texture(uScene,vUv+vec2(0,p.y)).rgb+texture(uScene,vUv-vec2(0,p.y)).rgb)*w[i];}bl*=max(luma(base)-0.68,0.0)*uBloom;float d0=texture(uDepth,vUv).r,occ=0.0;vec2 o[8]=vec2[](vec2(1,0),vec2(-1,0),vec2(0,1),vec2(0,-1),vec2(1,1),vec2(-1,1),vec2(1,-1),vec2(-1,-1));for(int i=0;i<8;i++){float dn=texture(uDepth,vUv+o[i]*uInvRes*2.0).r;occ+=smoothstep(0.0,0.025,max(0.0,dn-d0));}float ao=1.0-clamp(occ/8.0*uSsao,0.0,0.34);vec3 color=aces((base+bl)*ao);color=pow(max(color,vec3(0)),vec3(0.4545));float y=luma(color);color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);fragColor=vec4(color,sceneSample.a);}
             """.trimIndent()
             program=buildProgram(vs,fs);scene=GLES30.glGetUniformLocation(program,"uScene");depth=GLES30.glGetUniformLocation(program,"uDepth");res=GLES30.glGetUniformLocation(program,"uInvRes");ssao=GLES30.glGetUniformLocation(program,"uSsao");bloom=GLES30.glGetUniformLocation(program,"uBloom")
         }
