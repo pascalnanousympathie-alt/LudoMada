@@ -12,7 +12,8 @@ if [[ ! "$api_level" =~ ^[0-9]+$ ]]; then
   echo "ANDROID_API_LEVEL_UNAVAILABLE: could not determine emulator API level"
   exit 1
 fi
-screenshot_name="ludomada-startup-offline-api-$api_level.png"
+# Use one stable app-private filename; API level is retained in artifact paths below.
+screenshot_name="ludomada-startup-offline.png"
 screenshot_remote="files/$screenshot_name"
 home_screenshot_remote="files/ludomada-home-preview.png"
 
