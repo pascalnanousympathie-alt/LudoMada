@@ -105,17 +105,51 @@ class HomeEnvironmentCoordinateSpaceTest {
             sourceNormals,
             sourceUvs,
             scale = 4f,
-            verticalReliefScale = 2f
+            verticalReliefScale = 3.0f
         )
 
-        assertEquals(0.55f, expanded.positions[2], 0.0001f)
-        assertEquals(0.75f, expanded.positions[5], 0.0001f)
-        assertEquals(0.3511f, expanded.normals[0], 0.001f)
+        assertEquals(0.50f, expanded.positions[2], 0.0001f)
+        assertEquals(0.80f, expanded.positions[5], 0.0001f)
+        assertEquals(0.4903f, expanded.normals[0], 0.001f)
         assertEquals(0f, expanded.normals[1], 0.0001f)
-        assertEquals(-0.9363f, expanded.normals[2], 0.001f)
+        assertEquals(-0.8716f, expanded.normals[2], 0.001f)
         assertEquals(-1f, expanded.normals[5], 0f)
         assertEquals(0.6f, sourcePositions[2], 0f)
         assertEquals(0.7f, sourcePositions[5], 0f)
+    }
+
+    @Test
+    fun verticalReliefPreservesMeanElevationForAsymmetricTerrain() {
+        val sourcePositions = floatArrayOf(
+            -2f, 0f, 0.2f,
+            0f, 1f, 0.4f,
+            2f, 0f, 0.9f
+        )
+        val sourceNormals = floatArrayOf(
+            0f, 0f, -1f,
+            0f, 0f, -1f,
+            0f, 0f, -1f
+        )
+        val sourceUvs = floatArrayOf(0f, 0f, 0.5f, 1f, 1f, 0f)
+
+        val expanded = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            sourcePositions,
+            sourceNormals,
+            sourceUvs,
+            scale = 4f,
+            verticalReliefScale = 3.0f
+        )
+
+        assertEquals(-0.4f, expanded.positions[2], 0.0001f)
+        assertEquals(0.2f, expanded.positions[5], 0.0001f)
+        assertEquals(1.7f, expanded.positions[8], 0.0001f)
+        val meanElevation = (expanded.positions[2] + expanded.positions[5] + expanded.positions[8]) / 3f
+        assertEquals(0.5f, meanElevation, 0.0001f)
+
+        // The input mesh remains immutable for safe reuse across renderer passes.
+        assertEquals(0.2f, sourcePositions[2], 0f)
+        assertEquals(0.4f, sourcePositions[5], 0f)
+        assertEquals(0.9f, sourcePositions[8], 0f)
     }
 
     @Test(expected = IllegalArgumentException::class)

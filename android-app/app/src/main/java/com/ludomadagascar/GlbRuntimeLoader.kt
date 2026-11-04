@@ -113,7 +113,7 @@ internal class GlbRuntimeLoader(private val context: Context) {
                         // The authored terrain was designed at the same footprint
                         // scale. Expanding only X/Z flattens it by 4x; restore part
                         // of its native vertical proportion without shifting its mean.
-                        verticalReliefScale = 1.6f
+                        verticalReliefScale = 3.0f
                     )
                     part.copy(
                         mesh = LudoBoardView.Mesh(
