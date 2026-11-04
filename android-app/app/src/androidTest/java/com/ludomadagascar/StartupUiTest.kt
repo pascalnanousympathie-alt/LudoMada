@@ -1,6 +1,8 @@
 package com.ludomadagascar
 
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -31,15 +33,105 @@ class StartupUiTest {
             heroView.getChildAt(1) !is LudoBoardView)
     }
 
-    private fun captureHomePreviewScreenshot(device: UiDevice, context: android.content.Context) {
-        val screenshotFile = File(context.filesDir, "ludomada-home-preview.png")
-        if (screenshotFile.exists()) {
-            assertTrue("Previous Home screenshot could not be removed", screenshotFile.delete())
+    private data class HomeScreenshotMetrics(
+        val meanLuma: Double,
+        val standardDeviation: Double,
+        val brightPixelRatio: Double
+    ) {
+        val containsRenderedScene: Boolean
+            get() = meanLuma >= 45.0 && standardDeviation >= 10.0 && brightPixelRatio >= 0.35
+
+        override fun toString(): String =
+            "meanLuma=%.1f stdDev=%.1f brightRatio=%.3f".format(
+                meanLuma, standardDeviation, brightPixelRatio
+            )
+    }
+
+    private fun homeScreenshotMetrics(file: File): HomeScreenshotMetrics? {
+        val bitmap = BitmapFactory.decodeFile(
+            file.absolutePath,
+            BitmapFactory.Options().apply { inSampleSize = 4 }
+        ) ?: return null
+        try {
+            // The upper-middle Home canvas is intentionally left unobstructed for
+            // the live 3D environment. A dark, nearly uniform Android window color
+            // means the transparent GL surface has not been presented yet.
+            val left = (bitmap.width * 0.05f).toInt().coerceAtLeast(0)
+            val right = (bitmap.width * 0.95f).toInt().coerceAtMost(bitmap.width)
+            val top = (bitmap.height * 0.18f).toInt().coerceAtLeast(0)
+            val bottom = (bitmap.height * 0.38f).toInt().coerceAtMost(bitmap.height)
+            var count = 0
+            var bright = 0
+            var sum = 0.0
+            var sumSquares = 0.0
+            for (y in top until bottom step 2) {
+                for (x in left until right step 2) {
+                    val pixel = bitmap.getPixel(x, y)
+                    val red = Bitmap.red(pixel).toDouble()
+                    val green = Bitmap.green(pixel).toDouble()
+                    val blue = Bitmap.blue(pixel).toDouble()
+                    val luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+                    sum += luma
+                    sumSquares += luma * luma
+                    if (luma > 60.0) bright++
+                    count++
+                }
+            }
+            if (count == 0) return null
+            val mean = sum / count
+            val variance = (sumSquares / count - mean * mean).coerceAtLeast(0.0)
+            return HomeScreenshotMetrics(
+                meanLuma = mean,
+                standardDeviation = kotlin.math.sqrt(variance),
+                brightPixelRatio = bright.toDouble() / count
+            )
+        } finally {
+            bitmap.recycle()
         }
-        assertTrue("Home preview screenshot capture failed", device.takeScreenshot(screenshotFile))
+    }
+
+    private fun captureHomePreviewScreenshot(
+        device: UiDevice,
+        context: android.content.Context,
+        activity: MainActivity
+    ) {
+        val screenshotFile = File(context.filesDir, "ludomada-home-preview.png")
+        var lastMetrics: HomeScreenshotMetrics? = null
+        var captured = false
+        for (attempt in 0 until 6) {
+            if (screenshotFile.exists()) {
+                assertTrue("Previous Home screenshot could not be removed", screenshotFile.delete())
+            }
+            assertTrue("Home preview screenshot capture failed", device.takeScreenshot(screenshotFile))
+            assertTrue(
+                "Home preview screenshot missing or too small",
+                screenshotFile.exists() && screenshotFile.length() > 1000
+            )
+            lastMetrics = homeScreenshotMetrics(screenshotFile)
+            if (lastMetrics?.containsRenderedScene == true) {
+                captured = true
+                break
+            }
+
+            android.util.Log.w(
+                "LudoMadaTest",
+                "HOME_SCREENSHOT_NOT_PRESENTED attempt=${attempt + 1} metrics=${lastMetrics ?: "unreadable"}"
+            )
+            // A GL frame can be certified on the renderer thread just before
+            // SurfaceFlinger presents it. Request another frame and retry instead
+            // of uploading a syntactically valid but visually empty PNG.
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                val content = activity.window.decorView
+                    .findViewById<android.view.ViewGroup>(android.R.id.content)
+                val hero = content?.getChildAt(0) as? PremiumHeroViewV2
+                hero?.getHomePreviewView()?.requestRender()
+            }
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+            android.os.SystemClock.sleep(350L)
+        }
         assertTrue(
-            "Home preview screenshot missing or too small",
-            screenshotFile.exists() && screenshotFile.length() > 1000
+            "Home screenshot must contain a presented 3D environment frame; metrics=${lastMetrics ?: "unreadable"}",
+            captured
         )
     }
 
@@ -142,7 +234,7 @@ class StartupUiTest {
             "Returning from the lobby must render a fresh Home 3D framebuffer",
             device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
         )
-        captureHomePreviewScreenshot(device, context)
+        captureHomePreviewScreenshot(device, context, activity!!)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
