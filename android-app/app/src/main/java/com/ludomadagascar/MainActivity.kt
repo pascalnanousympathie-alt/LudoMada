@@ -1024,6 +1024,9 @@ class MainActivity : Activity() {
     private fun showBoardEntry(){
         hideTransientOverlay()
         currentScreen="board"
+        // Server-driven PLAYING transitions bypass page()/switchScreen(); apply
+        // the gameplay mute policy before the board becomes visible.
+        syncMusicPlayback()
         board()
     }
 
