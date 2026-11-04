@@ -1,7 +1,6 @@
 package com.ludomadagascar
 
 import android.content.Intent
-import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -67,9 +66,9 @@ class StartupUiTest {
             for (y in top until bottom step 2) {
                 for (x in left until right step 2) {
                     val pixel = bitmap.getPixel(x, y)
-                    val red = Bitmap.red(pixel).toDouble()
-                    val green = Bitmap.green(pixel).toDouble()
-                    val blue = Bitmap.blue(pixel).toDouble()
+                    val red = android.graphics.Color.red(pixel).toDouble()
+                    val green = android.graphics.Color.green(pixel).toDouble()
+                    val blue = android.graphics.Color.blue(pixel).toDouble()
                     val luma = 0.2126 * red + 0.7152 * green + 0.0722 * blue
                     sum += luma
                     sumSquares += luma * luma
