@@ -82,6 +82,26 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
+    fun homeGroundAlbedoIsLiftedIntoWarmEarthRangeWithoutChangingAlpha() {
+        val source = floatArrayOf(0.16f, 0.09f, 0.035f, 1f)
+        val lifted = HomeEnvironmentComposition.liftHomeGroundAlbedo(source)
+
+        assertEquals(0.528f, lifted[0], 0.0001f)
+        assertEquals(0.324f, lifted[1], 0.0001f)
+        assertEquals(0.189f, lifted[2], 0.0001f)
+        assertEquals(1f, lifted[3], 0f)
+        assertEquals(0.16f, source[0], 0f)
+        assertEquals(0.09f, source[1], 0f)
+        assertEquals(0.035f, source[2], 0f)
+        assertTrue(lifted.all { it in 0f..1f })
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInvalidHomeGroundColorShape() {
+        HomeEnvironmentComposition.liftHomeGroundAlbedo(floatArrayOf(0.16f, 0.09f, 0.035f))
+    }
+
+    @Test
     fun liftedEnvironmentColorIsWarmClampedAndPreservesAlpha() {
         val source = floatArrayOf(0.20f, 0.18f, 0.12f, 0.82f)
         val result = HomeEnvironmentComposition.liftEnvironmentColor(source, 1.30f)

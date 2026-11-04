@@ -1819,7 +1819,8 @@ class LudoBoardView(
                         val mn=part.materialName
                         val skyPart=mn=="ENV_Sky_HDRI"
                         val barkPart=mn=="ENV_Bark_PBR"
-                        val dirtPart=mn=="ENV_Ground_PBR" || mn=="ENV_Rock_PBR"
+                        val groundPart=mn=="ENV_Ground_PBR"
+                        val dirtPart=groundPart || mn=="ENV_Rock_PBR"
                         val grassPart=mn=="ENV_Grass_PBR"
                         val albedo=when{
                             skyPart->envSkyTex
@@ -1851,6 +1852,7 @@ class LudoBoardView(
                         val unlit=skyPart
                         val model=HomeEnvironmentCoordinateSpace.toYUpTransform(part.transform)
                         val environmentColor=when {
+                            groundPart -> HomeEnvironmentComposition.liftHomeGroundAlbedo(part.baseColor)
                             barkPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.50f)
                             dirtPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.25f)
                             grassPart -> HomeEnvironmentComposition.liftEnvironmentColor(part.baseColor,1.18f)
