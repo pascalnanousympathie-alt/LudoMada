@@ -1,0 +1,8 @@
+56d413a7045372b89ce86bd4a0f60eab81f73762:tools/mada-commander-public-mcp/tests/mcp-integrations.test.mjs:jwt:202
+56d413a7045372b89ce86bd4a0f60eab81f73762:tools/mada-commander-public-mcp/tests/mcp-integrations.test.mjs:generic-api-key:200
+56d413a7045372b89ce86bd4a0f60eab81f73762:tools/mada-commander-public-mcp/tests/mcp-integrations.test.mjs:generic-api-key:201
+333a9f7c27ed47897b612e76611baf09c2fbddb9:tools/mada-commander-public-mcp/tests/command-execution.test.mjs:generic-api-key:48
+1212fbd0259dcddb25ae62051a0291e55d5d2467:tools/mada-commander-public-mcp/tests/command-execution.test.mjs:generic-api-key:49
+101f309a015410e985bded7b273b04157504da5e:tools/mada-commander-public-mcp/tests/command-execution.test.mjs:generic-api-key:49
+0b17addb200e25beb41874b9371ef68d2588f075:tools/mada-commander-public-mcp/tests/public-boundary.test.mjs:generic-api-key:349
+69f9cf303a98d8444d756ea700dd5e298c1e987f:tools/mada-commander-public-mcp/tests/public-boundary.test.mjs:generic-api-key:349
