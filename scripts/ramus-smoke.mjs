@@ -326,13 +326,12 @@ function returnToHome() {
 }
 
 function openModePickerFromHome() {
-  // The view scales a 390×710 canvas into Ramus's portrait surface. The true
-  // JOUER hitbox is x=8..126 / y=110..158; these normalized points cover its
-  // centre first, followed by small offsets and rotated/letterboxed fallbacks.
+  // The compact Home layout keeps the live 3D board clear and places the
+  // primary JOUER CTA at logical x=48..342 / y=441..495 on the 390×710 canvas.
+  // Probe its centre first, then nearby points for device scaling/inset variance.
   const points = [
-    "0.17,0.247", "0.17,0.24", "0.18,0.25", "0.16,0.25",
-    "0.42,0.19", "0.42,0.21",
-    "0.12,0.42", "0.14,0.46", "0.86,0.42"
+    "0.50,0.66", "0.47,0.66", "0.53,0.66",
+    "0.50,0.64", "0.50,0.68", "0.45,0.65", "0.55,0.65"
   ];
   let lastLabels = [];
 
