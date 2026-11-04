@@ -105,12 +105,18 @@ internal class GlbRuntimeLoader(private val context: Context) {
                         part.mesh.normals,
                         part.mesh.indices
                     )
+                    val footprint = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+                        part.mesh.positions,
+                        orientation.normals,
+                        part.mesh.uvsCopy(),
+                        scale = 4f
+                    )
                     part.copy(
                         mesh = LudoBoardView.Mesh(
-                            part.mesh.positions,
-                            orientation.normals,
+                            footprint.positions,
+                            footprint.normals,
                             orientation.indices,
-                            part.mesh.uvsCopy()
+                            footprint.uvs
                         )
                     )
                 }

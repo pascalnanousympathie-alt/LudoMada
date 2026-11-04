@@ -48,6 +48,57 @@ class HomeEnvironmentCoordinateSpaceTest {
     }
 
     @Test
+    fun expandedGroundFootprintScalesPlaneAndUvsButPreservesHeight() {
+        val sourcePositions = floatArrayOf(
+            -12f, -12f, 0.6f,
+            12f, -12f, 0.7f
+        )
+        val sourceNormals = floatArrayOf(
+            0.6f, 0f, -0.8f,
+            0f, 0f, -1f
+        )
+        val sourceUvs = floatArrayOf(0f, 1f, 5f, -4f)
+
+        val expanded = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            sourcePositions,
+            sourceNormals,
+            sourceUvs,
+            scale = 4f
+        )
+
+        assertEquals(-48f, expanded.positions[0], 0f)
+        assertEquals(-48f, expanded.positions[1], 0f)
+        assertEquals(0.6f, expanded.positions[2], 0f)
+        assertEquals(48f, expanded.positions[3], 0f)
+        assertEquals(-48f, expanded.positions[4], 0f)
+        assertEquals(0.7f, expanded.positions[5], 0f)
+
+        assertEquals(0.1843f, expanded.normals[0], 0.001f)
+        assertEquals(0f, expanded.normals[1], 0.0001f)
+        assertEquals(-0.9829f, expanded.normals[2], 0.001f)
+        assertEquals(-1f, expanded.normals[5], 0f)
+
+        assertEquals(0f, expanded.uvs[0], 0f)
+        assertEquals(4f, expanded.uvs[1], 0f)
+        assertEquals(20f, expanded.uvs[2], 0f)
+        assertEquals(-16f, expanded.uvs[3], 0f)
+
+        assertEquals(-12f, sourcePositions[0], 0f)
+        assertEquals(0.6f, sourceNormals[0], 0f)
+        assertEquals(5f, sourceUvs[2], 0f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsNonPositiveGroundFootprintScale() {
+        HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            floatArrayOf(0f, 0f, 0f),
+            floatArrayOf(0f, 0f, -1f),
+            floatArrayOf(0f, 1f),
+            scale = 0f
+        )
+    }
+
+    @Test
     fun terrainNormalsAndWindingAreReversedTowardWorldUp() {
         val sourceNormals = floatArrayOf(
             0f, 0f, 1f,
