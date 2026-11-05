@@ -150,9 +150,6 @@ class LudoBoardView(
             " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount
         post {
             if (contentDescription != marker) contentDescription = marker
-            // HomeView is the visible accessibility node above this GLSurfaceView.
-            // Publish only this already-certified marker to that node as well.
-            (parent as? PremiumHeroViewV2)?.publishHomePreviewReady(marker)
         }
     }
 
@@ -160,7 +157,6 @@ class LudoBoardView(
         if (!BuildConfig.DEBUG || !homePreview) return
         post {
             contentDescription = "LudoMada 3D Home Preview"
-            (parent as? PremiumHeroViewV2)?.resetHomePreviewReady()
         }
     }
 
