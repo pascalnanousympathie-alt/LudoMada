@@ -38,7 +38,9 @@ class RenderFrameTelemetryTest {
         assertEquals(1, snapshot.activeFrameSampleCount)
         assertNull(snapshot.activeFrameFps)
         assertEquals(3, snapshot.glSubmissionSampleCount)
-        assertEquals(65f, snapshot.glSubmitP50Ms, 0.01f)
+        // The rolling three-sample submission window is [65, 12, 8] ms:
+        // p50 is 12 ms, while the first-frame spike remains visible as max.
+        assertEquals(12f, snapshot.glSubmitP50Ms, 0.01f)
         assertEquals(65f, snapshot.glSubmitMaxMs, 0.01f)
     }
 
