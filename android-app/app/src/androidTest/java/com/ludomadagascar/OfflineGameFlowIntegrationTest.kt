@@ -55,13 +55,13 @@ class OfflineGameFlowIntegrationTest {
             "Offline entry action must appear",
             device.wait(Until.hasObject(By.text("👥 Jouer hors-ligne")), 10000)
         )
-        assertTrue("Offline entry tap failed", device.findObject(By.text("👥 Jouer hors-ligne")).click())
+        device.findObject(By.text("👥 Jouer hors-ligne")).click()
         assertTrue(
             "Offline menu did not appear",
             device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 5000)
         )
         assertTrue("Two-player menu action is missing", device.hasObject(By.text("👤 2 joueurs")))
-        assertTrue("Two-player selection tap failed", device.findObject(By.text("👤 2 joueurs")).click())
+        device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue(
             "Offline board did not appear",
             device.wait(Until.hasObject(By.textContains("Lancer le dé")), 8000)
