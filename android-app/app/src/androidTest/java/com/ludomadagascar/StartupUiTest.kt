@@ -8,6 +8,8 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -17,6 +19,13 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+    private fun scrollToVisibleText(device: UiDevice, text: String): Boolean {
+        val scrollable = UiScrollable(UiSelector().scrollable(true)).apply {
+            setAsVerticalList()
+        }
+        return scrollable.scrollIntoView(UiSelector().text(text))
+    }
+
     private fun assertStaticHomeComposition(activity: MainActivity) {
         val content = activity.window.decorView
             .findViewById<android.view.ViewGroup>(android.R.id.content)
@@ -24,8 +33,18 @@ class StartupUiTest {
         val hero = content.getChildAt(0) as? PremiumHeroViewV2
         assertNotNull("Home must use the static reference-image container", hero)
         val imageHost = hero ?: throw AssertionError("Premium Home image root is missing")
-        assertTrue("Home must contain only one image view, not a GLSurfaceView", imageHost.childCount == 1)
+        assertTrue(
+            "Home must contain its static image and a separate accessible JOUER hitbox",
+            imageHost.childCount == 2
+        )
         assertTrue("Home image child must not be a live 3D renderer", imageHost.getChildAt(0) !is LudoBoardView)
+        assertTrue(
+            "JOUER hitbox must be a visible enabled accessibility target",
+            imageHost.getJouerAccessibilityTarget().isShown &&
+                imageHost.getJouerAccessibilityTarget().isClickable &&
+                imageHost.getJouerAccessibilityTarget().isEnabled &&
+                imageHost.getJouerAccessibilityTarget().contentDescription == "HOME_ACTION_JOUER"
+        )
         assertTrue(
             "The Home image view must publish the decoded 4K reference marker",
             imageHost.getHomeImageView().contentDescription.toString().contains("HOME_IMAGE_FRAME_COMPLETE")
@@ -149,15 +168,14 @@ class StartupUiTest {
     }
 
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
-        val home = device.findObject(By.descContains("LudoMada Premium Home"))
-        val bounds = home.visibleBounds
-        val scale = minOf(bounds.width() / 1280f, bounds.height() / 720f)
-        val xOffset = (bounds.width() - 1280f * scale) / 2f
-        val yOffset = (bounds.height() - 720f * scale) / 2f
-        // The static 4K reference keeps JOUER on the right-side primary panel.
-        val x = bounds.left + (xOffset + 1100f * scale).toInt()
-        val y = bounds.top + (yOffset + 414f * scale).toInt()
-        assertTrue("Home JOUER tap should be accepted", device.click(x, y))
+        assertTrue(
+            "Home must expose its JOUER accessibility target",
+            device.wait(Until.hasObject(By.desc("HOME_ACTION_JOUER")), 3000)
+        )
+        val play = device.findObject(By.desc("HOME_ACTION_JOUER"))
+            ?: throw AssertionError("Home JOUER accessibility node disappeared after it was found")
+        assertTrue("Home JOUER accessibility target must be clickable", play.isClickable)
+        play.click()
     }
 
     @Test
@@ -175,34 +193,40 @@ class StartupUiTest {
         val device = UiDevice.getInstance(instrumentation)
         assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
 
-        var activity: MainActivity? = null
+        // Request Home while still on the current screen/orientation. Production
+        // code must preserve this request through its own landscape Activity recreation.
         instrumentation.runOnMainSync {
-            activity = ActivityLifecycleMonitorRegistry.getInstance()
+            val activity = ActivityLifecycleMonitorRegistry.getInstance()
                 .getActivitiesInStage(Stage.RESUMED)
                 .filterIsInstance<MainActivity>()
                 .firstOrNull()
-            assertNotNull("MainActivity must be resumed", activity)
-            activity!!.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
-        android.os.SystemClock.sleep(900L)
-        instrumentation.runOnMainSync {
-            activity = ActivityLifecycleMonitorRegistry.getInstance()
-                .getActivitiesInStage(Stage.RESUMED)
-                .filterIsInstance<MainActivity>()
-                .firstOrNull()
-            assertNotNull("Landscape MainActivity must be resumed", activity)
+            assertNotNull("MainActivity must be resumed before requesting Home", activity)
             activity!!.javaClass.getDeclaredMethod("home").apply {
                 isAccessible = true
             }.invoke(activity)
         }
 
-        assertTrue("Premium Home did not appear",
-            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
-        instrumentation.runOnMainSync { assertStaticHomeComposition(activity!!) }
         assertTrue(
-            "Home must decode and present the lightweight 4K reference image",
-            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
+            "Home must decode and present the lightweight 4K reference image after rotation",
+            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 15000)
         )
+        assertTrue(
+            "Premium Home accessibility node must be exposed",
+            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000)
+        )
+        instrumentation.runOnMainSync {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must remain resumed after rotation", resumed)
+            assertTrue(
+                "Home must be rendered in landscape",
+                resumed!!.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            )
+            assertStaticHomeComposition(resumed)
+        }
 
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
@@ -230,6 +254,10 @@ class StartupUiTest {
             device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
         assertTrue("Lobby room-join action missing", device.hasObject(By.text("🔑 Hiditra amin'ny room")))
 
+        assertTrue(
+            "Lobby return action must be reachable by scrolling the lobby content",
+            scrollToVisibleText(device, "← Accueil")
+        )
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
@@ -237,14 +265,44 @@ class StartupUiTest {
             "Returning from lobby must redraw the static Home image",
             device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
         )
-        captureHomeImageScreenshot(device, context, activity!!)
+        var homeActivity: MainActivity? = null
+        instrumentation.runOnMainSync {
+            homeActivity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must be resumed for screenshot capture", homeActivity)
+        }
+        captureHomeImageScreenshot(device, context, homeActivity!!)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
-        device.findObject(By.desc("MODE_OFFLINE")).click()
-        assertTrue("Offline selection must navigate to the offline menu",
-            device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        val offlineMode = device.findObject(By.desc("MODE_OFFLINE"))
+        assertTrue("Offline mode button must be clickable", offlineMode.isClickable)
+        assertTrue("Offline mode button must be enabled", offlineMode.isEnabled)
+        val offlineBounds = offlineMode.visibleBounds
+        assertTrue(
+            "Offline mode button must have visible bounds",
+            offlineBounds.width() > 0 && offlineBounds.height() > 0
+        )
+        android.util.Log.i(
+            "LudoMadaTest",
+            "OFFLINE_ACCESSIBILITY_CLICK_BOUNDS=${offlineBounds.flattenToString()}"
+        )
+        // Match the Online action above: UiObject2.click() invokes the button's
+        // accessibility ACTION_CLICK. On API 27, UiDevice.click(x, y) reports
+        // success but the dialog receives no ACTION_DOWN/UP for this custom view.
+        offlineMode.click()
+        device.waitForIdle()
+        assertTrue(
+            "Offline selection must dismiss the native game-mode dialog",
+            device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
+        )
+        assertTrue(
+            "Offline menu screen must be rendered after activating the Offline button",
+            device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 8000)
+        )
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
         assertTrue("Offline menu must expose three-player mode", device.hasObject(By.text("👥 3 joueurs")))
         assertTrue("Offline menu must expose four-player mode", device.hasObject(By.text("👥 4 joueurs")))
@@ -265,7 +323,7 @@ class StartupUiTest {
         assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
         assertTrue("Offline entry action is missing", device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 3000))
 
         // This screen has no authenticated session. The first Home request must
         // survive Activity recreation when the device changes to landscape.
@@ -309,7 +367,7 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.text("Créer un compte")))
         assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue(device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000))

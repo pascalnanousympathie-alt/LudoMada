@@ -149,7 +149,7 @@ cd android-app
 set +e
 echo "INSTRUMENTATION_TARGET=com.ludomadagascar.StartupUiTest (all @Test methods)"
 timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest,com.ludomadagascar.GameplayEnvironmentAssetTest \
   --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 test_status=$?
 set -e
@@ -164,7 +164,7 @@ if [[ "$test_status" -ne 0 ]]; then
   timeout 8s "$ADB" -s "$DEVICE" shell getprop sys.boot_completed || true
   timeout 8s "$ADB" -s "$DEVICE" shell service check package || true
   timeout 8s "$ADB" -s "$DEVICE" shell dumpsys activity activities | tail -n 100 || true
-  timeout 8s "$ADB" -s "$DEVICE" logcat -d -t 2500 -s AndroidRuntime:E ActivityManager:E TestRunner:E AndroidJUnitRunner:E || true
+  timeout 8s "$ADB" -s "$DEVICE" logcat -d -t 2500 -s AndroidRuntime:E ActivityManager:E TestRunner:E AndroidJUnitRunner:E LudoMada:I LudoMadaTest:I || true
   exit "$test_status"
 fi
 

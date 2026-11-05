@@ -343,8 +343,58 @@ object PremiumMaterialLighting {
  */
 internal object GameplayEnvironmentComposition {
     const val WOOD_MATERIAL_KIND = 1
+    const val BLENDER_BRASS_MATERIAL_KIND = 5
+    const val BLENDER_FLOOR_MATERIAL_KIND = 5
     const val RECEIVES_SHADOW = true
     const val PRESERVE_ALBEDO = true
+    const val BLENDER_ASSET_PATH = "3d/ludomada-gameplay-environment-v1.glb"
+    // The Blender scene is authored around x=-1.1667; the board root moves the
+    // authored board to x=0. Translate the table by the inverse offset to align.
+    const val BLENDER_ROOT_TRANSLATION_X = 1.1666667f
+
+    fun acceptsBlenderGameplayPart(name: String): Boolean = name.startsWith("GMENV_")
+
+    fun hasRequiredBlenderGameplayParts(names: Collection<String>): Boolean =
+        "GMENV_Tabletop_Walnut" in names && "GMENV_Studio_Floor" in names
+
+    fun blenderMaterialKind(materialName: String): Int = when (materialName) {
+        "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
+        "LM_Champagne_Brass", "ENV_Studio_Charcoal" -> BLENDER_BRASS_MATERIAL_KIND
+        else -> BLENDER_FLOOR_MATERIAL_KIND
+    }
+
+    fun blenderMaterialColor(materialName: String, source: FloatArray): FloatArray {
+        require(source.size == 4) { "glTF base colour must contain four channels" }
+        return when (materialName) {
+            // The exporter preserves physically dark swatches. Lift them into a
+            // readable walnut range while retaining the source UV/procedural grain.
+            "LM_Walnut_Edge" -> floatArrayOf(0.39f, 0.17f, 0.065f, 1f)
+            "LM_Walnut_Dark" -> floatArrayOf(154f / 255f, 83f / 255f, 34f / 255f, 1f)
+            "ENV_Studio_Charcoal" -> floatArrayOf(0.14f, 0.16f, 0.19f, 1f)
+            else -> source.copyOf()
+        }
+    }
+
+    fun blenderTextureKind(materialName: String): Int = when (materialName) {
+        "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
+        "LM_Champagne_Brass" -> 4
+        else -> 3
+    }
+
+    fun blenderPartDrawOrder(partName: String): Int = when {
+        partName == "GMENV_Studio_Floor" -> 0
+        partName.startsWith("GMENV_Table_Leg_") -> 1
+        partName.startsWith("GMENV_Leg_Ferrule_") -> 2
+        partName.startsWith("GMENV_Apron_") -> 3
+        partName == "GMENV_Tabletop_Walnut" -> 4
+        partName.startsWith("GMENV_Perimeter_Inlay_") -> 5
+        partName.startsWith("GMENV_Brass_Pin_") -> 6
+        partName == "GMENV_Baobab_Brass_Inlay" -> 7
+        else -> 8
+    }
+
+    fun blenderPartReceivesGameplayShadow(partName: String): Boolean =
+        partName == "GMENV_Tabletop_Walnut"
 
     fun tabletop(): PremiumMaterial = PremiumMaterial(
         // Keep this pure Kotlin data so local JVM tests do not call Android Color stubs.

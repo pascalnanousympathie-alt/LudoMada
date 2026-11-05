@@ -92,11 +92,31 @@ function selfTestFramebufferReadback() {
   const wrongHomeSourceTree = { elements: [{ contentDesc:
     "LudoMada Premium Home | HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=UNKNOWN | IMAGE_WIDTH=2048 | IMAGE_HEIGHT=1152"
   }] };
+  const immersivePromptTree = { elements: [
+    { text: "Viewing full screen" },
+    { text: "To exit, swipe down from the top of your screen" },
+    { text: "Got it" }
+  ] };
+  const ordinaryTree = { elements: [
+    { text: "Jouer" },
+    { contentDesc: "LudoMada Premium Home" }
+  ] };
+  const accessibleHomeTree = { elements: [{ contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }] };
+  const inaccessibleHomeTree = { elements: [{ contentDesc: "LudoMada Premium Home" }] };
+  const readinessMarkedHomeTree = { elements: [
+    { contentDesc: "HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=LOBBY_REFERENCE_4K" },
+    { contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }
+  ] };
   cases.push(
+    ["Home JOUER accessibility target detected", hasHomeJouerTarget(accessibleHomeTree)],
+    ["Home with current image-readiness label recognized", isPremiumHome(readinessMarkedHomeTree)],
+    ["Home without JOUER target rejected", !hasHomeJouerTarget(inaccessibleHomeTree)],
     ["decoded lightweight 4K Home reference accepted", parseHomeImageReadiness(referenceHomeTree).ok],
     ["undersized Home image rejected", !parseHomeImageReadiness(undersizedHomeTree).ok],
     ["wrong Home image source rejected", !parseHomeImageReadiness(wrongHomeSourceTree).ok],
-    ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok]
+    ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok],
+    ["Android immersive confirmation prompt detected", isAndroidImmersivePrompt(immersivePromptTree)],
+    ["ordinary app screen is not treated as system prompt", !isAndroidImmersivePrompt(ordinaryTree)]
   );
   const failed = cases.filter(([, passed]) => !passed);
   for (const [name, passed] of cases) {
@@ -243,14 +263,68 @@ function treeLabels(tree) {
   );
 }
 
+function isAndroidImmersivePrompt(tree) {
+  const labels = treeLabels(tree);
+  return labels.some(label => label.includes("Viewing full screen")) &&
+    labels.some(label => label.includes("To exit, swipe down from the top of your screen")) &&
+    labels.some(label => label === "Got it" || label.endsWith(" Got it"));
+}
+
 function readTree() {
   const result = runAllowError("snapshot", "--session", session, "--include-offscreen");
   if (!result.ok || !Array.isArray(result.value?.elements) || result.value.elements.length === 0) return null;
+
+  // Android 8.1 / cloud AVDs can show the platform's one-time immersive-mode
+  // confirmation after the app switches to fullscreen. It is a system window,
+  // not an app screen, and blocks Home accessibility hitboxes until dismissed.
+  // Only tap "Got it" when all three known system-prompt labels are present.
+  if (isAndroidImmersivePrompt(result.value)) {
+    const gotItNode = result.value.elements.find(node =>
+      node.text === "Got it" || node.contentDesc === "Got it" ||
+      node.contentDescription === "Got it" || node.label === "Got it"
+    );
+    if (gotItNode?.ref) {
+      const dismissed = runAllowError(
+        "tap", gotItNode.ref, "--gen", String(result.value.gen), "--session", session
+      );
+      if (dismissed.ok) {
+        waitStable(250);
+        const fresh = runAllowError("snapshot", "--session", session, "--include-offscreen");
+        if (fresh.ok && Array.isArray(fresh.value?.elements) && fresh.value.elements.length > 0) {
+          return fresh.value;
+        }
+      }
+    }
+  }
   return result.value;
 }
 
 function treeHas(tree, value) {
   return treeLabels(tree).some((label) => label.includes(value));
+}
+
+function scrollToVisibleText(value, maxSwipes = 4) {
+  let tree = readTree();
+  if (treeHas(tree, value)) return tree;
+
+  for (let attempt = 0; attempt < maxSwipes; attempt++) {
+    // The main screens use a ScrollView. In landscape the online lobby content
+    // can extend below the 720px viewport; swipe upward to reveal its lower
+    // controls, then reacquire the accessibility tree after every gesture.
+    const swipe = runAllowError(
+      "swipe", "0.5,0.82", "0.5,0.22", "--session", session
+    );
+    if (!swipe.ok) {
+      throw new Error(
+        "Could not scroll to visible UI text " + value + ": " +
+        JSON.stringify(swipe.value).slice(0, 1200)
+      );
+    }
+    waitStable(350);
+    tree = readTree();
+    if (treeHas(tree, value)) return tree;
+  }
+  return tree;
 }
 
 function parseHomeImageReadiness(tree) {
@@ -304,13 +378,27 @@ function tapTreeNode(tree, needle) {
 }
 
 function isPremiumHome(tree) {
-  return treeHas(tree, "LudoMada Premium Home");
+  // The image host publishes HOME_IMAGE_FRAME_COMPLETE as its current
+  // contentDescription; Android may expose that node without the FrameLayout
+  // root's older "LudoMada Premium Home" label. Accept either verified marker.
+  return treeHas(tree, "LudoMada Premium Home") ||
+    treeHas(tree, "HOME_IMAGE_FRAME_COMPLETE");
+}
+
+function hasHomeJouerTarget(tree) {
+  return (tree?.elements || []).some(node =>
+    [node.text, node.contentDesc, node.contentDescription, node.description, node.label]
+      .some(value => value === "HOME_ACTION_JOUER")
+  );
 }
 
 function returnToHome() {
   for (let attempt = 0; attempt < 3; attempt++) {
     let tree = readTree();
     if (isPremiumHome(tree)) return true;
+    if (!treeHas(tree, "← Accueil")) {
+      tree = scrollToVisibleText("← Accueil", 4);
+    }
     if (!treeHas(tree, "← Accueil")) return false;
     tapTreeNode(tree, "← Accueil");
     waitStable(650);
@@ -321,17 +409,28 @@ function returnToHome() {
 }
 
 function openModePickerFromHome() {
-  // The static 16:9 Home reference places its primary JOUER hitbox around
-  // logical x=975..1245 / y=345..485 on a 1280×720 canvas.
-  // Probe the centre first, then nearby points for scaling/inset variance.
+  // Prefer the real semantic hitbox. Coordinate probes remain a fallback for
+  // older APKs that do not yet expose HOME_ACTION_JOUER.
   const points = [
     "0.86,0.575", "0.84,0.575", "0.88,0.575",
     "0.86,0.55", "0.86,0.60", "0.82,0.55", "0.90,0.60"
   ];
   let lastLabels = [];
+  let accessibleTargetAttempted = false;
+
+  let tree = readTree();
+  if (!isPremiumHome(tree) && returnToHome()) tree = readTree();
+  if (isPremiumHome(tree) && hasHomeJouerTarget(tree)) {
+    accessibleTargetAttempted = true;
+    tapTreeNode(tree, "HOME_ACTION_JOUER");
+    waitStable(500);
+    const afterAccessibleTap = readTree();
+    lastLabels = treeLabels(afterAccessibleTap);
+    if (modePickerIsVisible(afterAccessibleTap)) return afterAccessibleTap;
+  }
 
   for (const point of points) {
-    let tree = readTree();
+    tree = readTree();
     if (!isPremiumHome(tree)) {
       if (!returnToHome()) {
         lastLabels = treeLabels(tree);
@@ -348,20 +447,23 @@ function openModePickerFromHome() {
     waitStable(450);
     const afterTap = readTree();
     lastLabels = treeLabels(afterTap);
-
-    // Require all three signals in the same fresh tree; never accept a stale
-    // GAME_MODE_DIALOG marker if the app actually navigated to Events/Wallet.
     if (modePickerIsVisible(afterTap)) return afterTap;
 
-    // A wrong coordinate may activate another Home card. Return explicitly to
-    // Home before probing the next point, rather than cascading through screens.
     if (!isPremiumHome(afterTap) && treeHas(afterTap, "← Accueil")) {
       returnToHome();
     }
     if (!tap.ok) waitStable(200);
   }
 
-  throw new Error("Could not open the Home JOUER mode picker using verified hitbox candidates. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
+  const diagnosticShot = runAllowError(
+    "screenshot", "--session", session, "--out", "ramus-home-jouer-failure.jpg"
+  );
+  console.error("RAMUS_HOME_JOUER_DIAGNOSTIC=" + JSON.stringify({
+    accessibleTargetAttempted,
+    lastLabels,
+    screenshotCaptured: diagnosticShot.ok
+  }).slice(0, 5000));
+  throw new Error("Could not open the Home JOUER mode picker after semantic activation and coordinate fallback. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
 }
 
 function pendingDiceValue() {
@@ -916,10 +1018,14 @@ try {
   tapTreeNode(modeTree, "MODE_ONLINE");
   waitStable(700);
   let lobbyTree = readTree();
-  if (!treeHas(lobbyTree, "Choisir la mise") || !treeHas(lobbyTree, "Hiditra amin'ny room")) {
-    throw new Error("Online mode did not open the lobby entry screen. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+  if (!treeHas(lobbyTree, "Choisir la mise")) {
+    throw new Error("Online mode did not open the stake-selection lobby. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
-  console.log("JOUER→ONLINE LOBBY PASS");
+  lobbyTree = scrollToVisibleText("Hiditra amin'ny room", 4);
+  if (!treeHas(lobbyTree, "Hiditra amin'ny room")) {
+    throw new Error("Online lobby opened, but its room-entry action did not become visible after scrolling. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+  }
+  console.log("JOUER→ONLINE LOBBY PASS (room-entry action verified after scroll)");
 
   if (!returnToHome()) throw new Error("Could not return from online lobby to Premium Home");
   modeTree = openModePickerFromHome();
