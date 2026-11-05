@@ -20,6 +20,10 @@ class GameplayEnvironmentAssetTest {
         assertTrue(parts.containsKey("GMENV_Apron_X_1"))
         assertTrue(parts.containsKey("GMENV_Table_Leg_L_N"))
         assertTrue(parts.containsKey("GMENV_Leg_Ferrule_R_S"))
+        assertTrue(
+            "All four Blender PBR materials are authored double-sided",
+            parts.values.all { it.doubleSided }
+        )
 
         val tabletop = requireNotNull(parts["GMENV_Tabletop_Walnut"]) {
             "The tabletop node must keep its Blender material"
