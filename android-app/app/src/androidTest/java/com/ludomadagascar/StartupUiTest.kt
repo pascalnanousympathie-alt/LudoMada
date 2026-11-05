@@ -256,7 +256,15 @@ class StartupUiTest {
             "Returning from lobby must redraw the static Home image",
             device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
         )
-        captureHomeImageScreenshot(device, context, activity!!)
+        var homeActivity: MainActivity? = null
+        instrumentation.runOnMainSync {
+            homeActivity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must be resumed for screenshot capture", homeActivity)
+        }
+        captureHomeImageScreenshot(device, context, homeActivity!!)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
