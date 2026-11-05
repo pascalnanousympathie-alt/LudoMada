@@ -47,13 +47,17 @@ class HomeEnvironmentCompositionTest {
     }
 
     @Test
-    fun onlyPerimeterRocksCastHomeEnvironmentShadows() {
-        listOf("ENV_Rock_00", "ENV_Rock_01", "ENV_Rock_02", "ENV_Rock_03")
-            .forEach { assertTrue(HomeEnvironmentComposition.castsHomeEnvironmentShadow(it)) }
+    fun homeTerrainAndPerimeterRocksCastShadowsButGrassAndSkyDoNot() {
+        listOf(
+            "ENV_Terrain_HighDetail",
+            "ENV_Rock_00",
+            "ENV_Rock_01",
+            "ENV_Rock_02",
+            "ENV_Rock_03"
+        ).forEach { assertTrue(HomeEnvironmentComposition.castsHomeEnvironmentShadow(it)) }
         listOf(
             "ENV_Rock_04",
             "ENV_Ground_PBR",
-            "ENV_Terrain_HighDetail",
             "ENV_Grass_00",
             "ENV_Sky_Dome"
         ).forEach { assertTrue(!HomeEnvironmentComposition.castsHomeEnvironmentShadow(it)) }
