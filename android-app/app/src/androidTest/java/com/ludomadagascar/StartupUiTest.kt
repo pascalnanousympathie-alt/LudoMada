@@ -286,6 +286,10 @@ class StartupUiTest {
         )
         device.waitForIdle()
         assertTrue(
+            "Offline selection must dismiss the native game-mode dialog",
+            device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
+        )
+        assertTrue(
             "Offline menu screen must be rendered after the physical button tap",
             device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 8000)
         )
