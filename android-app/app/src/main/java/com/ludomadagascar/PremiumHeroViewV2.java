@@ -29,6 +29,7 @@ import java.util.Locale;
 public final class PremiumHeroViewV2 extends FrameLayout {
     private static final String HOME_BASE = "LudoMada Premium Home";
     private final HomeImageView homeImage;
+    private final View jouerAccessibilityTarget;
 
     public PremiumHeroViewV2(Context context) {
         super(context);
@@ -44,10 +45,44 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         addView(homeImage, new FrameLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT
         ));
+
+        // Expose the primary visual hitbox as a real, invisible accessibility
+        // target. This keeps touch coordinates and assistive/cloud automation
+        // aligned with the exact same bitmap destination rectangle.
+        jouerAccessibilityTarget = new View(context);
+        jouerAccessibilityTarget.setContentDescription("HOME_ACTION_JOUER");
+        jouerAccessibilityTarget.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+        jouerAccessibilityTarget.setFocusable(true);
+        jouerAccessibilityTarget.setClickable(true);
+        jouerAccessibilityTarget.setOnClickListener(v -> call("gameModeDialog"));
+        addView(jouerAccessibilityTarget, new FrameLayout.LayoutParams(
+                1, 1, android.view.Gravity.TOP | android.view.Gravity.LEFT
+        ));
     }
 
     public View getHomeImageView() {
         return homeImage;
+    }
+
+    public View getJouerAccessibilityTarget() {
+        return jouerAccessibilityTarget;
+    }
+
+    @Override
+    protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+        super.onLayout(changed, left, top, right, bottom);
+        RectF bounds = homeImage.getGameModeHitboxBounds();
+        int targetLeft = Math.max(0, Math.round(bounds.left));
+        int targetTop = Math.max(0, Math.round(bounds.top));
+        int targetRight = Math.min(getWidth(), Math.round(bounds.right));
+        int targetBottom = Math.min(getHeight(), Math.round(bounds.bottom));
+        if (targetRight <= targetLeft || targetBottom <= targetTop) {
+            jouerAccessibilityTarget.setVisibility(View.INVISIBLE);
+            jouerAccessibilityTarget.layout(0, 0, 0, 0);
+            return;
+        }
+        jouerAccessibilityTarget.setVisibility(View.VISIBLE);
+        jouerAccessibilityTarget.layout(targetLeft, targetTop, targetRight, targetBottom);
     }
 
     private Activity activityContext() {
@@ -179,6 +214,18 @@ public final class PremiumHeroViewV2 extends FrameLayout {
                     + " | IMAGE_CONFIG=RGB_565";
             firstFramePublished = false;
             invalidate();
+        }
+
+        RectF getGameModeHitboxBounds() {
+            updateDestination();
+            float scaleX = destination.width() / 1280f;
+            float scaleY = destination.height() / 720f;
+            return new RectF(
+                    destination.left + 975f * scaleX,
+                    destination.top + 345f * scaleY,
+                    destination.left + 1245f * scaleX,
+                    destination.top + 485f * scaleY
+            );
         }
 
         private void updateDestination() {

@@ -110,6 +110,7 @@ jobs:
             ramus-pre-assertion-screen.jpg
             ramus-screen.jpg
             ramus-home-screen.jpg
+            ramus-home-jouer-failure.jpg
           if-no-files-found: warn
           retention-days: 7
 

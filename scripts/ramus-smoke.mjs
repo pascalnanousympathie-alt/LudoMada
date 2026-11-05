@@ -101,7 +101,11 @@ function selfTestFramebufferReadback() {
     { text: "Jouer" },
     { contentDesc: "LudoMada Premium Home" }
   ] };
+  const accessibleHomeTree = { elements: [{ contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }] };
+  const inaccessibleHomeTree = { elements: [{ contentDesc: "LudoMada Premium Home" }] };
   cases.push(
+    ["Home JOUER accessibility target detected", hasHomeJouerTarget(accessibleHomeTree)],
+    ["Home without JOUER target rejected", !hasHomeJouerTarget(inaccessibleHomeTree)],
     ["decoded lightweight 4K Home reference accepted", parseHomeImageReadiness(referenceHomeTree).ok],
     ["undersized Home image rejected", !parseHomeImageReadiness(undersizedHomeTree).ok],
     ["wrong Home image source rejected", !parseHomeImageReadiness(wrongHomeSourceTree).ok],
@@ -348,6 +352,13 @@ function isPremiumHome(tree) {
   return treeHas(tree, "LudoMada Premium Home");
 }
 
+function hasHomeJouerTarget(tree) {
+  return (tree?.elements || []).some(node =>
+    [node.text, node.contentDesc, node.contentDescription, node.description, node.label]
+      .some(value => value === "HOME_ACTION_JOUER")
+  );
+}
+
 function returnToHome() {
   for (let attempt = 0; attempt < 3; attempt++) {
     let tree = readTree();
@@ -362,17 +373,28 @@ function returnToHome() {
 }
 
 function openModePickerFromHome() {
-  // The static 16:9 Home reference places its primary JOUER hitbox around
-  // logical x=975..1245 / y=345..485 on a 1280×720 canvas.
-  // Probe the centre first, then nearby points for scaling/inset variance.
+  // Prefer the real semantic hitbox. Coordinate probes remain a fallback for
+  // older APKs that do not yet expose HOME_ACTION_JOUER.
   const points = [
     "0.86,0.575", "0.84,0.575", "0.88,0.575",
     "0.86,0.55", "0.86,0.60", "0.82,0.55", "0.90,0.60"
   ];
   let lastLabels = [];
+  let accessibleTargetAttempted = false;
+
+  let tree = readTree();
+  if (!isPremiumHome(tree) && returnToHome()) tree = readTree();
+  if (isPremiumHome(tree) && hasHomeJouerTarget(tree)) {
+    accessibleTargetAttempted = true;
+    tapTreeNode(tree, "HOME_ACTION_JOUER");
+    waitStable(500);
+    const afterAccessibleTap = readTree();
+    lastLabels = treeLabels(afterAccessibleTap);
+    if (modePickerIsVisible(afterAccessibleTap)) return afterAccessibleTap;
+  }
 
   for (const point of points) {
-    let tree = readTree();
+    tree = readTree();
     if (!isPremiumHome(tree)) {
       if (!returnToHome()) {
         lastLabels = treeLabels(tree);
@@ -389,20 +411,23 @@ function openModePickerFromHome() {
     waitStable(450);
     const afterTap = readTree();
     lastLabels = treeLabels(afterTap);
-
-    // Require all three signals in the same fresh tree; never accept a stale
-    // GAME_MODE_DIALOG marker if the app actually navigated to Events/Wallet.
     if (modePickerIsVisible(afterTap)) return afterTap;
 
-    // A wrong coordinate may activate another Home card. Return explicitly to
-    // Home before probing the next point, rather than cascading through screens.
     if (!isPremiumHome(afterTap) && treeHas(afterTap, "← Accueil")) {
       returnToHome();
     }
     if (!tap.ok) waitStable(200);
   }
 
-  throw new Error("Could not open the Home JOUER mode picker using verified hitbox candidates. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
+  const diagnosticShot = runAllowError(
+    "screenshot", "--session", session, "--out", "ramus-home-jouer-failure.jpg"
+  );
+  console.error("RAMUS_HOME_JOUER_DIAGNOSTIC=" + JSON.stringify({
+    accessibleTargetAttempted,
+    lastLabels,
+    screenshotCaptured: diagnosticShot.ok
+  }).slice(0, 5000));
+  throw new Error("Could not open the Home JOUER mode picker after semantic activation and coordinate fallback. Last accessibility tree: " + JSON.stringify(lastLabels).slice(0, 7000));
 }
 
 function pendingDiceValue() {

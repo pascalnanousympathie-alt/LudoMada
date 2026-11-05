@@ -33,8 +33,18 @@ class StartupUiTest {
         val hero = content.getChildAt(0) as? PremiumHeroViewV2
         assertNotNull("Home must use the static reference-image container", hero)
         val imageHost = hero ?: throw AssertionError("Premium Home image root is missing")
-        assertTrue("Home must contain only one image view, not a GLSurfaceView", imageHost.childCount == 1)
+        assertTrue(
+            "Home must contain its static image and a separate accessible JOUER hitbox",
+            imageHost.childCount == 2
+        )
         assertTrue("Home image child must not be a live 3D renderer", imageHost.getChildAt(0) !is LudoBoardView)
+        assertTrue(
+            "JOUER hitbox must be a visible enabled accessibility target",
+            imageHost.getJouerAccessibilityTarget().isShown &&
+                imageHost.getJouerAccessibilityTarget().isClickable &&
+                imageHost.getJouerAccessibilityTarget().isEnabled &&
+                imageHost.getJouerAccessibilityTarget().contentDescription == "HOME_ACTION_JOUER"
+        )
         assertTrue(
             "The Home image view must publish the decoded 4K reference marker",
             imageHost.getHomeImageView().contentDescription.toString().contains("HOME_IMAGE_FRAME_COMPLETE")
@@ -158,15 +168,13 @@ class StartupUiTest {
     }
 
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
-        val home = device.findObject(By.descContains("LudoMada Premium Home"))
-        val bounds = home.visibleBounds
-        val scale = minOf(bounds.width() / 1280f, bounds.height() / 720f)
-        val xOffset = (bounds.width() - 1280f * scale) / 2f
-        val yOffset = (bounds.height() - 720f * scale) / 2f
-        // The static 4K reference keeps JOUER on the right-side primary panel.
-        val x = bounds.left + (xOffset + 1100f * scale).toInt()
-        val y = bounds.top + (yOffset + 414f * scale).toInt()
-        assertTrue("Home JOUER tap should be accepted", device.click(x, y))
+        val play = device.findObject(By.desc("HOME_ACTION_JOUER"))
+        assertTrue(
+            "Home must expose its JOUER accessibility target",
+            device.wait(Until.hasObject(By.desc("HOME_ACTION_JOUER")), 3000)
+        )
+        assertTrue("Home JOUER accessibility target must be clickable", play.isClickable)
+        play.click()
     }
 
     @Test
