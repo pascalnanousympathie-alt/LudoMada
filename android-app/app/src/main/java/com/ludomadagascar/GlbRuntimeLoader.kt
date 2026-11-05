@@ -93,6 +93,16 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 it == "LM_Table_Deep_Base"
         }
 
+    /**
+     * Lightweight authored walnut tabletop for the GLES3 gameplay renderer.
+     * It is separate from the outdoor Home environment and remains optional:
+     * the renderer falls back to its procedural tabletop if this asset fails.
+     */
+    fun loadGameplayEnvironmentParts(): Map<String, Part> =
+        loadParts(GameplayEnvironmentComposition.BLENDER_ASSET_PATH) {
+            GameplayEnvironmentComposition.acceptsBlenderGameplayPart(it)
+        }
+
     fun loadEnvironmentParts(): Map<String, Part> =
         loadParts("3d/ludomada-environment-final.glb") {
             it.startsWith("ENV_") && !it.startsWith("ENV_Baobab_")
