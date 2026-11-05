@@ -5,18 +5,22 @@ import kotlin.math.ceil
 import kotlin.math.min
 
 /**
- * Fixed-size, allocation-free-per-frame window for renderer diagnostics.
+ * Fixed-size, allocation-free-per-frame renderer diagnostics.
  *
- * Frame intervals describe callback cadence. GL submission durations describe
- * CPU time spent issuing renderer commands; they do NOT measure asynchronous GPU
- * execution time. Snapshots are created only at the low-frequency report boundary.
+ * A GLSurfaceView using RENDERMODE_WHEN_DIRTY can sit idle between user actions.
+ * Long callback gaps are therefore excluded from active-frame FPS calculations;
+ * GL submission CPU time is measured independently for every callback.
+ *
+ * GL submission duration measures CPU time issuing GL commands, not asynchronous
+ * GPU execution. Snapshot allocation/sorting occurs only at the 5-second report boundary.
  */
 internal data class RenderFramePerfSnapshot(
-    val sampleCount: Int,
-    val estimatedFps: Float,
-    val frameIntervalP50Ms: Float,
-    val frameIntervalP95Ms: Float,
-    val frameIntervalMaxMs: Float,
+    val activeFrameSampleCount: Int,
+    val activeFrameFps: Float?,
+    val activeFrameIntervalP50Ms: Float?,
+    val activeFrameIntervalP95Ms: Float?,
+    val activeFrameIntervalMaxMs: Float?,
+    val glSubmissionSampleCount: Int,
     val glSubmitP50Ms: Float,
     val glSubmitP95Ms: Float,
     val glSubmitMaxMs: Float
@@ -24,83 +28,96 @@ internal data class RenderFramePerfSnapshot(
 
 internal class RenderFrameTelemetry(
     private val windowSize: Int = 120,
-    private val reportIntervalNanos: Long = 5_000_000_000L
+    private val reportIntervalNanos: Long = 5_000_000_000L,
+    private val maxActiveFrameIntervalNanos: Long = 250_000_000L
 ) {
     init {
         require(windowSize >= 2) { "windowSize must be at least 2" }
         require(reportIntervalNanos > 0L) { "reportIntervalNanos must be positive" }
+        require(maxActiveFrameIntervalNanos > 0L) { "maxActiveFrameIntervalNanos must be positive" }
     }
 
-    private val frameIntervalsNanos = LongArray(windowSize)
+    private val activeIntervalsNanos = LongArray(windowSize)
     private val glSubmitNanos = LongArray(windowSize)
     private val percentileScratch = LongArray(windowSize)
-    private var nextIndex = 0
-    private var sampleCount = 0
+    private var nextActiveIndex = 0
+    private var nextSubmissionIndex = 0
+    private var activeFrameSampleCount = 0
+    private var glSubmissionSampleCount = 0
     private var hasPreviousFrame = false
     private var previousFrameStartNanos = 0L
     private var nextReportAtNanos = 0L
 
-    /** Returns a snapshot only at the configured low-frequency reporting boundary. */
     fun record(frameStartNanos: Long, glSubmissionDurationNanos: Long): RenderFramePerfSnapshot? {
-        if (!hasPreviousFrame) {
-            hasPreviousFrame = true
-            previousFrameStartNanos = frameStartNanos
-            nextReportAtNanos = frameStartNanos + reportIntervalNanos
+        if (frameStartNanos <= 0L) return null
+
+        if (hasPreviousFrame && frameStartNanos > previousFrameStartNanos) {
+            val interval = frameStartNanos - previousFrameStartNanos
+            // Long gaps in WHEN_DIRTY mode usually mean no frame was requested.
+            // Keep them out of active FPS rather than reporting false sub-1 FPS.
+            if (interval <= maxActiveFrameIntervalNanos) {
+                activeIntervalsNanos[nextActiveIndex] = interval
+                nextActiveIndex = (nextActiveIndex + 1) % windowSize
+                activeFrameSampleCount = min(windowSize, activeFrameSampleCount + 1)
+            }
+        } else if (hasPreviousFrame && frameStartNanos <= previousFrameStartNanos) {
             return null
         }
 
-        // Ignore duplicate/out-of-order timestamps without corrupting the cadence window.
-        if (frameStartNanos <= previousFrameStartNanos) return null
-
-        frameIntervalsNanos[nextIndex] = frameStartNanos - previousFrameStartNanos
-        glSubmitNanos[nextIndex] = glSubmissionDurationNanos.coerceAtLeast(0L)
-        nextIndex = (nextIndex + 1) % windowSize
-        sampleCount = min(windowSize, sampleCount + 1)
+        hasPreviousFrame = true
         previousFrameStartNanos = frameStartNanos
+        glSubmitNanos[nextSubmissionIndex] = glSubmissionDurationNanos.coerceAtLeast(0L)
+        nextSubmissionIndex = (nextSubmissionIndex + 1) % windowSize
+        glSubmissionSampleCount = min(windowSize, glSubmissionSampleCount + 1)
 
-        if (frameStartNanos < nextReportAtNanos || sampleCount == 0) return null
+        if (nextReportAtNanos == 0L) nextReportAtNanos = frameStartNanos + reportIntervalNanos
+        if (frameStartNanos < nextReportAtNanos) return null
         nextReportAtNanos = frameStartNanos + reportIntervalNanos
         return createSnapshot()
     }
 
     fun reset() {
-        Arrays.fill(frameIntervalsNanos, 0L)
+        Arrays.fill(activeIntervalsNanos, 0L)
         Arrays.fill(glSubmitNanos, 0L)
         Arrays.fill(percentileScratch, 0L)
-        nextIndex = 0
-        sampleCount = 0
+        nextActiveIndex = 0
+        nextSubmissionIndex = 0
+        activeFrameSampleCount = 0
+        glSubmissionSampleCount = 0
         hasPreviousFrame = false
         previousFrameStartNanos = 0L
         nextReportAtNanos = 0L
     }
 
     private fun createSnapshot(): RenderFramePerfSnapshot {
-        var totalIntervalNanos = 0.0
-        for (i in 0 until sampleCount) {
-            totalIntervalNanos += frameIntervalsNanos[i].toDouble()
-        }
-        val fps = if (totalIntervalNanos > 0.0) {
-            (sampleCount.toDouble() * 1_000_000_000.0 / totalIntervalNanos).toFloat()
-        } else {
-            0f
-        }
+        val activeFps = if (activeFrameSampleCount >= 2) {
+            var totalIntervalNanos = 0.0
+            for (i in 0 until activeFrameSampleCount) {
+                totalIntervalNanos += activeIntervalsNanos[i].toDouble()
+            }
+            if (totalIntervalNanos > 0.0) {
+                (activeFrameSampleCount.toDouble() * 1_000_000_000.0 / totalIntervalNanos).toFloat()
+            } else null
+        } else null
 
         return RenderFramePerfSnapshot(
-            sampleCount = sampleCount,
-            estimatedFps = fps,
-            frameIntervalP50Ms = percentileMillis(frameIntervalsNanos, 0.50),
-            frameIntervalP95Ms = percentileMillis(frameIntervalsNanos, 0.95),
-            frameIntervalMaxMs = percentileMillis(frameIntervalsNanos, 1.0),
-            glSubmitP50Ms = percentileMillis(glSubmitNanos, 0.50),
-            glSubmitP95Ms = percentileMillis(glSubmitNanos, 0.95),
-            glSubmitMaxMs = percentileMillis(glSubmitNanos, 1.0)
+            activeFrameSampleCount = activeFrameSampleCount,
+            activeFrameFps = activeFps,
+            activeFrameIntervalP50Ms = percentileMillis(activeIntervalsNanos, activeFrameSampleCount, 0.50),
+            activeFrameIntervalP95Ms = percentileMillis(activeIntervalsNanos, activeFrameSampleCount, 0.95),
+            activeFrameIntervalMaxMs = percentileMillis(activeIntervalsNanos, activeFrameSampleCount, 1.0),
+            glSubmissionSampleCount = glSubmissionSampleCount,
+            glSubmitP50Ms = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 0.50) ?: 0f,
+            glSubmitP95Ms = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 0.95) ?: 0f,
+            glSubmitMaxMs = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 1.0) ?: 0f
         )
     }
 
-    private fun percentileMillis(samples: LongArray, percentile: Double): Float {
-        for (i in 0 until sampleCount) percentileScratch[i] = samples[i]
-        Arrays.sort(percentileScratch, 0, sampleCount)
-        val rank = ceil(percentile * sampleCount.toDouble()).toInt().coerceIn(1, sampleCount)
+    private fun percentileMillis(samples: LongArray, count: Int, percentile: Double): Float? {
+        if (count == 0) return null
+        for (i in 0 until count) percentileScratch[i] = samples[i]
+        Arrays.sort(percentileScratch, 0, count)
+        val rank = ceil(percentile * count.toDouble()).toInt().coerceIn(1, count)
         return percentileScratch[rank - 1] / 1_000_000f
     }
 }
