@@ -119,6 +119,45 @@ class HomeEnvironmentCoordinateSpaceTest {
     }
 
     @Test
+    fun grassBaseAlignsToSlopedGroundAndPreservesBladeHeightAndSourceArrays() {
+        val groundPositions = floatArrayOf(
+            0f, 0f, 1.0f,
+            2f, 0f, 1.5f,
+            0f, 2f, 2.0f,
+            2f, 2f, 2.5f
+        )
+        val groundIndices = shortArrayOf(0, 1, 2, 1, 3, 2)
+        val sourceGrass = floatArrayOf(
+            0.5f, 0.5f, 0.25f,
+            1.0f, 0.5f, 0.25f,
+            0.75f, 0.75f, 0.80f
+        )
+
+        val aligned = HomeEnvironmentCoordinateSpace.alignMeshBaseToGroundSurface(
+            sourceGrass,
+            groundPositions,
+            groundIndices
+        )
+
+        // The base centroid is (0.75, 0.5); the sloped ground there is 1.4375.
+        assertEquals(1.4375f, aligned[2], 0.0001f)
+        assertEquals(1.4375f, aligned[5], 0.0001f)
+        assertEquals(1.9875f, aligned[8], 0.0001f)
+        assertEquals(0.55f, aligned[8] - aligned[2], 0.0001f)
+        assertEquals(0.25f, sourceGrass[2], 0f)
+        assertEquals(0.80f, sourceGrass[8], 0f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsPropBaseOutsideTheTerrainMesh() {
+        HomeEnvironmentCoordinateSpace.alignMeshBaseToGroundSurface(
+            floatArrayOf(5f, 5f, 0f, 5.1f, 5f, 0f, 5f, 5.1f, 0.4f),
+            floatArrayOf(0f, 0f, 1f, 1f, 0f, 1f, 0f, 1f, 1f),
+            shortArrayOf(0, 1, 2)
+        )
+    }
+
+    @Test
     fun verticalReliefPreservesMeanElevationForAsymmetricTerrain() {
         val sourcePositions = floatArrayOf(
             -2f, 0f, 0.2f,

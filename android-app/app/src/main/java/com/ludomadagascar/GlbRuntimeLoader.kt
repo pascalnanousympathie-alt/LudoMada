@@ -93,34 +93,55 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 it == "LM_Table_Deep_Base"
         }
 
-    fun loadEnvironmentParts(): Map<String, Part> =
-        loadParts("3d/ludomada-environment-final.glb") {
+    fun loadEnvironmentParts(): Map<String, Part> {
+        val authoredParts = loadParts("3d/ludomada-environment-final.glb") {
             it.startsWith("ENV_") && !it.startsWith("ENV_Baobab_")
-        }.mapValues { (_, part) ->
+        }
+        val authoredGround = authoredParts.values.firstOrNull {
+            it.materialName == "ENV_Ground_PBR"
+        } ?: error("Home environment GLB is missing ENV_Ground_PBR")
+
+        // The terrain already spans the authored 24m × 24m landscape around the
+        // trees. Do not expand X/Y fourfold: that moves its horizon beyond the
+        // Home camera and makes the visible slopes look flat.
+        val orientation = HomeEnvironmentCoordinateSpace.faceGroundTowardWorldUp(
+            authoredGround.mesh.normals,
+            authoredGround.mesh.indices
+        )
+        val footprint = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+            authoredGround.mesh.positions,
+            orientation.normals,
+            authoredGround.mesh.uvsCopy(),
+            scale = HomeEnvironmentComposition.HOME_TERRAIN_FOOTPRINT_SCALE,
+            verticalReliefScale = HomeEnvironmentComposition.HOME_TERRAIN_VERTICAL_RELIEF_SCALE
+        )
+
+        var alignedGrassCount = 0
+        val transformed = authoredParts.mapValues { (_, part) ->
             when (part.materialName) {
-                "ENV_Ground_PBR" -> {
-                    // This authored terrain's +Z normals/winding point down after
-                    // the scene's -Z-up to +Y-up conversion. Flip only this surface.
-                    val orientation = HomeEnvironmentCoordinateSpace.faceGroundTowardWorldUp(
-                        part.mesh.normals,
-                        part.mesh.indices
+                "ENV_Ground_PBR" -> part.copy(
+                    mesh = LudoBoardView.Mesh(
+                        footprint.positions,
+                        footprint.normals,
+                        orientation.indices,
+                        footprint.uvs
                     )
-                    val footprint = HomeEnvironmentCoordinateSpace.expandGroundFootprint(
+                )
+                "ENV_Grass_PBR" -> {
+                    // Seat each grass clump on the transformed terrain while
+                    // preserving blade height and authored normals/UVs.
+                    val alignedPositions = HomeEnvironmentCoordinateSpace.alignMeshBaseToGroundSurface(
                         part.mesh.positions,
-                        orientation.normals,
-                        part.mesh.uvsCopy(),
-                        scale = 4f,
-                        // The authored terrain was designed at the same footprint
-                        // scale. Expanding only X/Z flattens it by 4x; restore part
-                        // of its native vertical proportion without shifting its mean.
-                        verticalReliefScale = 3.0f
+                        footprint.positions,
+                        orientation.indices
                     )
+                    alignedGrassCount++
                     part.copy(
                         mesh = LudoBoardView.Mesh(
-                            footprint.positions,
-                            footprint.normals,
-                            orientation.indices,
-                            footprint.uvs
+                            alignedPositions,
+                            part.mesh.normals,
+                            part.mesh.indices,
+                            part.mesh.uvsCopy()
                         )
                     )
                 }
@@ -142,6 +163,19 @@ internal class GlbRuntimeLoader(private val context: Context) {
                 else -> part
             }
         }
+        val grassPartCount = authoredParts.values.count { it.materialName == "ENV_Grass_PBR" }
+        check(grassPartCount > 0 && alignedGrassCount == grassPartCount) {
+            "Home terrain alignment incomplete: $alignedGrassCount/$grassPartCount grass parts"
+        }
+        android.util.Log.i(
+            "LudoMadaRender",
+            "HOME_TERRAIN_GEOMETRY footprint=${HomeEnvironmentComposition.HOME_TERRAIN_FOOTPRINT_SCALE}" +
+                " relief=${HomeEnvironmentComposition.HOME_TERRAIN_VERTICAL_RELIEF_SCALE}" +
+                " grass_contact=$alignedGrassCount/$grassPartCount" +
+                " vertices=${footprint.positions.size / 3}"
+        )
+        return transformed
+    }
 
     fun loadBaobabParts(): Map<String, Part> =
         loadParts("3d/environment/baobab-real.glb") { it.startsWith("baobab-tree-") }
