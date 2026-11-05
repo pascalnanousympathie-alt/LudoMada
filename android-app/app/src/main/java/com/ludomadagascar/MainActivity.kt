@@ -554,8 +554,17 @@ class MainActivity : Activity() {
             isClickable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnClickListener {
+                android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
                 dismissGameModeOverlay()
-                offlineMenu()
+                // Defer setContentView until the overlay's touch/accessibility dispatch
+                // has returned. This avoids replacing the content hierarchy mid-click
+                // on older Android releases (notably Android 8.1 / API 27).
+                window.decorView.post {
+                    if (!isFinishing && !isDestroyed) {
+                        offlineMenu()
+                        android.util.Log.i("LudoMada", "OFFLINE_MENU_RENDERED")
+                    }
+                }
             }
         }
         val online = Button(this).apply {
@@ -681,7 +690,15 @@ class MainActivity : Activity() {
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
-        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)))
+        val header = card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180))
+        // Stable accessibility marker for UiAutomator on Android 8.1 and newer.
+        val titleContainer = header.getChildAt(1) as? LinearLayout
+        titleContainer?.getChildAt(0)?.apply {
+            contentDescription = "OFFLINE_MENU_SCREEN"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        add(header)
+        android.util.Log.i("LudoMada", "OFFLINE_MENU_CONTENT_READY")
         add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
         add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
         add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
