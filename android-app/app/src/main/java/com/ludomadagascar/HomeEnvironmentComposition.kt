@@ -35,9 +35,14 @@ internal object HomeEnvironmentComposition {
     fun isHomeCentrelineOccluderPart(nodeName: String): Boolean =
         nodeName == "ENV_Rock_04"
 
-    /** Only perimeter rocks cast environment shadows; ground/grass/sky remain receivers/background. */
+    /**
+     * Let the transformed terrain cast into the Home shadow map so its authored
+     * height variation is legible under directional light. Perimeter rocks stay
+     * casters; grass and the HDRI dome remain receivers/background only.
+     */
     fun castsHomeEnvironmentShadow(nodeName: String): Boolean =
-        nodeName.startsWith("ENV_Rock_") && !isHomeCentrelineOccluderPart(nodeName)
+        nodeName == "ENV_Terrain_HighDetail" ||
+            (nodeName.startsWith("ENV_Rock_") && !isHomeCentrelineOccluderPart(nodeName))
 
     /**
      * A/B diagnostic: exclude large Home baobab instances from the low-resolution
