@@ -555,14 +555,30 @@ class MainActivity : Activity() {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnTouchListener { view, event ->
                 when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN,
-                    android.view.MotionEvent.ACTION_UP,
-                    android.view.MotionEvent.ACTION_CANCEL -> android.util.Log.i(
-                        "LudoMada",
-                        "GAME_MODE_OFFLINE_TOUCH action=${event.actionMasked} local=${event.x},${event.y} enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
-                    )
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        view.isPressed = true
+                        android.util.Log.i(
+                            "LudoMada",
+                            "GAME_MODE_OFFLINE_TOUCH_DOWN enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
+                        )
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        view.isPressed = false
+                        android.util.Log.i(
+                            "LudoMada",
+                            "GAME_MODE_OFFLINE_TOUCH_UP enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
+                        )
+                        view.performClick()
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> {
+                        view.isPressed = false
+                        android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_TOUCH_CANCEL")
+                        true
+                    }
+                    else -> true
                 }
-                false
             }
             setOnClickListener {
                 android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
