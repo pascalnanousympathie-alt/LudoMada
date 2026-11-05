@@ -11,11 +11,11 @@ internal data class HomeBaobabPlacement(
 )
 
 internal object HomeEnvironmentComposition {
-    // The authored terrain is already 24m × 24m around the baobab placements.
-    // Keep that footprint: a fourfold expansion pushes the horizon outside the
-    // Home camera and makes the visible terrain relief appear almost planar.
+    // The authored terrain is 24m × 24m. Keep its footprint and exaggerate
+    // measured source relief: P10–P90 is about 0.552 source units, so 5x yields
+    // about 2.76m of central height variation across the 24m landscape.
     const val HOME_TERRAIN_FOOTPRINT_SCALE = 1.0f
-    const val HOME_TERRAIN_VERTICAL_RELIEF_SCALE = 3.0f
+    const val HOME_TERRAIN_VERTICAL_RELIEF_SCALE = 5.0f
     // Baobabs deliberately frame both sides of the Home scene. The centreline
     // stays empty at every depth so the wordmark and tabletop never sit behind a trunk.
     private val placements = listOf(

@@ -84,18 +84,22 @@ function selfTestFramebufferReadback() {
     ["missing log rejected", !parseFramebufferReadback(null, "scene_fbo").ok]
   ];
   const pbrHomeTree = { elements: [{ contentDesc:
-    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=41 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=41 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95 | TERRAIN_FOOTPRINT=1.0 | TERRAIN_RELIEF=5.0 | GRASS_CONTACT=34/34 | TERRAIN_VERTICES=4225"
   }] };
   const fallbackHomeTree = { elements: [{ contentDesc:
     "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES2_GLB | ENV_PARTS=0 | BAOBAB_PARTS=0 | HERO_PARTS=6 | BOARD_PARTS=95"
   }] };
   const incompleteHomeTree = { elements: [{ contentDesc:
-    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=0 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=0 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95 | TERRAIN_FOOTPRINT=1.0 | TERRAIN_RELIEF=5.0 | GRASS_CONTACT=34/34 | TERRAIN_VERTICES=4225"
+  }] };
+  const incompleteTerrainHomeTree = { elements: [{ contentDesc:
+    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=41 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95 | TERRAIN_FOOTPRINT=1.0 | TERRAIN_RELIEF=3.0 | GRASS_CONTACT=33/34 | TERRAIN_VERTICES=4225"
   }] };
   cases.push(
     ["complete GLES3 Home readiness marker", parseHomePreviewReadiness(pbrHomeTree).ok],
     ["explicit GLES2 Home fallback marker", parseHomePreviewReadiness(fallbackHomeTree).ok],
     ["incomplete GLES3 Home assets rejected", !parseHomePreviewReadiness(incompleteHomeTree).ok],
+    ["insufficient terrain relief and incomplete grass contact rejected", !parseHomePreviewReadiness(incompleteTerrainHomeTree).ok],
     ["missing Home readiness marker rejected", !parseHomePreviewReadiness({ elements: [] }).ok]
   );
   const failed = cases.filter(([, passed]) => !passed);
@@ -261,15 +265,34 @@ function parseHomePreviewReadiness(tree) {
     const match = marker.match(pattern);
     return match ? Number(match[1]) : 0;
   };
+  const grassMatch = marker.match(/GRASS_CONTACT=(\d+)\/(\d+)/);
   const counts = {
     environment: readCount(/ENV_PARTS=(\d+)/),
     baobab: readCount(/BAOBAB_PARTS=(\d+)/),
     hero: readCount(/HERO_PARTS=(\d+)/),
     board: readCount(/BOARD_PARTS=(\d+)/),
+    terrainFootprint: Number(marker.match(/TERRAIN_FOOTPRINT=([0-9.]+)/)?.[1] || 0),
+    terrainRelief: Number(marker.match(/TERRAIN_RELIEF=([0-9.]+)/)?.[1] || 0),
+    grassAligned: grassMatch ? Number(grassMatch[1]) : 0,
+    grassTotal: grassMatch ? Number(grassMatch[2]) : 0,
+    terrainVertices: readCount(/TERRAIN_VERTICES=(\d+)/),
   };
   if (renderer === "GLES3_PBR") {
-    const complete = Object.values(counts).every((value) => Number.isSafeInteger(value) && value > 0);
-    return { ok: complete, renderer, counts, reason: complete ? null : "incomplete_gles3_asset_counts" };
+    const assetCountsValid = [counts.environment, counts.baobab, counts.hero, counts.board]
+      .every((value) => Number.isSafeInteger(value) && value > 0);
+    const terrainContractValid =
+      Number.isFinite(counts.terrainFootprint) && counts.terrainFootprint === 1 &&
+      Number.isFinite(counts.terrainRelief) && counts.terrainRelief >= 5 &&
+      Number.isSafeInteger(counts.grassAligned) && counts.grassAligned > 0 &&
+      counts.grassAligned === counts.grassTotal &&
+      Number.isSafeInteger(counts.terrainVertices) && counts.terrainVertices >= 4000;
+    const complete = assetCountsValid && terrainContractValid;
+    return {
+      ok: complete,
+      renderer,
+      counts,
+      reason: complete ? null : assetCountsValid ? "incomplete_home_terrain_contract" : "incomplete_gles3_asset_counts"
+    };
   }
   if (renderer === "GLES2_GLB") {
     const complete = counts.hero > 0 && counts.board > 0 &&
