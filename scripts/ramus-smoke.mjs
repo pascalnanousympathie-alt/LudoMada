@@ -303,6 +303,30 @@ function treeHas(tree, value) {
   return treeLabels(tree).some((label) => label.includes(value));
 }
 
+function scrollToVisibleText(value, maxSwipes = 4) {
+  let tree = readTree();
+  if (treeHas(tree, value)) return tree;
+
+  for (let attempt = 0; attempt < maxSwipes; attempt++) {
+    // The main screens use a ScrollView. In landscape the online lobby content
+    // can extend below the 720px viewport; swipe upward to reveal its lower
+    // controls, then reacquire the accessibility tree after every gesture.
+    const swipe = runAllowError(
+      "swipe", "0.5,0.82", "0.5,0.22", "--session", session
+    );
+    if (!swipe.ok) {
+      throw new Error(
+        "Could not scroll to visible UI text " + value + ": " +
+        JSON.stringify(swipe.value).slice(0, 1200)
+      );
+    }
+    waitStable(350);
+    tree = readTree();
+    if (treeHas(tree, value)) return tree;
+  }
+  return tree;
+}
+
 function parseHomeImageReadiness(tree) {
   const marker = treeLabels(tree).find((label) => label.includes("HOME_IMAGE_FRAME_COMPLETE"));
   if (!marker) return { ok: false, reason: "missing_home_image_frame_marker" };
@@ -372,6 +396,9 @@ function returnToHome() {
   for (let attempt = 0; attempt < 3; attempt++) {
     let tree = readTree();
     if (isPremiumHome(tree)) return true;
+    if (!treeHas(tree, "← Accueil")) {
+      tree = scrollToVisibleText("← Accueil", 4);
+    }
     if (!treeHas(tree, "← Accueil")) return false;
     tapTreeNode(tree, "← Accueil");
     waitStable(650);
@@ -991,10 +1018,14 @@ try {
   tapTreeNode(modeTree, "MODE_ONLINE");
   waitStable(700);
   let lobbyTree = readTree();
-  if (!treeHas(lobbyTree, "Choisir la mise") || !treeHas(lobbyTree, "Hiditra amin'ny room")) {
-    throw new Error("Online mode did not open the lobby entry screen. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+  if (!treeHas(lobbyTree, "Choisir la mise")) {
+    throw new Error("Online mode did not open the stake-selection lobby. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
-  console.log("JOUER→ONLINE LOBBY PASS");
+  lobbyTree = scrollToVisibleText("Hiditra amin'ny room", 4);
+  if (!treeHas(lobbyTree, "Hiditra amin'ny room")) {
+    throw new Error("Online lobby opened, but its room-entry action did not become visible after scrolling. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+  }
+  console.log("JOUER→ONLINE LOBBY PASS (room-entry action verified after scroll)");
 
   if (!returnToHome()) throw new Error("Could not return from online lobby to Premium Home");
   modeTree = openModePickerFromHome();
