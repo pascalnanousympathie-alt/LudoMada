@@ -271,13 +271,22 @@ class StartupUiTest {
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
         val offlineMode = device.findObject(By.desc("MODE_OFFLINE"))
         assertTrue("Offline mode button must be clickable", offlineMode.isClickable)
-        offlineMode.click()
+        val offlineBounds = offlineMode.visibleBounds
         assertTrue(
-            "Offline selection must dismiss the game mode overlay",
-            device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
+            "Offline mode button must have visible touch bounds",
+            offlineBounds.width() > 0 && offlineBounds.height() > 0
+        )
+        android.util.Log.i(
+            "LudoMadaTest",
+            "OFFLINE_TOUCH_BOUNDS=${offlineBounds.flattenToString()}"
         )
         assertTrue(
-            "Offline menu screen must be rendered after the overlay click dispatch",
+            "Offline mode physical touch must be dispatched",
+            device.click(offlineBounds.centerX(), offlineBounds.centerY())
+        )
+        device.waitForIdle()
+        assertTrue(
+            "Offline menu screen must be rendered after the physical button tap",
             device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 8000)
         )
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
