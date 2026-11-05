@@ -92,11 +92,22 @@ function selfTestFramebufferReadback() {
   const wrongHomeSourceTree = { elements: [{ contentDesc:
     "LudoMada Premium Home | HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=UNKNOWN | IMAGE_WIDTH=2048 | IMAGE_HEIGHT=1152"
   }] };
+  const immersivePromptTree = { elements: [
+    { text: "Viewing full screen" },
+    { text: "To exit, swipe down from the top of your screen" },
+    { text: "Got it" }
+  ] };
+  const ordinaryTree = { elements: [
+    { text: "Jouer" },
+    { contentDesc: "LudoMada Premium Home" }
+  ] };
   cases.push(
     ["decoded lightweight 4K Home reference accepted", parseHomeImageReadiness(referenceHomeTree).ok],
     ["undersized Home image rejected", !parseHomeImageReadiness(undersizedHomeTree).ok],
     ["wrong Home image source rejected", !parseHomeImageReadiness(wrongHomeSourceTree).ok],
-    ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok]
+    ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok],
+    ["Android immersive confirmation prompt detected", isAndroidImmersivePrompt(immersivePromptTree)],
+    ["ordinary app screen is not treated as system prompt", !isAndroidImmersivePrompt(ordinaryTree)]
   );
   const failed = cases.filter(([, passed]) => !passed);
   for (const [name, passed] of cases) {
@@ -243,9 +254,39 @@ function treeLabels(tree) {
   );
 }
 
+function isAndroidImmersivePrompt(tree) {
+  const labels = treeLabels(tree);
+  return labels.some(label => label.includes("Viewing full screen")) &&
+    labels.some(label => label.includes("To exit, swipe down from the top of your screen")) &&
+    labels.some(label => label === "Got it" || label.endsWith(" Got it"));
+}
+
 function readTree() {
   const result = runAllowError("snapshot", "--session", session, "--include-offscreen");
   if (!result.ok || !Array.isArray(result.value?.elements) || result.value.elements.length === 0) return null;
+
+  // Android 8.1 / cloud AVDs can show the platform's one-time immersive-mode
+  // confirmation after the app switches to fullscreen. It is a system window,
+  // not an app screen, and blocks Home accessibility hitboxes until dismissed.
+  // Only tap "Got it" when all three known system-prompt labels are present.
+  if (isAndroidImmersivePrompt(result.value)) {
+    const gotItNode = result.value.elements.find(node =>
+      node.text === "Got it" || node.contentDesc === "Got it" ||
+      node.contentDescription === "Got it" || node.label === "Got it"
+    );
+    if (gotItNode?.ref) {
+      const dismissed = runAllowError(
+        "tap", gotItNode.ref, "--gen", String(result.value.gen), "--session", session
+      );
+      if (dismissed.ok) {
+        waitStable(250);
+        const fresh = runAllowError("snapshot", "--session", session, "--include-offscreen");
+        if (fresh.ok && Array.isArray(fresh.value?.elements) && fresh.value.elements.length > 0) {
+          return fresh.value;
+        }
+      }
+    }
+  }
   return result.value;
 }
 
