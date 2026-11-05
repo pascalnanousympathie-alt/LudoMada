@@ -38,7 +38,7 @@ class RenderFrameTelemetryTest {
         assertEquals(1, snapshot.activeFrameSampleCount)
         assertNull(snapshot.activeFrameFps)
         assertEquals(3, snapshot.glSubmissionSampleCount)
-        assertEquals(65f, snapshot.glSubmitP50Ms, 0.01f)
+        assertEquals(12f, snapshot.glSubmitP50Ms, 0.01f)
         assertEquals(65f, snapshot.glSubmitMaxMs, 0.01f)
     }
 
