@@ -7,6 +7,12 @@ import kotlin.math.abs
 
 class HomeEnvironmentCompositionTest {
     @Test
+    fun homeTerrainKeepsAuthoredFootprintAndUsesMeasuredReliefScale() {
+        assertEquals(1.0f, HomeEnvironmentComposition.HOME_TERRAIN_FOOTPRINT_SCALE, 0f)
+        assertEquals(3.0f, HomeEnvironmentComposition.HOME_TERRAIN_VERTICAL_RELIEF_SCALE, 0f)
+    }
+
+    @Test
     fun baobabsFrameTheSceneWithoutBlockingTheBrandSightline() {
         val trees = HomeEnvironmentComposition.baobabPlacements()
         assertEquals(4, trees.size)
