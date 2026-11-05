@@ -168,11 +168,12 @@ class StartupUiTest {
     }
 
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
-        val play = device.findObject(By.desc("HOME_ACTION_JOUER"))
         assertTrue(
             "Home must expose its JOUER accessibility target",
             device.wait(Until.hasObject(By.desc("HOME_ACTION_JOUER")), 3000)
         )
+        val play = device.findObject(By.desc("HOME_ACTION_JOUER"))
+            ?: throw AssertionError("Home JOUER accessibility node disappeared after it was found")
         assertTrue("Home JOUER accessibility target must be clickable", play.isClickable)
         play.click()
     }
