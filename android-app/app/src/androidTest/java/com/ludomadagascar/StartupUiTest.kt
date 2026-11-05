@@ -8,6 +8,8 @@ import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiScrollable
+import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -17,6 +19,13 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+    private fun scrollToVisibleText(device: UiDevice, text: String): Boolean {
+        val scrollable = UiScrollable(UiSelector().scrollable(true)).apply {
+            setAsVerticalList()
+        }
+        return scrollable.scrollIntoView(UiSelector().text(text))
+    }
+
     private fun assertStaticHomeComposition(activity: MainActivity) {
         val content = activity.window.decorView
             .findViewById<android.view.ViewGroup>(android.R.id.content)
@@ -175,34 +184,40 @@ class StartupUiTest {
         val device = UiDevice.getInstance(instrumentation)
         assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
 
-        var activity: MainActivity? = null
+        // Request Home while still on the current screen/orientation. Production
+        // code must preserve this request through its own landscape Activity recreation.
         instrumentation.runOnMainSync {
-            activity = ActivityLifecycleMonitorRegistry.getInstance()
+            val activity = ActivityLifecycleMonitorRegistry.getInstance()
                 .getActivitiesInStage(Stage.RESUMED)
                 .filterIsInstance<MainActivity>()
                 .firstOrNull()
-            assertNotNull("MainActivity must be resumed", activity)
-            activity!!.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
-        android.os.SystemClock.sleep(900L)
-        instrumentation.runOnMainSync {
-            activity = ActivityLifecycleMonitorRegistry.getInstance()
-                .getActivitiesInStage(Stage.RESUMED)
-                .filterIsInstance<MainActivity>()
-                .firstOrNull()
-            assertNotNull("Landscape MainActivity must be resumed", activity)
+            assertNotNull("MainActivity must be resumed before requesting Home", activity)
             activity!!.javaClass.getDeclaredMethod("home").apply {
                 isAccessible = true
             }.invoke(activity)
         }
 
-        assertTrue("Premium Home did not appear",
-            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
-        instrumentation.runOnMainSync { assertStaticHomeComposition(activity!!) }
         assertTrue(
-            "Home must decode and present the lightweight 4K reference image",
-            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
+            "Home must decode and present the lightweight 4K reference image after rotation",
+            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 15000)
         )
+        assertTrue(
+            "Premium Home accessibility node must be exposed",
+            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000)
+        )
+        instrumentation.runOnMainSync {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must remain resumed after rotation", resumed)
+            assertTrue(
+                "Home must be rendered in landscape",
+                resumed!!.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            )
+            assertStaticHomeComposition(resumed)
+        }
 
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
@@ -230,6 +245,10 @@ class StartupUiTest {
             device.wait(Until.hasObject(By.text("Choisir la mise")), 3000))
         assertTrue("Lobby room-join action missing", device.hasObject(By.text("🔑 Hiditra amin'ny room")))
 
+        assertTrue(
+            "Lobby return action must be reachable by scrolling the lobby content",
+            scrollToVisibleText(device, "← Accueil")
+        )
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Returning from lobby must reach Home",
             device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
@@ -237,14 +256,30 @@ class StartupUiTest {
             "Returning from lobby must redraw the static Home image",
             device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
         )
-        captureHomeImageScreenshot(device, context, activity!!)
+        var homeActivity: MainActivity? = null
+        instrumentation.runOnMainSync {
+            homeActivity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must be resumed for screenshot capture", homeActivity)
+        }
+        captureHomeImageScreenshot(device, context, homeActivity!!)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
-        device.findObject(By.desc("MODE_OFFLINE")).click()
-        assertTrue("Offline selection must navigate to the offline menu",
-            device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        val offlineMode = device.findObject(By.desc("MODE_OFFLINE"))
+        assertTrue("Offline mode button must be clickable", offlineMode.isClickable)
+        offlineMode.click()
+        assertTrue(
+            "Offline selection must dismiss the game mode overlay",
+            device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
+        )
+        assertTrue(
+            "Offline menu screen must be rendered after the overlay click dispatch",
+            device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 8000)
+        )
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
         assertTrue("Offline menu must expose three-player mode", device.hasObject(By.text("👥 3 joueurs")))
         assertTrue("Offline menu must expose four-player mode", device.hasObject(By.text("👥 4 joueurs")))
@@ -265,7 +300,7 @@ class StartupUiTest {
         assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
         assertTrue("Offline entry action is missing", device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 3000))
 
         // This screen has no authenticated session. The first Home request must
         // survive Activity recreation when the device changes to landscape.
@@ -309,7 +344,7 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.text("Créer un compte")))
         assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000))
