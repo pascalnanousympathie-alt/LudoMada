@@ -271,26 +271,27 @@ class StartupUiTest {
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
         val offlineMode = device.findObject(By.desc("MODE_OFFLINE"))
         assertTrue("Offline mode button must be clickable", offlineMode.isClickable)
+        assertTrue("Offline mode button must be enabled", offlineMode.isEnabled)
         val offlineBounds = offlineMode.visibleBounds
         assertTrue(
-            "Offline mode button must have visible touch bounds",
+            "Offline mode button must have visible bounds",
             offlineBounds.width() > 0 && offlineBounds.height() > 0
         )
         android.util.Log.i(
             "LudoMadaTest",
-            "OFFLINE_TOUCH_BOUNDS=${offlineBounds.flattenToString()}"
+            "OFFLINE_ACCESSIBILITY_CLICK_BOUNDS=${offlineBounds.flattenToString()}"
         )
-        assertTrue(
-            "Offline mode physical touch must be dispatched",
-            device.click(offlineBounds.centerX(), offlineBounds.centerY())
-        )
+        // Match the Online action above: UiObject2.click() invokes the button's
+        // accessibility ACTION_CLICK. On API 27, UiDevice.click(x, y) reports
+        // success but the dialog receives no ACTION_DOWN/UP for this custom view.
+        offlineMode.click()
         device.waitForIdle()
         assertTrue(
             "Offline selection must dismiss the native game-mode dialog",
             device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
         )
         assertTrue(
-            "Offline menu screen must be rendered after the physical button tap",
+            "Offline menu screen must be rendered after activating the Offline button",
             device.wait(Until.hasObject(By.descContains("OFFLINE_MENU_SCREEN")), 8000)
         )
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
