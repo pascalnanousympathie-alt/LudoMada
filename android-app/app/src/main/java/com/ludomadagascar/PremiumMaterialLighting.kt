@@ -334,3 +334,27 @@ object PremiumMaterialLighting {
         return y2 * y2 * y
     }
 }
+
+/**
+ * Lightweight PBR contract for the visible gameplay tabletop.
+ *
+ * It deliberately reuses the renderer's existing 512px wood albedo/normal maps:
+ * no additional texture, GLB, draw call, shadow map or framebuffer is allocated.
+ */
+internal object GameplayEnvironmentComposition {
+    const val WOOD_MATERIAL_KIND = 1
+    const val RECEIVES_SHADOW = true
+    const val PRESERVE_ALBEDO = true
+
+    fun tabletop(): PremiumMaterial = PremiumMaterial(
+        baseColor = PremiumMaterial.rgba(Color.rgb(154, 83, 34)),
+        metallic = 0.035f,
+        roughness = 0.44f,
+        ao = 0.98f,
+        emission = 0f,
+        normalStrength = 0.24f,
+        environmentStrength = 0.62f,
+        clearCoat = 0.05f,
+        clearCoatRoughness = 0.18f
+    )
+}
