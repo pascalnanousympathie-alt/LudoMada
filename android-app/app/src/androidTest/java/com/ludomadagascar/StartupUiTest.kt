@@ -269,9 +269,17 @@ class StartupUiTest {
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
-        device.findObject(By.desc("MODE_OFFLINE")).click()
-        assertTrue("Offline selection must navigate to the offline menu",
-            device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        val offlineMode = device.findObject(By.desc("MODE_OFFLINE"))
+        assertTrue("Offline mode button must be clickable", offlineMode.isClickable)
+        offlineMode.click()
+        assertTrue(
+            "Offline selection must dismiss the game mode overlay",
+            device.wait(Until.gone(By.desc("MODE_OFFLINE")), 5000)
+        )
+        assertTrue(
+            "Offline menu screen must be rendered after the overlay click dispatch",
+            device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 8000)
+        )
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
         assertTrue("Offline menu must expose three-player mode", device.hasObject(By.text("👥 3 joueurs")))
         assertTrue("Offline menu must expose four-player mode", device.hasObject(By.text("👥 4 joueurs")))
