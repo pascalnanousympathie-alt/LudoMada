@@ -34,7 +34,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
-    private var gameModeOverlay: FrameLayout? = null
+    private var gameModeOverlay: AlertDialog? = null
     private var movePending = false
     @Volatile private var gameEventsEnabled = false
     @Volatile private var gameEventsGameId = ""
@@ -476,14 +476,13 @@ class MainActivity : Activity() {
     }
 
     private fun dismissGameModeOverlay() {
-        gameModeOverlay?.let { overlay ->
-            (overlay.parent as? ViewGroup)?.removeView(overlay)
-        }
+        val dialog = gameModeOverlay
         gameModeOverlay = null
+        dialog?.dismiss()
     }
 
     override fun onBackPressed() {
-        if (gameModeOverlay != null) {
+        if (gameModeOverlay?.isShowing == true) {
             dismissGameModeOverlay()
             return
         }
@@ -492,27 +491,15 @@ class MainActivity : Activity() {
 
     @kotlin.jvm.JvmName("gameModeDialog")
     internal fun gameModeDialog() {
-        // PremiumHeroViewV2 invokes this while handling a canvas touch. Defer every
-        // caller before mutating the Activity content hierarchy.
+        // PremiumHeroViewV2 calls this from a Canvas touch handler. Show the dialog
+        // only after that dispatch returns, so the Home view is never replaced mid-touch.
         window.decorView.post { showGameModeOverlay() }
     }
 
     private fun showGameModeOverlay() {
         android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
-        val host = findViewById<ViewGroup>(android.R.id.content) ?: run {
-            android.util.Log.e("LudoMada", "GAME_MODE_NO_CONTENT_ROOT")
-            return
-        }
-        val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(150, 0, 0, 0))
-            isClickable = true
-            isFocusable = false
-            // The full-screen backdrop is a touch target, not an accessibility
-            // item. Mark NO (not NO_HIDE_DESCENDANTS) so its buttons stay discoverable.
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-        }
+
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -525,16 +512,11 @@ class MainActivity : Activity() {
                 setStroke(dp(1), 0x66EDB734)
             }
             elevation = dp(18).toFloat()
-            isClickable = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val title = label("Choisissez le mode", 21f, true, Color.WHITE).apply {
             gravity = Gravity.CENTER
-            // Stable marker on a leaf node; unlike the parent, this won't hide button descendants.
             contentDescription = "GAME_MODE_DIALOG • Choisissez le mode"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            isFocusable = true
         }
         panel.addView(title, LinearLayout.LayoutParams(-1, dp(34)))
         panel.addView(
@@ -543,6 +525,7 @@ class MainActivity : Activity() {
             },
             LinearLayout.LayoutParams(-1, dp(28))
         )
+
         val offline = Button(this).apply {
             text = "👥  Hors-ligne — 2 à 4 joueurs"
             textSize = 15f
@@ -550,42 +533,22 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             background = shape(Color.rgb(92, 82, 156), 16f)
             contentDescription = "MODE_OFFLINE"
-            isFocusable = true
-            isClickable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnTouchListener { view, event ->
-                when (event.actionMasked) {
-                    android.view.MotionEvent.ACTION_DOWN -> {
-                        view.isPressed = true
-                        android.util.Log.i(
-                            "LudoMada",
-                            "GAME_MODE_OFFLINE_TOUCH_DOWN enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
-                        )
-                        true
-                    }
-                    android.view.MotionEvent.ACTION_UP -> {
-                        view.isPressed = false
-                        android.util.Log.i(
-                            "LudoMada",
-                            "GAME_MODE_OFFLINE_TOUCH_UP enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
-                        )
-                        view.performClick()
-                        true
-                    }
-                    android.view.MotionEvent.ACTION_CANCEL -> {
-                        view.isPressed = false
-                        android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_TOUCH_CANCEL")
-                        true
-                    }
-                    else -> true
+                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+                ) {
+                    android.util.Log.i(
+                        "LudoMada",
+                        "GAME_MODE_OFFLINE_TOUCH action=${event.actionMasked} enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
+                    )
                 }
+                false
             }
             setOnClickListener {
                 android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
                 dismissGameModeOverlay()
-                // Defer setContentView until the overlay's touch/accessibility dispatch
-                // has returned. This avoids replacing the content hierarchy mid-click
-                // on older Android releases (notably Android 8.1 / API 27).
                 window.decorView.post {
                     if (!isFinishing && !isDestroyed) {
                         offlineMenu()
@@ -601,29 +564,38 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(8, 29, 58))
             background = shape(Color.rgb(237, 183, 52), 16f)
             contentDescription = "MODE_ONLINE"
-            isFocusable = true
-            isClickable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             setOnClickListener {
                 dismissGameModeOverlay()
-                lobby()
+                window.decorView.post {
+                    if (!isFinishing && !isDestroyed) lobby()
+                }
             }
         }
         panel.addView(offline, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
         panel.addView(online, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
-        val panelWidth = minOf(dp(520), (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280)))
-        overlay.addView(
-            panel,
-            FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+
+        val panelWidth = minOf(
+            dp(520),
+            (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280))
         )
-        overlay.setOnClickListener { dismissGameModeOverlay() }
-        host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
-        gameModeOverlay = overlay
-        android.util.Log.i("LudoMada", "GAME_MODE_OVERLAY_ADDED")
-        overlay.post {
-            offline.requestFocus()
-            offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        val dialog = AlertDialog.Builder(this).create()
+        dialog.setView(panel, 0, 0, 0, 0)
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnDismissListener {
+            if (gameModeOverlay === dialog) gameModeOverlay = null
         }
+        gameModeOverlay = dialog
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            attributes = attributes.apply { dimAmount = 0.58f }
+            setLayout(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+        }
+        android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_SHOWN")
     }
 
     private fun cryptoDialog() {
