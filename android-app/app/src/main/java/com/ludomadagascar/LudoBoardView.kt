@@ -1702,15 +1702,25 @@ class LudoBoardView(
             for(pi in 0..3) drawDie(pi)
         }
         private fun drawGameplayBackdrop(){
-            // The empty margins around the square board are part of the same premium
-            // tabletop, not a featureless navy void. Reuse the calibrated in-app wood
-            // albedo + normal maps so the gameplay camera reads as a real board on a table.
+            // Dark walnut remains on the same existing 512px wood/normal textures.
+            // Preserve the authored grain instead of blending it halfway into ivory,
+            // and let the already-rendered board cast its contact shadow onto this slab.
+            val tabletop = GameplayEnvironmentComposition.tabletop()
             drawMesh(
                 cube,
                 identityAt(0f,-1.02f,0f,13f,0.08f,13f),
-                floatArrayOf(0.92f,0.82f,0.70f,1f),
-                0.48f,0.035f,1f,0.003f,5,false,
-                woodTex,woodNormalTex,0, receivesShadow = false
+                tabletop.baseColor,
+                tabletop.roughness,
+                tabletop.metallic,
+                tabletop.ao,
+                tabletop.emission,
+                GameplayEnvironmentComposition.WOOD_MATERIAL_KIND,
+                false,
+                woodTex,
+                woodNormalTex,
+                0,
+                receivesShadow = GameplayEnvironmentComposition.RECEIVES_SHADOW,
+                preserveAlbedo = GameplayEnvironmentComposition.PRESERVE_ALBEDO
             )
         }
 
