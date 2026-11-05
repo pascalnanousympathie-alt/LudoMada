@@ -282,9 +282,10 @@ class StartupUiTest {
                 .filterIsInstance<MainActivity>()
                 .firstOrNull()
             assertNotNull("Home MainActivity must remain resumed", resumed)
-            assertEquals(
-                android.content.res.Configuration.ORIENTATION_LANDSCAPE,
-                resumed!!.resources.configuration.orientation
+            assertTrue(
+                "Home must be rendered in landscape",
+                resumed!!.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
             )
         }
         instrumentation.runOnMainSync { resumed?.finish() }
