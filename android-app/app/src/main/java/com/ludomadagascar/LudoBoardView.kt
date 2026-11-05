@@ -1759,35 +1759,42 @@ class LudoBoardView(
                     else -> 8
                 }
             }
-            for(part in parts){
-                val model=FloatArray(16)
-                // Match the table centre (authored at x=-1.1667) to the board root
-                // (translated/scaled to x=0); Y/Z are already calibrated in Blender.
-                Matrix.multiplyMM(model,0,root,0,part.transform,0)
-                val textureKind=GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
-                val albedo=when(textureKind){
-                    GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex
-                    4 -> metalTex
-                    else -> neutralTex
+            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if(parts.any{it.doubleSided})GLES30.glDisable(GLES30.GL_CULL_FACE)
+            try {
+                for(part in parts){
+                    val model=FloatArray(16)
+                    // Match the table centre (authored at x=-1.1667) to the board root
+                    // (translated/scaled to x=0); Y/Z are already calibrated in Blender.
+                    Matrix.multiplyMM(model,0,root,0,part.transform,0)
+                    val textureKind=GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
+                    val albedo=when(textureKind){
+                        GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex
+                        4 -> metalTex
+                        else -> neutralTex
+                    }
+                    val normal=if(textureKind==GameplayEnvironmentComposition.WOOD_MATERIAL_KIND)woodNormalTex else normalTex
+                    val color=GameplayEnvironmentComposition.blenderMaterialColor(part.materialName,part.baseColor)
+                    drawMesh(
+                        part.mesh,
+                        model,
+                        color,
+                        part.roughness,
+                        part.metallic,
+                        0.98f,
+                        if(textureKind==4)0.006f else 0f,
+                        GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
+                        false,
+                        albedo,
+                        normal,
+                        0,
+                        receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(part.name),
+                        preserveAlbedo = true
+                    )
                 }
-                val normal=if(textureKind==GameplayEnvironmentComposition.WOOD_MATERIAL_KIND)woodNormalTex else normalTex
-                val color=GameplayEnvironmentComposition.blenderMaterialColor(part.materialName,part.baseColor)
-                drawMesh(
-                    part.mesh,
-                    model,
-                    color,
-                    part.roughness,
-                    part.metallic,
-                    0.98f,
-                    if(textureKind==4)0.006f else 0f,
-                    GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
-                    false,
-                    albedo,
-                    normal,
-                    0,
-                    receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(part.name),
-                    preserveAlbedo = true
-                )
+            } finally {
+                if(cullingWasEnabled)GLES30.glEnable(GLES30.GL_CULL_FACE)
+                else GLES30.glDisable(GLES30.GL_CULL_FACE)
             }
         }
 
