@@ -300,7 +300,7 @@ class StartupUiTest {
         assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
         assertTrue("Offline entry action is missing", device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 3000))
 
         // This screen has no authenticated session. The first Home request must
         // survive Activity recreation when the device changes to landscape.
@@ -344,7 +344,7 @@ class StartupUiTest {
         assertTrue(device.hasObject(By.text("Créer un compte")))
         assertTrue(device.hasObject(By.text("👥 Jouer hors-ligne")))
         device.findObject(By.text("👥 Jouer hors-ligne")).click()
-        assertTrue(device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+        assertTrue(device.wait(Until.hasObject(By.desc("OFFLINE_MENU_SCREEN")), 3000))
         assertTrue(device.hasObject(By.text("👤 2 joueurs")))
         device.findObject(By.text("👤 2 joueurs")).click()
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000))
