@@ -553,6 +553,17 @@ class MainActivity : Activity() {
             isFocusable = true
             isClickable = true
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setOnTouchListener { view, event ->
+                when (event.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN,
+                    android.view.MotionEvent.ACTION_UP,
+                    android.view.MotionEvent.ACTION_CANCEL -> android.util.Log.i(
+                        "LudoMada",
+                        "GAME_MODE_OFFLINE_TOUCH action=${event.actionMasked} local=${event.x},${event.y} enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
+                    )
+                }
+                false
+            }
             setOnClickListener {
                 android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
                 dismissGameModeOverlay()
