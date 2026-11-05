@@ -526,74 +526,72 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(-1, dp(28))
         )
 
-        val offline = Button(this).apply {
-            text = "👥  Hors-ligne — 2 à 4 joueurs"
-            textSize = 15f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = shape(Color.rgb(92, 82, 156), 16f)
-            contentDescription = "MODE_OFFLINE"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnTouchListener { view, event ->
-                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN ||
-                    event.actionMasked == android.view.MotionEvent.ACTION_UP ||
-                    event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
-                ) {
-                    android.util.Log.i(
-                        "LudoMada",
-                        "GAME_MODE_OFFLINE_TOUCH action=${event.actionMasked} enabled=${view.isEnabled} shown=${view.isShown} attached=${view.isAttachedToWindow}"
-                    )
-                }
-                false
-            }
-            setOnClickListener {
-                android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
-                dismissGameModeOverlay()
-                window.decorView.post {
-                    if (!isFinishing && !isDestroyed) {
-                        offlineMenu()
-                        android.util.Log.i("LudoMada", "OFFLINE_MENU_RENDERED")
-                    }
-                }
-            }
-        }
-        val online = Button(this).apply {
-            text = "🌐  En ligne — Joueurs réels"
-            textSize = 15f
-            isAllCaps = false
-            setTextColor(Color.rgb(8, 29, 58))
-            background = shape(Color.rgb(237, 183, 52), 16f)
-            contentDescription = "MODE_ONLINE"
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnClickListener {
-                dismissGameModeOverlay()
-                window.decorView.post {
-                    if (!isFinishing && !isDestroyed) lobby()
-                }
-            }
-        }
-        panel.addView(offline, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
-        panel.addView(online, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
-
+        // Use AlertDialog's own action buttons instead of custom Button children.
+        // Android 8.1 was exposing the custom children in accessibility but failing
+        // to dispatch both coordinate and ACTION_CLICK activation to their listeners.
         val panelWidth = minOf(
             dp(520),
             (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280))
         )
         val dialog = AlertDialog.Builder(this).create()
         dialog.setView(panel, 0, 0, 0, 0)
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "👥  Hors-ligne") { _, _ ->
+            android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) {
+                    offlineMenu()
+                    android.util.Log.i("LudoMada", "OFFLINE_MENU_RENDERED")
+                }
+            }
+        }
+        dialog.setButton(AlertDialog.BUTTON_POSITIVE, "🌐  En ligne") { _, _ ->
+            android.util.Log.i("LudoMada", "GAME_MODE_ONLINE_SELECTED")
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) lobby()
+            }
+        }
+
+        dialog.setView(panel, 0, 0, 0, 0)
         dialog.setCancelable(true)
         dialog.setCanceledOnTouchOutside(true)
         dialog.setOnDismissListener {
+            android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_DISMISSED")
             if (gameModeOverlay === dialog) gameModeOverlay = null
         }
         gameModeOverlay = dialog
         dialog.show()
         dialog.window?.apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            setBackgroundDrawable(
+                GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(Color.rgb(9, 24, 50), Color.rgb(17, 57, 96), Color.rgb(8, 29, 58))
+                ).apply {
+                    cornerRadius = dp(24).toFloat()
+                    setStroke(dp(1), 0x66EDB734)
+                }
+            )
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             attributes = attributes.apply { dimAmount = 0.58f }
             setLayout(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
             setGravity(Gravity.CENTER)
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+            contentDescription = "MODE_OFFLINE"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isAllCaps = false
+            background = shape(Color.rgb(92, 82, 156), 16f)
+            minHeight = dp(52)
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+            contentDescription = "MODE_ONLINE"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setTextColor(Color.rgb(8, 29, 58))
+            textSize = 14f
+            isAllCaps = false
+            background = shape(Color.rgb(237, 183, 52), 16f)
+            minHeight = dp(52)
         }
         android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_SHOWN")
     }
