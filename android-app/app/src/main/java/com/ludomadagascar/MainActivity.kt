@@ -551,7 +551,6 @@ class MainActivity : Activity() {
             }
         }
 
-        dialog.setView(panel, 0, 0, 0, 0)
         dialog.setCancelable(true)
         dialog.setCanceledOnTouchOutside(true)
         dialog.setOnDismissListener {
