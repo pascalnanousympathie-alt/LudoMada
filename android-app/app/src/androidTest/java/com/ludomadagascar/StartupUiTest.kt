@@ -17,19 +17,23 @@ import java.io.File
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
-    private fun assertLiveHomeComposition(activity: MainActivity) {
+    private fun assertStaticHomeComposition(activity: MainActivity) {
         val content = activity.window.decorView
             .findViewById<android.view.ViewGroup>(android.R.id.content)
         assertTrue("Home content root must contain its root view", content.childCount > 0)
         val hero = content.getChildAt(0) as? PremiumHeroViewV2
-        assertNotNull("Premium Home root must be a FrameLayout with a live renderer", hero)
-        val heroView = hero ?: throw AssertionError("Premium Home root is missing")
-        assertTrue("Home must have only the 3D surface and native UI overlay", heroView.childCount == 2)
-        assertTrue("First Home layer must be the live 3D board renderer", heroView.getChildAt(0) is LudoBoardView)
-        assertTrue("The exposed renderer must be the actual background layer",
-            heroView.homePreviewView === heroView.getChildAt(0))
-        assertTrue("The foreground layer must not draw a second board renderer",
-            heroView.getChildAt(1) !is LudoBoardView)
+        assertNotNull("Home must use the static reference-image container", hero)
+        val imageHost = hero ?: throw AssertionError("Premium Home image root is missing")
+        assertTrue("Home must contain only one image view, not a GLSurfaceView", imageHost.childCount == 1)
+        assertTrue("Home image child must not be a live 3D renderer", imageHost.getChildAt(0) !is LudoBoardView)
+        assertTrue(
+            "The Home image view must publish the decoded 4K reference marker",
+            imageHost.getHomeImageView().contentDescription.toString().contains("HOME_IMAGE_FRAME_COMPLETE")
+        )
+        assertTrue(
+            "Home root must expose its static image readiness marker",
+            imageHost.contentDescription.toString().contains("HOME_IMAGE_FRAME_COMPLETE")
+        )
     }
 
     private data class HomeScreenshotMetrics(
@@ -89,7 +93,7 @@ class StartupUiTest {
         }
     }
 
-    private fun captureHomePreviewScreenshot(
+    private fun captureHomeImageScreenshot(
         device: UiDevice,
         context: android.content.Context,
         activity: MainActivity
@@ -116,20 +120,19 @@ class StartupUiTest {
                 "LudoMadaTest",
                 "HOME_SCREENSHOT_NOT_PRESENTED attempt=${attempt + 1} metrics=${lastMetrics ?: "unreadable"}"
             )
-            // A GL frame can be certified on the renderer thread just before
-            // SurfaceFlinger presents it. Request another frame and retry instead
-            // of uploading a syntactically valid but visually empty PNG.
+            // Request a fresh image draw and retry instead of accepting a
+            // syntactically valid but nearly-empty screenshot.
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 val content = activity.window.decorView
                     .findViewById<android.view.ViewGroup>(android.R.id.content)
                 val hero = content?.getChildAt(0) as? PremiumHeroViewV2
-                hero?.getHomePreviewView()?.requestRender()
+                hero?.getHomeImageView()?.invalidate()
             }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             android.os.SystemClock.sleep(350L)
         }
         assertTrue(
-            "Home screenshot must contain a presented 3D environment frame; metrics=${lastMetrics ?: "unreadable"}",
+            "Home screenshot must contain the static reference composition; metrics=${lastMetrics ?: "unreadable"}",
             captured
         )
     }
@@ -137,33 +140,23 @@ class StartupUiTest {
     private fun tapHomeMusic(device: UiDevice, context: android.content.Context) {
         val home = device.findObject(By.descContains("LudoMada Premium Home"))
         val bounds = home.visibleBounds
-        val density = context.resources.displayMetrics.density
-        val scale = minOf(
-            bounds.width() / (390f * density),
-            bounds.height() / (710f * density)
-        ) * density
-        val xOffset = (bounds.width() - 390f * scale) / 2f
-        val yOffset = (bounds.height() - 710f * scale) / 2f
-        val x = bounds.left + (xOffset + 337f * scale).toInt()
-        val y = bounds.top + (yOffset + 43f * scale).toInt()
+        val scale = minOf(bounds.width() / 1280f, bounds.height() / 720f)
+        val xOffset = (bounds.width() - 1280f * scale) / 2f
+        val yOffset = (bounds.height() - 720f * scale) / 2f
+        val x = bounds.left + (xOffset + 1193f * scale).toInt()
+        val y = bounds.top + (yOffset + 86f * scale).toInt()
         assertTrue("Home music icon tap should be accepted", device.click(x, y))
     }
 
     private fun tapHomeJouer(device: UiDevice, context: android.content.Context) {
         val home = device.findObject(By.descContains("LudoMada Premium Home"))
         val bounds = home.visibleBounds
-        val density = context.resources.displayMetrics.density
-        val scale = minOf(
-            bounds.width() / (390f * density),
-            bounds.height() / (710f * density)
-        ) * density
-        val xOffset = (bounds.width() - 390f * scale) / 2f
-        val yOffset = (bounds.height() - 710f * scale) / 2f
-
-        // The compact Home canvas places JOUER at logical x=48..342, y=441..495.
-        // Tap its centre so the instrumentation follows the real primary CTA hitbox.
-        val x = bounds.left + (xOffset + 195f * scale).toInt()
-        val y = bounds.top + (yOffset + 468f * scale).toInt()
+        val scale = minOf(bounds.width() / 1280f, bounds.height() / 720f)
+        val xOffset = (bounds.width() - 1280f * scale) / 2f
+        val yOffset = (bounds.height() - 720f * scale) / 2f
+        // The static 4K reference keeps JOUER on the right-side primary panel.
+        val x = bounds.left + (xOffset + 1100f * scale).toInt()
+        val y = bounds.top + (yOffset + 414f * scale).toInt()
         assertTrue("Home JOUER tap should be accepted", device.click(x, y))
     }
 
@@ -189,18 +182,28 @@ class StartupUiTest {
                 .filterIsInstance<MainActivity>()
                 .firstOrNull()
             assertNotNull("MainActivity must be resumed", activity)
+            activity!!.requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        android.os.SystemClock.sleep(900L)
+        instrumentation.runOnMainSync {
+            activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Landscape MainActivity must be resumed", activity)
             activity!!.javaClass.getDeclaredMethod("home").apply {
                 isAccessible = true
             }.invoke(activity)
         }
 
         assertTrue("Premium Home did not appear",
-            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
-        instrumentation.runOnMainSync { assertLiveHomeComposition(activity!!) }
+            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
+        instrumentation.runOnMainSync { assertStaticHomeComposition(activity!!) }
         assertTrue(
-            "Home must attach the live 3D scene and complete its first frame",
-            device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+            "Home must decode and present the lightweight 4K reference image",
+            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
         )
+
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
         tapHomeMusic(device, context)
@@ -215,6 +218,7 @@ class StartupUiTest {
             "Home music icon must restore the original preference",
             musicPrefs.getBoolean("enabled", true) == originalMusicEnabled
         )
+
         tapHomeJouer(device, context)
         assertTrue("Mode overlay accessibility marker missing",
             device.wait(Until.hasObject(By.descContains("GAME_MODE_DIALOG")), 3000))
@@ -228,12 +232,12 @@ class StartupUiTest {
 
         device.findObject(By.text("← Accueil")).click()
         assertTrue("Returning from lobby must reach Home",
-            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 3000))
+            device.wait(Until.hasObject(By.descContains("LudoMada Premium Home")), 5000))
         assertTrue(
-            "Returning from the lobby must render a fresh Home 3D framebuffer",
-            device.wait(Until.hasObject(By.descContains("HOME_3D_FRAME_COMPLETE")), 15000)
+            "Returning from lobby must redraw the static Home image",
+            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 5000)
         )
-        captureHomePreviewScreenshot(device, context, activity!!)
+        captureHomeImageScreenshot(device, context, activity!!)
 
         tapHomeJouer(device, context)
         assertTrue("Mode overlay did not reopen from Home JOUER",

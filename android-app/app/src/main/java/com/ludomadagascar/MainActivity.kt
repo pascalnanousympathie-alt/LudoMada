@@ -31,7 +31,6 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
-    private var homePreviewHost: LudoBoardView? = null
     private var moveOverlay: View? = null
     private var gameModeOverlay: FrameLayout? = null
     private var movePending = false
@@ -70,10 +69,10 @@ class MainActivity : Activity() {
         setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
         if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
-        if(name!="home") homePreviewHost=null
         syncMusicPlayback()
         val baseLeft=dp(20)
         val baseTop=dp(18)
@@ -215,7 +214,6 @@ class MainActivity : Activity() {
 
     private fun splash() {
         pauseBoardViews()
-        homePreviewHost=null
         currentScreen="splash"; syncMusicPlayback(); root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
         root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
@@ -226,7 +224,6 @@ class MainActivity : Activity() {
 
     private fun login() {
         pauseBoardViews()
-        homePreviewHost=null
         currentScreen="login"
         syncMusicPlayback()
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
@@ -295,7 +292,6 @@ class MainActivity : Activity() {
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
         when(currentScreen) {
-            "home" -> homePreviewHost?.onResume()
             "board" -> boardHost?.onResume()
             "offline" -> offlineHost?.onResume()
         }
@@ -332,16 +328,32 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun pauseBoardViews() { homePreviewHost?.onPause(); boardHost?.onPause(); offlineHost?.onPause() }
+    private fun pauseBoardViews() { boardHost?.onPause(); offlineHost?.onPause() }
 
     private fun home() {
+        // The reference artwork is a 16:9 landscape Home screen. Request landscape
+        // before creating the view so it is not stretched/cropped on first launch.
+        if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            return
+        }
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         pauseBoardViews()
         currentScreen="home"
         syncMusicPlayback()
         val hero=PremiumHeroViewV2(this)
-        homePreviewHost=hero.homePreviewView
         setContentView(hero)
-        if(activityResumed) homePreviewHost?.onResume()
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor=Color.TRANSPARENT
+        window.navigationBarColor=Color.TRANSPARENT
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
         refreshAccountBalance()
     }
 

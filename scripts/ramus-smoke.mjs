@@ -83,20 +83,20 @@ function selfTestFramebufferReadback() {
     ["wrong label rejected", !parseFramebufferReadback(scene, "surface_backbuffer").ok],
     ["missing log rejected", !parseFramebufferReadback(null, "scene_fbo").ok]
   ];
-  const pbrHomeTree = { elements: [{ contentDesc:
-    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=41 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+  const referenceHomeTree = { elements: [{ contentDesc:
+    "LudoMada Premium Home | HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=LOBBY_REFERENCE_4K | IMAGE_WIDTH=2048 | IMAGE_HEIGHT=1152 | IMAGE_CONFIG=RGB_565"
   }] };
-  const fallbackHomeTree = { elements: [{ contentDesc:
-    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES2_GLB | ENV_PARTS=0 | BAOBAB_PARTS=0 | HERO_PARTS=6 | BOARD_PARTS=95"
+  const undersizedHomeTree = { elements: [{ contentDesc:
+    "LudoMada Premium Home | HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=LOBBY_REFERENCE_4K | IMAGE_WIDTH=512 | IMAGE_HEIGHT=288"
   }] };
-  const incompleteHomeTree = { elements: [{ contentDesc:
-    "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=GLES3_PBR | ENV_PARTS=0 | BAOBAB_PARTS=2 | HERO_PARTS=6 | BOARD_PARTS=95"
+  const wrongHomeSourceTree = { elements: [{ contentDesc:
+    "LudoMada Premium Home | HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=UNKNOWN | IMAGE_WIDTH=2048 | IMAGE_HEIGHT=1152"
   }] };
   cases.push(
-    ["complete GLES3 Home readiness marker", parseHomePreviewReadiness(pbrHomeTree).ok],
-    ["explicit GLES2 Home fallback marker", parseHomePreviewReadiness(fallbackHomeTree).ok],
-    ["incomplete GLES3 Home assets rejected", !parseHomePreviewReadiness(incompleteHomeTree).ok],
-    ["missing Home readiness marker rejected", !parseHomePreviewReadiness({ elements: [] }).ok]
+    ["decoded lightweight 4K Home reference accepted", parseHomeImageReadiness(referenceHomeTree).ok],
+    ["undersized Home image rejected", !parseHomeImageReadiness(undersizedHomeTree).ok],
+    ["wrong Home image source rejected", !parseHomeImageReadiness(wrongHomeSourceTree).ok],
+    ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok]
   );
   const failed = cases.filter(([, passed]) => !passed);
   for (const [name, passed] of cases) {
@@ -253,30 +253,25 @@ function treeHas(tree, value) {
   return treeLabels(tree).some((label) => label.includes(value));
 }
 
-function parseHomePreviewReadiness(tree) {
-  const marker = treeLabels(tree).find((label) => label.includes("HOME_3D_FRAME_COMPLETE"));
-  if (!marker) return { ok: false, reason: "missing_home_frame_marker" };
-  const renderer = marker.match(/RENDERER=([A-Z0-9_]+)/)?.[1] || "";
-  const readCount = (pattern) => {
-    const match = marker.match(pattern);
-    return match ? Number(match[1]) : 0;
+function parseHomeImageReadiness(tree) {
+  const marker = treeLabels(tree).find((label) => label.includes("HOME_IMAGE_FRAME_COMPLETE"));
+  if (!marker) return { ok: false, reason: "missing_home_image_frame_marker" };
+  const source = marker.match(/IMAGE_SOURCE=([A-Z0-9_]+)/)?.[1] || "";
+  const width = Number(marker.match(/IMAGE_WIDTH=(\d+)/)?.[1] || 0);
+  const height = Number(marker.match(/IMAGE_HEIGHT=(\d+)/)?.[1] || 0);
+  const config = marker.match(/IMAGE_CONFIG=([A-Z0-9_]+)/)?.[1] || "";
+  const valid = source === "LOBBY_REFERENCE_4K" &&
+    config === "RGB_565" &&
+    Number.isSafeInteger(width) && width >= 960 &&
+    Number.isSafeInteger(height) && height >= 540;
+  return {
+    ok: valid,
+    source,
+    config,
+    width,
+    height,
+    reason: valid ? null : "invalid_or_undersized_home_reference"
   };
-  const counts = {
-    environment: readCount(/ENV_PARTS=(\d+)/),
-    baobab: readCount(/BAOBAB_PARTS=(\d+)/),
-    hero: readCount(/HERO_PARTS=(\d+)/),
-    board: readCount(/BOARD_PARTS=(\d+)/),
-  };
-  if (renderer === "GLES3_PBR") {
-    const complete = Object.values(counts).every((value) => Number.isSafeInteger(value) && value > 0);
-    return { ok: complete, renderer, counts, reason: complete ? null : "incomplete_gles3_asset_counts" };
-  }
-  if (renderer === "GLES2_GLB") {
-    const complete = counts.hero > 0 && counts.board > 0 &&
-      counts.environment === 0 && counts.baobab === 0;
-    return { ok: complete, renderer, counts, reason: complete ? null : "invalid_gles2_fallback_counts" };
-  }
-  return { ok: false, renderer, counts, reason: "unknown_home_renderer" };
 }
 
 function waitForTreeMarker(value, timeoutMs = 6000) {
@@ -940,25 +935,18 @@ try {
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
 
-  // Poll the complete accessibility tree, not the reduced --find response. A
-  // successful empty query result is not proof that the renderer published readiness.
-  const homeReadyTree=waitForTreeMarker("HOME_3D_FRAME_COMPLETE",15000);
-  // The renderer publishes this accessibility marker only after a clean GL framebuffer
-  // readback and successful required-asset checks. Use it as the contract instead of
-  // relying on cloud logcat retention/filter support for renderer log tags.
-  const homeReadiness=parseHomePreviewReadiness(homeReadyTree);
+  // Home is intentionally a lightweight static 4K reference. Gameplay remains
+  // the only screen required to create and validate a real GLES3/PBR environment.
+  const homeReadyTree=waitForTreeMarker("HOME_IMAGE_FRAME_COMPLETE",5000);
+  const homeReadiness=parseHomeImageReadiness(homeReadyTree);
   if (!homeReadiness.ok) {
-    throw new Error("Home renderer readiness marker failed acceptance: " +
+    throw new Error("Static Home image failed acceptance: " +
       JSON.stringify({reason:homeReadiness.reason,tree:treeLabels(homeReadyTree)}));
   }
-  if (homeReadiness.renderer === "GLES3_PBR") {
-    console.log("HOME_GLES3_PBR_ENVIRONMENT_AND_BAOBAB PASS " + JSON.stringify(homeReadiness.counts));
-  } else {
-    console.log("HOME_GLES2_3D_FALLBACK PASS " + JSON.stringify(homeReadiness.counts));
-  }
+  console.log("HOME_STATIC_LOBBY_4K_IMAGE PASS " + JSON.stringify(homeReadiness));
   const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
-  if (!homeShot.ok) throw new Error("Could not capture the live 3D Home screenshot");
-  console.log("HOME_3D_SCREENSHOT_CAPTURED");
+  if (!homeShot.ok) throw new Error("Could not capture the static Home reference image");
+  console.log("HOME_STATIC_IMAGE_SCREENSHOT_CAPTURED");
 
   success = true;
   console.log("RAMUS_SMOKE_PASS");
