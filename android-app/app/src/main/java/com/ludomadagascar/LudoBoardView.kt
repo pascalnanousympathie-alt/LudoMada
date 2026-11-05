@@ -1311,6 +1311,20 @@ class LudoBoardView(
         private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var envParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var gameplayEnvironmentParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private data class PreparedGameplayEnvironmentDraw(
+            val part: GlbRuntimeLoader.Part,
+            val modelMatrix: FloatArray,
+            val baseColor: FloatArray,
+            val materialKind: Int,
+            val albedoTexture: Int,
+            val normalTexture: Int,
+            val emission: Float,
+            val receivesShadow: Boolean
+        )
+        private var preparedGameplayEnvironmentDraws: List<PreparedGameplayEnvironmentDraw> = emptyList()
+        private var gameplayEnvironmentHasDoubleSidedParts = false
+        private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
+        private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
         private var envBarkNormalTex=0
@@ -1345,6 +1359,10 @@ class LudoBoardView(
             // targets, textures and buffers; never reuse IDs from the old context.
             firstFrameDiagnosticsCaptured = false
             homePreviewFirstFrameCaptured = false
+            firstDrawMarkerPersisted = false
+            frameTelemetry?.reset()
+            preparedGameplayEnvironmentDraws = emptyList()
+            gameplayEnvironmentHasDoubleSidedParts = false
             lastFrameNanos = 0L
             woodTex = 0; boardTex = 0; neutralTex = 0; metalTex = 0
             normalTex = 0; woodNormalTex = 0; envCube = 0
@@ -1450,6 +1468,7 @@ class LudoBoardView(
                     emptyMap()
                 }
             }
+            if (!host.homePreview) prepareGameplayEnvironmentDraws()
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
@@ -1464,9 +1483,12 @@ class LudoBoardView(
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
-            runCatching {
-                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
-                    .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+            if (BuildConfig.DEBUG && !firstDrawMarkerPersisted) {
+                val markerSaved = runCatching {
+                    host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                        .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+                }.isSuccess
+                if (markerSaved) firstDrawMarkerPersisted = true
             }
             val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
@@ -1485,9 +1507,28 @@ class LudoBoardView(
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
+            val glSubmitStartedNanos = System.nanoTime()
             renderDirectFrame()
+            val glSubmissionDurationNanos = System.nanoTime() - glSubmitStartedNanos
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             host.publishPawnTapTargets()
+            if (!host.homePreview) {
+                frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
+                    android.util.Log.i(
+                        "LudoMadaRender",
+                        "PERF_FRAME_STATS renderer=GLES3_PBR surface=" + sceneWidth + "x" + sceneHeight +
+                            " samples=" + stats.sampleCount +
+                            " estimatedFps=" + stats.estimatedFps +
+                            " frameIntervalMsP50=" + stats.frameIntervalP50Ms +
+                            " frameIntervalMsP95=" + stats.frameIntervalP95Ms +
+                            " frameIntervalMsMax=" + stats.frameIntervalMaxMs +
+                            " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
+                            " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
+                            " glSubmitCpuMsMax=" + stats.glSubmitMaxMs +
+                            " gpuExecutionTime=not_measured"
+                    )
+                }
+            }
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
@@ -1740,55 +1781,72 @@ class LudoBoardView(
             )
         }
 
-        private fun drawBlenderGameplayEnvironment(){
-            val root=identityAt(
-                GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X,
-                0f,
-                0f
-            )
-            val parts=gameplayEnvironmentParts.values.sortedBy { part ->
-                when {
-                    part.name=="GMENV_Studio_Floor" -> 0
-                    part.name.startsWith("GMENV_Table_Leg_") -> 1
-                    part.name.startsWith("GMENV_Leg_Ferrule_") -> 2
-                    part.name.startsWith("GMENV_Apron_") -> 3
-                    part.name=="GMENV_Tabletop_Walnut" -> 4
-                    part.name.startsWith("GMENV_Perimeter_Inlay_") -> 5
-                    part.name.startsWith("GMENV_Brass_Pin_") -> 6
-                    part.name=="GMENV_Baobab_Brass_Inlay" -> 7
-                    else -> 8
-                }
-            }
-            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
-            if(parts.any{it.doubleSided})GLES30.glDisable(GLES30.GL_CULL_FACE)
-            try {
-                for(part in parts){
-                    val model=FloatArray(16)
-                    // Match the table centre (authored at x=-1.1667) to the board root
-                    // (translated/scaled to x=0); Y/Z are already calibrated in Blender.
-                    Matrix.multiplyMM(model,0,root,0,part.transform,0)
-                    val textureKind=GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
-                    val albedo=when(textureKind){
+        private fun prepareGameplayEnvironmentDraws() {
+            val root = FloatArray(16)
+            Matrix.setIdentityM(root, 0)
+            Matrix.translateM(root, 0, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0f, 0f)
+            val prepared = gameplayEnvironmentParts.values
+                .sortedBy { part -> GameplayEnvironmentComposition.blenderPartDrawOrder(part.name) }
+                .map { part ->
+                    val modelMatrix = FloatArray(16)
+                    Matrix.multiplyMM(modelMatrix, 0, root, 0, part.transform, 0)
+                    val textureKind = GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
+                    val albedoTexture = when (textureKind) {
                         GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex
                         4 -> metalTex
                         else -> neutralTex
                     }
-                    val normal=if(textureKind==GameplayEnvironmentComposition.WOOD_MATERIAL_KIND)woodNormalTex else normalTex
-                    val color=GameplayEnvironmentComposition.blenderMaterialColor(part.materialName,part.baseColor)
+                    val normalTexture = if (
+                        textureKind == GameplayEnvironmentComposition.WOOD_MATERIAL_KIND
+                    ) woodNormalTex else normalTex
+                    PreparedGameplayEnvironmentDraw(
+                        part = part,
+                        modelMatrix = modelMatrix,
+                        baseColor = GameplayEnvironmentComposition.blenderMaterialColor(
+                            part.materialName,
+                            part.baseColor
+                        ),
+                        materialKind = GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
+                        albedoTexture = albedoTexture,
+                        normalTexture = normalTexture,
+                        emission = if (textureKind == 4) 0.006f else 0f,
+                        receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(
+                            part.name
+                        )
+                    )
+                }
+            preparedGameplayEnvironmentDraws = prepared
+            gameplayEnvironmentHasDoubleSidedParts = prepared.any { it.part.doubleSided }
+            android.util.Log.i(
+                "LudoMadaRender",
+                "GAMEPLAY_ENVIRONMENT_PREPARED drawParts=" + prepared.size +
+                    " doubleSided=" + gameplayEnvironmentHasDoubleSidedParts +
+                    " cachedTransformsAndMaterials=true"
+            )
+        }
+
+        private fun drawBlenderGameplayEnvironment(){
+            val parts = preparedGameplayEnvironmentDraws
+            if (parts.isEmpty()) return
+            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if(gameplayEnvironmentHasDoubleSidedParts)GLES30.glDisable(GLES30.GL_CULL_FACE)
+            try {
+                for(prepared in parts){
+                    val part = prepared.part
                     drawMesh(
                         part.mesh,
-                        model,
-                        color,
+                        prepared.modelMatrix,
+                        prepared.baseColor,
                         part.roughness,
                         part.metallic,
                         0.98f,
-                        if(textureKind==4)0.006f else 0f,
-                        GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
+                        prepared.emission,
+                        prepared.materialKind,
                         false,
-                        albedo,
-                        normal,
+                        prepared.albedoTexture,
+                        prepared.normalTexture,
                         0,
-                        receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(part.name),
+                        receivesShadow = prepared.receivesShadow,
                         preserveAlbedo = true
                     )
                 }

@@ -381,6 +381,18 @@ internal object GameplayEnvironmentComposition {
         else -> 3
     }
 
+    fun blenderPartDrawOrder(partName: String): Int = when {
+        partName == "GMENV_Studio_Floor" -> 0
+        partName.startsWith("GMENV_Table_Leg_") -> 1
+        partName.startsWith("GMENV_Leg_Ferrule_") -> 2
+        partName.startsWith("GMENV_Apron_") -> 3
+        partName == "GMENV_Tabletop_Walnut" -> 4
+        partName.startsWith("GMENV_Perimeter_Inlay_") -> 5
+        partName.startsWith("GMENV_Brass_Pin_") -> 6
+        partName == "GMENV_Baobab_Brass_Inlay" -> 7
+        else -> 8
+    }
+
     fun blenderPartReceivesGameplayShadow(partName: String): Boolean =
         partName == "GMENV_Tabletop_Walnut"
 

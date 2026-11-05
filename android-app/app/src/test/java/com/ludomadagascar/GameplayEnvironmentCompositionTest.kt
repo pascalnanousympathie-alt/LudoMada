@@ -53,6 +53,33 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
+    fun blenderEnvironmentDrawOrderKeepsFloorLegsApronAndTopInStableLayers() {
+        val names = listOf(
+            "GMENV_Tabletop_Walnut",
+            "GMENV_Brass_Pin_01",
+            "GMENV_Apron_Front",
+            "GMENV_Table_Leg_FL",
+            "GMENV_Studio_Floor",
+            "GMENV_Leg_Ferrule_FL",
+            "GMENV_Perimeter_Inlay_01",
+            "GMENV_Baobab_Brass_Inlay"
+        )
+        assertEquals(
+            listOf(
+                "GMENV_Studio_Floor",
+                "GMENV_Table_Leg_FL",
+                "GMENV_Leg_Ferrule_FL",
+                "GMENV_Apron_Front",
+                "GMENV_Tabletop_Walnut",
+                "GMENV_Perimeter_Inlay_01",
+                "GMENV_Brass_Pin_01",
+                "GMENV_Baobab_Brass_Inlay"
+            ),
+            names.sortedBy(GameplayEnvironmentComposition::blenderPartDrawOrder)
+        )
+    }
+
+    @Test
     fun blenderWalnutAndBrassMaterialsKeepTheirPbrRoles() {
         val edge = GameplayEnvironmentComposition.blenderMaterialColor(
             "LM_Walnut_Edge",
