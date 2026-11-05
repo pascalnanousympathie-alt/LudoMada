@@ -143,11 +143,32 @@ class LudoBoardView(
         }
     }
 
-    internal fun markHomePreviewReady(rendererName:String, environmentParts:Int, baobabPartCount:Int, heroPartCount:Int, boardPartCount:Int) {
+    internal fun markHomePreviewReady(
+        rendererName:String,
+        environmentParts:Int,
+        baobabPartCount:Int,
+        heroPartCount:Int,
+        boardPartCount:Int,
+        terrainFootprintScale:Float? = null,
+        terrainReliefScale:Float? = null,
+        alignedGrassCount:Int = 0,
+        grassPartCount:Int = 0,
+        terrainVertexCount:Int = 0
+    ) {
         if (!BuildConfig.DEBUG || !homePreview) return
+        val terrainContract = if (
+            terrainFootprintScale != null && terrainFootprintScale.isFinite() &&
+            terrainReliefScale != null && terrainReliefScale.isFinite() &&
+            terrainVertexCount > 0 && grassPartCount > 0 && alignedGrassCount == grassPartCount
+        ) {
+            " | TERRAIN_FOOTPRINT=" + terrainFootprintScale +
+                " | TERRAIN_RELIEF=" + terrainReliefScale +
+                " | GRASS_CONTACT=" + alignedGrassCount + "/" + grassPartCount +
+                " | TERRAIN_VERTICES=" + terrainVertexCount
+        } else ""
         val marker = "LudoMada 3D Home Preview | HOME_3D_FRAME_COMPLETE | RENDERER=" + rendererName +
             " | ENV_PARTS=" + environmentParts + " | BAOBAB_PARTS=" + baobabPartCount +
-            " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount
+            " | HERO_PARTS=" + heroPartCount + " | BOARD_PARTS=" + boardPartCount + terrainContract
         post {
             if (contentDescription != marker) contentDescription = marker
             // HomeView is the visible accessibility node above this GLSurfaceView.
@@ -1577,16 +1598,39 @@ class LudoBoardView(
                     val visibleEnvironmentPartCount=envParts.keys.count {
                         !HomeEnvironmentComposition.isEmbeddedBaobabPart(it)
                     }
+                    // The environment loader returns only after every grass clump
+                    // has been aligned to the transformed terrain. Publish the
+                    // exact transform/contact values with the first-frame marker.
+                    val groundPart=envParts.values.firstOrNull {
+                        it.materialName=="ENV_Ground_PBR"
+                    }
+                    val grassPartCount=envParts.values.count {
+                        it.materialName=="ENV_Grass_PBR"
+                    }
+                    val terrainVertexCount=(groundPart?.mesh?.positions?.size ?: 0)/3
+                    val terrainReady=groundPart!=null && terrainVertexCount>=4000 && grassPartCount>0
                     val complete=validSurface &&
                         glbParts.keys.containsAll(expectedHeroParts) &&
-                        boardParts.isNotEmpty() && visibleEnvironmentPartCount>0 && baobabParts.isNotEmpty()
+                        boardParts.isNotEmpty() && visibleEnvironmentPartCount>0 &&
+                        baobabParts.isNotEmpty() && terrainReady
                     if (complete) {
                         android.util.Log.i("LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+visibleEnvironmentPartCount+
                             " embeddedBaobabParts="+(envParts.size-visibleEnvironmentPartCount)+
                             " baobabParts="+baobabParts.size+
-                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
-                        host.markHomePreviewReady("GLES3_PBR",visibleEnvironmentPartCount,baobabParts.size,glbParts.size,boardParts.size)
+                            " heroParts="+glbParts.size+" boardParts="+boardParts.size+
+                            " terrainFootprint="+HomeEnvironmentComposition.HOME_TERRAIN_FOOTPRINT_SCALE+
+                            " terrainRelief="+HomeEnvironmentComposition.HOME_TERRAIN_VERTICAL_RELIEF_SCALE+
+                            " grassContact="+grassPartCount+"/"+grassPartCount+
+                            " terrainVertices="+terrainVertexCount)
+                        host.markHomePreviewReady(
+                            "GLES3_PBR",visibleEnvironmentPartCount,baobabParts.size,glbParts.size,boardParts.size,
+                            terrainFootprintScale=HomeEnvironmentComposition.HOME_TERRAIN_FOOTPRINT_SCALE,
+                            terrainReliefScale=HomeEnvironmentComposition.HOME_TERRAIN_VERTICAL_RELIEF_SCALE,
+                            alignedGrassCount=grassPartCount,
+                            grassPartCount=grassPartCount,
+                            terrainVertexCount=terrainVertexCount
+                        )
                     } else {
                         android.util.Log.e("LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
