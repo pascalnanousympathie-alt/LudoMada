@@ -694,7 +694,7 @@ class MainActivity : Activity() {
         // Stable accessibility marker for UiAutomator on Android 8.1 and newer.
         val titleContainer = header.getChildAt(1) as? LinearLayout
         titleContainer?.getChildAt(0)?.apply {
-            contentDescription = "OFFLINE_MENU_SCREEN"
+            contentDescription = "Ludo hors-ligne • OFFLINE_MENU_SCREEN"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
         }
         add(header)
