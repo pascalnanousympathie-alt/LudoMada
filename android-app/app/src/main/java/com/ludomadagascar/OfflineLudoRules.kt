@@ -7,6 +7,8 @@ package com.ludomadagascar
  * caught by fast JVM unit tests as well as the device-level smoke test.
  */
 internal object OfflineLudoRules {
+    data class CaptureTarget(val playerIndex: Int, val tokenIndex: Int)
+
     const val TRACK_LAST_POSITION = 51
     const val FINISH_POSITION = 57
     const val TOKENS_PER_PLAYER = 4
@@ -31,6 +33,36 @@ internal object OfflineLudoRules {
     }
 
     fun isSafeSquare(square: Int): Boolean = square in safeSquares
+
+    /**
+     * Returns the active opponent tokens on the landing square.
+     *
+     * Home/finished tokens and all safe squares are immune. The active player's
+     * own tokens are never captured. If multiple opponent tokens share a square,
+     * every matching token is returned to preserve the existing offline rule.
+     */
+    fun captureTargets(
+        positionsByPlayer: List<IntArray>,
+        currentPlayer: Int,
+        landingPosition: Int
+    ): List<CaptureTarget> {
+        if (currentPlayer !in 0..3 || currentPlayer !in positionsByPlayer.indices) {
+            return emptyList()
+        }
+        val landingSquare = globalSquare(currentPlayer, landingPosition) ?: return emptyList()
+        if (isSafeSquare(landingSquare)) return emptyList()
+
+        return buildList {
+            positionsByPlayer.forEachIndexed { playerIndex, positions ->
+                if (playerIndex == currentPlayer || playerIndex !in 0..3) return@forEachIndexed
+                for (tokenIndex in 0 until minOf(TOKENS_PER_PLAYER, positions.size)) {
+                    if (globalSquare(playerIndex, positions[tokenIndex]) == landingSquare) {
+                        add(CaptureTarget(playerIndex, tokenIndex))
+                    }
+                }
+            }
+        }
+    }
 
     fun hasLegalMove(positions: Iterable<Int>, dice: Int): Boolean =
         positions.any { canMove(it, dice) }

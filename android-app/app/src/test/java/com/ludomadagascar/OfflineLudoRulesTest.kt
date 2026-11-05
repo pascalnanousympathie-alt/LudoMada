@@ -51,6 +51,59 @@ class OfflineLudoRulesTest {
     }
 
     @Test
+    fun nonSafeLandingCapturesEveryMatchingOpponentTokenButNeverOwnTokens() {
+        val positions = listOf(
+            intArrayOf(5, 5, 5, 5),
+            intArrayOf(44, 44, -1, 57),
+            intArrayOf(31, 57, -1, 30),
+            intArrayOf(18, -1, 57, 20)
+        )
+
+        assertEquals(
+            listOf(
+                OfflineLudoRules.CaptureTarget(1, 0),
+                OfflineLudoRules.CaptureTarget(1, 1),
+                OfflineLudoRules.CaptureTarget(2, 0),
+                OfflineLudoRules.CaptureTarget(3, 0)
+            ),
+            OfflineLudoRules.captureTargets(positions, currentPlayer = 0, landingPosition = 5)
+        )
+    }
+
+    @Test
+    fun safeLandingDoesNotCaptureOpponentTokens() {
+        val positions = listOf(
+            intArrayOf(8, -1, -1, -1),
+            intArrayOf(47, -1, -1, -1),
+            intArrayOf(34, -1, -1, -1),
+            intArrayOf(21, -1, -1, -1)
+        )
+
+        assertTrue(OfflineLudoRules.captureTargets(positions, 0, 8).isEmpty())
+    }
+
+    @Test
+    fun homeAndFinishedOpponentTokensAreNotCaptureTargets() {
+        val positions = listOf(
+            intArrayOf(7, -1, -1, -1),
+            intArrayOf(46, -1, 57, -1),
+            intArrayOf(-1, 57, -1, -1)
+        )
+
+        assertEquals(
+            listOf(OfflineLudoRules.CaptureTarget(1, 0)),
+            OfflineLudoRules.captureTargets(positions, 0, 7)
+        )
+    }
+
+    @Test
+    fun captureTargetLookupRejectsInvalidPlayersAndFinishedLandings() {
+        val positions = listOf(intArrayOf(0, 1, 2, 3), intArrayOf(0, 1, 2, 3))
+        assertTrue(OfflineLudoRules.captureTargets(positions, 2, 5).isEmpty())
+        assertTrue(OfflineLudoRules.captureTargets(positions, 0, 57).isEmpty())
+    }
+
+    @Test
     fun detectsWhetherAnyTokenCanMove() {
         assertTrue(OfflineLudoRules.hasLegalMove(listOf(-1, 55, 57), 2))
         assertFalse(OfflineLudoRules.hasLegalMove(listOf(-1, 57), 2))

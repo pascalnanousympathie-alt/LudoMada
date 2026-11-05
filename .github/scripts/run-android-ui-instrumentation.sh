@@ -147,9 +147,13 @@ home_screenshot_watcher_pid=$!
 
 cd android-app
 set +e
-echo "INSTRUMENTATION_TARGET=com.ludomadagascar.StartupUiTest (all @Test methods)"
+# Explicitly select both suites. The class argument accepts comma-separated
+# fully qualified class names; selecting StartupUiTest alone would compile but
+# silently skip OfflineGameFlowIntegrationTest on every emulator API.
+instrumentation_classes="com.ludomadagascar.StartupUiTest,com.ludomadagascar.OfflineGameFlowIntegrationTest"
+echo "INSTRUMENTATION_TARGET=$instrumentation_classes (all @Test methods)"
 timeout --signal=TERM --kill-after=15s 10m ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.ludomadagascar.StartupUiTest \
+  "-Pandroid.testInstrumentationRunnerArguments.class=$instrumentation_classes" \
   --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
 test_status=$?
 set -e

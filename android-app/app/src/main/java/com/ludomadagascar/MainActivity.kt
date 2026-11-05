@@ -682,9 +682,6 @@ class MainActivity : Activity() {
         add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
     }
 
-    private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
-        OfflineLudoRules.globalSquare(player,pos)
-
     private fun offlineCanMove(pos:Int,dice:Int):Boolean =
         OfflineLudoRules.canMove(pos,dice)
 
@@ -746,22 +743,24 @@ class MainActivity : Activity() {
             return
         }
         tok.put("pos",next)
-        var captured=0
-        val landing=offlineGlobalSquare(offlineTurn,next)
-        if(landing!=null){
-            val safe=OfflineLudoRules.isSafeSquare(landing)
-            if(!safe){
-                for(pi in 0 until minOf(players,ps.length())){
-                    if(pi==offlineTurn)continue
-                    val other=ps.optJSONObject(pi)?:continue
-                    val ots=other.optJSONArray("tokens")?:continue
-                    for(ti in 0 until minOf(4,ots.length())){
-                        val ot=ots.optJSONObject(ti)?:continue
-                        if(offlineGlobalSquare(pi,ot.optInt("pos",-1))==landing){ot.put("pos",-1);captured++}
-                    }
-                }
+        val positionsByPlayer = List(minOf(players, ps.length())) { playerIndex ->
+            val playerTokens = ps.optJSONObject(playerIndex)?.optJSONArray("tokens")
+            IntArray(minOf(OfflineLudoRules.TOKENS_PER_PLAYER, playerTokens?.length() ?: 0)) { index ->
+                playerTokens?.optJSONObject(index)?.optInt("pos",-1) ?: -1
             }
         }
+        val captureTargets = OfflineLudoRules.captureTargets(
+            positionsByPlayer,
+            offlineTurn,
+            next
+        )
+        captureTargets.forEach { target ->
+            ps.optJSONObject(target.playerIndex)
+                ?.optJSONArray("tokens")
+                ?.optJSONObject(target.tokenIndex)
+                ?.put("pos",-1)
+        }
+        val captured = captureTargets.size
         offlineDice=0
         offlineState?.put("dice",0)
         host.state=offlineState;host.player=offlineTurn;host.animateState()
