@@ -321,12 +321,12 @@ function returnToHome() {
 }
 
 function openModePickerFromHome() {
-  // The compact Home layout keeps the live 3D board clear and places the
-  // primary JOUER CTA at logical x=48..342 / y=441..495 on the 390×710 canvas.
-  // Probe its centre first, then nearby points for device scaling/inset variance.
+  // The static 16:9 Home reference places its primary JOUER hitbox around
+  // logical x=975..1245 / y=345..485 on a 1280×720 canvas.
+  // Probe the centre first, then nearby points for scaling/inset variance.
   const points = [
-    "0.50,0.66", "0.47,0.66", "0.53,0.66",
-    "0.50,0.64", "0.50,0.68", "0.45,0.65", "0.55,0.65"
+    "0.86,0.575", "0.84,0.575", "0.88,0.575",
+    "0.86,0.55", "0.86,0.60", "0.82,0.55", "0.90,0.60"
   ];
   let lastLabels = [];
 

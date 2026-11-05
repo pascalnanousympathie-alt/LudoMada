@@ -347,7 +347,8 @@ internal object GameplayEnvironmentComposition {
     const val PRESERVE_ALBEDO = true
 
     fun tabletop(): PremiumMaterial = PremiumMaterial(
-        baseColor = PremiumMaterial.rgba(Color.rgb(154, 83, 34)),
+        // Keep this pure Kotlin data so local JVM tests do not call Android Color stubs.
+        baseColor = floatArrayOf(154f / 255f, 83f / 255f, 34f / 255f, 1f),
         metallic = 0.035f,
         roughness = 0.44f,
         ao = 0.98f,

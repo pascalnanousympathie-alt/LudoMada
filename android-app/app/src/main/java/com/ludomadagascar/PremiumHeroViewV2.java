@@ -124,7 +124,6 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             super(context);
             setClickable(true);
             setFocusable(true);
-            setLayerType(View.LAYER_TYPE_HARDWARE, null);
             loadReference();
         }
 
