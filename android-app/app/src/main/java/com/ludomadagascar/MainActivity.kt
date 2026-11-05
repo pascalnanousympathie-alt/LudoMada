@@ -25,6 +25,8 @@ class MainActivity : Activity() {
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
     private var activityResumed = false
+    private var pendingHomeAfterLandscape = false
+    private val homeAfterLandscapeStateKey = "ludomada.homeAfterLandscape"
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
@@ -209,7 +211,16 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         music=CalmMusic(this)
         val hasSession = restoreSession()
-        if (hasSession && token.isNotBlank()) home() else splash()
+        pendingHomeAfterLandscape = savedInstanceState?.getBoolean(homeAfterLandscapeStateKey, false) == true
+        if ((hasSession && token.isNotBlank()) || pendingHomeAfterLandscape) home() else splash()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(
+            homeAfterLandscapeStateKey,
+            pendingHomeAfterLandscape || currentScreen == "home"
+        )
+        super.onSaveInstanceState(outState)
     }
 
     private fun splash() {
@@ -334,9 +345,11 @@ class MainActivity : Activity() {
         // The reference artwork is a 16:9 landscape Home screen. Request landscape
         // before creating the view so it is not stretched/cropped on first launch.
         if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            pendingHomeAfterLandscape = true
             requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             return
         }
+        pendingHomeAfterLandscape = false
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
         pauseBoardViews()
         currentScreen="home"

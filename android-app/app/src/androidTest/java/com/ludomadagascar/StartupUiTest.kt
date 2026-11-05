@@ -251,6 +251,46 @@ class StartupUiTest {
     }
 
     @Test
+    fun offlineMenuReturnsToStaticHomeAfterLandscapeRotationWithoutSession() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
+
+        val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        assertNotNull("Launch intent missing", intent)
+        instrumentation.startActivitySync(intent!!.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+
+        val device = UiDevice.getInstance(instrumentation)
+        assertTrue("Login screen did not appear", device.wait(Until.hasObject(By.text("Se connecter")), 8000))
+        assertTrue("Offline entry action is missing", device.hasObject(By.text("👥 Jouer hors-ligne")))
+        device.findObject(By.text("👥 Jouer hors-ligne")).click()
+        assertTrue("Offline menu did not appear", device.wait(Until.hasObject(By.text("Ludo hors-ligne")), 3000))
+
+        // This screen has no authenticated session. The first Home request must
+        // survive Activity recreation when the device changes to landscape.
+        device.findObject(By.text("← Accueil")).click()
+        assertTrue(
+            "Home request must survive the portrait-to-landscape Activity recreation",
+            device.wait(Until.hasObject(By.descContains("HOME_IMAGE_FRAME_COMPLETE")), 10000)
+        )
+
+        var resumed: MainActivity? = null
+        instrumentation.runOnMainSync {
+            resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Home MainActivity must remain resumed", resumed)
+            assertEquals(
+                android.content.res.Configuration.ORIENTATION_LANDSCAPE,
+                resumed!!.resources.configuration.orientation
+            )
+        }
+        instrumentation.runOnMainSync { resumed?.finish() }
+    }
+
+    @Test
     fun app_launches_premium_home_and_offline_game_flow_is_reachable() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
