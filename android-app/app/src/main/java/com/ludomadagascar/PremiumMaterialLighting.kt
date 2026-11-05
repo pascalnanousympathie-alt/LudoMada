@@ -375,7 +375,7 @@ internal object GameplayEnvironmentComposition {
         }
     }
 
-    fun blenderAlbedoKind(materialName: String): Int = when (materialName) {
+    fun blenderTextureKind(materialName: String): Int = when (materialName) {
         "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
         "LM_Champagne_Brass" -> 4
         else -> 3
