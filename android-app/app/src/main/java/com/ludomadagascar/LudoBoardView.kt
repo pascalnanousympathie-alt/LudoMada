@@ -1520,9 +1520,7 @@ class LudoBoardView(
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
-            val glSubmitStartedNanos = System.nanoTime()
-            renderDirectFrame()
-            val glSubmissionDurationNanos = System.nanoTime() - glSubmitStartedNanos
+            val glSubmissionDurationNanos = renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             host.publishPawnTapTargets()
             if (!host.homePreview) {
@@ -1616,66 +1614,79 @@ class LudoBoardView(
         }
         private fun renderScene(){
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
-            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",sceneWidth,sceneHeight)
+            // The final backbuffer readback in renderDirectFrame validates the completed
+            // scene after post-processing. A second glFinish/readback here only stalls the
+            // GPU on the first frame and must not contaminate render CPU-time telemetry.
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
-        private fun renderDirectFrame(){
-            if (host.homePreview) {
-                // Route Home through the same calibrated scene FBO and post-process
-                // pipeline as gameplay. The scene FBO is cleared with alpha=0 in
-                // renderScene(), and PostShader preserves that alpha for the Home UI.
-                renderShadowMap()
-                renderScene()
-                renderPostProcess()
-                if (BuildConfig.DEBUG && !homePreviewFirstFrameCaptured) {
-                    val validSurface=logFramebufferPixels("home_surface",sceneWidth,sceneHeight)
-                    val expectedHeroParts=setOf(
-                        "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
-                        "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
-                    )
-                    val visibleEnvironmentPartCount=envParts.keys.count {
-                        !HomeEnvironmentComposition.isEmbeddedBaobabPart(it)
-                    }
-                    val complete=validSurface &&
-                        glbParts.keys.containsAll(expectedHeroParts) &&
-                        boardParts.isNotEmpty() && visibleEnvironmentPartCount>0 && baobabParts.isNotEmpty()
-                    if (complete) {
-                        android.util.Log.i("LudoMadaRender",
-                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts="+visibleEnvironmentPartCount+
-                            " embeddedBaobabParts="+(envParts.size-visibleEnvironmentPartCount)+
-                            " baobabParts="+baobabParts.size+
-                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
-                        host.markHomePreviewReady("GLES3_PBR",visibleEnvironmentPartCount,baobabParts.size,glbParts.size,boardParts.size)
-                    } else {
-                        android.util.Log.e("LudoMadaRender",
-                            "HOME_PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
-                            " envParts="+envParts.size+" baobabParts="+baobabParts.size+
-                            " heroParts="+glbParts.size+" boardParts="+boardParts.size)
-                    }
-                    homePreviewFirstFrameCaptured=true
-                }
-                return
-            }
-            if(sceneFbo==0) createSceneTargets(sceneWidth,sceneHeight)
+        private fun renderDirectFrame(): Long {
+            if (sceneFbo == 0) createSceneTargets(sceneWidth, sceneHeight)
+            val pipelineStartedNanos = System.nanoTime()
+            // Render CPU timing intentionally ends after scene + post process and
+            // before any blocking framebuffer readback (glFinish/glReadPixels).
             renderShadowMap()
             renderScene()
             renderPostProcess()
-            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
-                val validSurface=logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
-                val expectedHeroParts=setOf(
-                    "LM_Pawn_Base_Weighted","LM_Pawn_Collar","LM_Pawn_Spherical_Head",
-                    "LM_Pawn_Tapered_Body","LM_Pawn_Underside_Insert","LM_Die_HydroChrome_Body"
-                )
-                if(validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()){
-                    android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
-                    host.markRendererReady("GLES3_PBR",glbParts.size,boardParts.size)
-                }else{
-                    android.util.Log.e("LudoMadaRender","PBR_FIRST_FRAME_REJECTED validSurface="+validSurface+
-                        " heroParts="+glbParts.size+" boardParts="+boardParts.size)
+            val renderPipelineCpuNanos = System.nanoTime() - pipelineStartedNanos
+
+            if (host.homePreview) {
+                if (BuildConfig.DEBUG && !homePreviewFirstFrameCaptured) {
+                    val validSurface = logFramebufferPixels("home_surface", sceneWidth, sceneHeight)
+                    val expectedHeroParts = setOf(
+                        "LM_Pawn_Base_Weighted", "LM_Pawn_Collar", "LM_Pawn_Spherical_Head",
+                        "LM_Pawn_Tapered_Body", "LM_Pawn_Underside_Insert", "LM_Die_HydroChrome_Body"
+                    )
+                    val visibleEnvironmentPartCount = envParts.keys.count {
+                        !HomeEnvironmentComposition.isEmbeddedBaobabPart(it)
+                    }
+                    val complete = validSurface &&
+                        glbParts.keys.containsAll(expectedHeroParts) &&
+                        boardParts.isNotEmpty() && visibleEnvironmentPartCount > 0 && baobabParts.isNotEmpty()
+                    if (complete) {
+                        android.util.Log.i(
+                            "LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_COMPLETE envParts=" + visibleEnvironmentPartCount +
+                                " embeddedBaobabParts=" + (envParts.size - visibleEnvironmentPartCount) +
+                                " baobabParts=" + baobabParts.size +
+                                " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                        )
+                        host.markHomePreviewReady(
+                            "GLES3_PBR", visibleEnvironmentPartCount, baobabParts.size,
+                            glbParts.size, boardParts.size
+                        )
+                    } else {
+                        android.util.Log.e(
+                            "LudoMadaRender",
+                            "HOME_PBR_FIRST_FRAME_REJECTED validSurface=" + validSurface +
+                                " envParts=" + envParts.size + " baobabParts=" + baobabParts.size +
+                                " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                        )
+                    }
+                    homePreviewFirstFrameCaptured = true
                 }
-                firstFrameDiagnosticsCaptured=true
+                return renderPipelineCpuNanos
             }
+
+            if (BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured) {
+                val validSurface = logFramebufferPixels("surface_backbuffer", sceneWidth, sceneHeight)
+                val expectedHeroParts = setOf(
+                    "LM_Pawn_Base_Weighted", "LM_Pawn_Collar", "LM_Pawn_Spherical_Head",
+                    "LM_Pawn_Tapered_Body", "LM_Pawn_Underside_Insert", "LM_Die_HydroChrome_Body"
+                )
+                if (validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()) {
+                    android.util.Log.i("LudoMadaRender", "PBR_FIRST_FRAME_COMPLETE")
+                    host.markRendererReady("GLES3_PBR", glbParts.size, boardParts.size)
+                } else {
+                    android.util.Log.e(
+                        "LudoMadaRender",
+                        "PBR_FIRST_FRAME_REJECTED validSurface=" + validSurface +
+                            " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                    )
+                }
+                firstFrameDiagnosticsCaptured = true
+            }
+            return renderPipelineCpuNanos
         }
         override fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
