@@ -103,8 +103,13 @@ function selfTestFramebufferReadback() {
   ] };
   const accessibleHomeTree = { elements: [{ contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }] };
   const inaccessibleHomeTree = { elements: [{ contentDesc: "LudoMada Premium Home" }] };
+  const readinessMarkedHomeTree = { elements: [
+    { contentDesc: "HOME_IMAGE_FRAME_COMPLETE | IMAGE_SOURCE=LOBBY_REFERENCE_4K" },
+    { contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }
+  ] };
   cases.push(
     ["Home JOUER accessibility target detected", hasHomeJouerTarget(accessibleHomeTree)],
+    ["Home with current image-readiness label recognized", isPremiumHome(readinessMarkedHomeTree)],
     ["Home without JOUER target rejected", !hasHomeJouerTarget(inaccessibleHomeTree)],
     ["decoded lightweight 4K Home reference accepted", parseHomeImageReadiness(referenceHomeTree).ok],
     ["undersized Home image rejected", !parseHomeImageReadiness(undersizedHomeTree).ok],
@@ -349,7 +354,11 @@ function tapTreeNode(tree, needle) {
 }
 
 function isPremiumHome(tree) {
-  return treeHas(tree, "LudoMada Premium Home");
+  // The image host publishes HOME_IMAGE_FRAME_COMPLETE as its current
+  // contentDescription; Android may expose that node without the FrameLayout
+  // root's older "LudoMada Premium Home" label. Accept either verified marker.
+  return treeHas(tree, "LudoMada Premium Home") ||
+    treeHas(tree, "HOME_IMAGE_FRAME_COMPLETE");
 }
 
 function hasHomeJouerTarget(tree) {
