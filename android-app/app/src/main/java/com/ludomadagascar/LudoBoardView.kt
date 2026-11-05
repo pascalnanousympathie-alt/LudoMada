@@ -1310,6 +1310,7 @@ class LudoBoardView(
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var envParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private var gameplayEnvironmentParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
         private var envBarkNormalTex=0
@@ -1440,6 +1441,14 @@ class LudoBoardView(
                 }
             } else {
                 android.util.Log.i("LudoMadaRender","HOME_ENV_ASSETS_SKIPPED_FOR_GAMEPLAY")
+                gameplayEnvironmentParts=runCatching{
+                    GlbRuntimeLoader(host.context).loadGameplayEnvironmentParts().also{
+                        android.util.Log.i("LudoMadaRender","GAMEPLAY_ENVIRONMENT_GLB_LOAD_OK parts="+it.size)
+                    }
+                }.getOrElse{
+                    android.util.Log.e("LudoMadaRender","GAMEPLAY_ENVIRONMENT_GLB_LOAD_FAILED",it)
+                    emptyMap()
+                }
             }
             val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
@@ -1702,9 +1711,16 @@ class LudoBoardView(
             for(pi in 0..3) drawDie(pi)
         }
         private fun drawGameplayBackdrop(){
-            // Dark walnut remains on the same existing 512px wood/normal textures.
-            // Preserve the authored grain instead of blending it halfway into ivory,
-            // and let the already-rendered board cast its contact shadow onto this slab.
+            // Prefer the authored Blender table when its tabletop and floor are both
+            // present. Keep the compact procedural slab as a safe GLES3 fallback.
+            if (GameplayEnvironmentComposition.hasRequiredBlenderGameplayParts(
+                    gameplayEnvironmentParts.keys
+                )
+            ) {
+                drawBlenderGameplayEnvironment()
+                return
+            }
+
             val tabletop = GameplayEnvironmentComposition.tabletop()
             drawMesh(
                 cube,
@@ -1722,6 +1738,57 @@ class LudoBoardView(
                 receivesShadow = GameplayEnvironmentComposition.RECEIVES_SHADOW,
                 preserveAlbedo = GameplayEnvironmentComposition.PRESERVE_ALBEDO
             )
+        }
+
+        private fun drawBlenderGameplayEnvironment(){
+            val root=identityAt(
+                GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X,
+                0f,
+                0f
+            )
+            val parts=gameplayEnvironmentParts.values.sortedBy { part ->
+                when {
+                    part.name=="GMENV_Studio_Floor" -> 0
+                    part.name.startsWith("GMENV_Table_Leg_") -> 1
+                    part.name.startsWith("GMENV_Leg_Ferrule_") -> 2
+                    part.name.startsWith("GMENV_Apron_") -> 3
+                    part.name=="GMENV_Tabletop_Walnut" -> 4
+                    part.name.startsWith("GMENV_Perimeter_Inlay_") -> 5
+                    part.name.startsWith("GMENV_Brass_Pin_") -> 6
+                    part.name=="GMENV_Baobab_Brass_Inlay" -> 7
+                    else -> 8
+                }
+            }
+            for(part in parts){
+                val model=FloatArray(16)
+                // Match the table centre (authored at x=-1.1667) to the board root
+                // (translated/scaled to x=0); Y/Z are already calibrated in Blender.
+                Matrix.multiplyMM(model,0,root,0,part.transform,0)
+                val textureKind=GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
+                val albedo=when(textureKind){
+                    GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex
+                    4 -> metalTex
+                    else -> neutralTex
+                }
+                val normal=if(textureKind==GameplayEnvironmentComposition.WOOD_MATERIAL_KIND)woodNormalTex else normalTex
+                val color=GameplayEnvironmentComposition.blenderMaterialColor(part.materialName,part.baseColor)
+                drawMesh(
+                    part.mesh,
+                    model,
+                    color,
+                    part.roughness,
+                    part.metallic,
+                    0.98f,
+                    if(textureKind==4)0.006f else 0f,
+                    GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
+                    false,
+                    albedo,
+                    normal,
+                    0,
+                    receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(part.name),
+                    preserveAlbedo = true
+                )
+            }
         }
 
         private fun authoredBoardRoot():FloatArray{
