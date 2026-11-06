@@ -133,6 +133,48 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
+    fun blenderRevision7EnvironmentRequiresBothStaticBatchesAndAllFourTrayPairs() {
+        val revision7Names = buildSet {
+            addAll(
+                listOf(
+                    "GMENV_Studio_Floor",
+                    "GMENV_Walnut_Structure_Batch",
+                    "GMENV_Tabletop_Walnut",
+                    "GMENV_Brass_Details_Batch",
+                    "GMENV_Baobab_Brass_Inlay"
+                )
+            )
+            for (index in 1..4) {
+                val suffix = index.toString().padStart(2, '0')
+                add("GMENV_DiceTray_Frame_$suffix")
+                add("GMENV_DiceTray_Insert_$suffix")
+            }
+        }
+
+        assertTrue(GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(revision7Names))
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_Walnut_Structure_Batch"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_Brass_Details_Batch"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_DiceTray_Frame_04"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_DiceTray_Insert_02"
+            )
+        )
+    }
+
+    @Test
     fun blenderChromeDiceTraysUseDedicatedPbrChromeAndMetalTexture() {
         assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Frame_01"))
         assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Insert_01"))
