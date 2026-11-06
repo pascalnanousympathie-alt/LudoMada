@@ -124,8 +124,11 @@ function selfTestFramebufferReadback() {
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
     ["GLES3 PBR readiness rejects a missing gameplay environment", !rendererReadinessPassed(pbrWithoutEnvironment)],
+    ["missing PBR environment reports a specific reason", rendererReadinessFailureReason(pbrWithoutEnvironment) === "gameplay_environment_missing"],
     ["GLES3 PBR readiness rejects legacy non-batched Blender parts", !rendererReadinessPassed(pbrLegacyEnvironment)],
+    ["legacy Blender environment reports a revision mismatch", rendererReadinessFailureReason(pbrLegacyEnvironment) === "legacy_environment_not_revision7"],
     ["GLES2 fallback remains eligible with its procedural tabletop", rendererReadinessPassed(safeFallback)],
+    ["GLES2 fallback has no readiness rejection reason", rendererReadinessFailureReason(safeFallback) === null],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
