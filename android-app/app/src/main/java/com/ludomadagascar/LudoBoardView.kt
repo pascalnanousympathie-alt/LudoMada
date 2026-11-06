@@ -1379,6 +1379,7 @@ class LudoBoardView(
         private var lastParticleCleanupCpuNanos = 0L
         private var lastActiveParticleCount = 0
         private val particleDrawTimingScratch = LongArray(5)
+        private var glDeviceDiagnostic = "unavailable"
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1403,7 +1404,8 @@ class LudoBoardView(
         private val dustColor=FloatArray(128*4)
         private val dustSize=FloatArray(128)
         private val dustData=FloatArray(128*8)
-        private var particleVbo=0
+        private val particleVbos = IntArray(3)
+        private var nextParticleVbo = 0
         private val lastDust=Array(4){LongArray(4)}
         private val lastDiceFx=LongArray(4)
         private val boardTop=0.20f
@@ -1451,7 +1453,8 @@ class LudoBoardView(
             envSkyTex = 0; envGrassTex = 0; envGrassNormalTex = 0; envGrassRoughTex = 0
             sceneFbo = 0; sceneColorTex = 0; sceneDepthTex = 0
             shadowFbo = 0; shadowTex = 0
-            particleVbo = 0
+            java.util.Arrays.fill(particleVbos, 0)
+            nextParticleVbo = 0
             if (host.homePreview) host.markHomePreviewNotReady()
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
@@ -1475,10 +1478,8 @@ class LudoBoardView(
             val glVendor = GLES30.glGetString(GLES30.GL_VENDOR) ?: "unknown"
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
-            android.util.Log.i(
-                "LudoMadaRender",
-                "GLES_DEVICE_INFO vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
-            )
+            glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            android.util.Log.i("LudoMadaRender", "GLES_DEVICE_INFO " + glDeviceDiagnostic)
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
             GLES30.glDepthFunc(GLES30.GL_LEQUAL)
@@ -1557,7 +1558,12 @@ class LudoBoardView(
                 }
             }
             if (!host.homePreview) prepareGameplayEnvironmentDraws()
-            val ids=IntArray(1);GLES30.glGenBuffers(1,ids,0);particleVbo=ids[0]
+            GLES30.glGenBuffers(particleVbos.size, particleVbos, 0)
+            particleVbos.forEach { bufferId ->
+                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, bufferId)
+                GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 128 * 8 * 4, null, GLES30.GL_STREAM_DRAW)
+            }
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
@@ -1649,6 +1655,7 @@ class LudoBoardView(
                         " activeParticlesP95=" + phases.activeParticlesP95 +
                         " gpuExecutionTime=not_measured"
                 )
+                android.util.Log.i("LudoMadaRender", "GLES_DEVICE_INFO " + glDeviceDiagnostic)
             }
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             val pawnTargetsStartedNanos = System.nanoTime()
@@ -2660,6 +2667,8 @@ class LudoBoardView(
                 return
             }
             val timings = if (BuildConfig.DEBUG) particleDrawTimingScratch else null
+            val particleVbo = particleVbos[nextParticleVbo]
+            nextParticleVbo = (nextParticleVbo + 1) % particleVbos.size
             particleShader.draw(dustData, count, particleVbo, vp, timings)
             lastParticleBufferCopyCpuNanos = timings?.let { it[0] } ?: 0L
             lastParticleGlStateCpuNanos = timings?.let { it[1] } ?: 0L
@@ -3067,7 +3076,7 @@ class LudoBoardView(
             GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4)
             GLES30.glEnable(0x8642);GLES30.glDepthMask(false)
             if (timings != null) { timings[1] = System.nanoTime() - started; started = System.nanoTime() }
-            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,count*8*4,buffer,GLES30.GL_DYNAMIC_DRAW)
+            GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, count * 8 * 4, buffer)
             if (timings != null) { timings[2] = System.nanoTime() - started; started = System.nanoTime() }
             GLES30.glDrawArrays(GLES30.GL_POINTS,0,count)
             if (timings != null) { timings[3] = System.nanoTime() - started; started = System.nanoTime() }
