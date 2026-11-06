@@ -141,6 +141,7 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         if (targetRight <= targetLeft || targetBottom <= targetTop) {
             jouerAccessibilityTarget.setVisibility(View.INVISIBLE);
             jouerAccessibilityTarget.layout(0, 0, 0, 0);
+            updateStakeAccessibilityTargets();
             return;
         }
         jouerAccessibilityTarget.setVisibility(View.VISIBLE);
@@ -457,11 +458,11 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             // small region and redraw the live value from MainActivity.entryFee.
             overlayPaint.setStyle(Paint.Style.FILL);
             overlayPaint.setColor(0xF20D2445);
-            canvas.drawRoundRect(1005f, 297f, 1167f, 371f, 11f, 11f, overlayPaint);
-            drawCenteredText(canvas, "Mise actuelle", 1086f, 324f, 10.5f, 0xFFE7EEF8, false);
+            canvas.drawRoundRect(1005f, 297f, 1167f, 343f, 11f, 11f, overlayPaint);
+            drawCenteredText(canvas, "Mise actuelle", 1086f, 319f, 10.5f, 0xFFE7EEF8, false);
             drawCenteredText(
-                    canvas, formatBalance(selected) + " Ar", 1086f, 353f,
-                    17f, 0xFFFFDA71, true
+                    canvas, formatBalance(selected) + " Ar", 1086f, 339f,
+                    15.5f, 0xFFFFDA71, true
             );
         }
 
