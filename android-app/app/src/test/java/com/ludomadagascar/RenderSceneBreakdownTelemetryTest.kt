@@ -44,6 +44,39 @@ class RenderSceneBreakdownTelemetryTest {
     }
 
     @Test
+    fun reportsParticlePackingUploadDrawAndActiveCountSeparately() {
+        val telemetry = RenderSceneBreakdownTelemetry(windowSize = 4, reportIntervalNanos = 1L)
+        telemetry.record(
+            100L, 0L, 0L, 0L, 0L, 0L, 0L, 12_000_000L,
+            1_000_000L, 2_000_000L, 3_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 8
+        )
+        telemetry.record(
+            101L, 0L, 0L, 0L, 0L, 0L, 0L, 22_000_000L,
+            2_000_000L, 3_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L, 16
+        )
+        val snapshot = telemetry.record(
+            102L, 0L, 0L, 0L, 0L, 0L, 0L, 32_000_000L,
+            3_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L, 8_000_000L, 24
+        )!!
+
+        assertEquals(3, snapshot.sampleCount)
+        assertEquals(2f, snapshot.particleBuildCpuP50Ms, 0.001f)
+        assertEquals(3f, snapshot.particleBuildCpuP95Ms, 0.001f)
+        assertEquals(3f, snapshot.particleBufferCopyCpuP50Ms, 0.001f)
+        assertEquals(4f, snapshot.particleBufferCopyCpuP95Ms, 0.001f)
+        assertEquals(4f, snapshot.particleGlStateCpuP50Ms, 0.001f)
+        assertEquals(5f, snapshot.particleGlStateCpuP95Ms, 0.001f)
+        assertEquals(5f, snapshot.particleBufferUploadCpuP50Ms, 0.001f)
+        assertEquals(6f, snapshot.particleBufferUploadCpuP95Ms, 0.001f)
+        assertEquals(6f, snapshot.particleDrawSubmitCpuP50Ms, 0.001f)
+        assertEquals(7f, snapshot.particleDrawSubmitCpuP95Ms, 0.001f)
+        assertEquals(7f, snapshot.particleCleanupCpuP50Ms, 0.001f)
+        assertEquals(8f, snapshot.particleCleanupCpuP95Ms, 0.001f)
+        assertEquals(16, snapshot.activeParticlesP50)
+        assertEquals(24, snapshot.activeParticlesP95)
+    }
+
+    @Test
     fun resetClearsSamplesAndRestartsTheReportInterval() {
         val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 10L)
         telemetry.record(100L, 1L, 1L, 1L, 1L, 1L, 1L, 1L)

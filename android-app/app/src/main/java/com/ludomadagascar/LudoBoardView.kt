@@ -1371,6 +1371,14 @@ class LudoBoardView(
         private var lastSceneDiceCpuNanos = 0L
         private var lastSceneShaderEndCpuNanos = 0L
         private var lastSceneParticlesCpuNanos = 0L
+        private var lastParticleBuildCpuNanos = 0L
+        private var lastParticleBufferCopyCpuNanos = 0L
+        private var lastParticleGlStateCpuNanos = 0L
+        private var lastParticleBufferUploadCpuNanos = 0L
+        private var lastParticleDrawSubmitCpuNanos = 0L
+        private var lastParticleCleanupCpuNanos = 0L
+        private var lastActiveParticleCount = 0
+        private val particleDrawTimingScratch = LongArray(5)
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1420,6 +1428,14 @@ class LudoBoardView(
             lastSceneDiceCpuNanos = 0L
             lastSceneShaderEndCpuNanos = 0L
             lastSceneParticlesCpuNanos = 0L
+            lastParticleBuildCpuNanos = 0L
+            lastParticleBufferCopyCpuNanos = 0L
+            lastParticleGlStateCpuNanos = 0L
+            lastParticleBufferUploadCpuNanos = 0L
+            lastParticleDrawSubmitCpuNanos = 0L
+            lastParticleCleanupCpuNanos = 0L
+            lastActiveParticleCount = 0
+            java.util.Arrays.fill(particleDrawTimingScratch, 0L)
             preparedGameplayEnvironmentDraws = emptyList()
             gameplayEnvironmentHasDoubleSidedParts = false
             preparedBoardBatches = emptyList()
@@ -1456,6 +1472,13 @@ class LudoBoardView(
                         premiumPost.ssao + ":" +
                         premiumPost.bloom).apply()
             }
+            val glVendor = GLES30.glGetString(GLES30.GL_VENDOR) ?: "unknown"
+            val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
+            val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
+            android.util.Log.i(
+                "LudoMadaRender",
+                "GLES_DEVICE_INFO vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
             GLES30.glDepthFunc(GLES30.GL_LEQUAL)
@@ -1584,7 +1607,14 @@ class LudoBoardView(
                 lastScenePawnsCpuNanos,
                 lastSceneDiceCpuNanos,
                 lastSceneShaderEndCpuNanos,
-                lastSceneParticlesCpuNanos
+                lastSceneParticlesCpuNanos,
+                lastParticleBuildCpuNanos,
+                lastParticleBufferCopyCpuNanos,
+                lastParticleGlStateCpuNanos,
+                lastParticleBufferUploadCpuNanos,
+                lastParticleDrawSubmitCpuNanos,
+                lastParticleCleanupCpuNanos,
+                lastActiveParticleCount
             )?.let { phases ->
                 android.util.Log.i(
                     "LudoMadaRender",
@@ -1603,6 +1633,20 @@ class LudoBoardView(
                         " shaderEndCpuMsP95=" + phases.shaderEndCpuP95Ms +
                         " particlesCpuMsP50=" + phases.particlesCpuP50Ms +
                         " particlesCpuMsP95=" + phases.particlesCpuP95Ms +
+                        " particleBuildCpuMsP50=" + phases.particleBuildCpuP50Ms +
+                        " particleBuildCpuMsP95=" + phases.particleBuildCpuP95Ms +
+                        " particleBufferCopyCpuMsP50=" + phases.particleBufferCopyCpuP50Ms +
+                        " particleBufferCopyCpuMsP95=" + phases.particleBufferCopyCpuP95Ms +
+                        " particleGlStateCpuMsP50=" + phases.particleGlStateCpuP50Ms +
+                        " particleGlStateCpuMsP95=" + phases.particleGlStateCpuP95Ms +
+                        " particleBufferUploadCpuMsP50=" + phases.particleBufferUploadCpuP50Ms +
+                        " particleBufferUploadCpuMsP95=" + phases.particleBufferUploadCpuP95Ms +
+                        " particleDrawSubmitCpuMsP50=" + phases.particleDrawSubmitCpuP50Ms +
+                        " particleDrawSubmitCpuMsP95=" + phases.particleDrawSubmitCpuP95Ms +
+                        " particleCleanupCpuMsP50=" + phases.particleCleanupCpuP50Ms +
+                        " particleCleanupCpuMsP95=" + phases.particleCleanupCpuP95Ms +
+                        " activeParticlesP50=" + phases.activeParticlesP50 +
+                        " activeParticlesP95=" + phases.activeParticlesP95 +
                         " gpuExecutionTime=not_measured"
                 )
             }
@@ -2587,7 +2631,42 @@ class LudoBoardView(
             }
         }
         private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
-        private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
+        private fun drawParticles(){
+            val buildStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            var count = 0
+            for (i in 0 until 128) if (dustLife[i] > 0f) {
+                val p = count * 8
+                val o = i * 3
+                val c = i * 4
+                dustData[p] = dustPos[o]
+                dustData[p + 1] = dustPos[o + 1]
+                dustData[p + 2] = dustPos[o + 2]
+                dustData[p + 3] = dustColor[c]
+                dustData[p + 4] = dustColor[c + 1]
+                dustData[p + 5] = dustColor[c + 2]
+                dustData[p + 6] = dustColor[c + 3] *
+                    (dustLife[i] / max(0.01f, dustMaxLife[i])).coerceIn(0f, 1f)
+                dustData[p + 7] = dustSize[i]
+                count++
+            }
+            lastActiveParticleCount = count
+            if (buildStarted != 0L) lastParticleBuildCpuNanos = System.nanoTime() - buildStarted
+            if (count == 0) {
+                lastParticleBufferCopyCpuNanos = 0L
+                lastParticleGlStateCpuNanos = 0L
+                lastParticleBufferUploadCpuNanos = 0L
+                lastParticleDrawSubmitCpuNanos = 0L
+                lastParticleCleanupCpuNanos = 0L
+                return
+            }
+            val timings = if (BuildConfig.DEBUG) particleDrawTimingScratch else null
+            particleShader.draw(dustData, count, particleVbo, vp, timings)
+            lastParticleBufferCopyCpuNanos = timings?.let { it[0] } ?: 0L
+            lastParticleGlStateCpuNanos = timings?.let { it[1] } ?: 0L
+            lastParticleBufferUploadCpuNanos = timings?.let { it[2] } ?: 0L
+            lastParticleDrawSubmitCpuNanos = timings?.let { it[3] } ?: 0L
+            lastParticleCleanupCpuNanos = timings?.let { it[4] } ?: 0L
+        }
         private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val rgb=PbrMaterialTextures.colorRgb(kind,x,y,size);data.put((rgb shr 16).toByte()).put((rgb shr 8).toByte()).put(rgb.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createFlatNormalTexture():Int{val data=ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());data.put(128.toByte()).put(128.toByte()).put(255.toByte()).put(255.toByte());data.position(0);return uploadTexture(1,data)}
@@ -2975,7 +3054,28 @@ class LudoBoardView(
         """.trimIndent();val fs="""#version 300 es
             precision mediump float;in vec4 vColor;layout(location=0)out vec4 fragColor;void main(){vec2 p=gl_PointCoord*2.0-1.0;float r=dot(p,p);if(r>1.0)discard;fragColor=vec4(vColor.rgb*1.12,(1.0-r)*vColor.a);}
         """.trimIndent();program=buildProgram(vs,fs);vp=GLES30.glGetUniformLocation(program,"uVp")}
-        fun draw(data:FloatArray,count:Int,vbo:Int,viewProj:FloatArray){buffer.position(0);buffer.put(data,0,count*8);buffer.position(0);GLES30.glUseProgram(program);GLES30.glUniformMatrix4fv(vp,1,false,viewProj,0);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,vbo);GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,count*8*4,buffer,GLES30.GL_DYNAMIC_DRAW);GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,8*4,0);GLES30.glVertexAttribPointer(1,4,GLES30.GL_FLOAT,false,8*4,3*4);GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4);GLES30.glEnable(0x8642);GLES30.glDepthMask(false);GLES30.glDrawArrays(GLES30.GL_POINTS,0,count);GLES30.glDepthMask(true);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,0)}
+        fun draw(data:FloatArray,count:Int,vbo:Int,viewProj:FloatArray,timings:LongArray?=null){
+            var started = if (timings != null) System.nanoTime() else 0L
+            buffer.position(0);buffer.put(data,0,count*8);buffer.position(0)
+            if (timings != null) { timings[0] = System.nanoTime() - started; started = System.nanoTime() }
+            GLES30.glUseProgram(program)
+            GLES30.glUniformMatrix4fv(vp,1,false,viewProj,0)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,vbo)
+            GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2)
+            GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,8*4,0)
+            GLES30.glVertexAttribPointer(1,4,GLES30.GL_FLOAT,false,8*4,3*4)
+            GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4)
+            GLES30.glEnable(0x8642);GLES30.glDepthMask(false)
+            if (timings != null) { timings[1] = System.nanoTime() - started; started = System.nanoTime() }
+            GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,count*8*4,buffer,GLES30.GL_DYNAMIC_DRAW)
+            if (timings != null) { timings[2] = System.nanoTime() - started; started = System.nanoTime() }
+            GLES30.glDrawArrays(GLES30.GL_POINTS,0,count)
+            if (timings != null) { timings[3] = System.nanoTime() - started; started = System.nanoTime() }
+            GLES30.glDepthMask(true)
+            GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,0)
+            if (timings != null) timings[4] = System.nanoTime() - started
+        }
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 

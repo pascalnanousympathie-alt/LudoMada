@@ -2,13 +2,9 @@ name: Android Emulator Automated Tests
 
 on:
   workflow_dispatch:
-  push:
-    # Android runtime changes and Ramus smoke-harness edits need end-to-end emulator validation.
-    # Other script-only changes continue through the lightweight framebuffer contract workflow.
-    paths:
-      - 'android-app/**'
-      - 'scripts/ramus-smoke.mjs'
-      - '.github/workflows/android-emulator-test.yml'
+  # Run once per PR update (plus explicit manual dispatch). A push to an open PR
+  # also emits pull_request/synchronize; a push trigger here would queue a second
+  # full Ramus session against the same exact commit and consume trial capacity.
   pull_request:
     # Run the same real-device smoke contract for PRs that change Android runtime
     # code, the Ramus harness, or this workflow itself.

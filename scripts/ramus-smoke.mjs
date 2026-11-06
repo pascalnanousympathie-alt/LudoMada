@@ -766,7 +766,7 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PERF_SCENE_BREAKDOWN|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|GLES_DEVICE_INFO|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PERF_SCENE_BREAKDOWN|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -1338,6 +1338,7 @@ try {
   const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
   const phaseLines = rendererLines.filter(line => line.includes("PERF_PIPELINE_PHASES"));
   const sceneBreakdownLines = rendererLines.filter(line => line.includes("PERF_SCENE_BREAKDOWN"));
+  const glDeviceLines = rendererLines.filter(line => line.includes("GLES_DEVICE_INFO"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
@@ -1353,6 +1354,11 @@ try {
     }
   } else {
     console.log("RAMUS_RENDERER_LOGCAT_UNAVAILABLE trial mode did not expose app-tag readback rows");
+  }
+  if (glDeviceLines.length) {
+    console.log("RAMUS_RENDER_DEVICE " + glDeviceLines[glDeviceLines.length - 1].slice(0, 1200));
+  } else {
+    console.log("RAMUS_RENDER_DEVICE_UNAVAILABLE no GLES_DEVICE_INFO row exposed by Ramus logcat");
   }
   if (perfLines.length) {
     const latestPerf = perfLines[perfLines.length - 1];

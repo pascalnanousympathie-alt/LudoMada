@@ -16,7 +16,14 @@ internal data class RenderSceneBreakdownSnapshot(
     val pawnsCpuP50Ms: Float, val pawnsCpuP95Ms: Float,
     val diceCpuP50Ms: Float, val diceCpuP95Ms: Float,
     val shaderEndCpuP50Ms: Float, val shaderEndCpuP95Ms: Float,
-    val particlesCpuP50Ms: Float, val particlesCpuP95Ms: Float
+    val particlesCpuP50Ms: Float, val particlesCpuP95Ms: Float,
+    val particleBuildCpuP50Ms: Float, val particleBuildCpuP95Ms: Float,
+    val particleBufferCopyCpuP50Ms: Float, val particleBufferCopyCpuP95Ms: Float,
+    val particleGlStateCpuP50Ms: Float, val particleGlStateCpuP95Ms: Float,
+    val particleBufferUploadCpuP50Ms: Float, val particleBufferUploadCpuP95Ms: Float,
+    val particleDrawSubmitCpuP50Ms: Float, val particleDrawSubmitCpuP95Ms: Float,
+    val particleCleanupCpuP50Ms: Float, val particleCleanupCpuP95Ms: Float,
+    val activeParticlesP50: Int, val activeParticlesP95: Int
 )
 
 internal class RenderSceneBreakdownTelemetry(
@@ -35,6 +42,13 @@ internal class RenderSceneBreakdownTelemetry(
     private val dice = LongArray(windowSize)
     private val shaderEnd = LongArray(windowSize)
     private val particles = LongArray(windowSize)
+    private val particleBuild = LongArray(windowSize)
+    private val particleBufferCopy = LongArray(windowSize)
+    private val particleGlState = LongArray(windowSize)
+    private val particleBufferUpload = LongArray(windowSize)
+    private val particleDrawSubmit = LongArray(windowSize)
+    private val particleCleanup = LongArray(windowSize)
+    private val activeParticles = IntArray(windowSize)
     private val scratch = LongArray(windowSize)
     private var nextIndex = 0
     private var sampleCount = 0
@@ -48,7 +62,14 @@ internal class RenderSceneBreakdownTelemetry(
         pawnsCpuNanos: Long,
         diceCpuNanos: Long,
         shaderEndCpuNanos: Long,
-        particlesCpuNanos: Long
+        particlesCpuNanos: Long,
+        particleBuildCpuNanos: Long = 0L,
+        particleBufferCopyCpuNanos: Long = 0L,
+        particleGlStateCpuNanos: Long = 0L,
+        particleBufferUploadCpuNanos: Long = 0L,
+        particleDrawSubmitCpuNanos: Long = 0L,
+        particleCleanupCpuNanos: Long = 0L,
+        activeParticleCount: Int = 0
     ): RenderSceneBreakdownSnapshot? {
         if (frameStartNanos <= 0L) return null
         setup[nextIndex] = setupCpuNanos.coerceAtLeast(0L)
@@ -58,6 +79,13 @@ internal class RenderSceneBreakdownTelemetry(
         dice[nextIndex] = diceCpuNanos.coerceAtLeast(0L)
         shaderEnd[nextIndex] = shaderEndCpuNanos.coerceAtLeast(0L)
         particles[nextIndex] = particlesCpuNanos.coerceAtLeast(0L)
+        particleBuild[nextIndex] = particleBuildCpuNanos.coerceAtLeast(0L)
+        particleBufferCopy[nextIndex] = particleBufferCopyCpuNanos.coerceAtLeast(0L)
+        particleGlState[nextIndex] = particleGlStateCpuNanos.coerceAtLeast(0L)
+        particleBufferUpload[nextIndex] = particleBufferUploadCpuNanos.coerceAtLeast(0L)
+        particleDrawSubmit[nextIndex] = particleDrawSubmitCpuNanos.coerceAtLeast(0L)
+        particleCleanup[nextIndex] = particleCleanupCpuNanos.coerceAtLeast(0L)
+        activeParticles[nextIndex] = activeParticleCount.coerceAtLeast(0)
         nextIndex = (nextIndex + 1) % windowSize
         sampleCount = min(windowSize, sampleCount + 1)
 
@@ -75,6 +103,13 @@ internal class RenderSceneBreakdownTelemetry(
         Arrays.fill(dice, 0L)
         Arrays.fill(shaderEnd, 0L)
         Arrays.fill(particles, 0L)
+        Arrays.fill(particleBuild, 0L)
+        Arrays.fill(particleBufferCopy, 0L)
+        Arrays.fill(particleGlState, 0L)
+        Arrays.fill(particleBufferUpload, 0L)
+        Arrays.fill(particleDrawSubmit, 0L)
+        Arrays.fill(particleCleanup, 0L)
+        Arrays.fill(activeParticles, 0)
         Arrays.fill(scratch, 0L)
         nextIndex = 0
         sampleCount = 0
@@ -96,7 +131,21 @@ internal class RenderSceneBreakdownTelemetry(
         shaderEndCpuP50Ms = percentileMillis(shaderEnd, 0.50),
         shaderEndCpuP95Ms = percentileMillis(shaderEnd, 0.95),
         particlesCpuP50Ms = percentileMillis(particles, 0.50),
-        particlesCpuP95Ms = percentileMillis(particles, 0.95)
+        particlesCpuP95Ms = percentileMillis(particles, 0.95),
+        particleBuildCpuP50Ms = percentileMillis(particleBuild, 0.50),
+        particleBuildCpuP95Ms = percentileMillis(particleBuild, 0.95),
+        particleBufferCopyCpuP50Ms = percentileMillis(particleBufferCopy, 0.50),
+        particleBufferCopyCpuP95Ms = percentileMillis(particleBufferCopy, 0.95),
+        particleGlStateCpuP50Ms = percentileMillis(particleGlState, 0.50),
+        particleGlStateCpuP95Ms = percentileMillis(particleGlState, 0.95),
+        particleBufferUploadCpuP50Ms = percentileMillis(particleBufferUpload, 0.50),
+        particleBufferUploadCpuP95Ms = percentileMillis(particleBufferUpload, 0.95),
+        particleDrawSubmitCpuP50Ms = percentileMillis(particleDrawSubmit, 0.50),
+        particleDrawSubmitCpuP95Ms = percentileMillis(particleDrawSubmit, 0.95),
+        particleCleanupCpuP50Ms = percentileMillis(particleCleanup, 0.50),
+        particleCleanupCpuP95Ms = percentileMillis(particleCleanup, 0.95),
+        activeParticlesP50 = percentileCount(0.50),
+        activeParticlesP95 = percentileCount(0.95)
     )
 
     private fun percentileMillis(values: LongArray, percentile: Double): Float {
@@ -104,5 +153,12 @@ internal class RenderSceneBreakdownTelemetry(
         Arrays.sort(scratch, 0, sampleCount)
         val rank = ceil(percentile * sampleCount.toDouble()).toInt().coerceIn(1, sampleCount)
         return scratch[rank - 1] / 1_000_000f
+    }
+
+    private fun percentileCount(percentile: Double): Int {
+        for (i in 0 until sampleCount) scratch[i] = activeParticles[i].toLong()
+        Arrays.sort(scratch, 0, sampleCount)
+        val rank = ceil(percentile * sampleCount.toDouble()).toInt().coerceIn(1, sampleCount)
+        return scratch[rank - 1].toInt()
     }
 }
