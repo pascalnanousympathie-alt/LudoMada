@@ -1334,6 +1334,7 @@ try {
   const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);
   const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
   const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
+  const phaseLines = rendererLines.filter(line => line.includes("PERF_PIPELINE_PHASES"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
@@ -1364,6 +1365,11 @@ try {
     for (const line of perfLines.slice(-3)) console.log("RAMUS_RENDER_PERF " + line.slice(0, 1200));
   } else {
     console.log("RAMUS_PERF_METRICS_UNAVAILABLE no PERF_FRAME_STATS rows exposed by Ramus logcat");
+  }
+  if (phaseLines.length) {
+    for (const line of phaseLines.slice(-3)) console.log("RAMUS_RENDER_PHASES " + line.slice(0, 1600));
+  } else {
+    console.log("RAMUS_RENDER_PHASES_UNAVAILABLE no PERF_PIPELINE_PHASES rows exposed by Ramus logcat");
   }
 
   success = true;
