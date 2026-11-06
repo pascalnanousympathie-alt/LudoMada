@@ -31,9 +31,9 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
-    fun blenderGameplayEnvironmentUsesTheAlignedLightweightAssetContract() {
+    fun blenderGameplayEnvironmentUsesTheRevision7BatchedAssetContract() {
         assertEquals(
-            "3d/ludomada-gameplay-environment-v1.glb",
+            "3d/ludomada-gameplay-environment-r7.glb",
             GameplayEnvironmentComposition.BLENDER_ASSET_PATH
         )
         assertEquals(1.1666667f, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0.0001f)
