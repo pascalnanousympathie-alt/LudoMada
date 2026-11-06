@@ -34,9 +34,18 @@ class StartupUiTest {
         assertNotNull("Home must use the static reference-image container", hero)
         val imageHost = hero ?: throw AssertionError("Premium Home image root is missing")
         assertTrue(
-            "Home must contain its static image and a separate accessible JOUER hitbox",
-            imageHost.childCount == 2
+            "Home must contain one static image, six stake targets and one JOUER hitbox",
+            imageHost.childCount == 8
         )
+        for (fee in listOf(500, 1000, 2000, 5000, 10000, 20000)) {
+            val target = imageHost.getStakeAccessibilityTarget(fee)
+            assertNotNull("Home stake target $fee must exist", target)
+            assertTrue(
+                "Home stake target $fee must be visible, enabled and clickable",
+                target!!.isShown && target.isEnabled && target.isClickable &&
+                    target.contentDescription == "HOME_STAKE_$fee"
+            )
+        }
         assertTrue("Home image child must not be a live 3D renderer", imageHost.getChildAt(0) !is LudoBoardView)
         assertTrue(
             "JOUER hitbox must be a visible enabled accessibility target",
@@ -178,6 +187,32 @@ class StartupUiTest {
         play.click()
     }
 
+    private fun selectHomeStake(device: UiDevice, fee: Int) {
+        assertTrue(
+            "Home stake $fee accessibility target must appear",
+            device.wait(Until.hasObject(By.desc("HOME_STAKE_$fee")), 3000)
+        )
+        val target = device.findObject(By.desc("HOME_STAKE_$fee"))
+            ?: throw AssertionError("Home stake target $fee disappeared")
+        assertTrue("Home stake $fee must be clickable", target.isClickable)
+        target.click()
+        assertTrue(
+            "Selecting $fee must update the active Home stake",
+            device.wait(Until.hasObject(By.descContains("HOME_SELECTED_STAKE=$fee")), 3000)
+        )
+    }
+
+    private fun verifyHomeStakeSelector(device: UiDevice) {
+        for (fee in listOf(500, 1000, 2000, 5000, 10000, 20000)) {
+            assertTrue(
+                "Home must expose stake $fee",
+                device.wait(Until.hasObject(By.desc("HOME_STAKE_$fee")), 3000)
+            )
+        }
+        selectHomeStake(device, 2000)
+        selectHomeStake(device, 500)
+    }
+
     @Test
     fun game_mode_overlay_is_accessible_and_routes_both_modes() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -227,6 +262,7 @@ class StartupUiTest {
             )
             assertStaticHomeComposition(resumed)
         }
+        verifyHomeStakeSelector(device)
 
         val musicPrefs = context.getSharedPreferences("music", android.content.Context.MODE_PRIVATE)
         val originalMusicEnabled = musicPrefs.getBoolean("enabled", true)
