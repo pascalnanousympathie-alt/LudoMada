@@ -56,12 +56,9 @@ class GameplayEnvironmentCompositionTest {
     fun blenderEnvironmentDrawOrderKeepsFloorLegsApronAndTopInStableLayers() {
         val names = listOf(
             "GMENV_Tabletop_Walnut",
-            "GMENV_Brass_Pin_01",
-            "GMENV_Apron_Front",
-            "GMENV_Table_Leg_FL",
+            "GMENV_Brass_Details_Batch",
+            "GMENV_Walnut_Structure_Batch",
             "GMENV_Studio_Floor",
-            "GMENV_Leg_Ferrule_FL",
-            "GMENV_Perimeter_Inlay_01",
             "GMENV_DiceTray_Frame_01",
             "GMENV_DiceTray_Insert_01",
             "GMENV_Baobab_Brass_Inlay"
@@ -69,18 +66,17 @@ class GameplayEnvironmentCompositionTest {
         assertEquals(
             listOf(
                 "GMENV_Studio_Floor",
-                "GMENV_Table_Leg_FL",
-                "GMENV_Leg_Ferrule_FL",
-                "GMENV_Apron_Front",
+                "GMENV_Walnut_Structure_Batch",
                 "GMENV_Tabletop_Walnut",
-                "GMENV_Perimeter_Inlay_01",
-                "GMENV_Brass_Pin_01",
+                "GMENV_Brass_Details_Batch",
                 "GMENV_DiceTray_Insert_01",
                 "GMENV_DiceTray_Frame_01",
                 "GMENV_Baobab_Brass_Inlay"
             ),
             names.sortedBy(GameplayEnvironmentComposition::blenderPartDrawOrder)
         )
+        assertEquals(1, GameplayEnvironmentComposition.blenderPartDrawOrder("GMENV_Walnut_Structure_Batch"))
+        assertEquals(6, GameplayEnvironmentComposition.blenderPartDrawOrder("GMENV_Brass_Details_Batch"))
     }
 
     @Test
