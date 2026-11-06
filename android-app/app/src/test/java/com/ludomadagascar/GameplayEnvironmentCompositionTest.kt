@@ -53,6 +53,22 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
+    fun blenderGameplayEnvironmentCompactsOnlyHorizontalFootprint() {
+        assertEquals(0.75f, GameplayEnvironmentComposition.BLENDER_GAMEPLAY_XZ_SCALE, 0f)
+        assertEquals(1.1666667f, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0.0001f)
+
+        // Source r7 tabletop half-width is 6.498m and the outer tray edge is
+        // 5.96m from centre. At 0.75x, the tabletop edge remains outside every
+        // tray while reducing the empty walnut margin around the 5.6m board.
+        val runtimeTableHalfWidth = 6.498f * GameplayEnvironmentComposition.BLENDER_GAMEPLAY_XZ_SCALE
+        val runtimeTrayOuterEdge = 5.96f * GameplayEnvironmentComposition.BLENDER_GAMEPLAY_XZ_SCALE
+        val runtimeTrayInnerEdge = 4.74f * GameplayEnvironmentComposition.BLENDER_GAMEPLAY_XZ_SCALE
+        assertEquals(4.8735f, runtimeTableHalfWidth, 0.002f)
+        assertTrue("all four trays must remain on the tabletop", runtimeTrayOuterEdge < runtimeTableHalfWidth)
+        assertTrue("tray clearance must remain outside the board base", runtimeTrayInnerEdge > 2.8f)
+    }
+
+    @Test
     fun blenderEnvironmentDrawOrderKeepsFloorLegsApronAndTopInStableLayers() {
         val names = listOf(
             "GMENV_Tabletop_Walnut",

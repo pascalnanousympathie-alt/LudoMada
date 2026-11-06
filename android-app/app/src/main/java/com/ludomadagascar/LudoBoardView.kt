@@ -142,9 +142,12 @@ class LudoBoardView(
         revision7EnvironmentReady:Boolean
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
+        val viewportWidth = width.coerceAtLeast(0)
+        val viewportHeight = height.coerceAtLeast(0)
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
             " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
-            " | ENV_R7_COMPLETE=" + if (revision7EnvironmentReady) "1" else "0"
+            " | ENV_R7_COMPLETE=" + (if (revision7EnvironmentReady) "1" else "0") +
+            " | BOARD_VIEWPORT=${viewportWidth}x${viewportHeight}"
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker
@@ -1341,8 +1344,33 @@ class LudoBoardView(
             val albedoTexture: Int,
             val normalTexture: Int
         )
-        private var preparedBoardDraws: List<PreparedBoardDraw> = emptyList()
+        private data class PreparedBoardBatch(
+            val mesh: Mesh,
+            val baseColor: FloatArray,
+            val roughness: Float,
+            val metallic: Float,
+            val emission: Float,
+            val albedoTexture: Int,
+            val normalTexture: Int
+        )
+        private var preparedBoardBatches: List<PreparedBoardBatch> = emptyList()
+        private var preparedBoardShadowMeshes: List<Mesh> = emptyList()
+        private var authoredBoardPartCount = 0
+        private var heroPawnMeshes: List<Mesh> = emptyList()
+        private val identityModel = FloatArray(16).apply { Matrix.setIdentityM(this, 0) }
         private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
+        private val pipelinePhaseTelemetry = if (BuildConfig.DEBUG) RenderPipelinePhaseTelemetry() else null
+        private val sceneBreakdownTelemetry = if (BuildConfig.DEBUG) RenderSceneBreakdownTelemetry() else null
+        private var lastShadowCpuNanos = 0L
+        private var lastSceneCpuNanos = 0L
+        private var lastPostCpuNanos = 0L
+        private var lastSceneSetupCpuNanos = 0L
+        private var lastSceneBackdropCpuNanos = 0L
+        private var lastSceneBoardCpuNanos = 0L
+        private var lastScenePawnsCpuNanos = 0L
+        private var lastSceneDiceCpuNanos = 0L
+        private var lastSceneShaderEndCpuNanos = 0L
+        private var lastSceneParticlesCpuNanos = 0L
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1380,9 +1408,24 @@ class LudoBoardView(
             homePreviewFirstFrameCaptured = false
             firstDrawMarkerPersisted = false
             frameTelemetry?.reset()
+            pipelinePhaseTelemetry?.reset()
+            sceneBreakdownTelemetry?.reset()
+            lastShadowCpuNanos = 0L
+            lastSceneCpuNanos = 0L
+            lastPostCpuNanos = 0L
+            lastSceneSetupCpuNanos = 0L
+            lastSceneBackdropCpuNanos = 0L
+            lastSceneBoardCpuNanos = 0L
+            lastScenePawnsCpuNanos = 0L
+            lastSceneDiceCpuNanos = 0L
+            lastSceneShaderEndCpuNanos = 0L
+            lastSceneParticlesCpuNanos = 0L
             preparedGameplayEnvironmentDraws = emptyList()
             gameplayEnvironmentHasDoubleSidedParts = false
-            preparedBoardDraws = emptyList()
+            preparedBoardBatches = emptyList()
+            preparedBoardShadowMeshes = emptyList()
+            authoredBoardPartCount = 0
+            heroPawnMeshes = emptyList()
             lastFrameNanos = 0L
             woodTex = 0; boardTex = 0; neutralTex = 0; metalTex = 0
             normalTex = 0; woodNormalTex = 0; envCube = 0
@@ -1450,6 +1493,7 @@ class LudoBoardView(
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
                 emptyMap()
             }
+            prepareHeroPawnMeshes()
             boardParts=runCatching{
                 GlbRuntimeLoader(host.context).loadBoardParts().also{
                     android.util.Log.i("LudoMadaRender","BOARD_GLB_RUNTIME_LOAD_OK parts="+it.size)
@@ -1511,7 +1555,9 @@ class LudoBoardView(
                 }.isSuccess
                 if (markerSaved) firstDrawMarkerPersisted = true
             }
-            val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
+            val now=System.nanoTime()
+            val updateStartedNanos = now
+            val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
@@ -1528,10 +1574,67 @@ class LudoBoardView(
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
+            val updateCpuNanos = System.nanoTime() - updateStartedNanos
             val glSubmissionDurationNanos = renderDirectFrame()
+            sceneBreakdownTelemetry?.record(
+                now,
+                lastSceneSetupCpuNanos,
+                lastSceneBackdropCpuNanos,
+                lastSceneBoardCpuNanos,
+                lastScenePawnsCpuNanos,
+                lastSceneDiceCpuNanos,
+                lastSceneShaderEndCpuNanos,
+                lastSceneParticlesCpuNanos
+            )?.let { phases ->
+                android.util.Log.i(
+                    "LudoMadaRender",
+                    "PERF_SCENE_BREAKDOWN samples=" + phases.sampleCount +
+                        " setupCpuMsP50=" + phases.setupCpuP50Ms +
+                        " setupCpuMsP95=" + phases.setupCpuP95Ms +
+                        " backdropCpuMsP50=" + phases.backdropCpuP50Ms +
+                        " backdropCpuMsP95=" + phases.backdropCpuP95Ms +
+                        " boardCpuMsP50=" + phases.boardCpuP50Ms +
+                        " boardCpuMsP95=" + phases.boardCpuP95Ms +
+                        " pawnsCpuMsP50=" + phases.pawnsCpuP50Ms +
+                        " pawnsCpuMsP95=" + phases.pawnsCpuP95Ms +
+                        " diceCpuMsP50=" + phases.diceCpuP50Ms +
+                        " diceCpuMsP95=" + phases.diceCpuP95Ms +
+                        " shaderEndCpuMsP50=" + phases.shaderEndCpuP50Ms +
+                        " shaderEndCpuMsP95=" + phases.shaderEndCpuP95Ms +
+                        " particlesCpuMsP50=" + phases.particlesCpuP50Ms +
+                        " particlesCpuMsP95=" + phases.particlesCpuP95Ms +
+                        " gpuExecutionTime=not_measured"
+                )
+            }
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            val pawnTargetsStartedNanos = System.nanoTime()
             host.publishPawnTapTargets()
+            val pawnTargetsCpuNanos = System.nanoTime() - pawnTargetsStartedNanos
             if (!host.homePreview) {
+                pipelinePhaseTelemetry?.record(
+                    now,
+                    updateCpuNanos,
+                    lastShadowCpuNanos,
+                    lastSceneCpuNanos,
+                    lastPostCpuNanos,
+                    pawnTargetsCpuNanos
+                )?.let { phases ->
+                    android.util.Log.i(
+                        "LudoMadaRender",
+                        "PERF_PIPELINE_PHASES samples=" + phases.sampleCount +
+                            " updateCpuMsP50=" + phases.updateCpuP50Ms +
+                            " updateCpuMsP95=" + phases.updateCpuP95Ms +
+                            " shadowCpuMsP50=" + phases.shadowCpuP50Ms +
+                            " shadowCpuMsP95=" + phases.shadowCpuP95Ms +
+                            " sceneCpuMsP50=" + phases.sceneCpuP50Ms +
+                            " sceneCpuMsP95=" + phases.sceneCpuP95Ms +
+                            " postCpuMsP50=" + phases.postCpuP50Ms +
+                            " postCpuMsP95=" + phases.postCpuP95Ms +
+                            " pawnTargetsCpuMsP50=" + phases.pawnTargetsCpuP50Ms +
+                            " pawnTargetsCpuMsP95=" + phases.pawnTargetsCpuP95Ms +
+                            " gpuExecutionTime=not_measured"
+                    )
+                }
                 frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
                     android.util.Log.i(
                         "LudoMadaRender",
@@ -1621,7 +1724,23 @@ class LudoBoardView(
             }
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
+            val setupStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo)
+            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+            shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            if (setupStarted != 0L) lastSceneSetupCpuNanos = System.nanoTime() - setupStarted
+
+            drawWorld(false)
+
+            val shaderEndStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            shader.endFrame()
+            if (shaderEndStarted != 0L) lastSceneShaderEndCpuNanos = System.nanoTime() - shaderEndStarted
+
+            val particlesStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            drawParticles()
+            if (particlesStarted != 0L) lastSceneParticlesCpuNanos = System.nanoTime() - particlesStarted
             // The final backbuffer readback in renderDirectFrame validates the completed
             // scene after post-processing. A second glFinish/readback here only stalls the
             // GPU on the first frame and must not contaminate render CPU-time telemetry.
@@ -1633,9 +1752,15 @@ class LudoBoardView(
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
+            val shadowStartedNanos = System.nanoTime()
             renderShadowMap()
+            lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            val sceneStartedNanos = System.nanoTime()
             renderScene()
+            lastSceneCpuNanos = System.nanoTime() - sceneStartedNanos
+            val postStartedNanos = System.nanoTime()
             renderPostProcess()
+            lastPostCpuNanos = System.nanoTime() - postStartedNanos
             val renderPipelineCpuNanos = System.nanoTime() - pipelineStartedNanos
 
             if (host.homePreview) {
@@ -1650,25 +1775,26 @@ class LudoBoardView(
                     }
                     val complete = validSurface &&
                         glbParts.keys.containsAll(expectedHeroParts) &&
-                        boardParts.isNotEmpty() && visibleEnvironmentPartCount > 0 && baobabParts.isNotEmpty()
+                        authoredBoardPartCount > 0 && preparedBoardBatches.isNotEmpty() &&
+                        visibleEnvironmentPartCount > 0 && baobabParts.isNotEmpty()
                     if (complete) {
                         android.util.Log.i(
                             "LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_COMPLETE envParts=" + visibleEnvironmentPartCount +
                                 " embeddedBaobabParts=" + (envParts.size - visibleEnvironmentPartCount) +
                                 " baobabParts=" + baobabParts.size +
-                                " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                                " heroParts=" + glbParts.size + " boardParts=" + authoredBoardPartCount
                         )
                         host.markHomePreviewReady(
                             "GLES3_PBR", visibleEnvironmentPartCount, baobabParts.size,
-                            glbParts.size, boardParts.size
+                            glbParts.size, authoredBoardPartCount
                         )
                     } else {
                         android.util.Log.e(
                             "LudoMadaRender",
                             "HOME_PBR_FIRST_FRAME_REJECTED validSurface=" + validSurface +
                                 " envParts=" + envParts.size + " baobabParts=" + baobabParts.size +
-                                " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                                " heroParts=" + glbParts.size + " boardParts=" + authoredBoardPartCount
                         )
                     }
                     homePreviewFirstFrameCaptured = true
@@ -1682,7 +1808,8 @@ class LudoBoardView(
                     "LM_Pawn_Base_Weighted", "LM_Pawn_Collar", "LM_Pawn_Spherical_Head",
                     "LM_Pawn_Tapered_Body", "LM_Pawn_Underside_Insert", "LM_Die_HydroChrome_Body"
                 )
-                if (validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()) {
+                if (validSurface && glbParts.keys.containsAll(expectedHeroParts) &&
+                    authoredBoardPartCount > 0 && preparedBoardBatches.isNotEmpty()) {
                     android.util.Log.i("LudoMadaRender", "PBR_FIRST_FRAME_COMPLETE")
                     val environmentPartCount =
                         if (GameplayEnvironmentComposition.hasRequiredBlenderGameplayParts(gameplayEnvironmentParts.keys)) {
@@ -1697,7 +1824,7 @@ class LudoBoardView(
                     host.markRendererReady(
                         "GLES3_PBR",
                         glbParts.size,
-                        boardParts.size,
+                        authoredBoardPartCount,
                         environmentPartCount,
                         revision7EnvironmentReady
                     )
@@ -1705,7 +1832,7 @@ class LudoBoardView(
                     android.util.Log.e(
                         "LudoMadaRender",
                         "PBR_FIRST_FRAME_REJECTED validSurface=" + validSurface +
-                            " heroParts=" + glbParts.size + " boardParts=" + boardParts.size
+                            " heroParts=" + glbParts.size + " boardParts=" + authoredBoardPartCount
                     )
                 }
                 firstFrameDiagnosticsCaptured = true
@@ -1732,7 +1859,7 @@ class LudoBoardView(
             if(shadowPass){
                 if(homePreview) drawHomeEnvironmentShadows()
                 /* Broad gameplay backdrop is intentionally excluded from shadow casting. */
-                if(boardParts.isNotEmpty()){
+                if(preparedBoardBatches.isNotEmpty()){
                     drawAuthoredBoard(true)
                     drawHomePawnSlots(true)
                     for(pi in 0..3)for(ti in 0..3){
@@ -1772,12 +1899,16 @@ class LudoBoardView(
                 }
                 return
             }
+            val backdropStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             if (homePreview) {
                 drawHomeEnvironment()
             } else {
                 drawGameplayBackdrop()
             }
-            if(boardParts.isNotEmpty()){
+            if (backdropStarted != 0L) lastSceneBackdropCpuNanos = System.nanoTime() - backdropStarted
+
+            val boardStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            if(preparedBoardBatches.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
             }else{
@@ -1797,8 +1928,15 @@ class LudoBoardView(
                         drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)
                 }
             }
+            if (boardStarted != 0L) lastSceneBoardCpuNanos = System.nanoTime() - boardStarted
+
+            val pawnsStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
+            if (pawnsStarted != 0L) lastScenePawnsCpuNanos = System.nanoTime() - pawnsStarted
+
+            val diceStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             for(pi in 0..3) drawDie(pi)
+            if (diceStarted != 0L) lastSceneDiceCpuNanos = System.nanoTime() - diceStarted
         }
         private fun drawGameplayBackdrop(){
             // Prefer the authored Blender table when its tabletop and floor are both
@@ -1831,14 +1969,11 @@ class LudoBoardView(
         }
 
         private fun prepareGameplayEnvironmentDraws() {
-            val root = FloatArray(16)
-            Matrix.setIdentityM(root, 0)
-            Matrix.translateM(root, 0, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0f, 0f)
+            val root = GameplayEnvironmentComposition.blenderGameplayRootTransform()
             val prepared = gameplayEnvironmentParts.values
                 .sortedBy { part -> GameplayEnvironmentComposition.blenderPartDrawOrder(part.name) }
                 .map { part ->
-                    val modelMatrix = FloatArray(16)
-                    Matrix.multiplyMM(modelMatrix, 0, root, 0, part.transform, 0)
+                    val modelMatrix = GameplayEnvironmentComposition.blenderGameplayModelMatrix(root, part.transform)
                     val textureKind = GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
                     val albedoTexture = when (textureKind) {
                         GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex
@@ -1930,6 +2065,41 @@ class LudoBoardView(
             else->floatArrayOf(0.82f,0.78f,0.70f,1f)
         }
 
+        private fun prepareHeroPawnMeshes() {
+            val names = listOf(
+                "LM_Pawn_Underside_Insert",
+                "LM_Pawn_Base_Weighted",
+                "LM_Pawn_Tapered_Body",
+                "LM_Pawn_Collar",
+                "LM_Pawn_Spherical_Head"
+            )
+            val parts = names.mapNotNull { glbParts[it] }
+            if (parts.size != names.size) {
+                heroPawnMeshes = emptyList()
+                android.util.Log.w(
+                    "LudoMadaRender",
+                    "HERO_PAWN_BATCH_SKIPPED expectedParts=" + names.size + " actualParts=" + parts.size
+                )
+                return
+            }
+            val merged = MeshBatcher.merge(parts.map { part ->
+                MeshBatchInput(
+                    positions = part.mesh.positions,
+                    normals = part.mesh.normals,
+                    uvs = part.mesh.uvsCopy(),
+                    indices = part.mesh.indices,
+                    transform = part.transform
+                )
+            })
+            heroPawnMeshes = merged.map { geometry ->
+                Mesh(geometry.positions, geometry.normals, geometry.indices, geometry.uvs)
+            }
+            android.util.Log.i(
+                "LudoMadaRender",
+                "HERO_PAWN_BATCH_READY sourceParts=" + parts.size + " drawBatches=" + heroPawnMeshes.size
+            )
+        }
+
         private fun prepareAuthoredBoardDraws() {
             val root = authoredBoardRoot()
             val prepared = boardParts.values
@@ -1962,35 +2132,76 @@ class LudoBoardView(
                         normalTexture = if (material == "LM_Table_Lacquer") woodNormalTex else 0
                     )
                 }
-            preparedBoardDraws = prepared
+            authoredBoardPartCount = prepared.size
+            val byMaterial = prepared.groupBy { it.part.materialName }
+            preparedBoardBatches = byMaterial.values.flatMap { group ->
+                val first = group.first()
+                val merged = MeshBatcher.merge(group.map { draw ->
+                    MeshBatchInput(
+                        positions = draw.part.mesh.positions,
+                        normals = draw.part.mesh.normals,
+                        uvs = draw.part.mesh.uvsCopy(),
+                        indices = draw.part.mesh.indices,
+                        transform = draw.modelMatrix
+                    )
+                })
+                merged.map { geometry ->
+                    PreparedBoardBatch(
+                        mesh = Mesh(geometry.positions, geometry.normals, geometry.indices, geometry.uvs),
+                        baseColor = first.baseColor,
+                        roughness = first.roughness,
+                        metallic = first.metallic,
+                        emission = first.emission,
+                        albedoTexture = first.albedoTexture,
+                        normalTexture = first.normalTexture
+                    )
+                }
+            }
+            val shadowGeometry = MeshBatcher.merge(prepared.map { draw ->
+                MeshBatchInput(
+                    positions = draw.part.mesh.positions,
+                    normals = draw.part.mesh.normals,
+                    uvs = draw.part.mesh.uvsCopy(),
+                    indices = draw.part.mesh.indices,
+                    transform = draw.modelMatrix
+                )
+            })
+            preparedBoardShadowMeshes = shadowGeometry.map { geometry ->
+                Mesh(geometry.positions, geometry.normals, geometry.indices, geometry.uvs)
+            }
             android.util.Log.i(
                 "LudoMadaRender",
-                "BOARD_DRAW_CACHE_READY drawParts=" + prepared.size +
-                    " cachedTransformsMaterialsTextures=true"
+                "BOARD_DRAW_BATCH_READY sourceParts=" + prepared.size +
+                    " pbrBatches=" + preparedBoardBatches.size +
+                    " shadowBatches=" + preparedBoardShadowMeshes.size +
+                    " cachedWorldGeometry=true"
             )
+            // Batches now own the cached world-space geometry. Releasing the
+            // source map prevents a second copy of all vertex/index buffers
+            // from remaining resident on memory-constrained Android devices.
+            boardParts = emptyMap()
         }
 
         private fun drawAuthoredBoard(shadowPass:Boolean){
-            for(prepared in preparedBoardDraws){
-                val part = prepared.part
-                if(shadowPass){
-                    drawShadowMesh(part.mesh,prepared.modelMatrix)
-                }else{
-                    drawMesh(
-                        part.mesh,
-                        prepared.modelMatrix,
-                        prepared.baseColor,
-                        prepared.roughness,
-                        prepared.metallic,
-                        1f,
-                        prepared.emission,
-                        5,
-                        false,
-                        prepared.albedoTexture,
-                        prepared.normalTexture,
-                        0
-                    )
-                }
+            if (shadowPass) {
+                for (mesh in preparedBoardShadowMeshes) drawShadowMesh(mesh, identityModel)
+                return
+            }
+            for (batch in preparedBoardBatches) {
+                drawMesh(
+                    batch.mesh,
+                    identityModel,
+                    batch.baseColor,
+                    batch.roughness,
+                    batch.metallic,
+                    1f,
+                    batch.emission,
+                    5,
+                    false,
+                    batch.albedoTexture,
+                    batch.normalTexture,
+                    0
+                )
             }
         }
 
@@ -2005,6 +2216,11 @@ class LudoBoardView(
         }
 
         private fun drawShadowMeshPawn(x:Float,y:Float,z:Float,pi:Int,ti:Int){
+            if (heroPawnMeshes.isNotEmpty()) {
+                val model = heroPawnModel(identityModel,x,y,z,0.72f,0.72f,0f,0f)
+                for (mesh in heroPawnMeshes) drawShadowMesh(mesh,model)
+                return
+            }
             val body=glbParts["LM_Pawn_Tapered_Body"]
             val head=glbParts["LM_Pawn_Spherical_Head"]
             if(body!=null&&head!=null){
@@ -2157,7 +2373,22 @@ class LudoBoardView(
             }
             val body=glbParts["LM_Pawn_Tapered_Body"]
             val head=glbParts["LM_Pawn_Spherical_Head"]
-            if(body!=null && head!=null){
+            if(body!=null && head!=null && heroPawnMeshes.isNotEmpty()){
+                val b=bounce[pi][ti].coerceIn(0f,1f)
+                val elastic=LudoMotionPhysics.elasticOut(b)
+                val overshoot=elastic-b
+                val backOvershoot=LudoMotionPhysics.backOut(b)-b
+                val sx=0.72f*(1f-0.055f*overshoot)
+                val sy=0.72f*(1f+0.115f*overshoot)
+                val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
+                val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
+                val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                val model=heroPawnModel(identityModel,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
+                val pm=PremiumMaterialLighting.pawn(color)
+                for (mesh in heroPawnMeshes) {
+                    drawMesh(mesh,model,rgba(color),pm.roughness,pm.metallic,pm.ao,pm.emission,5,false)
+                }
+            }else if(body!=null && head!=null){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
                 val elastic=LudoMotionPhysics.elasticOut(b)
                 val overshoot=elastic-b

@@ -342,6 +342,47 @@ class StartupUiTest {
         assertTrue("Offline menu must expose two-player mode", device.hasObject(By.text("👤 2 joueurs")))
         assertTrue("Offline menu must expose three-player mode", device.hasObject(By.text("👥 3 joueurs")))
         assertTrue("Offline menu must expose four-player mode", device.hasObject(By.text("👥 4 joueurs")))
+        assertTrue("Four-player option must be brought into the viewport", scrollToVisibleText(device, "👥 4 joueurs"))
+        device.findObject(By.text("👥 4 joueurs")).click()
+        assertTrue(
+            "Landscape offline gameplay board must appear",
+            device.wait(Until.hasObject(By.descContains("LudoMada 3D Ludo board")), 5000)
+        )
+        assertTrue(
+            "Landscape 3D renderer must publish a completed frame",
+            device.wait(Until.hasObject(By.descContains("RENDER_PASS=")), 15000)
+        )
+        instrumentation.runOnMainSync {
+            val resumed = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("Landscape gameplay activity must remain resumed", resumed)
+            assertTrue(
+                "Offline gameplay must remain in landscape",
+                resumed!!.resources.configuration.orientation ==
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE
+            )
+            val hostField = MainActivity::class.java.getDeclaredField("offlineHost").apply {
+                isAccessible = true
+            }
+            val board = hostField.get(resumed) as? LudoBoardView
+                ?: throw AssertionError("Landscape gameplay must retain the real GL board view")
+            val content = resumed.window.decorView.findViewById<android.view.ViewGroup>(android.R.id.content)
+            val availableHeight = content.height.coerceAtLeast(1)
+            assertTrue(
+                "Landscape 3D board must occupy at least one third of the gameplay content height; board=${board.width}x${board.height} contentHeight=$availableHeight",
+                board.height >= availableHeight / 3
+            )
+            assertTrue(
+                "Landscape 3D board must be wider than it is tall; board=${board.width}x${board.height}",
+                board.width > board.height
+            )
+            android.util.Log.i(
+                "LudoMadaTest",
+                "LANDSCAPE_OFFLINE_BOARD_BOUNDS=${board.width}x${board.height} contentHeight=$availableHeight"
+            )
+        }
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 function parseRendererReadiness(label) {
@@ -35,6 +35,44 @@ function rendererReadinessFailureReason(readiness) {
 
 function rendererReadinessPassed(readiness) {
   return rendererReadinessFailureReason(readiness) === null;
+}
+
+function parseBoardViewport(tree) {
+  const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
+  const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
+function readJpegDimensions(path) {
+  if (!existsSync(path)) return null;
+  const bytes = readFileSync(path);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const sofMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) return null;
+    while (offset < bytes.length && bytes[offset] === 0xff) offset++;
+    if (offset >= bytes.length) return null;
+    const marker = bytes[offset++];
+    if (marker === 0xd9 || marker === 0xda) return null;
+    if (marker >= 0xd0 && marker <= 0xd7) continue;
+    if (offset + 2 > bytes.length) return null;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+    if (sofMarkers.has(marker)) {
+      if (segmentLength < 7) return null;
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5)
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
 }
 
 function parseFramebufferReadback(line, expectedLabel) {
@@ -434,6 +472,22 @@ function tapTreeNode(tree, needle) {
   return result;
 }
 
+function selectAndAssertHomeStake(amount) {
+  const tree = readTree();
+  const targetName = `HOME_STAKE_${amount}`;
+  if (!treeHas(tree, targetName)) {
+    throw new Error(`Home stake accessibility target missing: ${targetName}; labels=${JSON.stringify(treeLabels(tree)).slice(0, 5000)}`);
+  }
+  tapTreeNode(tree, targetName);
+  const selectedTree = waitForTreeMarker(`HOME_SELECTED_STAKE=${amount}`, 4500);
+  const marker = treeLabels(selectedTree).find(label => label.includes("HOME_SELECTED_STAKE=")) || "";
+  const selected = Number(marker.match(/HOME_SELECTED_STAKE=(\d+)/)?.[1] || 0);
+  if (selected !== amount) {
+    throw new Error(`Home stake selection mismatch: expected ${amount}, observed ${selected}; marker=${marker}`);
+  }
+  console.log(`HOME STAKE ${amount} AR SELECT PASS`);
+}
+
 function isPremiumHome(tree) {
   // The image host publishes HOME_IMAGE_FRAME_COMPLETE as its current
   // contentDescription; Android may expose that node without the FrameLayout
@@ -712,13 +766,15 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
   let filteredEntries = [];
   const filteredResults = [];
-  if (lines.length === 0 || !lines.some((line) => /Renderer=GLES[23]_/i.test(line))) {
+  if (lines.length === 0 ||
+      !lines.some((line) => /Renderer=GLES[23]_/i.test(line)) ||
+      !lines.some((line) => /BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY/i.test(line))) {
     for (const tag of ["LudoMadaRender", "LudoMadaSmoke"]) {
       const filtered = runAllowError("logcat", "--limit", "500", "--filter", tag, "--session", session);
       filteredResults.push(filtered);
@@ -755,6 +811,59 @@ function parseSafeReadback(line) {
   const minimumBrightPixels = Math.max(32, Math.ceil(totalPixels * 0.005));
   const ok = brightPixels >= minimumBrightPixels && maxChannel > 24;
   return { ok, reason: ok ? undefined : "insufficient_visible_pixels", width, height, brightPixels, totalPixels, maxChannel, glError };
+}
+
+function assertBoardDrawBatches(timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("BOARD_DRAW_BATCH_READY")) || "";
+    const match = line.match(/BOARD_DRAW_BATCH_READY sourceParts=(\d+) pbrBatches=(\d+) shadowBatches=(\d+)/);
+    if (match) {
+      const sourceParts = Number(match[1]);
+      const pbrBatches = Number(match[2]);
+      const shadowBatches = Number(match[3]);
+      if (!Number.isSafeInteger(sourceParts) || !Number.isSafeInteger(pbrBatches) ||
+          !Number.isSafeInteger(shadowBatches) || sourceParts < 80 || pbrBatches < 1 ||
+          pbrBatches > 16 || shadowBatches < 1 || shadowBatches > 4 || pbrBatches >= sourceParts) {
+        throw new Error("Static board geometry was not reduced to compact draw batches: " +
+          JSON.stringify({ sourceParts, pbrBatches, shadowBatches, line }));
+      }
+      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}%`);
+      return { sourceParts, pbrBatches, shadowBatches };
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR board geometry did not publish BOARD_DRAW_BATCH_READY: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+}
+
+function assertHeroPawnBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("HERO_PAWN_BATCH_READY")) || "";
+    const match = line.match(/HERO_PAWN_BATCH_READY sourceParts=(\d+) drawBatches=(\d+)/);
+    if (match) {
+      const sourceParts = Number(match[1]);
+      const drawBatches = Number(match[2]);
+      if (sourceParts !== 5 || !Number.isSafeInteger(drawBatches) || drawBatches < 1 || drawBatches > 2) {
+        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " +
+          JSON.stringify({ sourceParts, drawBatches, line }));
+      }
+      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}%`);
+      return { sourceParts, drawBatches };
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR renderer did not publish HERO_PAWN_BATCH_READY: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
@@ -1106,6 +1215,12 @@ try {
   if (!treeHas(lobbyTree, "Choisir la mise")) {
     throw new Error("Online mode did not open the stake-selection lobby. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
+  for (const option of ["500 Ar", "1 000 Ar", "2 000 Ar", "5 000 Ar", "10 000 Ar", "20 000 Ar"]) {
+    if (!treeHas(lobbyTree, option)) {
+      throw new Error(`Online lobby is missing stake option ${option}. Accessibility tree: ` + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+    }
+  }
+  console.log("ONLINE LOBBY SIX STAKE OPTIONS PASS");
   lobbyTree = scrollToVisibleText("Hiditra amin'ny room", 4);
   if (!treeHas(lobbyTree, "Hiditra amin'ny room")) {
     throw new Error("Online lobby opened, but its room-entry action did not become visible after scrolling. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
@@ -1135,9 +1250,127 @@ try {
       JSON.stringify({reason:homeReadiness.reason,tree:treeLabels(homeReadyTree)}));
   }
   console.log("HOME_STATIC_LOBBY_4K_IMAGE PASS " + JSON.stringify(homeReadiness));
+  // Exercise every native Home stake hitbox and verify the live value reported
+  // by the actual image view after each tap. Restore 500 Ar for the final capture.
+  for (const amount of [1000, 2000, 5000, 10000, 20000, 500]) {
+    selectAndAssertHomeStake(amount);
+  }
   const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
   if (!homeShot.ok) throw new Error("Could not capture the static Home reference image");
   console.log("HOME_STATIC_IMAGE_SCREENSHOT_CAPTURED");
+
+  // Verify the actual player entry path, not only the login-screen offline
+  // shortcut above. Home requests landscape; the gameplay surface must inherit it.
+  modeTree = openModePickerFromHome();
+  tapTreeNode(modeTree, "MODE_OFFLINE");
+  waitStable(700);
+  offlineMenuTree = readTree();
+  for (const expected of ["👤 2 joueurs", "👥 3 joueurs", "👥 4 joueurs"]) {
+    if (!treeHas(offlineMenuTree, expected)) {
+      throw new Error(`Landscape offline menu is missing ${expected}. Accessibility tree: ` + JSON.stringify(treeLabels(offlineMenuTree)).slice(0, 5000));
+    }
+  }
+  tapTreeNode(offlineMenuTree, "👥 4 joueurs");
+  const landscapeBoard = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
+  if (!treeHas(landscapeBoard, "LudoMada 3D Ludo board")) {
+    throw new Error("Home → JOUER → Hors-ligne did not open the 4-player gameplay board: " + JSON.stringify(treeLabels(landscapeBoard)).slice(0, 5000));
+  }
+  assertTurn("Joueur 1/4");
+  assertRuntimeGlbLoaded(18000);
+  assertBoardDrawBatches(6000);
+  assertHeroPawnBatches(5000);
+  const landscapeReadyTree = readTree();
+  const landscapeViewport = parseBoardViewport(landscapeReadyTree);
+  if (!landscapeViewport) {
+    throw new Error("Landscape 3D board did not publish measurable BOARD_VIEWPORT dimensions: " + JSON.stringify(treeLabels(landscapeReadyTree).slice(0, 30)));
+  }
+  if (landscapeViewport.width <= landscapeViewport.height || landscapeViewport.height < 140 ||
+      landscapeViewport.width / landscapeViewport.height > 8) {
+    throw new Error("Landscape 3D board surface is too short or has an invalid aspect ratio: " + JSON.stringify(landscapeViewport));
+  }
+  console.log(`LANDSCAPE BOARD VIEWPORT PASS ${landscapeViewport.width}x${landscapeViewport.height}`);
+  const landscapeShot = runAllowError("screenshot", "--session", session, "--out", "ramus-landscape-gameplay-screen.jpg");
+  if (!landscapeShot.ok) throw new Error("Could not capture gameplay from the real landscape Home entry path");
+  const landscapeDimensions = readJpegDimensions("ramus-landscape-gameplay-screen.jpg");
+  if (!landscapeDimensions || landscapeDimensions.width <= landscapeDimensions.height) {
+    throw new Error("Home gameplay must remain landscape; screenshot dimensions=" + JSON.stringify(landscapeDimensions));
+  }
+  console.log(`LANDSCAPE GAMEPLAY SCREENSHOT PASS ${landscapeDimensions.width}x${landscapeDimensions.height}`);
+  console.log("HOME→JOUER→OFFLINE→4-PLAYER LANDSCAPE GAMEPLAY PASS");
+
+  let landscapeGotSix = false;
+  for (let i = 0; i < 36; i++) {
+    target = findRef("Lancer le dé");
+    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+    const six = waitForSix(2200);
+    const diceStatus = pendingDiceValue().status;
+    console.log("RAMUS_LANDSCAPE_DICE_ROLL_ATTEMPT=" + (i + 1) + " STATUS=" + diceStatus.slice(0, 100));
+    if (six) {
+      landscapeGotSix = true;
+      break;
+    }
+    runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  }
+  if (!landscapeGotSix) throw new Error("Landscape 4-player flow did not roll a six within 36 attempts: " + pendingDiceValue().status);
+  console.log("LANDSCAPE DICE SIX PASS");
+
+  target = findRef("Lancer le dé");
+  const landscapeReroll = runAllowError("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const landscapeRerollBlocked = runAllowError(
+    "wait", "--text", "Jouez d'abord le pion", "--timeout", "1800", "--session", session
+  );
+  const landscapeSixPreserved = runAllowError("snapshot", "--session", session, "--find", "Dé: 6");
+  if (!landscapeReroll.ok || !landscapeRerollBlocked.ok || !landscapeSixPreserved.ok || !landscapeSixPreserved.value.elements?.length) {
+    throw new Error("Landscape pending six was not protected against a second roll: " + JSON.stringify({reroll:landscapeReroll.value,blocked:landscapeRerollBlocked.value,preserved:landscapeSixPreserved.value}));
+  }
+  console.log("LANDSCAPE PENDING DICE REROLL BLOCK PASS");
+  if (!moveAnyLegalPawnAfterRoll()) throw new Error("Landscape pending six had no legal 3D pawn target");
+  const landscapeReplay = runAllowError("wait", "--text", "Rejouez", "--timeout", "2500", "--session", session);
+  if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
+  console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
+
+  // Capture renderer telemetry when Ramus exposes the Android app log stream.
+  // GPU execution time remains explicitly unmeasured by the current renderer.
+  const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);
+  const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
+  const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
+  const phaseLines = rendererLines.filter(line => line.includes("PERF_PIPELINE_PHASES"));
+  const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
+  if (sceneReadbacks.length) {
+    const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
+    const match = lastReadback.match(/size=(\d+)x(\d+).*glError=0x([0-9a-f]+)/i);
+    if (match) {
+      const width = Number(match[1]);
+      const height = Number(match[2]);
+      const glError = Number.parseInt(match[3], 16);
+      console.log(`RAMUS_LANDSCAPE_GL_READBACK ${width}x${height} glError=0x${glError.toString(16)}`);
+      if (width <= height || glError !== 0) {
+        throw new Error("Landscape gameplay GL readback has invalid orientation or GL error: " + lastReadback);
+      }
+    }
+  } else {
+    console.log("RAMUS_RENDERER_LOGCAT_UNAVAILABLE trial mode did not expose app-tag readback rows");
+  }
+  if (perfLines.length) {
+    const latestPerf = perfLines[perfLines.length - 1];
+    const perfSurface = latestPerf.match(/surface=(\d+)x(\d+)/);
+    if (perfSurface) {
+      const perfWidth = Number(perfSurface[1]);
+      const perfHeight = Number(perfSurface[2]);
+      console.log(`RAMUS_RENDER_SURFACE ${perfWidth}x${perfHeight}`);
+      if (perfWidth <= perfHeight || perfHeight < 140 || perfWidth / perfHeight > 8) {
+        throw new Error("Renderer telemetry reports a collapsed landscape surface: " + latestPerf.slice(0, 1200));
+      }
+    }
+    for (const line of perfLines.slice(-3)) console.log("RAMUS_RENDER_PERF " + line.slice(0, 1200));
+  } else {
+    console.log("RAMUS_PERF_METRICS_UNAVAILABLE no PERF_FRAME_STATS rows exposed by Ramus logcat");
+  }
+  if (phaseLines.length) {
+    for (const line of phaseLines.slice(-3)) console.log("RAMUS_RENDER_PHASES " + line.slice(0, 1600));
+  } else {
+    console.log("RAMUS_RENDER_PHASES_UNAVAILABLE no PERF_PIPELINE_PHASES rows exposed by Ramus logcat");
+  }
 
   success = true;
   console.log("RAMUS_SMOKE_PASS");
