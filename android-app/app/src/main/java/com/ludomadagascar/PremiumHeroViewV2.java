@@ -27,9 +27,20 @@ import java.util.Locale;
  * GLBs, shadow map, cubemap or gameplay renderer is created on this screen.
  */
 public final class PremiumHeroViewV2 extends FrameLayout {
+    private static final int[] HOME_STAKES = {500, 1000, 2000, 5000, 10000, 20000};
+    // Logical 1280x720 coordinates shared by the 16:9 Home reference image.
+    private static final float[][] HOME_STAKE_BUTTON_BOUNDS = {
+            {136f, 590f, 184f, 622f},
+            {189f, 590f, 237f, 622f},
+            {242f, 590f, 290f, 622f},
+            {295f, 590f, 343f, 622f},
+            {181f, 630f, 248f, 660f},
+            {255f, 630f, 322f, 660f}
+    };
     private static final String HOME_BASE = "LudoMada Premium Home";
     private final HomeImageView homeImage;
     private final View jouerAccessibilityTarget;
+    private final View[] stakeAccessibilityTargets = new View[HOME_STAKES.length];
 
     public PremiumHeroViewV2(Context context) {
         super(context);
@@ -45,6 +56,23 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         addView(homeImage, new FrameLayout.LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT
         ));
+
+        // The reference JPG contains old, baked-in stake labels. Transparent native
+        // targets keep the visual overlay clickable and accessible on API 27+.
+        for (int i = 0; i < HOME_STAKES.length; i++) {
+            final int stake = HOME_STAKES[i];
+            View target = new View(context);
+            target.setBackgroundColor(Color.TRANSPARENT);
+            target.setContentDescription("HOME_STAKE_" + stake);
+            target.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_YES);
+            target.setFocusable(true);
+            target.setClickable(true);
+            target.setOnClickListener(v -> selectHomeStake(stake));
+            stakeAccessibilityTargets[i] = target;
+            addView(target, new FrameLayout.LayoutParams(
+                    1, 1, android.view.Gravity.TOP | android.view.Gravity.LEFT
+            ));
+        }
 
         // Expose the primary visual hitbox as a real, invisible accessibility
         // target. This keeps touch coordinates and assistive/cloud automation
@@ -68,6 +96,40 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         return jouerAccessibilityTarget;
     }
 
+    public View getStakeAccessibilityTarget(int amount) {
+        for (int i = 0; i < HOME_STAKES.length; i++) {
+            if (HOME_STAKES[i] == amount) return stakeAccessibilityTargets[i];
+        }
+        return null;
+    }
+
+    private void selectHomeStake(int amount) {
+        call("selectHomeStake", amount);
+        homeImage.invalidate();
+        updateStakeAccessibilityTargets();
+    }
+
+    private void updateStakeAccessibilityTargets() {
+        int selected = homeImage.getSelectedStake();
+        for (int i = 0; i < HOME_STAKES.length; i++) {
+            RectF bounds = homeImage.getStakeButtonBounds(i);
+            int left = Math.max(0, Math.round(bounds.left));
+            int top = Math.max(0, Math.round(bounds.top));
+            int right = Math.min(getWidth(), Math.round(bounds.right));
+            int bottom = Math.min(getHeight(), Math.round(bounds.bottom));
+            View target = stakeAccessibilityTargets[i];
+            if (right <= left || bottom <= top) {
+                target.setVisibility(View.INVISIBLE);
+                target.layout(0, 0, 0, 0);
+                continue;
+            }
+            target.setVisibility(View.VISIBLE);
+            target.layout(left, top, right, bottom);
+            target.setSelected(selected == HOME_STAKES[i]);
+            target.setContentDescription("HOME_STAKE_" + HOME_STAKES[i]);
+        }
+    }
+
     @Override
     protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
         super.onLayout(changed, left, top, right, bottom);
@@ -79,10 +141,12 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         if (targetRight <= targetLeft || targetBottom <= targetTop) {
             jouerAccessibilityTarget.setVisibility(View.INVISIBLE);
             jouerAccessibilityTarget.layout(0, 0, 0, 0);
+            updateStakeAccessibilityTargets();
             return;
         }
         jouerAccessibilityTarget.setVisibility(View.VISIBLE);
         jouerAccessibilityTarget.layout(targetLeft, targetTop, targetRight, targetBottom);
+        updateStakeAccessibilityTargets();
     }
 
     private Activity activityContext() {
@@ -103,6 +167,21 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             Method method = activity.getClass().getDeclaredMethod(methodName);
             method.setAccessible(true);
             method.invoke(activity);
+        } catch (Throwable error) {
+            Log.e("LudoMadaHome", "HOME_ACTION_FAILED name=" + methodName, error);
+        }
+    }
+
+    private void call(String methodName, int argument) {
+        Activity activity = activityContext();
+        if (activity == null) {
+            Log.w("LudoMadaHome", "HOME_ACTION_NO_ACTIVITY name=" + methodName);
+            return;
+        }
+        try {
+            Method method = activity.getClass().getDeclaredMethod(methodName, int.class);
+            method.setAccessible(true);
+            method.invoke(activity, argument);
         } catch (Throwable error) {
             Log.e("LudoMadaHome", "HOME_ACTION_FAILED name=" + methodName, error);
         }
@@ -216,13 +295,35 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             invalidate();
         }
 
+        int getSelectedStake() {
+            long value = PremiumHeroViewV2.this.readLong("entryFee");
+            for (int stake : HOME_STAKES) {
+                if (stake == value) return stake;
+            }
+            return HOME_STAKES[0];
+        }
+
+        RectF getStakeButtonBounds(int index) {
+            updateDestination();
+            if (index < 0 || index >= HOME_STAKE_BUTTON_BOUNDS.length) return new RectF();
+            float scaleX = destination.width() / 1280f;
+            float scaleY = destination.height() / 720f;
+            float[] logical = HOME_STAKE_BUTTON_BOUNDS[index];
+            return new RectF(
+                    destination.left + logical[0] * scaleX,
+                    destination.top + logical[1] * scaleY,
+                    destination.left + logical[2] * scaleX,
+                    destination.top + logical[3] * scaleY
+            );
+        }
+
         RectF getGameModeHitboxBounds() {
             updateDestination();
             float scaleX = destination.width() / 1280f;
             float scaleY = destination.height() / 720f;
             return new RectF(
                     destination.left + 975f * scaleX,
-                    destination.top + 345f * scaleY,
+                    destination.top + 380f * scaleY,
                     destination.left + 1245f * scaleX,
                     destination.top + 485f * scaleY
             );
@@ -272,14 +373,16 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             canvas.translate(destination.left, destination.top);
             canvas.scale(destination.width() / 1280f, destination.height() / 720f);
             drawLiveAccountFields(canvas);
+            drawHomeStakeSelector(canvas);
             canvas.restore();
 
             if (!firstFramePublished) {
                 firstFramePublished = true;
-                setContentDescription(readinessMarker);
-                PremiumHeroViewV2.this.setContentDescription(HOME_BASE + " | " + readinessMarker);
                 Log.i("LudoMadaHome", readinessMarker);
             }
+            String accessibleState = readinessMarker + " | HOME_SELECTED_STAKE=" + getSelectedStake();
+            setContentDescription(accessibleState);
+            PremiumHeroViewV2.this.setContentDescription(HOME_BASE + " | " + accessibleState);
         }
 
         private void drawLiveAccountFields(Canvas canvas) {
@@ -317,6 +420,64 @@ public final class PremiumHeroViewV2 extends FrameLayout {
                     1193f, 86f, 17f, Color.WHITE, true);
         }
 
+        private void drawHomeStakeSelector(Canvas canvas) {
+            int selected = getSelectedStake();
+
+            // Replace only the stale stake selector embedded in the reference JPG.
+            overlayPaint.setShader(null);
+            overlayPaint.setStyle(Paint.Style.FILL);
+            // The reference JPG contains obsolete stake labels; an opaque panel prevents ghosting.
+            overlayPaint.setColor(0xFF0B2040);
+            canvas.drawRoundRect(118f, 544f, 358f, 668f, 17f, 17f, overlayPaint);
+            overlayPaint.setStyle(Paint.Style.STROKE);
+            overlayPaint.setStrokeWidth(1.2f);
+            overlayPaint.setColor(0x66FFFFFF);
+            canvas.drawRoundRect(118f, 544f, 358f, 668f, 17f, 17f, overlayPaint);
+            overlayPaint.setStyle(Paint.Style.FILL);
+            drawCenteredText(canvas, "MISE", 238f, 574f, 12f, 0xFFFFE39A, true);
+
+            String[] labels = {"500", "1K", "2K", "5K", "10K", "20K"};
+            for (int i = 0; i < HOME_STAKES.length; i++) {
+                float[] bounds = HOME_STAKE_BUTTON_BOUNDS[i];
+                boolean active = selected == HOME_STAKES[i];
+                RectF chip = new RectF(bounds[0], bounds[1], bounds[2], bounds[3]);
+                overlayPaint.setStyle(Paint.Style.FILL);
+                overlayPaint.setColor(active ? 0xFFF0B72D : 0xFF1C4776);
+                canvas.drawRoundRect(chip, 8f, 8f, overlayPaint);
+                overlayPaint.setStyle(Paint.Style.STROKE);
+                overlayPaint.setStrokeWidth(1f);
+                overlayPaint.setColor(active ? 0xFFFFE08A : 0xFF7194B8);
+                canvas.drawRoundRect(chip, 8f, 8f, overlayPaint);
+                drawCenteredText(
+                        canvas, labels[i], (bounds[0] + bounds[2]) * 0.5f,
+                        bounds[1] + 21f, 11.5f,
+                        active ? 0xFF142846 : Color.WHITE, true
+                );
+            }
+
+            // The old "Mise actuelle" value is baked into the JPG too. Cover that
+            // small region and redraw the live value from MainActivity.entryFee.
+            overlayPaint.setStyle(Paint.Style.FILL);
+            overlayPaint.setColor(0xFF0D2445);
+            canvas.drawRoundRect(1005f, 294f, 1167f, 372f, 11f, 11f, overlayPaint);
+            drawCenteredText(canvas, "Mise actuelle", 1086f, 324f, 10.5f, 0xFFE7EEF8, false);
+            drawCenteredText(
+                    canvas, formatBalance(selected) + " Ar", 1086f, 359f,
+                    16f, 0xFFFFDA71, true
+            );
+        }
+
+        private void drawCenteredText(Canvas canvas, String value, float centerX, float baselineY,
+                                      float size, int color, boolean bold) {
+            overlayPaint.setShader(null);
+            overlayPaint.setStyle(Paint.Style.FILL);
+            overlayPaint.setColor(color);
+            overlayPaint.setTextSize(size);
+            overlayPaint.setTypeface(bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            canvas.drawText(value, centerX - overlayPaint.measureText(value) * 0.5f,
+                    baselineY, overlayPaint);
+        }
+
         private void drawText(Canvas canvas, String value, float x, float y,
                               float size, int color, boolean bold) {
             overlayPaint.setShader(null);
@@ -332,7 +493,7 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         }
 
         private String actionFor(float x, float y) {
-            if (x >= 975f && x <= 1245f && y >= 345f && y <= 485f) return "gameModeDialog";
+            if (x >= 975f && x <= 1245f && y >= 380f && y <= 485f) return "gameModeDialog";
             if (x >= 1125f && x <= 1255f && y >= 30f && y <= 135f) return "toggleMusicFromHome";
             if (x >= 55f && x <= 340f && y >= 300f && y <= 435f) return "wallet";
             if (x >= 75f && x <= 455f && y >= 150f && y <= 285f) return "joinDialog";
