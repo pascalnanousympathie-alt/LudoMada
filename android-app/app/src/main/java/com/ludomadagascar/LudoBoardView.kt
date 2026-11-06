@@ -134,9 +134,15 @@ class LudoBoardView(
     @Volatile private var rendererReadyDescription: String? = null
     @Volatile private var latestPawnTargetSignature: String = ""
 
-    internal fun markRendererReady(rendererName:String, heroPartCount:Int, boardPartCount:Int) {
+    internal fun markRendererReady(
+        rendererName:String,
+        heroPartCount:Int,
+        boardPartCount:Int,
+        environmentPartCount:Int
+    ) {
         if (!BuildConfig.DEBUG || homePreview) return
-        val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount | BOARD_PARTS=$boardPartCount"
+        val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
+            " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount"
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker
@@ -853,7 +859,7 @@ class LudoBoardView(
                         android.util.Log.i("LudoMadaRender","HOME_3D_FALLBACK_FRAME_COMPLETE renderer=GLES2_GLB")
                         host.markHomePreviewReady("GLES2_GLB",0,0,glbParts.size,boardParts.size)
                     } else {
-                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size)
+                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size,0)
                     }
                 }
             }.onFailure{
@@ -1676,7 +1682,18 @@ class LudoBoardView(
                 )
                 if (validSurface && glbParts.keys.containsAll(expectedHeroParts) && boardParts.isNotEmpty()) {
                     android.util.Log.i("LudoMadaRender", "PBR_FIRST_FRAME_COMPLETE")
-                    host.markRendererReady("GLES3_PBR", glbParts.size, boardParts.size)
+                    val environmentPartCount =
+                        if (GameplayEnvironmentComposition.hasRequiredBlenderGameplayParts(gameplayEnvironmentParts.keys)) {
+                            preparedGameplayEnvironmentDraws.size
+                        } else {
+                            0
+                        }
+                    host.markRendererReady(
+                        "GLES3_PBR",
+                        glbParts.size,
+                        boardParts.size,
+                        environmentPartCount
+                    )
                 } else {
                     android.util.Log.e(
                         "LudoMadaRender",
