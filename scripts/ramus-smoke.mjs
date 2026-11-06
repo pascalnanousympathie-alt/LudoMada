@@ -92,6 +92,77 @@ function dicePipBatchSummaryValid(summary) {
   return !!summary && summary.faceMeshes === 6 && summary.drawCallsPerDie === 1;
 }
 
+function parseRendererAccessibilityTelemetry(label) {
+  if (typeof label !== "string") return null;
+  const field = (name) => {
+    const prefix = name + "=";
+    const marker = " | " + prefix;
+    const markerIndex = label.indexOf(marker);
+    const valueStart = label.startsWith(prefix) ? prefix.length :
+      markerIndex >= 0 ? markerIndex + marker.length : -1;
+    if (valueStart < 0) return null;
+    const valueEnd = label.indexOf(" | ", valueStart);
+    return label.slice(valueStart, valueEnd >= 0 ? valueEnd : undefined).trim();
+  };
+  const integer = (value) => {
+    if (value === null || !/^\d+$/.test(value)) return null;
+    const number = Number(value);
+    return Number.isSafeInteger(number) ? number : null;
+  };
+  const pair = (value) => {
+    if (typeof value !== "string") return null;
+    const match = value.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
+    if (!match) return null;
+    const values = match.slice(1).map(Number);
+    return values.every(Number.isFinite) ? values : null;
+  };
+
+  if (field("RENDER_TELEMETRY") !== "1") return null;
+  const vendor = field("GPU_VENDOR");
+  const renderer = field("GPU_RENDERER");
+  const gles = field("GLES");
+  const surface = field("SURFACE")?.match(/^(\d+)x(\d+)$/);
+  const fpsValue = field("FPS");
+  const fps = fpsValue === "INSUFFICIENT" ? null : Number(fpsValue);
+  const frameMs = field("FRAME_MS") === "NA/NA" ? null : pair(field("FRAME_MS"));
+  const glCpuMs = pair(field("GL_CPU_MS"));
+  const sceneCpuMs = pair(field("SCENE_CPU_MS"));
+  const backdropCpuMs = pair(field("BACKDROP_CPU_MS"));
+  const boardCpuMs = pair(field("BOARD_CPU_MS"));
+  const pawnsCpuMs = pair(field("PAWNS_CPU_MS"));
+  const diceCpuMs = pair(field("DICE_CPU_MS"));
+  const particlesCpuMs = pair(field("PARTICLES_CPU_MS"));
+  const particleUploadCpuMs = pair(field("PARTICLE_UPLOAD_CPU_MS"));
+  const shadowCpuMs = pair(field("SHADOW_CPU_MS"));
+  const postCpuMs = pair(field("POST_CPU_MS"));
+  const pawnTargetsCpuMs = pair(field("PAWN_TARGETS_CPU_MS"));
+  const frameSamples = integer(field("FRAME_SAMPLES"));
+  const glSamples = integer(field("GL_SAMPLES"));
+  const sceneSamples = integer(field("SCENE_SAMPLES"));
+  const pipelineSamples = integer(field("PIPELINE_SAMPLES"));
+
+  if (!vendor || !renderer || !gles || !surface ||
+      !Number.isSafeInteger(Number(surface[1])) || !Number.isSafeInteger(Number(surface[2])) ||
+      Number(surface[1]) <= 0 || Number(surface[2]) <= 0 ||
+      (fps !== null && (!Number.isFinite(fps) || fps <= 0)) ||
+      (fps !== null && (!frameMs || frameMs.some(value => value <= 0))) ||
+      (fps === null && field("FRAME_MS") !== "NA/NA") ||
+      !glCpuMs || !sceneCpuMs || !backdropCpuMs || !boardCpuMs || !pawnsCpuMs ||
+      !diceCpuMs || !particlesCpuMs || !particleUploadCpuMs || !shadowCpuMs ||
+      !postCpuMs || !pawnTargetsCpuMs ||
+      frameSamples === null || glSamples === null || sceneSamples === null || pipelineSamples === null ||
+      field("GPU_TIME") !== "NOT_MEASURED") return null;
+
+  return {
+    vendor, renderer, gles,
+    surface: `${Number(surface[1])}x${Number(surface[2])}`,
+    fps, frameMs, glCpuMs, sceneCpuMs, backdropCpuMs, boardCpuMs,
+    pawnsCpuMs, diceCpuMs, particlesCpuMs, particleUploadCpuMs,
+    shadowCpuMs, postCpuMs, pawnTargetsCpuMs,
+    frameSamples, glSamples, sceneSamples, pipelineSamples
+  };
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -221,6 +292,12 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | FPS=5.14 | FRAME_MS=194.55/218.20 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
+  const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
+    .replace("FPS=5.14", "FPS=INSUFFICIENT")
+    .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
+    .replace("FRAME_SAMPLES=18", "FRAME_SAMPLES=0");
+  const invalidAccessibilityTelemetry = accessibilityTelemetryLabel.replace("GPU_TIME=NOT_MEASURED", "GPU_TIME=measured");
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -238,6 +315,9 @@ function selfTestFramebufferReadback() {
     ["accessibility gameplay environment contract rejects an unbatched environment", !gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(invalidEnvironmentBatchLabel))],
     ["accessibility dice pip contract accepts six face meshes with one draw per die", dicePipBatchSummaryValid(parseDicePipBatchSummary(dicePipBatchLabel))],
     ["accessibility dice pip contract rejects separate pip draws", !dicePipBatchSummaryValid(parseDicePipBatchSummary(invalidDicePipBatchLabel))],
+    ["accessibility renderer telemetry exposes GPU identity, FPS and CPU phase metrics", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.fps === 5.14],
+    ["accessibility renderer telemetry explicitly reports insufficient FPS samples", parseRendererAccessibilityTelemetry(insufficientAccessibilityTelemetry)?.fps === null],
+    ["accessibility renderer telemetry rejects ambiguous GPU timing claims", parseRendererAccessibilityTelemetry(invalidAccessibilityTelemetry) === null],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
@@ -1473,8 +1553,28 @@ try {
   if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
   console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
 
-  // Capture renderer telemetry when Ramus exposes the Android app log stream.
-  // GPU execution time remains explicitly unmeasured by the current renderer.
+  // Accessibility is the primary telemetry channel: Ramus trial mode may hide
+  // Android app-tag logcat rows, but it still exposes the renderer contentDescription.
+  const telemetryTree = readTree();
+  const telemetryLabel = treeLabels(telemetryTree).find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const accessibilityTelemetry = parseRendererAccessibilityTelemetry(telemetryLabel);
+  if (!accessibilityTelemetry) {
+    throw new Error("Renderer performance telemetry was not captured in the accessibility readiness label: " +
+      JSON.stringify({ labels: treeLabels(telemetryTree).filter(label => label.includes("RENDER_PASS=")).slice(0, 3) }));
+  }
+  if (accessibilityTelemetry.fps === null || accessibilityTelemetry.frameSamples < 2 ||
+      accessibilityTelemetry.sceneSamples < 2 || accessibilityTelemetry.pipelineSamples < 2) {
+    throw new Error("Renderer accessibility telemetry was captured, but active FPS/phase samples are insufficient: " +
+      JSON.stringify(accessibilityTelemetry));
+  }
+  console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
+  console.log("RAMUS_ACCESSIBILITY_FPS=" + accessibilityTelemetry.fps +
+    " frameSamples=" + accessibilityTelemetry.frameSamples +
+    " intervalP50P95Ms=" + accessibilityTelemetry.frameMs.join("/") +
+    " GLSubmitP50P95Ms=" + accessibilityTelemetry.glCpuMs.join("/") +
+    " renderer=" + accessibilityTelemetry.renderer);
+
+  // Logcat is still useful as a secondary diagnostic channel, never the only one.
   const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);
   const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
   const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
