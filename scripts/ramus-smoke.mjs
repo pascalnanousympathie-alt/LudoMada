@@ -1083,6 +1083,10 @@ try {
   let rendererFailure = null;
   try {
     assertRuntimeGlbLoaded();
+    // Capture one-shot batching markers on the first board entry. Ramus exposes
+    // a bounded logcat tail, so later game-mode navigation can age these lines out.
+    assertBoardDrawBatches();
+    assertHeroPawnBatches();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
   assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {
@@ -1277,8 +1281,6 @@ try {
   }
   assertTurn("Joueur 1/4");
   assertRuntimeGlbLoaded(18000);
-  assertBoardDrawBatches(6000);
-  assertHeroPawnBatches(5000);
   const landscapeReadyTree = readTree();
   const landscapeViewport = parseBoardViewport(landscapeReadyTree);
   if (!landscapeViewport) {
