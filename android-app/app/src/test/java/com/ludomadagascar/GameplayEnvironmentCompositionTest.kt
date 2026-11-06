@@ -31,9 +31,9 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
-    fun blenderGameplayEnvironmentUsesTheAlignedLightweightAssetContract() {
+    fun blenderGameplayEnvironmentUsesTheRevision7BatchedAssetContract() {
         assertEquals(
-            "3d/ludomada-gameplay-environment-v1.glb",
+            "3d/ludomada-gameplay-environment-r7.glb",
             GameplayEnvironmentComposition.BLENDER_ASSET_PATH
         )
         assertEquals(1.1666667f, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0.0001f)
@@ -56,27 +56,27 @@ class GameplayEnvironmentCompositionTest {
     fun blenderEnvironmentDrawOrderKeepsFloorLegsApronAndTopInStableLayers() {
         val names = listOf(
             "GMENV_Tabletop_Walnut",
-            "GMENV_Brass_Pin_01",
-            "GMENV_Apron_Front",
-            "GMENV_Table_Leg_FL",
+            "GMENV_Brass_Details_Batch",
+            "GMENV_Walnut_Structure_Batch",
             "GMENV_Studio_Floor",
-            "GMENV_Leg_Ferrule_FL",
-            "GMENV_Perimeter_Inlay_01",
+            "GMENV_DiceTray_Frame_01",
+            "GMENV_DiceTray_Insert_01",
             "GMENV_Baobab_Brass_Inlay"
         )
         assertEquals(
             listOf(
                 "GMENV_Studio_Floor",
-                "GMENV_Table_Leg_FL",
-                "GMENV_Leg_Ferrule_FL",
-                "GMENV_Apron_Front",
+                "GMENV_Walnut_Structure_Batch",
                 "GMENV_Tabletop_Walnut",
-                "GMENV_Perimeter_Inlay_01",
-                "GMENV_Brass_Pin_01",
+                "GMENV_Brass_Details_Batch",
+                "GMENV_DiceTray_Insert_01",
+                "GMENV_DiceTray_Frame_01",
                 "GMENV_Baobab_Brass_Inlay"
             ),
             names.sortedBy(GameplayEnvironmentComposition::blenderPartDrawOrder)
         )
+        assertEquals(1, GameplayEnvironmentComposition.blenderPartDrawOrder("GMENV_Walnut_Structure_Batch"))
+        assertEquals(6, GameplayEnvironmentComposition.blenderPartDrawOrder("GMENV_Brass_Details_Batch"))
     }
 
     @Test
@@ -102,5 +102,121 @@ class GameplayEnvironmentCompositionTest {
         )
         assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_Tabletop_Walnut"))
         assertFalse(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_Studio_Floor"))
+    }
+
+    @Test
+    fun blenderGameplayEnvironmentRequiresAllFourCompleteDiceTraysForPremiumAcceptance() {
+        val allTrayParts = (1..4).flatMap { index ->
+            val suffix = index.toString().padStart(2, '0')
+            listOf(
+                "GMENV_DiceTray_Frame_$suffix",
+                "GMENV_DiceTray_Insert_$suffix"
+            )
+        }.toSet()
+
+        assertTrue(GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(allTrayParts))
+        assertTrue(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts + setOf("GMENV_Tabletop_Walnut", "GMENV_Studio_Floor")
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts - "GMENV_DiceTray_Insert_03"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts - "GMENV_DiceTray_Frame_04"
+            )
+        )
+    }
+
+    @Test
+    fun blenderGameplayEnvironmentUsesVersionedRevision7RuntimeAsset() {
+        assertEquals(
+            "3d/ludomada-gameplay-environment-r7.glb",
+            GameplayEnvironmentComposition.BLENDER_ASSET_PATH
+        )
+    }
+
+    @Test
+    fun blenderRevision7EnvironmentRequiresBothStaticBatchesAndAllFourTrayPairs() {
+        val revision7Names = buildSet {
+            addAll(
+                listOf(
+                    "GMENV_Studio_Floor",
+                    "GMENV_Walnut_Structure_Batch",
+                    "GMENV_Tabletop_Walnut",
+                    "GMENV_Brass_Details_Batch",
+                    "GMENV_Baobab_Brass_Inlay"
+                )
+            )
+            for (index in 1..4) {
+                val suffix = index.toString().padStart(2, '0')
+                add("GMENV_DiceTray_Frame_$suffix")
+                add("GMENV_DiceTray_Insert_$suffix")
+            }
+        }
+
+        assertTrue(GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(revision7Names))
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_Walnut_Structure_Batch"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_Brass_Details_Batch"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_DiceTray_Frame_04"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                revision7Names - "GMENV_DiceTray_Insert_02"
+            )
+        )
+    }
+
+    @Test
+    fun blenderChromeDiceTraysUseDedicatedPbrChromeAndMetalTexture() {
+        assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Frame_01"))
+        assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Insert_01"))
+        assertEquals(4, GameplayEnvironmentComposition.BLENDER_CHROME_MATERIAL_KIND)
+        assertEquals(4, GameplayEnvironmentComposition.BLENDER_CHROME_TEXTURE_KIND)
+        assertEquals(
+            4,
+            GameplayEnvironmentComposition.blenderMaterialKind("LM_Tray_Chrome")
+        )
+        assertEquals(
+            4,
+            GameplayEnvironmentComposition.blenderTextureKind("LM_Tray_Chrome")
+        )
+        val chrome = GameplayEnvironmentComposition.blenderMaterialColor(
+            "LM_Tray_Chrome",
+            floatArrayOf(0.56f, 0.64f, 0.72f, 1f)
+        )
+        assertEquals(0.78f, chrome[0], 0.001f)
+        assertEquals(0.82f, chrome[1], 0.001f)
+        assertEquals(0.88f, chrome[2], 0.001f)
+        assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Frame_01"))
+        assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Insert_01"))
+        assertEquals(1f, PremiumMaterialLighting.Calibration.CHROME_METALLIC, 0f)
+        assertEquals(0.055f, PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS, 0f)
+        assertEquals(0.72f, PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT, 0f)
+        assertEquals(0.055f, PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS, 0f)
+
+        val sourceObsidian = floatArrayOf(0.018f, 0.027f, 0.043f, 1f)
+        val obsidian = GameplayEnvironmentComposition.blenderMaterialColor(
+            "LM_Tray_Obsidian",
+            sourceObsidian
+        )
+        assertEquals(5, GameplayEnvironmentComposition.blenderMaterialKind("LM_Tray_Obsidian"))
+        assertEquals(3, GameplayEnvironmentComposition.blenderTextureKind("LM_Tray_Obsidian"))
+        assertTrue(obsidian.contentEquals(sourceObsidian))
     }
 }

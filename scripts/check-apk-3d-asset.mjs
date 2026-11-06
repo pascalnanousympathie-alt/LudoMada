@@ -11,7 +11,7 @@ if (!fs.existsSync(apk) || fs.statSync(apk).size === 0) {
 
 // Keep this aligned with GlbRuntimeLoader and LudoBoardView's GLES3 Home-preview path.
 const targets = [
-  "assets/3d/ludomada-gameplay-rev5.glb",
+  "assets/3d/ludomada-gameplay-environment-r7.glb",
   "assets/3d/ludomada-environment-final.glb",
   "assets/3d/environment/baobab-real.glb",
   "assets/environment/textures/bark_diff_2k.jpg",

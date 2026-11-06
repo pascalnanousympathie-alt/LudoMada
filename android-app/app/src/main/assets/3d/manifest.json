@@ -6,16 +6,16 @@
   "runtime_packaged": true,
   "source_scene": {
     "provider": "Higgsfield 3D Jutsu",
-    "project_id": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 5,
-    "glb_bytes": 867800,
+    "project_id": "58feae45-2f79-461e-80eb-53525340f7b9",
+    "revision": 7,
+    "glb_bytes": 2011296,
     "material_revision": 4,
     "material_calibration": "PremiumMaterialLighting.Calibration",
-    "sha256": "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f",
+    "sha256": "1973b119d4ad02647c9cce9f193a37c25b0ae0ca778507f20b7078276f6d9cba",
     "delivery": {
       "type": "repo-bundled",
-      "path": "3d/ludomada-gameplay-rev5.glb",
-      "verified_size_bytes": 867800
+      "path": "3d/ludomada-gameplay-environment-r7.glb",
+      "verified_size_bytes": 2011296
     }
   },
   "board_geometry": {
@@ -132,5 +132,19 @@
         "bytes": 66231
       }
     ]
+  },
+  "gameplay_environment": {
+    "asset_path": "3d/ludomada-gameplay-environment-r7.glb",
+    "source_archive_parts": "asset-sources/r7-parts/",
+    "source_archive_part_count": 35,
+    "source_archive_bytes": 462612,
+    "source_archive_sha256": "de848f44936bf555c4210c8b9b7e7559eeeaa5a2fb14de795c9fa62cd58f4dcf",
+    "environment_mesh_count": 13,
+    "previous_environment_mesh_count": 31,
+    "draw_candidate_reduction_percent": 58.06,
+    "dice_trays": 4,
+    "chrome_frame_material": "LM_Tray_Chrome",
+    "obsidian_insert_material": "LM_Tray_Obsidian",
+    "camera_lens_mm": 37
   }
 }

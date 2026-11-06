@@ -9,6 +9,13 @@ on:
       - 'android-app/**'
       - 'scripts/ramus-smoke.mjs'
       - '.github/workflows/android-emulator-test.yml'
+  pull_request:
+    # Run the same real-device smoke contract for PRs that change Android runtime
+    # code, the Ramus harness, or this workflow itself.
+    paths:
+      - 'android-app/**'
+      - 'scripts/ramus-smoke.mjs'
+      - '.github/workflows/android-emulator-test.yml'
 
 permissions:
   contents: read

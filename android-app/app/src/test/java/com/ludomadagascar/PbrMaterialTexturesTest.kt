@@ -6,7 +6,7 @@ import org.junit.Test
 class PbrMaterialTexturesTest {
     @Test
     fun ivoryFeltAndMetalProfilesStayLowContrast() {
-        for (kind in 1..3) {
+        for (kind in 1..4) {
             val redRange = channelRange(kind, 16)
             val greenRange = channelRange(kind, 8)
             val blueRange = channelRange(kind, 0)
