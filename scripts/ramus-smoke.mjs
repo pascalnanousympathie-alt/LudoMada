@@ -37,6 +37,36 @@ function rendererReadinessPassed(readiness) {
   return rendererReadinessFailureReason(readiness) === null;
 }
 
+function parseBoardBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/BOARD_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*BOARD_PBR_BATCHES=(\d+)\s*\|\s*BOARD_SHADOW_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, pbrBatches, shadowBatches] = match.slice(1).map(Number);
+  return { sourceParts, pbrBatches, shadowBatches };
+}
+
+function boardBatchSummaryValid(summary) {
+  return !!summary &&
+    Number.isSafeInteger(summary.sourceParts) && summary.sourceParts >= 80 &&
+    Number.isSafeInteger(summary.pbrBatches) && summary.pbrBatches >= 1 &&
+    summary.pbrBatches <= 16 && summary.pbrBatches < summary.sourceParts &&
+    Number.isSafeInteger(summary.shadowBatches) && summary.shadowBatches >= 1 &&
+    summary.shadowBatches <= 4;
+}
+
+function parseHeroBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/HERO_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*HERO_DRAW_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, drawBatches] = match.slice(1).map(Number);
+  return { sourceParts, drawBatches };
+}
+
+function heroBatchSummaryValid(summary) {
+  return !!summary && summary.sourceParts === 5 &&
+    Number.isSafeInteger(summary.drawBatches) && summary.drawBatches >= 1 && summary.drawBatches <= 2;
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -158,6 +188,10 @@ function selfTestFramebufferReadback() {
   const safeFallback = parseRendererReadiness(
     "LudoMada 3D Ludo board | RENDER_PASS=GLES2_GLB | HERO_PARTS=6 | BOARD_PARTS=95 | ENV_PARTS=0 | ENV_R7_COMPLETE=0"
   );
+  const boardBatchLabel = "LudoMada 3D Ludo board | BOARD_DRAW_SOURCE_PARTS=95 | BOARD_PBR_BATCHES=9 | BOARD_SHADOW_BATCHES=1";
+  const invalidBoardBatchLabel = "LudoMada 3D Ludo board | BOARD_DRAW_SOURCE_PARTS=95 | BOARD_PBR_BATCHES=95 | BOARD_SHADOW_BATCHES=1";
+  const heroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=1";
+  const invalidHeroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=5";
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -167,6 +201,10 @@ function selfTestFramebufferReadback() {
     ["legacy Blender environment reports a revision mismatch", rendererReadinessFailureReason(pbrLegacyEnvironment) === "legacy_environment_not_revision7"],
     ["GLES2 fallback remains eligible with its procedural tabletop", rendererReadinessPassed(safeFallback)],
     ["GLES2 fallback has no readiness rejection reason", rendererReadinessFailureReason(safeFallback) === null],
+    ["accessibility board batch contract accepts 95 parts in 9 PBR batches", boardBatchSummaryValid(parseBoardBatchSummary(boardBatchLabel))],
+    ["accessibility board batch contract rejects unbatched geometry", !boardBatchSummaryValid(parseBoardBatchSummary(invalidBoardBatchLabel))],
+    ["accessibility hero batch contract accepts five parts in one batch", heroBatchSummaryValid(parseHeroBatchSummary(heroBatchLabel))],
+    ["accessibility hero batch contract rejects five unbatched meshes", !heroBatchSummaryValid(parseHeroBatchSummary(invalidHeroBatchLabel))],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
@@ -817,53 +855,72 @@ function assertBoardDrawBatches(timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
   let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
   while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("BOARD_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseBoardBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!boardBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility board batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      const { sourceParts, pbrBatches, shadowBatches } = accessibleSummary;
+      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}% source=accessibility`);
+      return accessibleSummary;
+    }
+    // Keep logcat as a secondary diagnostic source, but never depend on a
+    // one-shot log line when Ramus may expose only a bounded two-line app tail.
     lastDiagnostics = readRendererLogLines();
     const line = lastDiagnostics.lines.find(entry => entry.includes("BOARD_DRAW_BATCH_READY")) || "";
     const match = line.match(/BOARD_DRAW_BATCH_READY sourceParts=(\d+) pbrBatches=(\d+) shadowBatches=(\d+)/);
     if (match) {
-      const sourceParts = Number(match[1]);
-      const pbrBatches = Number(match[2]);
-      const shadowBatches = Number(match[3]);
-      if (!Number.isSafeInteger(sourceParts) || !Number.isSafeInteger(pbrBatches) ||
-          !Number.isSafeInteger(shadowBatches) || sourceParts < 80 || pbrBatches < 1 ||
-          pbrBatches > 16 || shadowBatches < 1 || shadowBatches > 4 || pbrBatches >= sourceParts) {
-        throw new Error("Static board geometry was not reduced to compact draw batches: " +
-          JSON.stringify({ sourceParts, pbrBatches, shadowBatches, line }));
+      const summary = { sourceParts: Number(match[1]), pbrBatches: Number(match[2]), shadowBatches: Number(match[3]) };
+      if (!boardBatchSummaryValid(summary)) {
+        throw new Error("Static board geometry was not reduced to compact draw batches: " + JSON.stringify({ ...summary, line }));
       }
-      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
-      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}%`);
-      return { sourceParts, pbrBatches, shadowBatches };
+      const reduction = Math.round((1 - summary.pbrBatches / summary.sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${summary.sourceParts} pbrBatches=${summary.pbrBatches} shadowBatches=${summary.shadowBatches} colourDrawReduction=${reduction}% source=logcat`);
+      return summary;
     }
     waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("PBR board geometry did not publish BOARD_DRAW_BATCH_READY: " +
+  throw new Error("PBR board geometry did not publish an accessible or logcat batch contract: " +
     JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
-      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
 }
 
 function assertHeroPawnBatches(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
   while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("HERO_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseHeroBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!heroBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility hero batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      const { sourceParts, drawBatches } = accessibleSummary;
+      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}% source=accessibility`);
+      return accessibleSummary;
+    }
     lastDiagnostics = readRendererLogLines();
     const line = lastDiagnostics.lines.find(entry => entry.includes("HERO_PAWN_BATCH_READY")) || "";
     const match = line.match(/HERO_PAWN_BATCH_READY sourceParts=(\d+) drawBatches=(\d+)/);
     if (match) {
-      const sourceParts = Number(match[1]);
-      const drawBatches = Number(match[2]);
-      if (sourceParts !== 5 || !Number.isSafeInteger(drawBatches) || drawBatches < 1 || drawBatches > 2) {
-        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " +
-          JSON.stringify({ sourceParts, drawBatches, line }));
+      const summary = { sourceParts: Number(match[1]), drawBatches: Number(match[2]) };
+      if (!heroBatchSummaryValid(summary)) {
+        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " + JSON.stringify({ ...summary, line }));
       }
-      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
-      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}%`);
-      return { sourceParts, drawBatches };
+      const reduction = Math.round((1 - summary.drawBatches / summary.sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${summary.sourceParts} drawBatches=${summary.drawBatches} colourDrawReduction=${reduction}% source=logcat`);
+      return summary;
     }
     waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("PBR renderer did not publish HERO_PAWN_BATCH_READY: " +
+  throw new Error("PBR renderer did not publish an accessible or logcat hero batch contract: " +
     JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
-      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {

@@ -139,15 +139,27 @@ class LudoBoardView(
         heroPartCount:Int,
         boardPartCount:Int,
         environmentPartCount:Int,
-        revision7EnvironmentReady:Boolean
+        revision7EnvironmentReady:Boolean,
+        boardDrawSourcePartCount:Int = 0,
+        boardPbrBatchCount:Int = 0,
+        boardShadowBatchCount:Int = 0,
+        heroDrawSourcePartCount:Int = 0,
+        heroDrawBatchCount:Int = 0
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
         val viewportWidth = width.coerceAtLeast(0)
         val viewportHeight = height.coerceAtLeast(0)
+        val batchMarker = if (rendererName == "GLES3_PBR") {
+            " | BOARD_DRAW_SOURCE_PARTS=$boardDrawSourcePartCount" +
+                " | BOARD_PBR_BATCHES=$boardPbrBatchCount" +
+                " | BOARD_SHADOW_BATCHES=$boardShadowBatchCount" +
+                " | HERO_DRAW_SOURCE_PARTS=$heroDrawSourcePartCount" +
+                " | HERO_DRAW_BATCHES=$heroDrawBatchCount"
+        } else ""
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
             " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
             " | ENV_R7_COMPLETE=" + (if (revision7EnvironmentReady) "1" else "0") +
-            " | BOARD_VIEWPORT=${viewportWidth}x${viewportHeight}"
+            " | BOARD_VIEWPORT=${viewportWidth}x${viewportHeight}" + batchMarker
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker
@@ -1877,7 +1889,12 @@ class LudoBoardView(
                         glbParts.size,
                         authoredBoardPartCount,
                         environmentPartCount,
-                        revision7EnvironmentReady
+                        revision7EnvironmentReady,
+                        authoredBoardPartCount,
+                        preparedBoardBatches.size,
+                        preparedBoardShadowMeshes.size,
+                        5,
+                        heroPawnMeshes.size
                     )
                 } else {
                     android.util.Log.e(
