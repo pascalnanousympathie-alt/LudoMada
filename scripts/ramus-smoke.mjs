@@ -92,6 +92,66 @@ function dicePipBatchSummaryValid(summary) {
   return !!summary && summary.faceMeshes === 6 && summary.drawCallsPerDie === 1;
 }
 
+function parseRendererTelemetry(label) {
+  if (typeof label !== "string" || !label.includes("RENDER_TELEMETRY=1")) return null;
+  const fields = {};
+  for (const part of label.split("|")) {
+    const separator = part.indexOf("=");
+    if (separator <= 0) continue;
+    fields[part.slice(0, separator).trim()] = part.slice(separator + 1).trim();
+  }
+  const number = (key) => {
+    const value = Number(fields[key]);
+    return Number.isFinite(value) ? value : null;
+  };
+  const pair = (key) => {
+    const values = (fields[key] || "").split("/").map(Number);
+    if (values.length !== 2 || !values.every(Number.isFinite)) return null;
+    return { p50: values[0], p95: values[1] };
+  };
+  return {
+    vendor: fields.GPU_VENDOR || "",
+    renderer: fields.GPU_RENDERER || "",
+    gles: fields.GLES || "",
+    surface: (() => {
+      const match = (fields.SURFACE || "").match(/^(\d+)x(\d+)$/);
+      return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
+    })(),
+    fps: number("FPS"),
+    frameMs: pair("FRAME_MS"),
+    glCpuMs: pair("GL_CPU_MS"),
+    sceneCpuMs: pair("SCENE_CPU_MS"),
+    backdropCpuMs: pair("BACKDROP_CPU_MS"),
+    boardCpuMs: pair("BOARD_CPU_MS"),
+    pawnsCpuMs: pair("PAWNS_CPU_MS"),
+    diceCpuMs: pair("DICE_CPU_MS"),
+    shadowCpuMs: pair("SHADOW_CPU_MS"),
+    postCpuMs: pair("POST_CPU_MS"),
+    frameSamples: number("FRAME_SAMPLES"),
+    glSamples: number("GL_SAMPLES"),
+    gpuTime: fields.GPU_TIME || "",
+  };
+}
+
+function rendererTelemetryPassed(telemetry) {
+  const pairs = telemetry && [
+    telemetry.frameMs, telemetry.glCpuMs, telemetry.sceneCpuMs,
+    telemetry.backdropCpuMs, telemetry.boardCpuMs, telemetry.pawnsCpuMs,
+    telemetry.diceCpuMs, telemetry.shadowCpuMs, telemetry.postCpuMs
+  ];
+  return !!telemetry &&
+    telemetry.vendor.length > 0 && telemetry.vendor.toLowerCase() !== "unknown" &&
+    telemetry.renderer.length > 0 && telemetry.renderer.toLowerCase() !== "unknown" &&
+    /^OpenGL ES 3(?:\.|$)/.test(telemetry.gles) &&
+    !!telemetry.surface && telemetry.surface.width > telemetry.surface.height &&
+    telemetry.surface.height >= 140 && telemetry.surface.width / telemetry.surface.height <= 8 &&
+    Number.isFinite(telemetry.fps) && telemetry.fps > 0 &&
+    Number.isInteger(telemetry.frameSamples) && telemetry.frameSamples >= 2 &&
+    Number.isInteger(telemetry.glSamples) && telemetry.glSamples >= 2 &&
+    pairs.every(pair => pair && pair.p50 >= 0 && pair.p95 >= pair.p50) &&
+    telemetry.gpuTime === "NOT_MEASURED";
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -267,6 +327,9 @@ function selfTestFramebufferReadback() {
     { text: "Jouer" },
     { contentDesc: "LudoMada Premium Home" }
   ] };
+  const rendererTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | SURFACE=1419x424 | GPU_VENDOR=Google | GPU_RENDERER=Google SwiftShader | GLES=OpenGL ES 3.0 SwiftShader | FPS=5.14 | FRAME_MS=194.26/239.90 | GL_CPU_MS=26.05/76.78 | SCENE_CPU_MS=23.27/72.11 | BACKDROP_CPU_MS=13.01/63.43 | BOARD_CPU_MS=1.15/1.58 | PAWNS_CPU_MS=4.22/10.37 | DICE_CPU_MS=0.95/3.81 | SHADOW_CPU_MS=2.13/6.36 | POST_CPU_MS=0.03/0.07 | FRAME_SAMPLES=17 | GL_SAMPLES=52 | GPU_TIME=NOT_MEASURED";
+  const rendererTelemetry = parseRendererTelemetry(rendererTelemetryLabel);
+  const invalidRendererTelemetry = parseRendererTelemetry(rendererTelemetryLabel.replace("FPS=5.14", "FPS=NA"));
   const accessibleHomeTree = { elements: [{ contentDesc: "HOME_ACTION_JOUER", ref: "node-home-play" }] };
   const inaccessibleHomeTree = { elements: [{ contentDesc: "LudoMada Premium Home" }] };
   const readinessMarkedHomeTree = { elements: [
@@ -282,7 +345,10 @@ function selfTestFramebufferReadback() {
     ["wrong Home image source rejected", !parseHomeImageReadiness(wrongHomeSourceTree).ok],
     ["missing Home image readiness marker rejected", !parseHomeImageReadiness({ elements: [] }).ok],
     ["Android immersive confirmation prompt detected", isAndroidImmersivePrompt(immersivePromptTree)],
-    ["ordinary app screen is not treated as system prompt", !isAndroidImmersivePrompt(ordinaryTree)]
+    ["ordinary app screen is not treated as system prompt", !isAndroidImmersivePrompt(ordinaryTree)],
+    ["renderer telemetry reads GPU identity, FPS, frame and scene timings", rendererTelemetryPassed(rendererTelemetry)],
+    ["renderer telemetry rejects unavailable FPS", !rendererTelemetryPassed(invalidRendererTelemetry)],
+    ["renderer telemetry rejects a missing GPU/GLES identity", !rendererTelemetryPassed(parseRendererTelemetry(rendererTelemetryLabel.replace("GLES=OpenGL ES 3.0 SwiftShader", "GLES=unknown")))]
   );
   const failed = cases.filter(([, passed]) => !passed);
   for (const [name, passed] of cases) {
@@ -1473,7 +1539,21 @@ try {
   if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
   console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
 
-  // Capture renderer telemetry when Ramus exposes the Android app log stream.
+  // Ramus trial mode can withhold app-tag logcat. The renderer publishes the same
+  // device/FPS/CPU summary through the board accessibility description every 5s.
+  const telemetryTree = waitForTreeMarker("RENDER_TELEMETRY=1", 15000);
+  const telemetryLabel = treeLabels(telemetryTree).find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const rendererTelemetry = parseRendererTelemetry(telemetryLabel);
+  if (!rendererTelemetryPassed(rendererTelemetry)) {
+    throw new Error("Renderer accessibility telemetry is incomplete or invalid: " + JSON.stringify({
+      telemetry: rendererTelemetry,
+      labels: treeLabels(telemetryTree).filter(label => label.includes("RENDER_PASS=")).slice(0, 2)
+    }));
+  }
+  console.log("RAMUS_RENDER_TELEMETRY " + JSON.stringify(rendererTelemetry));
+  console.log("RAMUS_RENDER_ACCESSIBILITY_TELEMETRY_PASS");
+
+  // Capture optional renderer logcat details when Ramus exposes the Android app log stream.
   // GPU execution time remains explicitly unmeasured by the current renderer.
   const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);
   const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
@@ -1500,7 +1580,7 @@ try {
   if (glDeviceLines.length) {
     console.log("RAMUS_RENDER_DEVICE " + glDeviceLines[glDeviceLines.length - 1].slice(0, 1200));
   } else {
-    console.log("RAMUS_RENDER_DEVICE_UNAVAILABLE no GLES_DEVICE_INFO row exposed by Ramus logcat");
+    console.log("RAMUS_RENDER_DEVICE_LOGCAT_OPTIONAL_UNAVAILABLE accessibilityTelemetry=PASS");
   }
   if (perfLines.length) {
     const latestPerf = perfLines[perfLines.length - 1];
@@ -1515,12 +1595,12 @@ try {
     }
     for (const line of perfLines.slice(-3)) console.log("RAMUS_RENDER_PERF " + line.slice(0, 1200));
   } else {
-    console.log("RAMUS_PERF_METRICS_UNAVAILABLE no PERF_FRAME_STATS rows exposed by Ramus logcat");
+    console.log("RAMUS_PERF_LOGCAT_OPTIONAL_UNAVAILABLE accessibilityTelemetry=PASS");
   }
   if (phaseLines.length) {
     for (const line of phaseLines.slice(-3)) console.log("RAMUS_RENDER_PHASES " + line.slice(0, 1600));
   } else {
-    console.log("RAMUS_RENDER_PHASES_UNAVAILABLE no PERF_PIPELINE_PHASES rows exposed by Ramus logcat");
+    console.log("RAMUS_RENDER_PHASE_LOGCAT_OPTIONAL_UNAVAILABLE accessibilityTelemetry=PASS");
   }
   if (sceneBreakdownLines.length) {
     // Keep per-group CPU timings separate from the overall pipeline phases.
@@ -1529,7 +1609,7 @@ try {
       console.log("RAMUS_RENDER_SCENE_BREAKDOWN " + line.slice(0, 2000));
     }
   } else {
-    console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
+    console.log("RAMUS_RENDER_SCENE_LOGCAT_OPTIONAL_UNAVAILABLE accessibilityTelemetry=PASS");
   }
 
   success = true;
