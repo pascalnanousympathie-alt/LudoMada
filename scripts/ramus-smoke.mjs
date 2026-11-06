@@ -37,6 +37,16 @@ function rendererReadinessPassed(readiness) {
   return rendererReadinessFailureReason(readiness) === null;
 }
 
+function parseBoardViewport(tree) {
+  const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
+  const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
 function readJpegDimensions(path) {
   if (!existsSync(path)) return null;
   const bytes = readFileSync(path);
@@ -1212,6 +1222,16 @@ try {
   }
   assertTurn("Joueur 1/4");
   assertRuntimeGlbLoaded(18000);
+  const landscapeReadyTree = readTree();
+  const landscapeViewport = parseBoardViewport(landscapeReadyTree);
+  if (!landscapeViewport) {
+    throw new Error("Landscape 3D board did not publish measurable BOARD_VIEWPORT dimensions: " + JSON.stringify(treeLabels(landscapeReadyTree).slice(0, 30)));
+  }
+  if (landscapeViewport.width <= landscapeViewport.height || landscapeViewport.height < 140 ||
+      landscapeViewport.width / landscapeViewport.height > 8) {
+    throw new Error("Landscape 3D board surface is too short or has an invalid aspect ratio: " + JSON.stringify(landscapeViewport));
+  }
+  console.log(`LANDSCAPE BOARD VIEWPORT PASS ${landscapeViewport.width}x${landscapeViewport.height}`);
   const landscapeShot = runAllowError("screenshot", "--session", session, "--out", "ramus-landscape-gameplay-screen.jpg");
   if (!landscapeShot.ok) throw new Error("Could not capture gameplay from the real landscape Home entry path");
   const landscapeDimensions = readJpegDimensions("ramus-landscape-gameplay-screen.jpg");
@@ -1274,6 +1294,16 @@ try {
     console.log("RAMUS_RENDERER_LOGCAT_UNAVAILABLE trial mode did not expose app-tag readback rows");
   }
   if (perfLines.length) {
+    const latestPerf = perfLines[perfLines.length - 1];
+    const perfSurface = latestPerf.match(/surface=(\d+)x(\d+)/);
+    if (perfSurface) {
+      const perfWidth = Number(perfSurface[1]);
+      const perfHeight = Number(perfSurface[2]);
+      console.log(`RAMUS_RENDER_SURFACE ${perfWidth}x${perfHeight}`);
+      if (perfWidth <= perfHeight || perfHeight < 140 || perfWidth / perfHeight > 8) {
+        throw new Error("Renderer telemetry reports a collapsed landscape surface: " + latestPerf.slice(0, 1200));
+      }
+    }
     for (const line of perfLines.slice(-3)) console.log("RAMUS_RENDER_PERF " + line.slice(0, 1200));
   } else {
     console.log("RAMUS_PERF_METRICS_UNAVAILABLE no PERF_FRAME_STATS rows exposed by Ramus logcat");

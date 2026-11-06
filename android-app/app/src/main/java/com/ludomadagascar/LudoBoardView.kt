@@ -142,9 +142,12 @@ class LudoBoardView(
         revision7EnvironmentReady:Boolean
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
+        val viewportWidth = width.coerceAtLeast(0)
+        val viewportHeight = height.coerceAtLeast(0)
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
             " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
-            " | ENV_R7_COMPLETE=" + if (revision7EnvironmentReady) "1" else "0"
+            " | ENV_R7_COMPLETE=" + (if (revision7EnvironmentReady) "1" else "0") +
+            " | BOARD_VIEWPORT=${viewportWidth}x${viewportHeight}"
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker

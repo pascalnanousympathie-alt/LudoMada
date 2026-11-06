@@ -76,10 +76,15 @@ class MainActivity : Activity() {
         if(name!="board") stopGameEventStream()
         currentScreen=name
         syncMusicPlayback()
-        val baseLeft=dp(20)
-        val baseTop=dp(18)
-        val baseRight=dp(20)
-        val baseBottom=dp(20)
+        // The landscape offline board is a full-screen 3D play surface. Do not
+        // spend its short dimension on the portrait header/paddings: the board
+        // receives the weighted remainder below the compact status row.
+        val compactOfflineLandscape = name == "offline" &&
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val baseLeft=if (compactOfflineLandscape) dp(8) else dp(20)
+        val baseTop=if (compactOfflineLandscape) dp(4) else dp(18)
+        val baseRight=if (compactOfflineLandscape) dp(8) else dp(20)
+        val baseBottom=if (compactOfflineLandscape) dp(5) else dp(20)
         val content=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL; setPadding(baseLeft,baseTop,baseRight,baseBottom)
             background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
@@ -101,7 +106,7 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
-        addTopBar(title)
+        if (!compactOfflineLandscape) addTopBar(title)
         content.requestApplyInsets()
         return content
     }
@@ -717,14 +722,55 @@ class MainActivity : Activity() {
 
     private fun offlineGame(players:Int) {
         page("offline","Ludo hors-ligne")
-        val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
+        val compactLandscape = resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val info=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            if (compactLandscape) {
+                setPadding(dp(8), 0, dp(8), 0)
+                background=shape(Color.WHITE, 14f, Color.rgb(219,228,239))
+                elevation=dp(2).toFloat()
+            }
+        }
+        status=label(
+            "Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",
+            if (compactLandscape) 12f else 13f,
+            true,
+            Color.rgb(37,93,196)
+        )
+        info.addView(status,LinearLayout.LayoutParams(0,-2,1f))
+        info.addView(label("HORS-LIGNE",if (compactLandscape) 11f else 13f,true,Color.rgb(130,85,180)))
+        if (compactLandscape) add(info,30,0,3) else add(info,34,0,5)
+
         val host=LudoBoardView(this, onRollTap = { offlineHost?.let { offlineRoll(it) } }, onPawnTap = { tokenIndex -> offlineHost?.let { offlineMove(it, players, tokenIndex) } });host.state=offlineState;host.player=offlineTurn;offlineHost=host
-        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{
+            setMargins(0,if (compactLandscape) dp(2) else dp(4),0,if (compactLandscape) dp(4) else dp(8))
+        })
         host.animateState()
-        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
-        add(label("Safidio mivantana eo amin’ny plateau ilay pion afaka mihetsika.",11f,false,Color.rgb(112,121,137)),22,0,2)
-        add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+
+        if (compactLandscape) {
+            // Keep both primary controls on one short row so the 3D board gets
+            // the majority of the landscape viewport instead of collapsing to
+            // the remaining ~50px beneath portrait-sized buttons.
+            val controls=LinearLayout(this).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
+            }
+            controls.addView(
+                button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},
+                LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(0,0,dp(4),0)}
+            )
+            controls.addView(
+                button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},
+                LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(dp(4),0,0,0)}
+            )
+            root.addView(controls,LinearLayout.LayoutParams(-1,dp(54)).apply{setMargins(0,dp(3),0,0)})
+        } else {
+            add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+            add(label("Safidio mivantana eo amin’ny plateau ilay pion afaka mihetsika.",11f,false,Color.rgb(112,121,137)),22,0,2)
+            add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+        }
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
