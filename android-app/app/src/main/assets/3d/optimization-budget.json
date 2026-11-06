@@ -2,9 +2,9 @@
   "schema": "ludomada-mobile-3d-budget-v2",
   "sourceScene": {
     "provider": "Higgsfield 3D Jutsu",
-    "projectId": "083cab86-9817-4ddc-8d12-92d9212d008b",
-    "revision": 5,
-    "sourceGlbBytes": 867800,
+    "projectId": "58feae45-2f79-461e-80eb-53525340f7b9",
+    "revision": 7,
+    "sourceGlbBytes": 2011296,
     "materialCalibration": "PremiumMaterialLighting.Calibration"
   },
   "glbBytes": {
@@ -52,5 +52,12 @@
     "baobabGlbMaxBytes": 1048576,
     "textureDimensionMax": 2048,
     "textureBytesMax": 3000000
+  },
+  "gameplayEnvironment": {
+    "environmentMeshCount": 13,
+    "previousEnvironmentMeshCount": 31,
+    "archivePartCount": 35,
+    "sourceArchiveBytes": 462612,
+    "sourceArchiveSha256": "de848f44936bf555c4210c8b9b7e7559eeeaa5a2fb14de795c9fa62cd58f4dcf"
   }
 }

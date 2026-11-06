@@ -349,7 +349,7 @@ internal object GameplayEnvironmentComposition {
     const val BLENDER_FLOOR_MATERIAL_KIND = 5
     const val RECEIVES_SHADOW = true
     const val PRESERVE_ALBEDO = true
-    const val BLENDER_ASSET_PATH = "3d/ludomada-gameplay-environment-v1.glb"
+    const val BLENDER_ASSET_PATH = "3d/ludomada-gameplay-environment-r7.glb"
     // The Blender scene is authored around x=-1.1667; the board root moves the
     // authored board to x=0. Translate the table by the inverse offset to align.
     const val BLENDER_ROOT_TRANSLATION_X = 1.1666667f

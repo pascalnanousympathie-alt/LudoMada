@@ -133,6 +133,14 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
+    fun blenderGameplayEnvironmentUsesVersionedRevision7RuntimeAsset() {
+        assertEquals(
+            "3d/ludomada-gameplay-environment-r7.glb",
+            GameplayEnvironmentComposition.BLENDER_ASSET_PATH
+        )
+    }
+
+    @Test
     fun blenderRevision7EnvironmentRequiresBothStaticBatchesAndAllFourTrayPairs() {
         val revision7Names = buildSet {
             addAll(

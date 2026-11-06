@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import { createHash } from "node:crypto";
 
 const root = process.argv[2] || "android-app/app/src/main/assets/3d";
@@ -16,8 +17,8 @@ const checks = [
   ["format", manifest.format === "glb/gltf2"],
   ["target", manifest.target === "android-realtime"],
   ["source provider", manifest.source_scene?.provider === "Higgsfield 3D Jutsu"],
-  ["source revision", manifest.source_scene?.revision === 5],
-  ["source GLB size recorded", manifest.source_scene?.glb_bytes === 867800],
+  ["source revision", manifest.source_scene?.revision === 7],
+  ["source GLB size recorded", manifest.source_scene?.glb_bytes === 2011296],
   ["material calibration", manifest.source_scene?.material_calibration === "PremiumMaterialLighting.Calibration"],
   ["die metallic", manifest.assets?.die?.authoring_metallic === 1],
   ["die roughness", manifest.assets?.die?.authoring_roughness === 0.055],
@@ -30,18 +31,55 @@ const checks = [
   ["hero budget", manifest.mobile_budgets?.hero_glb_max_bytes === 8388608]
 ];
 const packagedFiles = fs.readdirSync(root).filter((name) => /\.(glb|gltf)$/i.test(name));
-const expectedAsset = path.join(root, "ludomada-gameplay-rev5.glb");
-const packagedBytes = fs.existsSync(expectedAsset) ? fs.statSync(expectedAsset).size : 0;
-const packagedSha256 = fs.existsSync(expectedAsset)
-  ? createHash("sha256").update(fs.readFileSync(expectedAsset)).digest("hex")
+const expectedPartCount = manifest.gameplay_environment?.source_archive_part_count ?? 35;
+const r7PartsDirectory = path.resolve(root, "../../../../asset-sources/r7-parts");
+const r7PartNames = fs.existsSync(r7PartsDirectory)
+  ? fs.readdirSync(r7PartsDirectory).filter((name) => /^r7-[0-9]{3}\.bin$/.test(name)).sort()
+  : [];
+const r7PartBuffers = r7PartNames.map((name, index) => {
+  const expectedName = `r7-${index.toString().padStart(3, "0")}.bin`;
+  const part = fs.readFileSync(path.join(r7PartsDirectory, name));
+  const expectedBytes = index === expectedPartCount - 1 ? 3612 : 13500;
+  checks.push(["r7 archive part order: " + name, name === expectedName]);
+  checks.push(["r7 archive part size: " + name, part.length === expectedBytes]);
+  return part;
+});
+checks.push(["r7 archive part inventory", r7PartNames.length === expectedPartCount]);
+let r7ArchiveBytes = 0;
+let r7ArchiveSha256 = "";
+let r7GlbBuffer = null;
+let r7ExtractError = "";
+if (r7PartBuffers.length === expectedPartCount) {
+  const archiveBuffer = Buffer.concat(r7PartBuffers);
+  r7ArchiveBytes = archiveBuffer.length;
+  r7ArchiveSha256 = createHash("sha256").update(archiveBuffer).digest("hex");
+  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "ludomada-r7-check-"));
+  try {
+    const archivePath = path.join(tempDirectory, "ludomada-r7.zip");
+    fs.writeFileSync(archivePath, archiveBuffer);
+    execFileSync("unzip", ["-tq", archivePath], { stdio: "pipe" });
+    r7GlbBuffer = execFileSync(
+      "unzip",
+      ["-p", archivePath, "ludomada-gameplay-environment-r7.glb"],
+      { maxBuffer: 16 * 1024 * 1024 }
+    );
+  } catch (error) {
+    r7ExtractError = error?.message || String(error);
+  } finally {
+    fs.rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+const packagedBytes = r7GlbBuffer?.length ?? 0;
+const packagedSha256 = r7GlbBuffer
+  ? createHash("sha256").update(r7GlbBuffer).digest("hex")
   : "";
-checks.push(["source tree bundle flag", manifest.asset_bundled_in_source_tree === true]);
-checks.push(["runtime loader explicit", manifest.runtime_loader === "GlbRuntimeLoader"]);
-checks.push(["runtime packaged", manifest.runtime_packaged === true]);
-checks.push(["runtime hero parts", Array.isArray(manifest.runtime_hero_parts) && manifest.runtime_hero_parts.includes("LM_Pawn_Tapered_Body") && manifest.runtime_hero_parts.includes("LM_Pawn_Spherical_Head") && manifest.runtime_hero_parts.includes("LM_Die_HydroChrome_Body")]);
-checks.push(["active rev5 asset file present", fs.existsSync(expectedAsset)]);
-checks.push(["active rev5 asset size", packagedBytes === 867800]);
-checks.push(["active rev5 asset sha256", packagedSha256 === "bd648fd8b2a265e26220ce1eed3f8a7d60f8507345290cea6e19fba56f401e0f"]);
+checks.push(["r7 archive size", r7ArchiveBytes === 462612]);
+checks.push(["r7 archive SHA-256", r7ArchiveSha256 === "de848f44936bf555c4210c8b9b7e7559eeeaa5a2fb14de795c9fa62cd58f4dcf"]);
+checks.push(["r7 archive extracted", r7GlbBuffer !== null && !r7ExtractError]);
+checks.push(["active r7 GLB size", packagedBytes === 2011296]);
+checks.push(["active r7 GLB SHA-256", packagedSha256 === "1973b119d4ad02647c9cce9f193a37c25b0ae0ca778507f20b7078276f6d9cba"]);
+checks.push(["r7 environment mesh count", manifest.gameplay_environment?.environment_mesh_count === 13]);
+checks.push(["r7 dice tray count", manifest.gameplay_environment?.dice_trays === 4]);
 
 function jpegDimensions(filePath) {
   const bytes = fs.readFileSync(filePath);
@@ -111,7 +149,7 @@ console.log(JSON.stringify({
   board: manifest.board_geometry,
   packagedAssets: packagedFiles,
 
-  runtimeRev5Asset: { present: fs.existsSync(expectedAsset), bytes: packagedBytes, sha256: packagedSha256 },
+  runtimeR7Asset: { archivePartCount: r7PartNames.length, archiveBytes: r7ArchiveBytes, archiveSha256: r7ArchiveSha256, glbBytes: packagedBytes, glbSha256: packagedSha256, extractionError: r7ExtractError },
   homeEnvironment: { renderer: homeEnvironment.renderer, assets: homeAssetResults, textureBytes: homeTextureBytes },
   oversizedAssets: oversized,
   passed: checks.length - failed.length,

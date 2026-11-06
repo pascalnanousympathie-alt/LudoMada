@@ -43,6 +43,19 @@ if (heroMax !== manifest.mobile_budgets?.hero_glb_max_bytes) {
 const sourceBytes = Number(sourceScene.glb_bytes);
 if (!Number.isFinite(sourceBytes)) fail("3D_OPT_SOURCE_BYTES_MISSING");
 if (sourceBytes > heroMax) fail("3D_OPT_SOURCE_BUDGET_FAIL", sourceBytes, heroMax);
+const propMax = Number(budget.glbBytes?.propMax);
+if (!Number.isFinite(propMax) || propMax <= 0) fail("3D_OPT_PROP_BUDGET_INVALID", propMax);
+if (sourceBytes > propMax) fail("3D_OPT_GAMEPLAY_PROP_BUDGET_FAIL", sourceBytes, propMax);
+const gameplayEnvironment = manifest.gameplay_environment ?? {};
+if (gameplayEnvironment.environment_mesh_count !== 13 ||
+    gameplayEnvironment.dice_trays !== 4 ||
+    gameplayEnvironment.source_archive_part_count !== 35) {
+  fail("3D_OPT_GAMEPLAY_ENVIRONMENT_R7_CONTRACT_FAIL", gameplayEnvironment);
+}
+if (budget.gameplayEnvironment?.environmentMeshCount !== gameplayEnvironment.environment_mesh_count ||
+    budget.gameplayEnvironment?.archivePartCount !== gameplayEnvironment.source_archive_part_count) {
+  fail("3D_OPT_GAMEPLAY_ENVIRONMENT_BUDGET_MISMATCH");
+}
 
 const bundled = fs.readdirSync(root)
   .filter((name) => /\.glb$/i.test(name))
@@ -87,6 +100,7 @@ if (budget.runtimeTargets?.shadowMapDefault !== premium.shadowMap) fail("3D_OPT_
 console.log("3D_OPTIMIZATION_CONTRACT_PASS", JSON.stringify({
   sourceSceneBytes: sourceBytes,
   sourceSceneRevision: sourceScene.revision,
+  gameplayEnvironment: { bytes: sourceBytes, propMax, meshCount: gameplayEnvironment.environment_mesh_count, trays: gameplayEnvironment.dice_trays, archiveParts: gameplayEnvironment.source_archive_part_count },
 
   bundledGlbs: bundled,
   homeEnvironment: {
