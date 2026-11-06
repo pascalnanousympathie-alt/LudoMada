@@ -766,7 +766,7 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PERF_SCENE_BREAKDOWN|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -1335,6 +1335,7 @@ try {
   const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
   const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
   const phaseLines = rendererLines.filter(line => line.includes("PERF_PIPELINE_PHASES"));
+  const sceneBreakdownLines = rendererLines.filter(line => line.includes("PERF_SCENE_BREAKDOWN"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
@@ -1370,6 +1371,15 @@ try {
     for (const line of phaseLines.slice(-3)) console.log("RAMUS_RENDER_PHASES " + line.slice(0, 1600));
   } else {
     console.log("RAMUS_RENDER_PHASES_UNAVAILABLE no PERF_PIPELINE_PHASES rows exposed by Ramus logcat");
+  }
+  if (sceneBreakdownLines.length) {
+    // Keep per-group CPU timings separate from the overall pipeline phases.
+    // These are CPU submission timings, not GPU execution measurements.
+    for (const line of sceneBreakdownLines.slice(-3)) {
+      console.log("RAMUS_RENDER_SCENE_BREAKDOWN " + line.slice(0, 2000));
+    }
+  } else {
+    console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
   }
 
   success = true;
