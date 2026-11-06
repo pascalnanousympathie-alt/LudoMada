@@ -35,7 +35,7 @@ class MeshBatcherTest {
             0.0001f
         )
         assertArrayEquals(floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f), merged.normals, 0.0001f)
-        assertArrayEquals(floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 0f, 1f, 0f, 0f), merged.uvs, 0.0001f)
+        assertArrayEquals(floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f), merged.uvs, 0.0001f)
     }
 
     @Test
@@ -46,7 +46,7 @@ class MeshBatcherTest {
             it[10] = 4f
         }
         val merged = MeshBatcher.merge(listOf(triangle(transform))).single()
-        assertArrayEquals(floatArrayOf(2f, 0f, 0f, 0f, 3f, 0f, 0f, 0f, 1f), merged.positions, 0.0001f)
+        assertArrayEquals(floatArrayOf(0f, 0f, 0f, 2f, 0f, 0f, 0f, 3f, 0f), merged.positions, 0.0001f)
         assertArrayEquals(floatArrayOf(0f, 0f, 1f, 0f, 0f, 1f, 0f, 0f, 1f), merged.normals, 0.0001f)
         for (i in merged.normals.indices step 3) {
             val length = sqrt(merged.normals[i] * merged.normals[i] + merged.normals[i + 1] * merged.normals[i + 1] + merged.normals[i + 2] * merged.normals[i + 2])
