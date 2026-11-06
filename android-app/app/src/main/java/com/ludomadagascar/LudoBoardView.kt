@@ -1831,14 +1831,11 @@ class LudoBoardView(
         }
 
         private fun prepareGameplayEnvironmentDraws() {
-            val root = FloatArray(16)
-            Matrix.setIdentityM(root, 0)
-            Matrix.translateM(root, 0, GameplayEnvironmentComposition.BLENDER_ROOT_TRANSLATION_X, 0f, 0f)
+            val root = GameplayEnvironmentComposition.blenderGameplayRootTransform()
             val prepared = gameplayEnvironmentParts.values
                 .sortedBy { part -> GameplayEnvironmentComposition.blenderPartDrawOrder(part.name) }
                 .map { part ->
-                    val modelMatrix = FloatArray(16)
-                    Matrix.multiplyMM(modelMatrix, 0, root, 0, part.transform, 0)
+                    val modelMatrix = GameplayEnvironmentComposition.blenderGameplayModelMatrix(root, part.transform)
                     val textureKind = GameplayEnvironmentComposition.blenderTextureKind(part.materialName)
                     val albedoTexture = when (textureKind) {
                         GameplayEnvironmentComposition.WOOD_MATERIAL_KIND -> woodTex

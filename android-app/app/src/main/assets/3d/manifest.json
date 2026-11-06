@@ -143,6 +143,7 @@
     "previous_environment_mesh_count": 31,
     "draw_candidate_reduction_percent": 58.06,
     "dice_trays": 4,
+    "runtime_root_scale_xz": 0.75,
     "chrome_frame_material": "LM_Tray_Chrome",
     "obsidian_insert_material": "LM_Tray_Obsidian",
     "camera_lens_mm": 37

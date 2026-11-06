@@ -1,6 +1,7 @@
 package com.ludomadagascar
 
 import android.graphics.Color
+import android.opengl.Matrix
 import kotlin.math.max
 import kotlin.math.min
 
@@ -350,9 +351,29 @@ internal object GameplayEnvironmentComposition {
     const val RECEIVES_SHADOW = true
     const val PRESERVE_ALBEDO = true
     const val BLENDER_ASSET_PATH = "3d/ludomada-gameplay-environment-r7.glb"
-    // The Blender scene is authored around x=-1.1667; the board root moves the
-    // authored board to x=0. Translate the table by the inverse offset to align.
+    // The Blender scene is authored around x=-1.1667; center it before fitting
+    // the four corner trays around the 5.6 m gameplay board. Scale X/Z only:
+    // keep vertical thickness, board geometry, pawn scale and game coordinates intact.
     const val BLENDER_ROOT_TRANSLATION_X = 1.1666667f
+    const val BLENDER_GAMEPLAY_XZ_SCALE = 0.75f
+
+    fun blenderGameplayRootTransform(): FloatArray {
+        val root = FloatArray(16)
+        Matrix.setIdentityM(root, 0)
+        // S*T maps the authored -1.1667m centre to world x=0, then compacts X/Z.
+        Matrix.scaleM(root, 0, BLENDER_GAMEPLAY_XZ_SCALE, 1f, BLENDER_GAMEPLAY_XZ_SCALE)
+        Matrix.translateM(root, 0, BLENDER_ROOT_TRANSLATION_X, 0f, 0f)
+        return root
+    }
+
+    fun blenderGameplayModelMatrix(root: FloatArray, partTransform: FloatArray): FloatArray {
+        require(root.size == 16 && partTransform.size == 16) {
+            "Blender gameplay transforms must be 4x4 matrices"
+        }
+        val model = FloatArray(16)
+        Matrix.multiplyMM(model, 0, root, 0, partTransform, 0)
+        return model
+    }
 
     fun acceptsBlenderGameplayPart(name: String): Boolean = name.startsWith("GMENV_")
 
