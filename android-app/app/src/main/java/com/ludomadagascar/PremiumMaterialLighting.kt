@@ -344,6 +344,8 @@ object PremiumMaterialLighting {
 internal object GameplayEnvironmentComposition {
     const val WOOD_MATERIAL_KIND = 1
     const val BLENDER_BRASS_MATERIAL_KIND = 5
+    const val BLENDER_CHROME_MATERIAL_KIND = 4
+    const val BLENDER_CHROME_TEXTURE_KIND = 4
     const val BLENDER_FLOOR_MATERIAL_KIND = 5
     const val RECEIVES_SHADOW = true
     const val PRESERVE_ALBEDO = true
@@ -359,6 +361,7 @@ internal object GameplayEnvironmentComposition {
 
     fun blenderMaterialKind(materialName: String): Int = when (materialName) {
         "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
+        "LM_Tray_Chrome" -> BLENDER_CHROME_MATERIAL_KIND
         "LM_Champagne_Brass", "ENV_Studio_Charcoal" -> BLENDER_BRASS_MATERIAL_KIND
         else -> BLENDER_FLOOR_MATERIAL_KIND
     }
@@ -371,6 +374,7 @@ internal object GameplayEnvironmentComposition {
             "LM_Walnut_Edge" -> floatArrayOf(0.39f, 0.17f, 0.065f, 1f)
             "LM_Walnut_Dark" -> floatArrayOf(154f / 255f, 83f / 255f, 34f / 255f, 1f)
             "ENV_Studio_Charcoal" -> floatArrayOf(0.14f, 0.16f, 0.19f, 1f)
+            "LM_Tray_Chrome" -> floatArrayOf(0.78f, 0.82f, 0.88f, 1f)
             else -> source.copyOf()
         }
     }
@@ -378,6 +382,7 @@ internal object GameplayEnvironmentComposition {
     fun blenderTextureKind(materialName: String): Int = when (materialName) {
         "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
         "LM_Champagne_Brass" -> 4
+        "LM_Tray_Chrome" -> BLENDER_CHROME_TEXTURE_KIND
         else -> 3
     }
 
@@ -389,12 +394,14 @@ internal object GameplayEnvironmentComposition {
         partName == "GMENV_Tabletop_Walnut" -> 4
         partName.startsWith("GMENV_Perimeter_Inlay_") -> 5
         partName.startsWith("GMENV_Brass_Pin_") -> 6
-        partName == "GMENV_Baobab_Brass_Inlay" -> 7
-        else -> 8
+        partName.startsWith("GMENV_DiceTray_Insert_") -> 7
+        partName.startsWith("GMENV_DiceTray_Frame_") -> 8
+        partName == "GMENV_Baobab_Brass_Inlay" -> 9
+        else -> 10
     }
 
     fun blenderPartReceivesGameplayShadow(partName: String): Boolean =
-        partName == "GMENV_Tabletop_Walnut"
+        partName == "GMENV_Tabletop_Walnut" || partName.startsWith("GMENV_DiceTray_")
 
     fun tabletop(): PremiumMaterial = PremiumMaterial(
         // Keep this pure Kotlin data so local JVM tests do not call Android Color stubs.
