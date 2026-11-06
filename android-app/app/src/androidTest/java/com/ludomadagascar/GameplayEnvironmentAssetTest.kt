@@ -45,7 +45,7 @@ class GameplayEnvironmentAssetTest {
         }
         assertEquals("LM_Walnut_Dark", tabletop.materialName)
         assertEquals(0.035f, tabletop.metallic, 0.001f)
-        assertEquals(0.42f, tabletop.roughness, 0.001f)
+        assertEquals(0.36f, tabletop.roughness, 0.001f)
         assertTrue("The tabletop must have indexed 3D geometry", tabletop.mesh.indices.size >= 500)
     }
 }
