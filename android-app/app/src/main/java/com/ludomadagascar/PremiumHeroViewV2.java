@@ -323,7 +323,7 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             float scaleY = destination.height() / 720f;
             return new RectF(
                     destination.left + 975f * scaleX,
-                    destination.top + 345f * scaleY,
+                    destination.top + 380f * scaleY,
                     destination.left + 1245f * scaleX,
                     destination.top + 485f * scaleY
             );
@@ -457,12 +457,12 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             // The old "Mise actuelle" value is baked into the JPG too. Cover that
             // small region and redraw the live value from MainActivity.entryFee.
             overlayPaint.setStyle(Paint.Style.FILL);
-            overlayPaint.setColor(0xF20D2445);
-            canvas.drawRoundRect(1005f, 297f, 1167f, 343f, 11f, 11f, overlayPaint);
-            drawCenteredText(canvas, "Mise actuelle", 1086f, 319f, 10.5f, 0xFFE7EEF8, false);
+            overlayPaint.setColor(0xFF0D2445);
+            canvas.drawRoundRect(1005f, 294f, 1167f, 372f, 11f, 11f, overlayPaint);
+            drawCenteredText(canvas, "Mise actuelle", 1086f, 324f, 10.5f, 0xFFE7EEF8, false);
             drawCenteredText(
-                    canvas, formatBalance(selected) + " Ar", 1086f, 339f,
-                    15.5f, 0xFFFFDA71, true
+                    canvas, formatBalance(selected) + " Ar", 1086f, 359f,
+                    16f, 0xFFFFDA71, true
             );
         }
 
@@ -492,7 +492,7 @@ public final class PremiumHeroViewV2 extends FrameLayout {
         }
 
         private String actionFor(float x, float y) {
-            if (x >= 975f && x <= 1245f && y >= 345f && y <= 485f) return "gameModeDialog";
+            if (x >= 975f && x <= 1245f && y >= 380f && y <= 485f) return "gameModeDialog";
             if (x >= 1125f && x <= 1255f && y >= 30f && y <= 135f) return "toggleMusicFromHome";
             if (x >= 55f && x <= 340f && y >= 300f && y <= 435f) return "wallet";
             if (x >= 75f && x <= 455f && y >= 150f && y <= 285f) return "joinDialog";
