@@ -22,14 +22,19 @@ function parseRendererReadiness(label) {
   };
 }
 
+function rendererReadinessFailureReason(readiness) {
+  if (!readiness) return "readiness_marker_missing";
+  if (readiness.heroPartCount < 6) return "incomplete_hero_glb";
+  if (readiness.boardPartCount <= 0) return "missing_board_glb";
+  // GLES2 compatibility renderer intentionally uses a procedural tabletop.
+  if (readiness.rendererName === "GLES2_GLB") return null;
+  if (readiness.environmentPartCount <= 0) return "gameplay_environment_missing";
+  if (!readiness.revision7EnvironmentReady) return "legacy_environment_not_revision7";
+  return null;
+}
+
 function rendererReadinessPassed(readiness) {
-  if (!readiness || readiness.heroPartCount < 6 || readiness.boardPartCount <= 0) {
-    return false;
-  }
-  // GLES3 must prove the Blender gameplay table was prepared. The GLES2
-  // compatibility renderer intentionally uses its procedural tabletop.
-  return readiness.rendererName === "GLES2_GLB" ||
-    (readiness.environmentPartCount > 0 && readiness.revision7EnvironmentReady);
+  return rendererReadinessFailureReason(readiness) === null;
 }
 
 function parseFramebufferReadback(line, expectedLabel) {
@@ -760,6 +765,13 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     "LM_Die_HydroChrome_Body"
   ];
   let lastLogcat = { ok: false, totalLines: 0, error: "not_read" };
+  let lastReadinessDiagnostic = {
+    label: "",
+    parsed: null,
+    reason: "readiness_marker_missing",
+    accessibilityLabels: []
+  };
+  let readinessRejectionLogged = false;
   let checks = {
     gles3Pbr: false,
     gles2Fallback: false,
@@ -784,6 +796,16 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       label.includes("LudoMada 3D Ludo board")
     ) || "";
     const readiness = parseRendererReadiness(readyLabel);
+    lastReadinessDiagnostic = {
+      label: readyLabel.slice(0, 1200),
+      parsed: readiness,
+      reason: rendererReadinessFailureReason(readiness),
+      accessibilityLabels: treeLabels(accessibilityTree).slice(0, 36).map(label => label.slice(0, 180))
+    };
+    if (readiness && !readinessRejectionLogged && lastReadinessDiagnostic.reason !== null) {
+      console.error("RUNTIME_READINESS_REJECTED=" + JSON.stringify(lastReadinessDiagnostic).slice(0, 5000));
+      readinessRejectionLogged = true;
+    }
     if (rendererReadinessPassed(readiness)) {
       const { rendererName, heroPartCount, boardPartCount, environmentPartCount } = readiness;
       console.log(rendererName + " ACCESSIBILITY RENDER PASS");
@@ -862,7 +884,7 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     waitStable(Math.min(1800, Math.max(0, deadline - Date.now())));
   }
   throw new Error("Runtime GLB/frame verification failed: " +
-    JSON.stringify({ checks, logcat: {
+    JSON.stringify({ readiness: lastReadinessDiagnostic, checks, logcat: {
       ok: lastLogcat.ok,
       totalLines: lastLogcat.totalLines,
       rendererLines: lastLogcat.lines.length,
