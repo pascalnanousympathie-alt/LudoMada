@@ -32,8 +32,9 @@ class RenderSceneBreakdownTelemetryTest {
     @Test
     fun wrapsTheFixedWindowAndClampsNegativeDurations() {
         val telemetry = RenderSceneBreakdownTelemetry(windowSize = 2, reportIntervalNanos = 1L)
-        telemetry.record(100L, 1L, 2_000_000L, 3_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L)
-        telemetry.record(101L, 2L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L, 8_000_000L, 9_000_000L)
+        // Durations are supplied in nanoseconds and reported in milliseconds.
+        telemetry.record(100L, 1_000_000L, 2_000_000L, 3_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L)
+        telemetry.record(101L, 2_000_000L, 4_000_000L, 5_000_000L, 6_000_000L, 7_000_000L, 8_000_000L, 9_000_000L)
         val snapshot = telemetry.record(102L, -1L, 6_000_000L, 7_000_000L, 8_000_000L, 9_000_000L, 10_000_000L, 11_000_000L)
 
         assertEquals(2, snapshot!!.sampleCount)
