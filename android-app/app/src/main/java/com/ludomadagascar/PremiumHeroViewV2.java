@@ -426,7 +426,8 @@ public final class PremiumHeroViewV2 extends FrameLayout {
             // Replace only the stale stake selector embedded in the reference JPG.
             overlayPaint.setShader(null);
             overlayPaint.setStyle(Paint.Style.FILL);
-            overlayPaint.setColor(0xF20B2040);
+            // The reference JPG contains obsolete stake labels; an opaque panel prevents ghosting.
+            overlayPaint.setColor(0xFF0B2040);
             canvas.drawRoundRect(118f, 544f, 358f, 668f, 17f, 17f, overlayPaint);
             overlayPaint.setStyle(Paint.Style.STROKE);
             overlayPaint.setStrokeWidth(1.2f);
