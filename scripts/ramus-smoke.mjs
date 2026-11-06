@@ -434,6 +434,22 @@ function tapTreeNode(tree, needle) {
   return result;
 }
 
+function selectAndAssertHomeStake(amount) {
+  const tree = readTree();
+  const targetName = `HOME_STAKE_${amount}`;
+  if (!treeHas(tree, targetName)) {
+    throw new Error(`Home stake accessibility target missing: ${targetName}; labels=${JSON.stringify(treeLabels(tree)).slice(0, 5000)}`);
+  }
+  tapTreeNode(tree, targetName);
+  const selectedTree = waitForTreeMarker(`HOME_SELECTED_STAKE=${amount}`, 4500);
+  const marker = treeLabels(selectedTree).find(label => label.includes("HOME_SELECTED_STAKE=")) || "";
+  const selected = Number(marker.match(/HOME_SELECTED_STAKE=(\d+)/)?.[1] || 0);
+  if (selected !== amount) {
+    throw new Error(`Home stake selection mismatch: expected ${amount}, observed ${selected}; marker=${marker}`);
+  }
+  console.log(`HOME STAKE ${amount} AR SELECT PASS`);
+}
+
 function isPremiumHome(tree) {
   // The image host publishes HOME_IMAGE_FRAME_COMPLETE as its current
   // contentDescription; Android may expose that node without the FrameLayout
@@ -1106,6 +1122,12 @@ try {
   if (!treeHas(lobbyTree, "Choisir la mise")) {
     throw new Error("Online mode did not open the stake-selection lobby. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
   }
+  for (const option of ["500 Ar", "1 000 Ar", "2 000 Ar", "5 000 Ar", "10 000 Ar", "20 000 Ar"]) {
+    if (!treeHas(lobbyTree, option)) {
+      throw new Error(`Online lobby is missing stake option ${option}. Accessibility tree: ` + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
+    }
+  }
+  console.log("ONLINE LOBBY SIX STAKE OPTIONS PASS");
   lobbyTree = scrollToVisibleText("Hiditra amin'ny room", 4);
   if (!treeHas(lobbyTree, "Hiditra amin'ny room")) {
     throw new Error("Online lobby opened, but its room-entry action did not become visible after scrolling. Accessibility tree: " + JSON.stringify(treeLabels(lobbyTree)).slice(0, 5000));
@@ -1135,6 +1157,11 @@ try {
       JSON.stringify({reason:homeReadiness.reason,tree:treeLabels(homeReadyTree)}));
   }
   console.log("HOME_STATIC_LOBBY_4K_IMAGE PASS " + JSON.stringify(homeReadiness));
+  // Exercise every native Home stake hitbox and verify the live value reported
+  // by the actual image view after each tap. Restore 500 Ar for the final capture.
+  for (const amount of [1000, 2000, 5000, 10000, 20000, 500]) {
+    selectAndAssertHomeStake(amount);
+  }
   const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
   if (!homeShot.ok) throw new Error("Could not capture the static Home reference image");
   console.log("HOME_STATIC_IMAGE_SCREENSHOT_CAPTURED");
