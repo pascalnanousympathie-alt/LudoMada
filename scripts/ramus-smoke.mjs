@@ -80,6 +80,18 @@ function gameplayEnvironmentBatchSummaryValid(summary) {
     Number.isSafeInteger(summary.pbrBatches) && summary.pbrBatches >= 1 && summary.pbrBatches <= 7;
 }
 
+function parseDicePipBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/DICE_PIP_FACE_MESHES=(\d+)\s*\|\s*DICE_PIP_DRAW_CALLS_PER_DIE=(\d+)/);
+  if (!match) return null;
+  const [faceMeshes, drawCallsPerDie] = match.slice(1).map(Number);
+  return { faceMeshes, drawCallsPerDie };
+}
+
+function dicePipBatchSummaryValid(summary) {
+  return !!summary && summary.faceMeshes === 6 && summary.drawCallsPerDie === 1;
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -207,6 +219,8 @@ function selfTestFramebufferReadback() {
   const invalidHeroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=5";
   const environmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=7";
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
+  const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
+  const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -222,6 +236,8 @@ function selfTestFramebufferReadback() {
     ["accessibility hero batch contract rejects five unbatched meshes", !heroBatchSummaryValid(parseHeroBatchSummary(invalidHeroBatchLabel))],
     ["accessibility gameplay environment contract accepts 13 source meshes in 7 PBR batches", gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(environmentBatchLabel))],
     ["accessibility gameplay environment contract rejects an unbatched environment", !gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(invalidEnvironmentBatchLabel))],
+    ["accessibility dice pip contract accepts six face meshes with one draw per die", dicePipBatchSummaryValid(parseDicePipBatchSummary(dicePipBatchLabel))],
+    ["accessibility dice pip contract rejects separate pip draws", !dicePipBatchSummaryValid(parseDicePipBatchSummary(invalidDicePipBatchLabel))],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
@@ -972,6 +988,24 @@ function assertGameplayEnvironmentBatches(timeoutMs = 5000) {
       labels: treeLabels(readTree()).slice(0, 36) }));
 }
 
+function assertDicePipBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("DICE_PIP_FACE_MESHES=")) || "";
+    const summary = parseDicePipBatchSummary(readyLabel);
+    if (summary) {
+      if (!dicePipBatchSummaryValid(summary)) {
+        throw new Error("Accessibility dice pip batch contract rejected: " + JSON.stringify({ summary, readyLabel }));
+      }
+      console.log("DICE_PIP_BATCH_PASS faceMeshes=6 drawCallsPerDie=1 source=accessibility");
+      return summary;
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR renderer did not publish the six-face single-draw dice pip contract: " +
+    JSON.stringify({ labels: treeLabels(readTree()).slice(0, 40) }));
+}
+
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
   const deadline = Date.now() + timeoutMs;
   const requiredHeroParts = [
@@ -1194,6 +1228,7 @@ try {
     assertBoardDrawBatches();
     assertHeroPawnBatches();
     assertGameplayEnvironmentBatches();
+    assertDicePipBatches();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
   assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {

@@ -146,7 +146,9 @@ class LudoBoardView(
         heroDrawSourcePartCount:Int = 0,
         heroDrawBatchCount:Int = 0,
         environmentDrawSourcePartCount:Int = 0,
-        environmentDrawBatchCount:Int = 0
+        environmentDrawBatchCount:Int = 0,
+        dicePipFaceMeshCount:Int = 0,
+        dicePipDrawCallsPerDie:Int = 0
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
         val viewportWidth = width.coerceAtLeast(0)
@@ -158,7 +160,9 @@ class LudoBoardView(
                 " | HERO_DRAW_SOURCE_PARTS=$heroDrawSourcePartCount" +
                 " | HERO_DRAW_BATCHES=$heroDrawBatchCount" +
                 " | ENV_DRAW_SOURCE_PARTS=$environmentDrawSourcePartCount" +
-                " | ENV_PBR_BATCHES=$environmentDrawBatchCount"
+                " | ENV_PBR_BATCHES=$environmentDrawBatchCount" +
+                " | DICE_PIP_FACE_MESHES=$dicePipFaceMeshCount" +
+                " | DICE_PIP_DRAW_CALLS_PER_DIE=$dicePipDrawCallsPerDie"
         } else ""
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
             " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
@@ -1314,6 +1318,7 @@ class LudoBoardView(
         private lateinit var roundedBox:Mesh
         private lateinit var disk:Mesh
         private lateinit var pips:Mesh
+        private lateinit var diePipMeshes:Array<Mesh>
         private lateinit var heroRing:Mesh
         private var shadowFbo=0
         private var shadowTex=0
@@ -1498,7 +1503,7 @@ class LudoBoardView(
             rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
-            cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);heroRing=ringMesh(64,1.02f,0.72f)
+            cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);diePipMeshes=DicePipBatcher.build(pips);heroRing=ringMesh(64,1.02f,0.72f)
 
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createFlatNormalTexture();woodNormalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
             // The authored outdoor environment is drawn only by the Home-preview path.
@@ -1892,7 +1897,9 @@ class LudoBoardView(
                         5,
                         heroPawnMeshes.size,
                         preparedGameplayEnvironmentSourcePartCount,
-                        preparedGameplayEnvironmentDraws.size
+                        preparedGameplayEnvironmentDraws.size,
+                        diePipMeshes.size,
+                        1
                     )
                 } else {
                     android.util.Log.e(
@@ -2581,9 +2588,21 @@ class LudoBoardView(
             }else{
                 drawMesh(roundedBox,die,floatArrayOf(0.98f,0.99f,1.0f,1f),0.055f,1.0f,1f,0.045f,4,false)
             }
-            val pip=0.20f
-            val positions=when(dieValue(pi)){1->arrayOf(0f to 0f);2->arrayOf(-pip to -pip,pip to pip);3->arrayOf(-pip to -pip,0f to 0f,pip to pip);4->arrayOf(-pip to -pip,pip to -pip,-pip to pip,pip to pip);5->arrayOf(-pip to -pip,pip to -pip,0f to 0f,-pip to pip,pip to pip);else->arrayOf(-pip to -pip,-pip to 0f,-pip to pip,pip to -pip,pip to 0f,pip to pip)}
-            for((px,pz)in positions){val pm=identityAt(px,0.51f,pz,0.065f,0.028f,0.065f);val c=FloatArray(16);Matrix.multiplyMM(c,0,die,0,pm,0);drawMesh(pips,c,floatArrayOf(0.045f,0.052f,0.06f,1f),0.16f,0.74f,1f,0f,4,false)}
+            val pipFaceValue = when (val value = dieValue(pi)) {
+                1, 2, 3, 4, 5 -> value
+                else -> 6 // Preserve the former six-pip fallback for zero/invalid values.
+            }
+            drawMesh(
+                diePipMeshes[pipFaceValue - 1],
+                die,
+                floatArrayOf(0.045f, 0.052f, 0.06f, 1f),
+                0.16f,
+                0.74f,
+                1f,
+                0f,
+                4,
+                false
+            )
         }
         private fun heroDieModel(partTransform:FloatArray,pi:Int,x:Float,y:Float,z:Float,scale:Float):FloatArray{
             val t=if(pi==player)diceAnim else 1f
