@@ -359,6 +359,13 @@ internal object GameplayEnvironmentComposition {
     fun hasRequiredBlenderGameplayParts(names: Collection<String>): Boolean =
         "GMENV_Tabletop_Walnut" in names && "GMENV_Studio_Floor" in names
 
+    fun hasCompleteBlenderDiceTraySet(names: Collection<String>): Boolean =
+        (1..4).all { index ->
+            val suffix = index.toString().padStart(2, '0')
+            "GMENV_DiceTray_Frame_$suffix" in names &&
+                "GMENV_DiceTray_Insert_$suffix" in names
+        }
+
     fun blenderMaterialKind(materialName: String): Int = when (materialName) {
         "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
         "LM_Tray_Chrome" -> BLENDER_CHROME_MATERIAL_KIND
