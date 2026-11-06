@@ -1359,6 +1359,10 @@ class LudoBoardView(
         private var heroPawnMeshes: List<Mesh> = emptyList()
         private val identityModel = FloatArray(16).apply { Matrix.setIdentityM(this, 0) }
         private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
+        private val pipelinePhaseTelemetry = if (BuildConfig.DEBUG) RenderPipelinePhaseTelemetry() else null
+        private var lastShadowCpuNanos = 0L
+        private var lastSceneCpuNanos = 0L
+        private var lastPostCpuNanos = 0L
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1396,6 +1400,10 @@ class LudoBoardView(
             homePreviewFirstFrameCaptured = false
             firstDrawMarkerPersisted = false
             frameTelemetry?.reset()
+            pipelinePhaseTelemetry?.reset()
+            lastShadowCpuNanos = 0L
+            lastSceneCpuNanos = 0L
+            lastPostCpuNanos = 0L
             preparedGameplayEnvironmentDraws = emptyList()
             gameplayEnvironmentHasDoubleSidedParts = false
             preparedBoardBatches = emptyList()
@@ -1531,7 +1539,9 @@ class LudoBoardView(
                 }.isSuccess
                 if (markerSaved) firstDrawMarkerPersisted = true
             }
-            val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
+            val now=System.nanoTime()
+            val updateStartedNanos = now
+            val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
@@ -1548,10 +1558,37 @@ class LudoBoardView(
                 if (host.homePreview) 38f else if(land)31f else 34f
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
+            val updateCpuNanos = System.nanoTime() - updateStartedNanos
             val glSubmissionDurationNanos = renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            val pawnTargetsStartedNanos = System.nanoTime()
             host.publishPawnTapTargets()
+            val pawnTargetsCpuNanos = System.nanoTime() - pawnTargetsStartedNanos
             if (!host.homePreview) {
+                pipelinePhaseTelemetry?.record(
+                    now,
+                    updateCpuNanos,
+                    lastShadowCpuNanos,
+                    lastSceneCpuNanos,
+                    lastPostCpuNanos,
+                    pawnTargetsCpuNanos
+                )?.let { phases ->
+                    android.util.Log.i(
+                        "LudoMadaRender",
+                        "PERF_PIPELINE_PHASES samples=" + phases.sampleCount +
+                            " updateCpuMsP50=" + phases.updateCpuP50Ms +
+                            " updateCpuMsP95=" + phases.updateCpuP95Ms +
+                            " shadowCpuMsP50=" + phases.shadowCpuP50Ms +
+                            " shadowCpuMsP95=" + phases.shadowCpuP95Ms +
+                            " sceneCpuMsP50=" + phases.sceneCpuP50Ms +
+                            " sceneCpuMsP95=" + phases.sceneCpuP95Ms +
+                            " postCpuMsP50=" + phases.postCpuP50Ms +
+                            " postCpuMsP95=" + phases.postCpuP95Ms +
+                            " pawnTargetsCpuMsP50=" + phases.pawnTargetsCpuP50Ms +
+                            " pawnTargetsCpuMsP95=" + phases.pawnTargetsCpuP95Ms +
+                            " gpuExecutionTime=not_measured"
+                    )
+                }
                 frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
                     android.util.Log.i(
                         "LudoMadaRender",
@@ -1653,9 +1690,15 @@ class LudoBoardView(
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
+            val shadowStartedNanos = System.nanoTime()
             renderShadowMap()
+            lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            val sceneStartedNanos = System.nanoTime()
             renderScene()
+            lastSceneCpuNanos = System.nanoTime() - sceneStartedNanos
+            val postStartedNanos = System.nanoTime()
             renderPostProcess()
+            lastPostCpuNanos = System.nanoTime() - postStartedNanos
             val renderPipelineCpuNanos = System.nanoTime() - pipelineStartedNanos
 
             if (host.homePreview) {
