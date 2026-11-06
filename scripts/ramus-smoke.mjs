@@ -1,6 +1,30 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
+function parseRendererReadiness(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(
+    String.raw`RENDER_PASS=(GLES2_GLB|GLES3_PBR)\s*\|\s*HERO_PARTS=(\d+)\s*\|\s*BOARD_PARTS=(\d+)\s*\|\s*ENV_PARTS=(\d+)`
+  );
+  if (!match) return null;
+  const [heroPartCount, boardPartCount, environmentPartCount] =
+    match.slice(2).map(Number);
+  if (![heroPartCount, boardPartCount, environmentPartCount].every(Number.isSafeInteger) ||
+      heroPartCount < 0 || boardPartCount < 0 || environmentPartCount < 0) {
+    return null;
+  }
+  return { rendererName: match[1], heroPartCount, boardPartCount, environmentPartCount };
+}
+
+function rendererReadinessPassed(readiness) {
+  if (!readiness || readiness.heroPartCount < 6 || readiness.boardPartCount <= 0) {
+    return false;
+  }
+  // GLES3 must prove the Blender gameplay table was prepared. The GLES2
+  // compatibility renderer intentionally uses its procedural tabletop.
+  return readiness.rendererName === "GLES2_GLB" || readiness.environmentPartCount > 0;
+}
+
 function parseFramebufferReadback(line, expectedLabel) {
   if (typeof line !== "string") {
     return { ok: false, reason: "missing_readback" };
@@ -72,7 +96,21 @@ function selfTestFramebufferReadback() {
   const inconsistentSize = scene.replace("brightPixels=369149/657150", "brightPixels=369149/600000");
   const impossibleCount = scene.replace("brightPixels=369149/657150", "brightPixels=700000/657150");
 
+  const pbrReady = parseRendererReadiness(
+    "LudoMada 3D Ludo board | RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95 | ENV_PARTS=13"
+  );
+  const pbrWithoutEnvironment = parseRendererReadiness(
+    "LudoMada 3D Ludo board | RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95 | ENV_PARTS=0"
+  );
+  const safeFallback = parseRendererReadiness(
+    "LudoMada 3D Ludo board | RENDER_PASS=GLES2_GLB | HERO_PARTS=6 | BOARD_PARTS=95 | ENV_PARTS=0"
+  );
+
   const cases = [
+    ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
+    ["GLES3 PBR readiness rejects a missing gameplay environment", !rendererReadinessPassed(pbrWithoutEnvironment)],
+    ["GLES2 fallback remains eligible with its procedural tabletop", rendererReadinessPassed(safeFallback)],
+    ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
     ["black frame rejected", !parseFramebufferReadback(black, "scene_fbo").ok],
@@ -734,20 +772,19 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       label.includes("RENDER_PASS=") &&
       label.includes("LudoMada 3D Ludo board")
     ) || "";
-    const readyMatch = readyLabel.match(
-      /RENDER_PASS=(GLES2_GLB|GLES3_PBR)\s*\|\s*HERO_PARTS=(\d+)\s*\|\s*BOARD_PARTS=(\d+)/
-    );
-    if (readyMatch) {
-      const rendererName = readyMatch[1];
-      const heroPartCount = Number(readyMatch[2]);
-      const boardPartCount = Number(readyMatch[3]);
-      if (heroPartCount >= requiredHeroParts.length && boardPartCount > 0) {
-        console.log(rendererName + " ACCESSIBILITY RENDER PASS");
-        console.log("RUNTIME HERO GLB LOAD PASS parts=" + heroPartCount);
-        console.log("RUNTIME BOARD GLB LOAD PASS parts=" + boardPartCount);
-        console.log("GL FRAMEBUFFER READBACK PASS (app-certified GL_NO_ERROR + visible pixel threshold)");
-        return;
+    const readiness = parseRendererReadiness(readyLabel);
+    if (rendererReadinessPassed(readiness)) {
+      const { rendererName, heroPartCount, boardPartCount, environmentPartCount } = readiness;
+      console.log(rendererName + " ACCESSIBILITY RENDER PASS");
+      console.log("RUNTIME HERO GLB LOAD PASS parts=" + heroPartCount);
+      console.log("RUNTIME BOARD GLB LOAD PASS parts=" + boardPartCount);
+      if (rendererName === "GLES3_PBR") {
+        console.log("RUNTIME GAMEPLAY ENVIRONMENT PASS parts=" + environmentPartCount);
+      } else {
+        console.log("RUNTIME GAMEPLAY ENVIRONMENT FALLBACK PASS proceduralTabletop=true");
       }
+      console.log("GL FRAMEBUFFER READBACK PASS (app-certified GL_NO_ERROR + visible pixel threshold)");
+      return;
     }
 
     lastLogcat = readRendererLogLines();
@@ -761,6 +798,11 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     const boardLine = lines.find((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
     const boardText = boardLine?.split("BOARD_GLB_RUNTIME_LOAD_OK parts=")[1] || "";
     const boardCount = Number.parseInt(boardText, 10);
+    const environmentLine = lines.find((line) =>
+      line.includes("GAMEPLAY_ENVIRONMENT_PREPARED drawParts=")
+    );
+    const environmentText = environmentLine?.split("GAMEPLAY_ENVIRONMENT_PREPARED drawParts=")[1] || "";
+    const environmentCount = Number.parseInt(environmentText, 10);
     const sceneReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=scene_fbo"));
     const surfaceReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=surface_backbuffer"));
     const safeReadbackLine = lines.find((line) => line.includes("SAFE_READBACK label=surface"));
@@ -772,6 +814,7 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       heroParts,
       missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
       boardParts: Number.isFinite(boardCount) ? boardCount : 0,
+      environmentParts: Number.isFinite(environmentCount) ? environmentCount : 0,
       sceneReadback: parseFramebufferReadback(sceneReadbackLine, "scene_fbo"),
       surfaceReadback: parseFramebufferReadback(surfaceReadbackLine, "surface_backbuffer"),
       safeReadback: parseSafeReadback(safeReadbackLine),
@@ -780,10 +823,12 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     };
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
         checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
+        checks.environmentParts > 0 &&
         checks.sceneReadback.ok && checks.surfaceReadback.ok && checks.firstFrameComplete) {
       console.log("GLES3 PBR RENDERER PASS");
       console.log("RUNTIME HERO GLB LOAD PASS parts=" + checks.heroParts.length);
       console.log("RUNTIME BOARD GLB LOAD PASS parts=" + checks.boardParts);
+      console.log("RUNTIME GAMEPLAY ENVIRONMENT PASS parts=" + checks.environmentParts);
       console.log("PBR SCENE FBO READBACK PASS=" + JSON.stringify(checks.sceneReadback));
       console.log("PBR SURFACE READBACK PASS=" + JSON.stringify(checks.surfaceReadback));
       console.log("PBR FIRST FRAME COMPLETE");
