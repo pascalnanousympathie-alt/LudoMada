@@ -95,8 +95,14 @@ function dicePipBatchSummaryValid(summary) {
 function parseRendererAccessibilityTelemetry(label) {
   if (typeof label !== "string") return null;
   const field = (name) => {
-    const match = label.match(new RegExp("(?:^|\\|\\s*)" + name + "=([^|]+)"));
-    return match ? match[1].trim() : null;
+    const prefix = name + "=";
+    const marker = " | " + prefix;
+    const markerIndex = label.indexOf(marker);
+    const valueStart = label.startsWith(prefix) ? prefix.length :
+      markerIndex >= 0 ? markerIndex + marker.length : -1;
+    if (valueStart < 0) return null;
+    const valueEnd = label.indexOf(" | ", valueStart);
+    return label.slice(valueStart, valueEnd >= 0 ? valueEnd : undefined).trim();
   };
   const integer = (value) => {
     if (value === null || !/^\d+$/.test(value)) return null;
