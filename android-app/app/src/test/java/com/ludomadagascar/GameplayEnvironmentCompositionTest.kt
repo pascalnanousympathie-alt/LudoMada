@@ -62,6 +62,8 @@ class GameplayEnvironmentCompositionTest {
             "GMENV_Studio_Floor",
             "GMENV_Leg_Ferrule_FL",
             "GMENV_Perimeter_Inlay_01",
+            "GMENV_DiceTray_Frame_01",
+            "GMENV_DiceTray_Insert_01",
             "GMENV_Baobab_Brass_Inlay"
         )
         assertEquals(
@@ -73,6 +75,8 @@ class GameplayEnvironmentCompositionTest {
                 "GMENV_Tabletop_Walnut",
                 "GMENV_Perimeter_Inlay_01",
                 "GMENV_Brass_Pin_01",
+                "GMENV_DiceTray_Insert_01",
+                "GMENV_DiceTray_Frame_01",
                 "GMENV_Baobab_Brass_Inlay"
             ),
             names.sortedBy(GameplayEnvironmentComposition::blenderPartDrawOrder)
@@ -102,5 +106,30 @@ class GameplayEnvironmentCompositionTest {
         )
         assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_Tabletop_Walnut"))
         assertFalse(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_Studio_Floor"))
+    }
+
+    @Test
+    fun blenderChromeDiceTraysUseDedicatedPbrChromeAndMetalTexture() {
+        assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Frame_01"))
+        assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Insert_01"))
+        assertEquals(4, GameplayEnvironmentComposition.BLENDER_CHROME_MATERIAL_KIND)
+        assertEquals(4, GameplayEnvironmentComposition.BLENDER_CHROME_TEXTURE_KIND)
+        assertEquals(
+            4,
+            GameplayEnvironmentComposition.blenderMaterialKind("LM_Tray_Chrome")
+        )
+        assertEquals(
+            4,
+            GameplayEnvironmentComposition.blenderTextureKind("LM_Tray_Chrome")
+        )
+        val chrome = GameplayEnvironmentComposition.blenderMaterialColor(
+            "LM_Tray_Chrome",
+            floatArrayOf(0.56f, 0.64f, 0.72f, 1f)
+        )
+        assertEquals(0.78f, chrome[0], 0.001f)
+        assertEquals(0.82f, chrome[1], 0.001f)
+        assertEquals(0.88f, chrome[2], 0.001f)
+        assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Frame_01"))
+        assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Insert_01"))
     }
 }
