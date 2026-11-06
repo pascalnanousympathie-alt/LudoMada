@@ -37,6 +37,61 @@ function rendererReadinessPassed(readiness) {
   return rendererReadinessFailureReason(readiness) === null;
 }
 
+function parseBoardBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/BOARD_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*BOARD_PBR_BATCHES=(\d+)\s*\|\s*BOARD_SHADOW_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, pbrBatches, shadowBatches] = match.slice(1).map(Number);
+  return { sourceParts, pbrBatches, shadowBatches };
+}
+
+function boardBatchSummaryValid(summary) {
+  return !!summary &&
+    Number.isSafeInteger(summary.sourceParts) && summary.sourceParts >= 80 &&
+    Number.isSafeInteger(summary.pbrBatches) && summary.pbrBatches >= 1 &&
+    summary.pbrBatches <= 16 && summary.pbrBatches < summary.sourceParts &&
+    Number.isSafeInteger(summary.shadowBatches) && summary.shadowBatches >= 1 &&
+    summary.shadowBatches <= 4;
+}
+
+function parseHeroBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/HERO_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*HERO_DRAW_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, drawBatches] = match.slice(1).map(Number);
+  return { sourceParts, drawBatches };
+}
+
+function heroBatchSummaryValid(summary) {
+  return !!summary && summary.sourceParts === 5 &&
+    Number.isSafeInteger(summary.drawBatches) && summary.drawBatches >= 1 && summary.drawBatches <= 2;
+}
+
+function parseGameplayEnvironmentBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/ENV_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*ENV_PBR_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, pbrBatches] = match.slice(1).map(Number);
+  return { sourceParts, pbrBatches };
+}
+
+function gameplayEnvironmentBatchSummaryValid(summary) {
+  return !!summary && summary.sourceParts === 13 &&
+    Number.isSafeInteger(summary.pbrBatches) && summary.pbrBatches >= 1 && summary.pbrBatches <= 7;
+}
+
+function parseDicePipBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/DICE_PIP_FACE_MESHES=(\d+)\s*\|\s*DICE_PIP_DRAW_CALLS_PER_DIE=(\d+)/);
+  if (!match) return null;
+  const [faceMeshes, drawCallsPerDie] = match.slice(1).map(Number);
+  return { faceMeshes, drawCallsPerDie };
+}
+
+function dicePipBatchSummaryValid(summary) {
+  return !!summary && summary.faceMeshes === 6 && summary.drawCallsPerDie === 1;
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -158,6 +213,14 @@ function selfTestFramebufferReadback() {
   const safeFallback = parseRendererReadiness(
     "LudoMada 3D Ludo board | RENDER_PASS=GLES2_GLB | HERO_PARTS=6 | BOARD_PARTS=95 | ENV_PARTS=0 | ENV_R7_COMPLETE=0"
   );
+  const boardBatchLabel = "LudoMada 3D Ludo board | BOARD_DRAW_SOURCE_PARTS=95 | BOARD_PBR_BATCHES=9 | BOARD_SHADOW_BATCHES=1";
+  const invalidBoardBatchLabel = "LudoMada 3D Ludo board | BOARD_DRAW_SOURCE_PARTS=95 | BOARD_PBR_BATCHES=95 | BOARD_SHADOW_BATCHES=1";
+  const heroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=1";
+  const invalidHeroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=5";
+  const environmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=7";
+  const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
+  const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
+  const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -167,6 +230,14 @@ function selfTestFramebufferReadback() {
     ["legacy Blender environment reports a revision mismatch", rendererReadinessFailureReason(pbrLegacyEnvironment) === "legacy_environment_not_revision7"],
     ["GLES2 fallback remains eligible with its procedural tabletop", rendererReadinessPassed(safeFallback)],
     ["GLES2 fallback has no readiness rejection reason", rendererReadinessFailureReason(safeFallback) === null],
+    ["accessibility board batch contract accepts 95 parts in 9 PBR batches", boardBatchSummaryValid(parseBoardBatchSummary(boardBatchLabel))],
+    ["accessibility board batch contract rejects unbatched geometry", !boardBatchSummaryValid(parseBoardBatchSummary(invalidBoardBatchLabel))],
+    ["accessibility hero batch contract accepts five parts in one batch", heroBatchSummaryValid(parseHeroBatchSummary(heroBatchLabel))],
+    ["accessibility hero batch contract rejects five unbatched meshes", !heroBatchSummaryValid(parseHeroBatchSummary(invalidHeroBatchLabel))],
+    ["accessibility gameplay environment contract accepts 13 source meshes in 7 PBR batches", gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(environmentBatchLabel))],
+    ["accessibility gameplay environment contract rejects an unbatched environment", !gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(invalidEnvironmentBatchLabel))],
+    ["accessibility dice pip contract accepts six face meshes with one draw per die", dicePipBatchSummaryValid(parseDicePipBatchSummary(dicePipBatchLabel))],
+    ["accessibility dice pip contract rejects separate pip draws", !dicePipBatchSummaryValid(parseDicePipBatchSummary(invalidDicePipBatchLabel))],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
@@ -766,7 +837,7 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|GLES_DEVICE_INFO|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PERF_SCENE_BREAKDOWN|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -817,53 +888,122 @@ function assertBoardDrawBatches(timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
   let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
   while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("BOARD_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseBoardBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!boardBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility board batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      const { sourceParts, pbrBatches, shadowBatches } = accessibleSummary;
+      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}% source=accessibility`);
+      return accessibleSummary;
+    }
+    // Keep logcat as a secondary diagnostic source, but never depend on a
+    // one-shot log line when Ramus may expose only a bounded two-line app tail.
     lastDiagnostics = readRendererLogLines();
     const line = lastDiagnostics.lines.find(entry => entry.includes("BOARD_DRAW_BATCH_READY")) || "";
     const match = line.match(/BOARD_DRAW_BATCH_READY sourceParts=(\d+) pbrBatches=(\d+) shadowBatches=(\d+)/);
     if (match) {
-      const sourceParts = Number(match[1]);
-      const pbrBatches = Number(match[2]);
-      const shadowBatches = Number(match[3]);
-      if (!Number.isSafeInteger(sourceParts) || !Number.isSafeInteger(pbrBatches) ||
-          !Number.isSafeInteger(shadowBatches) || sourceParts < 80 || pbrBatches < 1 ||
-          pbrBatches > 16 || shadowBatches < 1 || shadowBatches > 4 || pbrBatches >= sourceParts) {
-        throw new Error("Static board geometry was not reduced to compact draw batches: " +
-          JSON.stringify({ sourceParts, pbrBatches, shadowBatches, line }));
+      const summary = { sourceParts: Number(match[1]), pbrBatches: Number(match[2]), shadowBatches: Number(match[3]) };
+      if (!boardBatchSummaryValid(summary)) {
+        throw new Error("Static board geometry was not reduced to compact draw batches: " + JSON.stringify({ ...summary, line }));
       }
-      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
-      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}%`);
-      return { sourceParts, pbrBatches, shadowBatches };
+      const reduction = Math.round((1 - summary.pbrBatches / summary.sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${summary.sourceParts} pbrBatches=${summary.pbrBatches} shadowBatches=${summary.shadowBatches} colourDrawReduction=${reduction}% source=logcat`);
+      return summary;
     }
     waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("PBR board geometry did not publish BOARD_DRAW_BATCH_READY: " +
+  throw new Error("PBR board geometry did not publish an accessible or logcat batch contract: " +
     JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
-      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
 }
 
 function assertHeroPawnBatches(timeoutMs = 5000) {
   const deadline = Date.now() + timeoutMs;
   let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
   while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("HERO_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseHeroBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!heroBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility hero batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      const { sourceParts, drawBatches } = accessibleSummary;
+      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}% source=accessibility`);
+      return accessibleSummary;
+    }
     lastDiagnostics = readRendererLogLines();
     const line = lastDiagnostics.lines.find(entry => entry.includes("HERO_PAWN_BATCH_READY")) || "";
     const match = line.match(/HERO_PAWN_BATCH_READY sourceParts=(\d+) drawBatches=(\d+)/);
     if (match) {
-      const sourceParts = Number(match[1]);
-      const drawBatches = Number(match[2]);
-      if (sourceParts !== 5 || !Number.isSafeInteger(drawBatches) || drawBatches < 1 || drawBatches > 2) {
-        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " +
-          JSON.stringify({ sourceParts, drawBatches, line }));
+      const summary = { sourceParts: Number(match[1]), drawBatches: Number(match[2]) };
+      if (!heroBatchSummaryValid(summary)) {
+        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " + JSON.stringify({ ...summary, line }));
       }
-      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
-      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}%`);
-      return { sourceParts, drawBatches };
+      const reduction = Math.round((1 - summary.drawBatches / summary.sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${summary.sourceParts} drawBatches=${summary.drawBatches} colourDrawReduction=${reduction}% source=logcat`);
+      return summary;
     }
     waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
   }
-  throw new Error("PBR renderer did not publish HERO_PAWN_BATCH_READY: " +
+  throw new Error("PBR renderer did not publish an accessible or logcat hero batch contract: " +
     JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
-      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
+}
+
+function assertGameplayEnvironmentBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("ENV_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseGameplayEnvironmentBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!gameplayEnvironmentBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility gameplay environment batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      console.log(`GAMEPLAY_ENVIRONMENT_BATCH_PASS sourceParts=${accessibleSummary.sourceParts} pbrBatches=${accessibleSummary.pbrBatches} drawReduction=${Math.round((1 - accessibleSummary.pbrBatches / accessibleSummary.sourceParts) * 100)}% source=accessibility`);
+      return accessibleSummary;
+    }
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("GAMEPLAY_ENVIRONMENT_PREPARED")) || "";
+    const match = line.match(/GAMEPLAY_ENVIRONMENT_PREPARED drawParts=(\d+).*?drawBatches=(\d+)/);
+    if (match) {
+      const summary = { sourceParts: Number(match[1]), pbrBatches: Number(match[2]) };
+      if (!gameplayEnvironmentBatchSummaryValid(summary)) {
+        throw new Error("Logcat gameplay environment batch contract rejected: " + JSON.stringify({ ...summary, line }));
+      }
+      console.log(`GAMEPLAY_ENVIRONMENT_BATCH_PASS sourceParts=${summary.sourceParts} pbrBatches=${summary.pbrBatches} drawReduction=${Math.round((1 - summary.pbrBatches / summary.sourceParts) * 100)}% source=logcat`);
+      return summary;
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR gameplay environment did not publish an accessible or logcat batch contract: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
+}
+
+function assertDicePipBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("DICE_PIP_FACE_MESHES=")) || "";
+    const summary = parseDicePipBatchSummary(readyLabel);
+    if (summary) {
+      if (!dicePipBatchSummaryValid(summary)) {
+        throw new Error("Accessibility dice pip batch contract rejected: " + JSON.stringify({ summary, readyLabel }));
+      }
+      console.log("DICE_PIP_BATCH_PASS faceMeshes=6 drawCallsPerDie=1 source=accessibility");
+      return summary;
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR renderer did not publish the six-face single-draw dice pip contract: " +
+    JSON.stringify({ labels: treeLabels(readTree()).slice(0, 40) }));
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
@@ -1083,6 +1223,12 @@ try {
   let rendererFailure = null;
   try {
     assertRuntimeGlbLoaded();
+    // Capture one-shot batching markers on the first board entry. Ramus exposes
+    // a bounded logcat tail, so later game-mode navigation can age these lines out.
+    assertBoardDrawBatches();
+    assertHeroPawnBatches();
+    assertGameplayEnvironmentBatches();
+    assertDicePipBatches();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
   assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {
@@ -1277,8 +1423,6 @@ try {
   }
   assertTurn("Joueur 1/4");
   assertRuntimeGlbLoaded(18000);
-  assertBoardDrawBatches(6000);
-  assertHeroPawnBatches(5000);
   const landscapeReadyTree = readTree();
   const landscapeViewport = parseBoardViewport(landscapeReadyTree);
   if (!landscapeViewport) {
@@ -1335,6 +1479,8 @@ try {
   const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
   const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
   const phaseLines = rendererLines.filter(line => line.includes("PERF_PIPELINE_PHASES"));
+  const sceneBreakdownLines = rendererLines.filter(line => line.includes("PERF_SCENE_BREAKDOWN"));
+  const glDeviceLines = rendererLines.filter(line => line.includes("GLES_DEVICE_INFO"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
@@ -1350,6 +1496,11 @@ try {
     }
   } else {
     console.log("RAMUS_RENDERER_LOGCAT_UNAVAILABLE trial mode did not expose app-tag readback rows");
+  }
+  if (glDeviceLines.length) {
+    console.log("RAMUS_RENDER_DEVICE " + glDeviceLines[glDeviceLines.length - 1].slice(0, 1200));
+  } else {
+    console.log("RAMUS_RENDER_DEVICE_UNAVAILABLE no GLES_DEVICE_INFO row exposed by Ramus logcat");
   }
   if (perfLines.length) {
     const latestPerf = perfLines[perfLines.length - 1];
@@ -1370,6 +1521,15 @@ try {
     for (const line of phaseLines.slice(-3)) console.log("RAMUS_RENDER_PHASES " + line.slice(0, 1600));
   } else {
     console.log("RAMUS_RENDER_PHASES_UNAVAILABLE no PERF_PIPELINE_PHASES rows exposed by Ramus logcat");
+  }
+  if (sceneBreakdownLines.length) {
+    // Keep per-group CPU timings separate from the overall pipeline phases.
+    // These are CPU submission timings, not GPU execution measurements.
+    for (const line of sceneBreakdownLines.slice(-3)) {
+      console.log("RAMUS_RENDER_SCENE_BREAKDOWN " + line.slice(0, 2000));
+    }
+  } else {
+    console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
   }
 
   success = true;
