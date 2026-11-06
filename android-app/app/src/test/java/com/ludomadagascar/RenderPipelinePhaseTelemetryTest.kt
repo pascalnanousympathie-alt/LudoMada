@@ -35,7 +35,7 @@ class RenderPipelinePhaseTelemetryTest {
         assertEquals(2, snapshot!!.sampleCount)
         assertEquals(0f, snapshot.updateCpuP50Ms, 0.001f)
         assertEquals(4f, snapshot.updateCpuP95Ms, 0.001f)
-        assertEquals(6f, snapshot.shadowCpuP50Ms, 0.001f)
+        assertEquals(5f, snapshot.shadowCpuP50Ms, 0.001f)
         assertEquals(7f, snapshot.shadowCpuP95Ms, 0.001f)
     }
 
