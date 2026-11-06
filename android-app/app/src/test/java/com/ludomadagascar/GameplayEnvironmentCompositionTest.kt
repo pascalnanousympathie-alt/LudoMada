@@ -109,6 +109,34 @@ class GameplayEnvironmentCompositionTest {
     }
 
     @Test
+    fun blenderGameplayEnvironmentRequiresAllFourCompleteDiceTraysForPremiumAcceptance() {
+        val allTrayParts = (1..4).flatMap { index ->
+            val suffix = index.toString().padStart(2, '0')
+            listOf(
+                "GMENV_DiceTray_Frame_$suffix",
+                "GMENV_DiceTray_Insert_$suffix"
+            )
+        }.toSet()
+
+        assertTrue(GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(allTrayParts))
+        assertTrue(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts + setOf("GMENV_Tabletop_Walnut", "GMENV_Studio_Floor")
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts - "GMENV_DiceTray_Insert_03"
+            )
+        )
+        assertFalse(
+            GameplayEnvironmentComposition.hasCompleteBlenderDiceTraySet(
+                allTrayParts - "GMENV_DiceTray_Frame_04"
+            )
+        )
+    }
+
+    @Test
     fun blenderChromeDiceTraysUseDedicatedPbrChromeAndMetalTexture() {
         assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Frame_01"))
         assertTrue(GameplayEnvironmentComposition.acceptsBlenderGameplayPart("GMENV_DiceTray_Insert_01"))
