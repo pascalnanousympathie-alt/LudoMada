@@ -24,6 +24,9 @@ class MainActivity : Activity() {
     private var accountBalanceMGA: Long = 0L; private var topBalanceView: TextView? = null
     private var gameId = ""; private var version = 0; private var retryCount = 0; private var startingGame = false
     private var state: JSONObject? = null; private var currentScreen = ""
+    private var activityResumed = false
+    private var pendingHomeAfterLandscape = false
+    private val homeAfterLandscapeStateKey = "ludomada.homeAfterLandscape"
     private var offlineTurn = 0; private var offlineDice = 0; private var offlineState: JSONObject? = null; private var offlineHost: LudoBoardView? = null; private var offlinePlayers = 2
     private var walletBalanceView: TextView? = null
     private var selectedLanguage = "fr"
@@ -31,7 +34,7 @@ class MainActivity : Activity() {
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
     private var moveOverlay: View? = null
-    private var gameModeOverlay: FrameLayout? = null
+    private var gameModeOverlay: AlertDialog? = null
     private var movePending = false
     @Volatile private var gameEventsEnabled = false
     @Volatile private var gameEventsGameId = ""
@@ -68,11 +71,34 @@ class MainActivity : Activity() {
         setOnClickListener { action?.invoke() }
     }
     private fun page(name:String, title:String): LinearLayout {
+        window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
+        syncMusicPlayback()
+        // The landscape offline board is a full-screen 3D play surface. Do not
+        // spend its short dimension on the portrait header/paddings: the board
+        // receives the weighted remainder below the compact status row.
+        val compactOfflineLandscape = name == "offline" &&
+            resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val baseLeft=if (compactOfflineLandscape) dp(8) else dp(20)
+        val baseTop=if (compactOfflineLandscape) dp(4) else dp(18)
+        val baseRight=if (compactOfflineLandscape) dp(8) else dp(20)
+        val baseBottom=if (compactOfflineLandscape) dp(5) else dp(20)
         val content=LinearLayout(this).apply {
-            orientation=LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(20))
+            orientation=LinearLayout.VERTICAL; setPadding(baseLeft,baseTop,baseRight,baseBottom)
             background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(249,251,255),Color.rgb(230,239,251),Color.rgb(246,249,254)))
+        }
+        // Keep system status/navigation bars outside tappable content on both
+        // pre-edge-to-edge Android versions and newer edge-to-edge windows.
+        content.setOnApplyWindowInsetsListener { view, insets ->
+            view.setPadding(
+                baseLeft + insets.systemWindowInsetLeft,
+                baseTop + insets.systemWindowInsetTop,
+                baseRight + insets.systemWindowInsetRight,
+                baseBottom + insets.systemWindowInsetBottom
+            )
+            insets
         }
         root=content
         if(name=="board" || name=="offline") setContentView(root)
@@ -80,7 +106,8 @@ class MainActivity : Activity() {
             val scroll=ScrollView(this)
             scroll.addView(content); setContentView(scroll)
         }
-        addTopBar(title)
+        if (!compactOfflineLandscape) addTopBar(title)
+        content.requestApplyInsets()
         return content
     }
 
@@ -189,11 +216,21 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         music=CalmMusic(this)
         val hasSession = restoreSession()
-        if (hasSession && token.isNotBlank()) home() else splash()
+        pendingHomeAfterLandscape = savedInstanceState?.getBoolean(homeAfterLandscapeStateKey, false) == true
+        if ((hasSession && token.isNotBlank()) || pendingHomeAfterLandscape) home() else splash()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(
+            homeAfterLandscapeStateKey,
+            pendingHomeAfterLandscape || currentScreen == "home"
+        )
+        super.onSaveInstanceState(outState)
     }
 
     private fun splash() {
-        currentScreen="splash"; root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
+        pauseBoardViews()
+        currentScreen="splash"; syncMusicPlayback(); root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(dp(30),0,dp(30),0);setBackgroundColor(Color.rgb(244,247,251))};setContentView(root)
         root.addView(BrandLogoView(this),LinearLayout.LayoutParams(dp(118),dp(118)))
         add(label("LudoMada",31f,true,Color.rgb(18,43,76)),42,10,4)
         add(label("Joue • Gagne • Profite",15f,false,Color.rgb(88,99,116)),28,0,8)
@@ -202,7 +239,9 @@ class MainActivity : Activity() {
     }
 
     private fun login() {
+        pauseBoardViews()
         currentScreen="login"
+        syncMusicPlayback()
         root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER_HORIZONTAL;setPadding(dp(22),dp(22),dp(22),dp(18))}
         root.background=GradientDrawable(GradientDrawable.Orientation.TL_BR,intArrayOf(Color.rgb(5,23,55),Color.rgb(11,70,145),Color.rgb(3,27,67)))
         setContentView(root)
@@ -223,7 +262,7 @@ class MainActivity : Activity() {
         add(button("👥 Jouer hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50,3,7)
         val secure=TextView(this).apply{text="Paiements sécurisés côté serveur";textSize=11f;setTextColor(Color.argb(217,255,255,255));gravity=Gravity.CENTER;setPadding(dp(4),0,dp(4),0)}
         add(secure,28,2,3)
-        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
+        add(button(musicLabel(),Color.rgb(31,52,84)){music.toggle();syncMusicPlayback();Toast.makeText(this,musicLabel(),Toast.LENGTH_SHORT).show()},44,3,0)
     }
 
     private fun googleSignup() {
@@ -264,17 +303,29 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
+        syncMusicPlayback()
         if(::music.isInitialized && token.isNotBlank()) refreshAccountBalance()
         if(currentScreen=="board" && gameId.isNotBlank()) startGameEventStream()
+        when(currentScreen) {
+            "board" -> boardHost?.onResume()
+            "offline" -> offlineHost?.onResume()
+        }
     }
 
     override fun onPause() {
+        activityResumed = false
+        syncMusicPlayback()
         stopGameEventStream()
+        pauseBoardViews()
         super.onPause()
     }
 
     override fun onDestroy() {
+        activityResumed = false
+        if(::music.isInitialized) music.stop()
         stopGameEventStream()
+        pauseBoardViews()
         super.onDestroy()
     }
 
@@ -293,10 +344,42 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun pauseBoardViews() { boardHost?.onPause(); offlineHost?.onPause() }
+
     private fun home() {
+        // The reference artwork is a 16:9 landscape Home screen. Request landscape
+        // before creating the view so it is not stretched/cropped on first launch.
+        if (resources.configuration.orientation != android.content.res.Configuration.ORIENTATION_LANDSCAPE) {
+            pendingHomeAfterLandscape = true
+            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            return
+        }
+        pendingHomeAfterLandscape = false
+        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        pauseBoardViews()
         currentScreen="home"
-        setContentView(PremiumHeroViewV2(this))
+        syncMusicPlayback()
+        val hero=PremiumHeroViewV2(this)
+        setContentView(hero)
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        window.statusBarColor=Color.TRANSPARENT
+        window.navigationBarColor=Color.TRANSPARENT
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        )
         refreshAccountBalance()
+    }
+
+    @kotlin.jvm.JvmName("selectHomeStake")
+    internal fun selectHomeStake(amount: Int) {
+        if (amount !in entryFees) return
+        entryFee = amount
+        window.decorView.postInvalidate()
     }
 
     private fun profile() {
@@ -352,7 +435,7 @@ class MainActivity : Activity() {
         }.setNegativeButton("Fermer",null).show()
     }
 
-    private fun wallet() {
+    internal fun wallet() {
         page("wallet","Wallet")
         status=label("Maka ny solde...",15f,false,Color.rgb(88,99,116));add(status)
         walletBalanceView=label("— Ar",27f,true,Color.rgb(35,150,84));walletBalanceView!!.gravity=Gravity.CENTER
@@ -405,42 +488,30 @@ class MainActivity : Activity() {
     }
 
     private fun dismissGameModeOverlay() {
-        gameModeOverlay?.let { overlay ->
-            (overlay.parent as? ViewGroup)?.removeView(overlay)
-        }
+        val dialog = gameModeOverlay
         gameModeOverlay = null
+        dialog?.dismiss()
     }
 
     override fun onBackPressed() {
-        if (gameModeOverlay != null) {
+        if (gameModeOverlay?.isShowing == true) {
             dismissGameModeOverlay()
             return
         }
         super.onBackPressed()
     }
 
-    private fun gameModeDialog() {
-        // PremiumHeroViewV2 invokes this while handling a canvas touch. Defer every
-        // caller before mutating the Activity content hierarchy.
+    @kotlin.jvm.JvmName("gameModeDialog")
+    internal fun gameModeDialog() {
+        // PremiumHeroViewV2 calls this from a Canvas touch handler. Show the dialog
+        // only after that dispatch returns, so the Home view is never replaced mid-touch.
         window.decorView.post { showGameModeOverlay() }
     }
 
     private fun showGameModeOverlay() {
         android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_ENTER")
         dismissGameModeOverlay()
-        val host = findViewById<ViewGroup>(android.R.id.content) ?: run {
-            android.util.Log.e("LudoMada", "GAME_MODE_NO_CONTENT_ROOT")
-            return
-        }
-        val overlay = FrameLayout(this).apply {
-            setBackgroundColor(Color.argb(150, 0, 0, 0))
-            isClickable = true
-            isFocusable = false
-            // The full-screen backdrop is a touch target, not an accessibility
-            // item. Mark NO (not NO_HIDE_DESCENDANTS) so its buttons stay discoverable.
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-        }
+
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -453,16 +524,11 @@ class MainActivity : Activity() {
                 setStroke(dp(1), 0x66EDB734)
             }
             elevation = dp(18).toFloat()
-            isClickable = false
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
         val title = label("Choisissez le mode", 21f, true, Color.WHITE).apply {
             gravity = Gravity.CENTER
-            // Stable marker on a leaf node; unlike the parent, this won't hide button descendants.
             contentDescription = "GAME_MODE_DIALOG • Choisissez le mode"
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            isFocusable = true
         }
         panel.addView(title, LinearLayout.LayoutParams(-1, dp(34)))
         panel.addView(
@@ -471,51 +537,74 @@ class MainActivity : Activity() {
             },
             LinearLayout.LayoutParams(-1, dp(28))
         )
-        val offline = Button(this).apply {
-            text = "👥  Hors-ligne — 2 à 4 joueurs"
-            textSize = 15f
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            background = shape(Color.rgb(92, 82, 156), 16f)
-            contentDescription = "MODE_OFFLINE"
-            isFocusable = true
-            isClickable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnClickListener {
-                dismissGameModeOverlay()
-                offlineMenu()
-            }
-        }
-        val online = Button(this).apply {
-            text = "🌐  En ligne — Joueurs réels"
-            textSize = 15f
-            isAllCaps = false
-            setTextColor(Color.rgb(8, 29, 58))
-            background = shape(Color.rgb(237, 183, 52), 16f)
-            contentDescription = "MODE_ONLINE"
-            isFocusable = true
-            isClickable = true
-            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
-            setOnClickListener {
-                dismissGameModeOverlay()
-                lobby()
-            }
-        }
-        panel.addView(offline, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(10) })
-        panel.addView(online, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
-        val panelWidth = minOf(dp(520), (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280)))
-        overlay.addView(
-            panel,
-            FrameLayout.LayoutParams(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+
+        // Use AlertDialog's own action buttons instead of custom Button children.
+        // Android 8.1 was exposing the custom children in accessibility but failing
+        // to dispatch both coordinate and ACTION_CLICK activation to their listeners.
+        val panelWidth = minOf(
+            dp(520),
+            (resources.displayMetrics.widthPixels - dp(32)).coerceAtLeast(dp(280))
         )
-        overlay.setOnClickListener { dismissGameModeOverlay() }
-        host.addView(overlay, FrameLayout.LayoutParams(-1, -1))
-        gameModeOverlay = overlay
-        android.util.Log.i("LudoMada", "GAME_MODE_OVERLAY_ADDED")
-        overlay.post {
-            offline.requestFocus()
-            offline.sendAccessibilityEvent(android.view.accessibility.AccessibilityEvent.TYPE_VIEW_FOCUSED)
+        val dialog = AlertDialog.Builder(this).create()
+        dialog.setView(panel, 0, 0, 0, 0)
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "👥  Hors-ligne") { _, _ ->
+            android.util.Log.i("LudoMada", "GAME_MODE_OFFLINE_SELECTED")
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) {
+                    offlineMenu()
+                    android.util.Log.i("LudoMada", "OFFLINE_MENU_RENDERED")
+                }
+            }
         }
+        dialog.setButton(AlertDialog.BUTTON_POSITIVE, "🌐  En ligne") { _, _ ->
+            android.util.Log.i("LudoMada", "GAME_MODE_ONLINE_SELECTED")
+            window.decorView.post {
+                if (!isFinishing && !isDestroyed) lobby()
+            }
+        }
+
+        dialog.setCancelable(true)
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnDismissListener {
+            android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_DISMISSED")
+            if (gameModeOverlay === dialog) gameModeOverlay = null
+        }
+        gameModeOverlay = dialog
+        dialog.show()
+        dialog.window?.apply {
+            setBackgroundDrawable(
+                GradientDrawable(
+                    GradientDrawable.Orientation.TL_BR,
+                    intArrayOf(Color.rgb(9, 24, 50), Color.rgb(17, 57, 96), Color.rgb(8, 29, 58))
+                ).apply {
+                    cornerRadius = dp(24).toFloat()
+                    setStroke(dp(1), 0x66EDB734)
+                }
+            )
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            attributes = attributes.apply { dimAmount = 0.58f }
+            setLayout(panelWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+        }
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.apply {
+            contentDescription = "MODE_OFFLINE"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isAllCaps = false
+            background = shape(Color.rgb(92, 82, 156), 16f)
+            minHeight = dp(52)
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+            contentDescription = "MODE_ONLINE"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            setTextColor(Color.rgb(8, 29, 58))
+            textSize = 14f
+            isAllCaps = false
+            background = shape(Color.rgb(237, 183, 52), 16f)
+            minHeight = dp(52)
+        }
+        android.util.Log.i("LudoMada", "GAME_MODE_DIALOG_SHOWN")
     }
 
     private fun cryptoDialog() {
@@ -609,7 +698,15 @@ class MainActivity : Activity() {
 
     private fun offlineMenu() {
         page("offlineMenu","Hors-ligne")
-        add(card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180)))
+        val header = card("Ludo hors-ligne","2–4 joueurs  •  sans Internet",Color.rgb(130,85,180))
+        // Stable accessibility marker for UiAutomator on Android 8.1 and newer.
+        val titleContainer = header.getChildAt(1) as? LinearLayout
+        titleContainer?.getChildAt(0)?.apply {
+            contentDescription = "Ludo hors-ligne • OFFLINE_MENU_SCREEN"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        }
+        add(header)
+        android.util.Log.i("LudoMada", "OFFLINE_MENU_CONTENT_READY")
         add(button("👤 2 joueurs",Color.rgb(37,93,196)){startOffline(2)},52)
         add(button("👥 3 joueurs",Color.rgb(37,93,196)){startOffline(3)},52)
         add(button("👥 4 joueurs",Color.rgb(37,93,196)){startOffline(4)},52)
@@ -619,21 +716,61 @@ class MainActivity : Activity() {
     private fun startOffline(players:Int) {
         offlineTurn=0;offlineDice=0;offlinePlayers=players;offlineHost=null
         val arr=org.json.JSONArray();for(i in 0 until players){val ts=org.json.JSONArray();for(t in 0..3)ts.put(JSONObject().put("pos",-1));arr.put(JSONObject().put("id","offline-$i").put("tokens",ts))}
-        offlineState=JSONObject().put("players",arr)
+        offlineState=JSONObject().put("players",arr).put("dice",0).put("phase","PLAYING")
         offlineGame(players)
     }
 
     private fun offlineGame(players:Int) {
         page("offline","Ludo hors-ligne")
-        val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        status=label("Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",13f,true,Color.rgb(37,93,196));info.addView(status,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("HORS-LIGNE",13f,true,Color.rgb(130,85,180)));add(info,34,0,5)
-        val host=LudoBoardView(this);host.state=offlineState;host.player=offlineTurn;offlineHost=host
-        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        val compactLandscape = resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val info=LinearLayout(this).apply{
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.CENTER_VERTICAL
+            if (compactLandscape) {
+                setPadding(dp(8), 0, dp(8), 0)
+                background=shape(Color.WHITE, 14f, Color.rgb(219,228,239))
+                elevation=dp(2).toFloat()
+            }
+        }
+        status=label(
+            "Joueur ${offlineTurn+1}/$players • Dé: $offlineDice",
+            if (compactLandscape) 12f else 13f,
+            true,
+            Color.rgb(37,93,196)
+        )
+        info.addView(status,LinearLayout.LayoutParams(0,-2,1f))
+        info.addView(label("HORS-LIGNE",if (compactLandscape) 11f else 13f,true,Color.rgb(130,85,180)))
+        if (compactLandscape) add(info,30,0,3) else add(info,34,0,5)
+
+        val host=LudoBoardView(this, onRollTap = { offlineHost?.let { offlineRoll(it) } }, onPawnTap = { tokenIndex -> offlineHost?.let { offlineMove(it, players, tokenIndex) } });host.state=offlineState;host.player=offlineTurn;offlineHost=host
+        root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{
+            setMargins(0,if (compactLandscape) dp(2) else dp(4),0,if (compactLandscape) dp(4) else dp(8))
+        })
         host.animateState()
-        add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
-        val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3)row.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){offlineMove(host,players,i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})
-        add(row,46,2,4);add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+
+        if (compactLandscape) {
+            // Keep both primary controls on one short row so the 3D board gets
+            // the majority of the landscape viewport instead of collapsing to
+            // the remaining ~50px beneath portrait-sized buttons.
+            val controls=LinearLayout(this).apply {
+                orientation=LinearLayout.HORIZONTAL
+                gravity=Gravity.CENTER_VERTICAL
+            }
+            controls.addView(
+                button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},
+                LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(0,0,dp(4),0)}
+            )
+            controls.addView(
+                button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},
+                LinearLayout.LayoutParams(0,dp(54),1f).apply{setMargins(dp(4),0,0,0)}
+            )
+            root.addView(controls,LinearLayout.LayoutParams(-1,dp(54)).apply{setMargins(0,dp(3),0,0)})
+        } else {
+            add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){offlineRoll(host)},54)
+            add(label("Safidio mivantana eo amin’ny plateau ilay pion afaka mihetsika.",11f,false,Color.rgb(112,121,137)),22,0,2)
+            add(button("← Hors-ligne",Color.rgb(70,82,100)){offlineMenu()},50)
+        }
     }
 
     private fun offlineGlobalSquare(player:Int,pos:Int):Int? =
@@ -650,10 +787,18 @@ class MainActivity : Activity() {
         return OfflineLudoRules.hasLegalMove(positions,dice)
     }
     private fun advanceOfflineTurn(players:Int,host:LudoBoardView){
-        offlineTurn=(offlineTurn+1)%players;host.player=offlineTurn
+        offlineTurn=(offlineTurn+1)%players
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState
+        host.player=offlineTurn
         status.text="Joueur ${offlineTurn+1}/$players • Dé: 0";host.invalidate()
     }
     private fun offlineRoll(host:LudoBoardView){
+        if (!OfflineLudoRules.canContinue(offlineState?.optString("phase"))) {
+            status.text = "La partie est terminée. Retournez au menu hors-ligne."
+            return
+        }
         if(host.isDiceRolling())return
         // Do not let a player overwrite a rolled die without making a move.
         if(offlineDice!=0){
@@ -663,15 +808,23 @@ class MainActivity : Activity() {
         val ps=offlineState?.optJSONArray("players")?:return
         host.startDiceAnimation()
         offlineDice=(1..6).random()
+        offlineState?.put("dice",offlineDice)
+        host.state=offlineState
         if(!offlineHasLegalMove(ps,offlineDice,offlineTurn)){
             status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice • Aucun coup — tour suivant"
             offlineDice=0
+            offlineState?.put("dice",0)
+            host.state=offlineState
             root.postDelayed({if(currentScreen=="offline")advanceOfflineTurn(offlinePlayers,host)},550L)
             return
         }
         status.text="Joueur ${offlineTurn+1} • Dé: $offlineDice";host.invalidate()
     }
     private fun offlineMove(host:LudoBoardView,players:Int,tokenIndex:Int){
+        if (!OfflineLudoRules.canContinue(offlineState?.optString("phase"))) {
+            status.text = "La partie est terminée. Retournez au menu hors-ligne."
+            return
+        }
         if(offlineDice==0){status.text="Atsipazo aloha ny dé.";return}
         val ps=offlineState?.optJSONArray("players")?:return
         val p=ps.optJSONObject(offlineTurn)?:return
@@ -700,7 +853,9 @@ class MainActivity : Activity() {
                 }
             }
         }
-        offlineDice=0;host.state=offlineState;host.player=offlineTurn;host.animateState()
+        offlineDice=0
+        offlineState?.put("dice",0)
+        host.state=offlineState;host.player=offlineTurn;host.animateState()
         val finalPositions=IntArray(minOf(OfflineLudoRules.TOKENS_PER_PLAYER,ts.length())) {
             ts.optJSONObject(it)?.optInt("pos",-1) ?: -1
         }
@@ -717,14 +872,12 @@ class MainActivity : Activity() {
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
         val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
-        val host=LudoBoardView(this); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        val host=LudoBoardView(this, onRollTap = { if(currentScreen=="board") roll() }, onPawnTap = { tokenIndex -> if(currentScreen=="board") move(tokenIndex) }); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         status=st
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
         add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
         add(button("✨ Conseil IA",Color.rgb(111,70,186)){requestAiSuggestion()},48,2,4)
-        val tokens=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER}
-        for(i in 0..3){tokens.addView(button("Pion ${i+1}",Color.rgb(70,82,100)){move(i)},LinearLayout.LayoutParams(0,dp(46),1f).apply{setMargins(dp(2),0,dp(2),0)})};add(tokens,46,2,4)
-        add(label("✨ Safidio mivantana ilay pion misy famirapiratana rehefa afaka mihetsika.",12f,false,Color.rgb(120,128,140)),30,0,0)
+        add(label("✨ Tsindrio mivantana eo amin’ny plateau ilay pion miseho fa afaka mihetsika.",11f,false,Color.rgb(120,128,140)),24,0,2)
         updateBoard(host)
         startGameEventStream()
         root.postDelayed({if(currentScreen=="board"&&gameId.isNotBlank())refreshState()},4000)
@@ -770,7 +923,7 @@ class MainActivity : Activity() {
             }
             val tokenIndex=j.optInt("tokenIndex",-1)
             status.text=if(tokenIndex in 0..3){
-                "✨ Conseil IA: jouez le pion ${tokenIndex+1}. Confirmez avec le bouton Pion correspondant."
+                "✨ Conseil IA : jouez le pion mis en évidence sur le plateau."
             }else{
                 "Tsy misy fihetsika ara-dalàna atolotry ny AI amin’izao fotoana izao."
             }
@@ -1046,294 +1199,24 @@ class MainActivity : Activity() {
         }
     }
 
-    private inner class LudoBoardView(context:Context):View(context){
-        var state:JSONObject?=null;var player=-1;private val paints=Array(4){Paint(Paint.ANTI_ALIAS_FLAG)}
-        private val cols=intArrayOf(Color.rgb(218,60,65),Color.rgb(42,155,86),Color.rgb(232,178,34),Color.rgb(54,105,205))
-        private val display=Array(4){Array(4){FloatArray(2){Float.NaN}}}
-        private val lastPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-        private var stateAnimator:android.animation.ValueAnimator?=null
-        private var diceRolling=false
-        private var dicePhase=0f
-        private val jumpLift=Array(4){FloatArray(4)}
-        init{setLayerType(View.LAYER_TYPE_SOFTWARE,null);for(i in 0..3){paints[i].color=cols[i];paints[i].style=Paint.Style.FILL}}
-        override fun onDraw(canvas:Canvas){
-            super.onDraw(canvas)
-            val w=width.toFloat(); val h=height.toFloat(); val s=minOf(w,h)
-            val ox=(w-s)/2f; val oy=(h-s)/2f; val cell=s/15f
-            val board=Paint(Paint.ANTI_ALIAS_FLAG)
-            board.setShadowLayer(dp(8).toFloat(),0f,dp(3).toFloat(),0x55000000)
-            board.shader=LinearGradient(ox,oy,ox,oy+s,Color.rgb(255,255,255),Color.rgb(241,245,250),Shader.TileMode.CLAMP)
-            canvas.drawRoundRect(ox,oy,ox+s,oy+s,dp(24).toFloat(),dp(24).toFloat(),board)
-            board.clearShadowLayer(); board.shader=null
-            drawZone(canvas,ox,oy,0,0,Color.rgb(220,60,66),cell)
-            drawZone(canvas,ox,oy,9,0,Color.rgb(42,158,92),cell)
-            drawZone(canvas,ox,oy,0,9,Color.rgb(238,184,43),cell)
-            drawZone(canvas,ox,oy,9,9,Color.rgb(58,109,211),cell)
-            val pathPaint=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(246,248,251);style=Paint.Style.FILL}
-            val pathStroke=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(222,228,236);style=Paint.Style.STROKE;strokeWidth=dp(0.8f).toFloat();setStrokeCap(Paint.Cap.ROUND)}
-            for((r,c) in visualPath()){drawCell(canvas,ox,oy,cell,r,c,pathPaint,pathStroke)}
-            val homePaints=arrayOf(
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55DC3C42},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x5542AE68},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x55EEB82B},
-                Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x553A79D5}
-            )
-            for(i in 1..5){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[0])}
-            for(i in 9..13){canvas.drawRoundRect(ox+(i+0.08f)*cell,oy+7.08f*cell,ox+(i+0.92f)*cell,oy+7.92f*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[1])}
-            for(i in 9..13){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[2])}
-            for(i in 1..5){canvas.drawRoundRect(ox+7.08f*cell,oy+(i+0.08f)*cell,ox+7.92f*cell,oy+(i+0.92f)*cell,dp(6).toFloat(),dp(6).toFloat(),homePaints[3])}
-            val starCells=arrayOf(1 to 6,6 to 1,8 to 13,13 to 8)
-            for((r,c) in starCells){drawSafe(canvas,ox,oy,cell,r,c)}
-            drawCenter(canvas,ox,oy,cell)
-            drawDie(canvas,ox+7.5f*cell,oy+7.5f*cell,cell)
-            drawStartMarkers(canvas,ox,oy,cell)
-            drawTokens(canvas,ox,oy,cell)
-        }
-        private fun drawZone(c:Canvas,ox:Float,oy:Float,r:Int,col:Int,color:Int,cell:Float){
-            val outer=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color}
-            outer.setShadowLayer(dp(2).toFloat(),0f,dp(1).toFloat(),0x33000000)
-            c.drawRect(ox+r*cell,oy+col*cell,ox+(r+6)*cell,oy+(col+6)*cell,outer)
-            outer.clearShadowLayer()
-            val inner=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE}
-            c.drawRoundRect(ox+(r+1)*cell,oy+(col+1)*cell,ox+(r+5)*cell,oy+(col+5)*cell,dp(12).toFloat(),dp(12).toFloat(),inner)
-            val shade=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x12000000}
-            c.drawRoundRect(ox+(r+1.15f)*cell,oy+(col+1.2f)*cell,ox+(r+4.85f)*cell,oy+(col+4.85f)*cell,dp(10).toFloat(),dp(10).toFloat(),shade)
-            val sockets=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            for((sx,sy) in sockets){
-                val cx=ox+(r+sx)*cell;val cy=oy+(col+sy)*cell
-                val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x17000000}
-                c.drawCircle(cx,cy,cell*.53f,ring)
-                val hole=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=color;alpha=120}
-                c.drawCircle(cx,cy,cell*.40f,hole)
-            }
-        }
-
-        private fun drawTokens(c:Canvas,ox:Float,oy:Float,cell:Float){
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                val rr=if(display[pi][ti][0].isNaN()) q[0] else display[pi][ti][0]
-                val cc=if(display[pi][ti][1].isNaN()) q[1] else display[pi][ti][1]
-                val lift=jumpLift[pi][ti]
-                drawToken(c,ox+cc*cell,oy+(rr-lift)*cell,cell,cols[pi],pi==player)
-                if(pi==player && tokenCanMoveForUi(pi,ti)) drawLegalHint(c,ox+cc*cell,oy+(rr-lift)*cell,cell)
-            }
-        }
-        private fun tokenCoord(pi:Int,ti:Int):FloatArray{
-            val fallback=arrayOf(
-                arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f),
-                arrayOf(10.8f to 1.8f,13.2f to 1.8f,10.8f to 4.2f,13.2f to 4.2f),
-                arrayOf(1.8f to 10.8f,4.2f to 10.8f,1.8f to 13.2f,4.2f to 13.2f),
-                arrayOf(10.8f to 10.8f,13.2f to 10.8f,10.8f to 13.2f,13.2f to 13.2f))
-            var rr=fallback[pi][ti].first;var cc=fallback[pi][ti].second
-            val ps=state?.optJSONArray("players");val ts=ps?.optJSONObject(pi)?.optJSONArray("tokens")
-            val pos=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            if(pos in 0..51){val q=visualPath()[(pi*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-            else if(pos in 52..57){
-                val finish=arrayOf(
-                    floatArrayOf(7.5f,6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(6.5f,7.5f,6.75f,7.5f,7.0f,7.5f,7.25f,7.5f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(7.5f,8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f),
-                    floatArrayOf(8.5f,7.5f,8.25f,7.5f,8.0f,7.5f,7.75f,7.5f,7.5f,7.5f,7.5f,7.5f))
-                val k=(pos-52)*2;rr=finish[pi][k];cc=finish[pi][k+1]
-            }
-            return floatArrayOf(rr,cc)
-        }
-        fun animateState(){
-            val targets=Array(4){Array(4){FloatArray(2)}}
-            val oldPos=Array(4){IntArray(4){Int.MIN_VALUE}}
-            val newPos=Array(4){IntArray(4){-1}}
-            for(pi in 0..3)for(ti in 0..3){
-                val q=tokenCoord(pi,ti)
-                targets[pi][ti][0]=q[0];targets[pi][ti][1]=q[1]
-                val ts=state?.optJSONArray("players")?.optJSONObject(pi)?.optJSONArray("tokens")
-                newPos[pi][ti]=ts?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(display[pi][ti][0].isNaN()){
-                    display[pi][ti][0]=q[0];display[pi][ti][1]=q[1]
-                }
-                oldPos[pi][ti]=lastPos[pi][ti]
-                if(oldPos[pi][ti]==Int.MIN_VALUE) lastPos[pi][ti]=newPos[pi][ti]
-            }
-            stateAnimator?.cancel()
-            var maxSteps=0
-            for(pi in 0..3)for(ti in 0..3){
-                val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                if(from>=0 && to>from) maxSteps=maxOf(maxSteps,(to-from).coerceAtMost(6))
-            }
-            val duration=maxSteps*125L+340L
-            stateAnimator=android.animation.ValueAnimator.ofFloat(0f,1f).apply{
-                this.duration=duration
-                interpolator=android.view.animation.DecelerateInterpolator(1.5f)
-                addUpdateListener{va->
-                    val f=va.animatedValue as Float
-                    for(pi in 0..3)for(ti in 0..3){
-                        val from=oldPos[pi][ti];val to=newPos[pi][ti]
-                        if(from>=0 && to>from){
-                            val span=(to-from).coerceAtLeast(1)
-                            val u=f*span
-                            val step=kotlin.math.floor(u).toInt().coerceAtMost(span-1)
-                            val local=u-step
-                            jumpLift[pi][ti]=(kotlin.math.sin(local*Math.PI).toFloat()*0.20f)
-                            val base=((pi*13)+from+step)%52
-                            val q1=visualPath()[base]
-                            val q2=visualPath()[(base+1)%52]
-                            display[pi][ti][0]=q1.first+0.5f+(q2.first-q1.first)*local
-                            display[pi][ti][1]=q1.second+0.5f+(q2.second-q1.second)*local
-                        }else if(f>=1f){
-                            jumpLift[pi][ti]=0f
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                        }
-                    }
-                    invalidate()
-                }
-                addListener(object:android.animation.AnimatorListenerAdapter(){
-                    override fun onAnimationEnd(animation:android.animation.Animator){
-                        for(pi in 0..3)for(ti in 0..3){
-                            display[pi][ti][0]=targets[pi][ti][0]
-                            display[pi][ti][1]=targets[pi][ti][1]
-                            jumpLift[pi][ti]=0f
-                            lastPos[pi][ti]=newPos[pi][ti]
-                        }
-                        invalidate()
-                    }
-                })
-                start()
-            }
-        }
-
-        private fun drawCell(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int,fill:Paint,stroke:Paint){
-            val l=ox+col*cell+dp(0.7f);val t=oy+r*cell+dp(0.7f);val rr=l+cell-dp(1.4f);val bb=t+cell-dp(1.4f)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),fill)
-            c.drawRoundRect(l,t,rr,bb,dp(3.5f).toFloat(),dp(3.5f).toFloat(),stroke)
-        }
-        private fun drawSafe(c:Canvas,ox:Float,oy:Float,cell:Float,r:Int,col:Int){
-            val cx=ox+(col+.5f)*cell;val cy=oy+(r+.5f)*cell
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.rgb(205,211,221)}
-            c.drawCircle(cx,cy,cell*.28f,p);p.color=Color.WHITE;c.drawCircle(cx,cy,cell*.18f,p)
-            p.color=Color.rgb(159,170,187);val star=Path()
-            for(i in 0..9){val a=-Math.PI/2+i*Math.PI/5;val rad=if(i%2==0)cell*.27f else cell*.12f;val x=cx+(kotlin.math.cos(a)*rad).toFloat();val y=cy+(kotlin.math.sin(a)*rad).toFloat();if(i==0)star.moveTo(x,y)else star.lineTo(x,y)}
-            star.close();c.drawPath(star,p)
-        }
-        private fun drawCenter(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val pts=arrayOf(floatArrayOf(ox+6*cell,oy+6*cell,ox+9*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+6*cell,ox+9*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+9*cell,oy+9*cell,ox+6*cell,oy+9*cell,ox+7.5f*cell,oy+7.5f*cell),
-                floatArrayOf(ox+6*cell,oy+9*cell,ox+6*cell,oy+6*cell,ox+7.5f*cell,oy+7.5f*cell))
-            for(i in 0..3){val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i]};val path=Path();path.moveTo(pts[i][0],pts[i][1]);path.lineTo(pts[i][2],pts[i][3]);path.lineTo(pts[i][4],pts[i][5]);path.close();c.drawPath(path,p)}
-            val ring=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0x33FFFFFF;style=Paint.Style.STROKE;strokeWidth=dp(1.2f).toFloat()}
-            c.drawCircle(ox+7.5f*cell,oy+7.5f*cell,cell*.72f,ring)
-        }
-        private fun drawDie(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val rolling=diceRolling
-            val phase=(System.currentTimeMillis()%900L)/900f
-            val face=if(rolling)((phase*6f).toInt()%6)+1 else maxOf(1,if(currentScreen=="offline")offlineDice else state?.optInt("dice",0)?:0)
-            val size=cell*1.34f
-            c.save()
-            val angle=if(rolling)(Math.sin(phase*Math.PI*4.0)*13.0).toFloat() else 0f
-            c.rotate(angle,cx,cy)
-            val die=Paint(Paint.ANTI_ALIAS_FLAG)
-            die.setShadowLayer(dp(5).toFloat(),0f,dp(2).toFloat(),0x88000000)
-            die.shader=LinearGradient(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,Color.WHITE,Color.rgb(216,222,232),Shader.TileMode.CLAMP)
-            c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die)
-            die.clearShadowLayer();die.shader=null
-            die.style=Paint.Style.STROKE;die.strokeWidth=dp(1f).toFloat();die.color=Color.rgb(144,151,164);c.drawRoundRect(cx-size*.5f,cy-size*.5f,cx+size*.5f,cy+size*.5f,cell*.15f,cell*.15f,die);die.style=Paint.Style.FILL;die.color=Color.rgb(35,39,49)
-            val d=size*.23f
-            val pts=when(face){
-                1->arrayOf(0 to 0);2->arrayOf(-1 to -1,1 to 1);3->arrayOf(-1 to -1,0 to 0,1 to 1);4->arrayOf(-1 to -1,1 to -1,-1 to 1,1 to 1);5->arrayOf(-1 to -1,1 to -1,0 to 0,-1 to 1,1 to 1);else->arrayOf(-1 to -1,-1 to 0,-1 to 1,1 to -1,1 to 0,1 to 1)
-            }
-            for((xx,yy) in pts)c.drawCircle(cx+xx*d,cy+yy*d,d*.18f,die)
-            c.restore()
-        }
-        fun isDiceRolling():Boolean = diceRolling
-        fun startDiceAnimation(){
-            if(diceRolling)return
-            diceRolling=true;dicePhase=0f
-            val start=System.currentTimeMillis()
-            fun tick(){
-                if(!diceRolling)return
-                dicePhase=((System.currentTimeMillis()-start)/650f).coerceIn(0f,1f)
-                invalidate()
-                if(dicePhase>=1f){diceRolling=false;invalidate()}else postDelayed({tick()},45L)
-            }
-            tick()
-        }
-        private fun drawStartMarkers(c:Canvas,ox:Float,oy:Float,cell:Float){
-            val starts=arrayOf(6 to 1,1 to 8,8 to 13,13 to 6)
-            for(i in starts.indices){
-                val (r,col)=starts[i];val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=cols[i];alpha=90}
-                c.drawRoundRect(ox+col*cell+dp(1f),oy+r*cell+dp(1f),ox+(col+1)*cell-dp(1f),oy+(r+1)*cell-dp(1f),dp(4f).toFloat(),dp(4f).toFloat(),p)
-                val mark=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.5f).toFloat()}
-                c.drawCircle(ox+(col+.5f)*cell,oy+(r+.5f)*cell,cell*.22f,mark)
-            }
-        }
-        private fun drawLegalHint(c:Canvas,cx:Float,cy:Float,cell:Float){
-            val p=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=0xFFEBC348.toInt();style=Paint.Style.STROKE;strokeWidth=dp(2.2f).toFloat()}
-            c.drawCircle(cx,cy,cell*.39f,p)
-            p.style=Paint.Style.FILL; p.color=0x55EBC348
-            c.drawCircle(cx,cy,cell*.44f,p)
-        }
-        private fun tokenCanMoveForUi(pi:Int,ti:Int):Boolean{
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            if(pi!=activePlayer)return false
-            val dice=if(currentScreen=="offline") offlineDice else state?.optInt("dice",0)?:0
-            if(dice !in 1..6)return false
-            val ps=if(currentScreen=="offline") offlineState?.optJSONArray("players") else state?.optJSONArray("players")
-            val pos=ps?.optJSONObject(pi)?.optJSONArray("tokens")?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-            return if(pos<0) dice==6 else pos+dice<=57
-        }
-        private fun drawToken(c:Canvas,cx:Float,cy:Float,cell:Float,color:Int,active:Boolean){
-            val rad=cell*.31f
-            val shadow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x66000000}
-            shadow.setShadowLayer(dp(2.5f).toFloat(),0f,dp(1.6f).toFloat(),0x77000000);c.drawCircle(cx,cy+dp(1f),rad,shadow);shadow.clearShadowLayer()
-            val body=Paint(Paint.ANTI_ALIAS_FLAG)
-            body.shader=RadialGradient(cx-rad*.32f,cy-rad*.38f,rad*.95f,color,Color.rgb((Color.red(color)*.45f).toInt(),(Color.green(color)*.45f).toInt(),(Color.blue(color)*.45f).toInt()),Shader.TileMode.CLAMP)
-            c.drawCircle(cx,cy,rad,body);body.shader=null
-            if(active){val glow=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=Color.WHITE;style=Paint.Style.STROKE;strokeWidth=dp(1.7f).toFloat()};c.drawCircle(cx,cy,rad+dp(2f),glow)}
-            val hi=Paint(Paint.ANTI_ALIAS_FLAG).apply{this.color=0x99FFFFFF.toInt()};c.drawCircle(cx-rad*.30f,cy-rad*.34f,rad*.18f,hi)
-        }
-        private fun visualPath():List<Pair<Int,Int>>{
-            return listOf(
-                6 to 0,6 to 1,6 to 2,6 to 3,6 to 4,6 to 5,5 to 6,4 to 6,3 to 6,2 to 6,1 to 6,0 to 6,
-                0 to 7,0 to 8,1 to 8,2 to 8,3 to 8,4 to 8,5 to 8,6 to 9,6 to 10,6 to 11,6 to 12,6 to 13,6 to 14,
-                7 to 14,8 to 14,8 to 13,8 to 12,8 to 11,8 to 10,8 to 9,9 to 8,10 to 8,11 to 8,12 to 8,13 to 8,14 to 8,
-                14 to 7,14 to 6,13 to 6,12 to 6,11 to 6,10 to 6,9 to 6,8 to 5,8 to 4,8 to 3,8 to 2,8 to 1,8 to 0,7 to 0
-            )
-        }
-        override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
-            if(e.action==MotionEvent.ACTION_UP && player in 0..3){
-                val s=minOf(width,height).toFloat(); val ox=(width-s)/2f; val oy=(height-s)/2f; val cell=s/15f
-                val touched=nearestOwnToken(e.x,e.y,ox,oy,cell)
-                if(touched>=0){
-                    performClick()
-                    performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                    if(currentScreen=="offline") offlineMove(this,offlinePlayers,touched) else requestMove(touched)
-                    return true
-                }
-            }
-            return true
-        }
-        override fun performClick():Boolean{super.performClick();return true}
-        private fun nearestOwnToken(x:Float,y:Float,ox:Float,oy:Float,cell:Float):Int{
-            val activeState=if(currentScreen=="offline") offlineState else state
-            val activePlayer=if(currentScreen=="offline") offlineTurn else player
-            val ps=activeState?.optJSONArray("players")
-            val tokens=ps?.optJSONObject(activePlayer)?.optJSONArray("tokens")
-            val fallback=arrayOf(1.8f to 1.8f,4.2f to 1.8f,1.8f to 4.2f,4.2f to 4.2f)
-            var best=-1; var bestD2=Float.MAX_VALUE
-            for(ti in 0..3){
-                var rr=fallback[ti].first; var cc=fallback[ti].second
-                val pos=tokens?.optJSONObject(ti)?.optInt("pos",-1)?:-1
-                if(pos>=0){val q=visualPath()[(activePlayer*13+pos)%52];rr=q.first+0.5f;cc=q.second+0.5f}
-                val dx=x-(ox+cc*cell); val dy=y-(oy+rr*cell); val d2=dx*dx+dy*dy
-                if(d2<bestD2){bestD2=d2;best=ti}
-            }
-            return if(best>=0 && bestD2 <= (cell*0.82f)*(cell*0.82f)) best else -1
-        }
-        private fun path():List<Pair<Int,Int>>{val p=mutableListOf<Pair<Int,Int>>();for(c in 1..13)p+=0 to c;for(r in 1..13)p+=r to 14;for(c in 13 downTo 1)p+=14 to c;for(r in 13 downTo 1)p+=r to 0;return p}
+    private fun syncMusicPlayback() {
+        if (!::music.isInitialized) return
+        val shouldPlay = GameMusicPolicy.shouldPlay(currentScreen, activityResumed) && music.enabled()
+        if (shouldPlay) music.start() else music.stop()
     }
+
     private fun musicLabel():String = if(music.enabled()) "Musique: ACTIVÉE" else "Musique: DÉSACTIVÉE"
     private fun updateMusicButton(){ if(::musicButton.isInitialized) musicButton.text=musicLabel() }
-    override fun onStart(){ super.onStart(); if(::music.isInitialized) music.start() }
-    override fun onStop(){ if(::music.isInitialized) music.stop(); super.onStop() }
+
+    private fun musicEnabledFromHome():Boolean = ::music.isInitialized && music.enabled()
+
+    private fun toggleMusicFromHome() {
+        if (!::music.isInitialized) return
+        music.toggle()
+        syncMusicPlayback()
+        updateMusicButton()
+        window.decorView.invalidate()
+    }
+    override fun onStop(){ activityResumed = false; if(::music.isInitialized) music.stop(); super.onStop() }
 
 }

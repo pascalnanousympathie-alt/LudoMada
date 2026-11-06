@@ -1,0 +1,151 @@
+{
+  "schema": "ludomada-premium-3d-v2",
+  "units": "meters",
+  "format": "glb/gltf2",
+  "target": "android-realtime",
+  "runtime_packaged": true,
+  "source_scene": {
+    "provider": "Higgsfield 3D Jutsu",
+    "project_id": "58feae45-2f79-461e-80eb-53525340f7b9",
+    "revision": 7,
+    "glb_bytes": 2011296,
+    "material_revision": 4,
+    "material_calibration": "PremiumMaterialLighting.Calibration",
+    "sha256": "1973b119d4ad02647c9cce9f193a37c25b0ae0ca778507f20b7078276f6d9cba",
+    "delivery": {
+      "type": "repo-bundled",
+      "path": "3d/ludomada-gameplay-environment-r7.glb",
+      "verified_size_bytes": 2011296
+    }
+  },
+  "board_geometry": {
+    "square_board_m": 5.05,
+    "table_m": 5.6,
+    "path_cells": 52,
+    "finish_cells": 24,
+    "home_plinths": 4,
+    "center_wedges": 4,
+    "topology": "matches current Android visualPath ordering"
+  },
+  "assets": {
+    "pawn": {
+      "parts": [
+        "base",
+        "body",
+        "collar",
+        "head",
+        "underside"
+      ],
+      "pivot": "bottom-center",
+      "material": "lacquer-pbr"
+    },
+    "die": {
+      "parts": [
+        "body",
+        "pips"
+      ],
+      "pivot": "center",
+      "material": "hydro-chrome",
+      "authoring_metallic": 1,
+      "authoring_roughness": 0.055,
+      "clear_coat": 0.72,
+      "clear_coat_roughness": 0.055,
+      "pip_material": "LM_Die_Pip_Dark"
+    },
+    "table": {
+      "parts": [
+        "deep-base",
+        "recessed-board",
+        "gold-frame"
+      ],
+      "pivot": "center"
+    }
+  },
+  "mobile_budgets": {
+    "hero_glb_max_bytes": 8388608,
+    "prefer_shared_meshes": true,
+    "prefer_compressed_textures": true,
+    "prefer_lod_for_large_assets": true,
+    "avoid_external_texture_paths": true
+  },
+  "asset_bundled_in_source_tree": true,
+  "runtime_loader": "GlbRuntimeLoader",
+  "runtime_hero_parts": [
+    "LM_Pawn_Base_Weighted",
+    "LM_Pawn_Tapered_Body",
+    "LM_Pawn_Collar",
+    "LM_Pawn_Spherical_Head",
+    "LM_Pawn_Underside_Insert",
+    "LM_Die_HydroChrome_Body"
+  ],
+  "active_renderer": "native-gles3-premium",
+  "home_environment": {
+    "renderer": "LudoBoardView.SceneRenderer.homePreview",
+    "scene_glb": {
+      "path": "3d/ludomada-environment-final.glb",
+      "bytes": 346384
+    },
+    "baobab_glb": {
+      "path": "3d/environment/baobab-real.glb",
+      "bytes": 35024
+    },
+    "textures_max_dimension": 2048,
+    "textures": [
+      {
+        "path": "environment/textures/bark_diff_2k.jpg",
+        "bytes": 340354
+      },
+      {
+        "path": "environment/textures/bark_nor_gl_2k.jpg",
+        "bytes": 377169
+      },
+      {
+        "path": "environment/textures/bark_rough_2k.jpg",
+        "bytes": 108108
+      },
+      {
+        "path": "environment/textures/dirt_diff_2k.jpg",
+        "bytes": 361069
+      },
+      {
+        "path": "environment/textures/dirt_nor_gl_2k.jpg",
+        "bytes": 316106
+      },
+      {
+        "path": "environment/textures/dirt_rough_2k.jpg",
+        "bytes": 261529
+      },
+      {
+        "path": "environment/textures/grass_diff_2k.jpg",
+        "bytes": 263378
+      },
+      {
+        "path": "environment/textures/grass_nor_gl_2k.jpg",
+        "bytes": 491806
+      },
+      {
+        "path": "environment/textures/grass_rough_2k.jpg",
+        "bytes": 117775
+      },
+      {
+        "path": "environment/textures/safari_sunset_2k.jpg",
+        "bytes": 66231
+      }
+    ]
+  },
+  "gameplay_environment": {
+    "asset_path": "3d/ludomada-gameplay-environment-r7.glb",
+    "source_archive_parts": "asset-sources/r7-parts/",
+    "source_archive_part_count": 35,
+    "source_archive_bytes": 462612,
+    "source_archive_sha256": "de848f44936bf555c4210c8b9b7e7559eeeaa5a2fb14de795c9fa62cd58f4dcf",
+    "environment_mesh_count": 13,
+    "previous_environment_mesh_count": 31,
+    "draw_candidate_reduction_percent": 58.06,
+    "dice_trays": 4,
+    "runtime_root_scale_xz": 0.75,
+    "chrome_frame_material": "LM_Tray_Chrome",
+    "obsidian_insert_material": "LM_Tray_Obsidian",
+    "camera_lens_mm": 37
+  }
+}

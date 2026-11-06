@@ -15,8 +15,9 @@ export class GameStateRepository {
   }
 
   /**
-   * Executes one command under a SERIALIZABLE transaction.
-   * The row lock prevents two servers from mutating the same game simultaneously.
+   * Executes one command in a READ COMMITTED transaction while holding the
+   * authoritative game-state row lock (SELECT ... FOR UPDATE). This serializes
+   * commands for the same game across API instances.
    */
   async atomicCommand<T>(
     gameId:string,

@@ -13,7 +13,7 @@ The local orchestration follows Scheduler -> Supervisor -> Agent -> Tests -> Res
 A failed stage is recorded with its log. The supervisor restarts a stopped pipeline; it does not blindly edit production code or expose secrets. Root-cause correction remains an explicit coding-agent operation, followed by rebuild and retest.
 
 ## Secrets
-`.env`, `.env.*`, private keys, tokens and passwords are not read or committed by this orchestration layer. Provider credentials belong in Railway/GitHub secret storage.
+`.env`, `.env.*`, private keys, tokens and passwords are not read or committed by this orchestration layer. Provider credentials belong only in an approved secret manager or the hosting provider's protected environment (Render Protected Environment for LudoMada staging); CI-only secrets belong in GitHub Actions secrets. Railway is retired and must not be used.
 
 ## Start
 Run `./.ludomada-agent/scheduler.sh once` for one supervised run, or `./.ludomada-agent/scheduler.sh daemon` for periodic supervision.
