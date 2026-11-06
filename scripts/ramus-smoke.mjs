@@ -766,13 +766,15 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Some Ramus sessions expose only system rows in the broad tail. Read both app
   // tags directly so the GLES2 fallback and its acceptance markers are visible too.
-  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
+  const markers = /Renderer=GLES[23]_(?:PBR|3D_FALLBACK)|PBR_SURFACE_CREATED|SAFE_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|ENV_GLB_RUNTIME_LOAD_OK|BAOBAB_REAL_GLB_LOAD_OK|BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY|PBR_READBACK|SAFE_READBACK|PBR_FIRST_FRAME_COMPLETE|SAFE_FIRST_FRAME_COMPLETE|HOME_PBR_FIRST_FRAME_COMPLETE|HOME_3D_FALLBACK_FRAME_COMPLETE|BOARD_MARKER=/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
   let filteredEntries = [];
   const filteredResults = [];
-  if (lines.length === 0 || !lines.some((line) => /Renderer=GLES[23]_/i.test(line))) {
+  if (lines.length === 0 ||
+      !lines.some((line) => /Renderer=GLES[23]_/i.test(line)) ||
+      !lines.some((line) => /BOARD_DRAW_BATCH_READY|HERO_PAWN_BATCH_READY/i.test(line))) {
     for (const tag of ["LudoMadaRender", "LudoMadaSmoke"]) {
       const filtered = runAllowError("logcat", "--limit", "500", "--filter", tag, "--session", session);
       filteredResults.push(filtered);
@@ -809,6 +811,59 @@ function parseSafeReadback(line) {
   const minimumBrightPixels = Math.max(32, Math.ceil(totalPixels * 0.005));
   const ok = brightPixels >= minimumBrightPixels && maxChannel > 24;
   return { ok, reason: ok ? undefined : "insufficient_visible_pixels", width, height, brightPixels, totalPixels, maxChannel, glError };
+}
+
+function assertBoardDrawBatches(timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("BOARD_DRAW_BATCH_READY")) || "";
+    const match = line.match(/BOARD_DRAW_BATCH_READY sourceParts=(\d+) pbrBatches=(\d+) shadowBatches=(\d+)/);
+    if (match) {
+      const sourceParts = Number(match[1]);
+      const pbrBatches = Number(match[2]);
+      const shadowBatches = Number(match[3]);
+      if (!Number.isSafeInteger(sourceParts) || !Number.isSafeInteger(pbrBatches) ||
+          !Number.isSafeInteger(shadowBatches) || sourceParts < 80 || pbrBatches < 1 ||
+          pbrBatches > 16 || shadowBatches < 1 || shadowBatches > 4 || pbrBatches >= sourceParts) {
+        throw new Error("Static board geometry was not reduced to compact draw batches: " +
+          JSON.stringify({ sourceParts, pbrBatches, shadowBatches, line }));
+      }
+      const reduction = Math.round((1 - pbrBatches / sourceParts) * 100);
+      console.log(`BOARD_DRAW_BATCH_PASS sourceParts=${sourceParts} pbrBatches=${pbrBatches} shadowBatches=${shadowBatches} colourDrawReduction=${reduction}%`);
+      return { sourceParts, pbrBatches, shadowBatches };
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR board geometry did not publish BOARD_DRAW_BATCH_READY: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
+}
+
+function assertHeroPawnBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("HERO_PAWN_BATCH_READY")) || "";
+    const match = line.match(/HERO_PAWN_BATCH_READY sourceParts=(\d+) drawBatches=(\d+)/);
+    if (match) {
+      const sourceParts = Number(match[1]);
+      const drawBatches = Number(match[2]);
+      if (sourceParts !== 5 || !Number.isSafeInteger(drawBatches) || drawBatches < 1 || drawBatches > 2) {
+        throw new Error("The five authored pawn parts were not reduced to one or two mesh batches: " +
+          JSON.stringify({ sourceParts, drawBatches, line }));
+      }
+      const reduction = Math.round((1 - drawBatches / sourceParts) * 100);
+      console.log(`HERO_PAWN_BATCH_PASS sourceParts=${sourceParts} drawBatches=${drawBatches} colourDrawReduction=${reduction}%`);
+      return { sourceParts, drawBatches };
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR renderer did not publish HERO_PAWN_BATCH_READY: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25) }));
 }
 
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
@@ -1222,6 +1277,8 @@ try {
   }
   assertTurn("Joueur 1/4");
   assertRuntimeGlbLoaded(18000);
+  assertBoardDrawBatches(6000);
+  assertHeroPawnBatches(5000);
   const landscapeReadyTree = readTree();
   const landscapeViewport = parseBoardViewport(landscapeReadyTree);
   if (!landscapeViewport) {
