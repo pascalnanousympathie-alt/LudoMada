@@ -138,11 +138,13 @@ class LudoBoardView(
         rendererName:String,
         heroPartCount:Int,
         boardPartCount:Int,
-        environmentPartCount:Int
+        environmentPartCount:Int,
+        revision7EnvironmentReady:Boolean
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
-            " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount"
+            " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
+            " | ENV_R7_COMPLETE=" + if (revision7EnvironmentReady) "1" else "0"
         rendererReadyDescription = marker
         post {
             if (contentDescription != marker) contentDescription = marker
@@ -859,7 +861,7 @@ class LudoBoardView(
                         android.util.Log.i("LudoMadaRender","HOME_3D_FALLBACK_FRAME_COMPLETE renderer=GLES2_GLB")
                         host.markHomePreviewReady("GLES2_GLB",0,0,glbParts.size,boardParts.size)
                     } else {
-                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size,0)
+                        host.markRendererReady("GLES2_GLB",glbParts.size,boardParts.size,0,false)
                     }
                 }
             }.onFailure{
@@ -1688,11 +1690,16 @@ class LudoBoardView(
                         } else {
                             0
                         }
+                    val revision7EnvironmentReady =
+                        GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                            gameplayEnvironmentParts.keys
+                        )
                     host.markRendererReady(
                         "GLES3_PBR",
                         glbParts.size,
                         boardParts.size,
-                        environmentPartCount
+                        environmentPartCount,
+                        revision7EnvironmentReady
                     )
                 } else {
                     android.util.Log.e(
@@ -1859,9 +1866,14 @@ class LudoBoardView(
                 }
             preparedGameplayEnvironmentDraws = prepared
             gameplayEnvironmentHasDoubleSidedParts = prepared.any { it.part.doubleSided }
+            val revision7EnvironmentReady =
+                GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
+                    gameplayEnvironmentParts.keys
+                )
             android.util.Log.i(
                 "LudoMadaRender",
                 "GAMEPLAY_ENVIRONMENT_PREPARED drawParts=" + prepared.size +
+                    " revision7Complete=" + revision7EnvironmentReady +
                     " doubleSided=" + gameplayEnvironmentHasDoubleSidedParts +
                     " cachedTransformsAndMaterials=true"
             )
