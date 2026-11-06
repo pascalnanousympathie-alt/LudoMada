@@ -67,6 +67,19 @@ function heroBatchSummaryValid(summary) {
     Number.isSafeInteger(summary.drawBatches) && summary.drawBatches >= 1 && summary.drawBatches <= 2;
 }
 
+function parseGameplayEnvironmentBatchSummary(label) {
+  if (typeof label !== "string") return null;
+  const match = label.match(/ENV_DRAW_SOURCE_PARTS=(\d+)\s*\|\s*ENV_PBR_BATCHES=(\d+)/);
+  if (!match) return null;
+  const [sourceParts, pbrBatches] = match.slice(1).map(Number);
+  return { sourceParts, pbrBatches };
+}
+
+function gameplayEnvironmentBatchSummaryValid(summary) {
+  return !!summary && summary.sourceParts === 13 &&
+    Number.isSafeInteger(summary.pbrBatches) && summary.pbrBatches >= 1 && summary.pbrBatches <= 7;
+}
+
 function parseBoardViewport(tree) {
   const marker = treeLabels(tree).find(label => label.includes("RENDER_PASS=") && label.includes("BOARD_VIEWPORT=")) || "";
   const match = marker.match(/BOARD_VIEWPORT=(\d+)x(\d+)/);
@@ -192,6 +205,8 @@ function selfTestFramebufferReadback() {
   const invalidBoardBatchLabel = "LudoMada 3D Ludo board | BOARD_DRAW_SOURCE_PARTS=95 | BOARD_PBR_BATCHES=95 | BOARD_SHADOW_BATCHES=1";
   const heroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=1";
   const invalidHeroBatchLabel = "LudoMada 3D Ludo board | HERO_DRAW_SOURCE_PARTS=5 | HERO_DRAW_BATCHES=5";
+  const environmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=7";
+  const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -205,6 +220,8 @@ function selfTestFramebufferReadback() {
     ["accessibility board batch contract rejects unbatched geometry", !boardBatchSummaryValid(parseBoardBatchSummary(invalidBoardBatchLabel))],
     ["accessibility hero batch contract accepts five parts in one batch", heroBatchSummaryValid(parseHeroBatchSummary(heroBatchLabel))],
     ["accessibility hero batch contract rejects five unbatched meshes", !heroBatchSummaryValid(parseHeroBatchSummary(invalidHeroBatchLabel))],
+    ["accessibility gameplay environment contract accepts 13 source meshes in 7 PBR batches", gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(environmentBatchLabel))],
+    ["accessibility gameplay environment contract rejects an unbatched environment", !gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(invalidEnvironmentBatchLabel))],
     ["missing environment count marker rejected", parseRendererReadiness("RENDER_PASS=GLES3_PBR | HERO_PARTS=6 | BOARD_PARTS=95") === null],
     ["real scene readback", parseFramebufferReadback(scene, "scene_fbo").ok],
     ["real surface readback", parseFramebufferReadback(surface, "surface_backbuffer").ok],
@@ -923,6 +940,38 @@ function assertHeroPawnBatches(timeoutMs = 5000) {
       labels: treeLabels(readTree()).slice(0, 36) }));
 }
 
+function assertGameplayEnvironmentBatches(timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastDiagnostics = { ok: false, lines: [], error: "not_read" };
+  while (Date.now() < deadline) {
+    const readyLabel = treeLabels(readTree()).find(label => label.includes("ENV_DRAW_SOURCE_PARTS=")) || "";
+    const accessibleSummary = parseGameplayEnvironmentBatchSummary(readyLabel);
+    if (accessibleSummary) {
+      if (!gameplayEnvironmentBatchSummaryValid(accessibleSummary)) {
+        throw new Error("Accessibility gameplay environment batch contract rejected: " + JSON.stringify({ accessibleSummary, readyLabel }));
+      }
+      console.log(`GAMEPLAY_ENVIRONMENT_BATCH_PASS sourceParts=${accessibleSummary.sourceParts} pbrBatches=${accessibleSummary.pbrBatches} drawReduction=${Math.round((1 - accessibleSummary.pbrBatches / accessibleSummary.sourceParts) * 100)}% source=accessibility`);
+      return accessibleSummary;
+    }
+    lastDiagnostics = readRendererLogLines();
+    const line = lastDiagnostics.lines.find(entry => entry.includes("GAMEPLAY_ENVIRONMENT_PREPARED")) || "";
+    const match = line.match(/GAMEPLAY_ENVIRONMENT_PREPARED drawParts=(\d+).*?drawBatches=(\d+)/);
+    if (match) {
+      const summary = { sourceParts: Number(match[1]), pbrBatches: Number(match[2]) };
+      if (!gameplayEnvironmentBatchSummaryValid(summary)) {
+        throw new Error("Logcat gameplay environment batch contract rejected: " + JSON.stringify({ ...summary, line }));
+      }
+      console.log(`GAMEPLAY_ENVIRONMENT_BATCH_PASS sourceParts=${summary.sourceParts} pbrBatches=${summary.pbrBatches} drawReduction=${Math.round((1 - summary.pbrBatches / summary.sourceParts) * 100)}% source=logcat`);
+      return summary;
+    }
+    waitStable(Math.min(250, Math.max(0, deadline - Date.now())));
+  }
+  throw new Error("PBR gameplay environment did not publish an accessible or logcat batch contract: " +
+    JSON.stringify({ logcatOk: lastDiagnostics.ok, lineCount: lastDiagnostics.lines.length,
+      error: lastDiagnostics.error, relevant: lastDiagnostics.lines.slice(-25),
+      labels: treeLabels(readTree()).slice(0, 36) }));
+}
+
 function assertRuntimeGlbLoaded(timeoutMs = 16000) {
   const deadline = Date.now() + timeoutMs;
   const requiredHeroParts = [
@@ -1144,6 +1193,7 @@ try {
     // a bounded logcat tail, so later game-mode navigation can age these lines out.
     assertBoardDrawBatches();
     assertHeroPawnBatches();
+    assertGameplayEnvironmentBatches();
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
   assertNumberedPawnControlsAbsent(readTree());
   } catch (error) {

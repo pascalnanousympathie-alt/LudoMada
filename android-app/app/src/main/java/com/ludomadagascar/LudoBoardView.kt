@@ -144,7 +144,9 @@ class LudoBoardView(
         boardPbrBatchCount:Int = 0,
         boardShadowBatchCount:Int = 0,
         heroDrawSourcePartCount:Int = 0,
-        heroDrawBatchCount:Int = 0
+        heroDrawBatchCount:Int = 0,
+        environmentDrawSourcePartCount:Int = 0,
+        environmentDrawBatchCount:Int = 0
     ) {
         if (!BuildConfig.DEBUG || homePreview) return
         val viewportWidth = width.coerceAtLeast(0)
@@ -154,7 +156,9 @@ class LudoBoardView(
                 " | BOARD_PBR_BATCHES=$boardPbrBatchCount" +
                 " | BOARD_SHADOW_BATCHES=$boardShadowBatchCount" +
                 " | HERO_DRAW_SOURCE_PARTS=$heroDrawSourcePartCount" +
-                " | HERO_DRAW_BATCHES=$heroDrawBatchCount"
+                " | HERO_DRAW_BATCHES=$heroDrawBatchCount" +
+                " | ENV_DRAW_SOURCE_PARTS=$environmentDrawSourcePartCount" +
+                " | ENV_PBR_BATCHES=$environmentDrawBatchCount"
         } else ""
         val marker = "LudoMada 3D Ludo board | RENDER_PASS=$rendererName | HERO_PARTS=$heroPartCount" +
             " | BOARD_PARTS=$boardPartCount | ENV_PARTS=$environmentPartCount" +
@@ -1334,17 +1338,8 @@ class LudoBoardView(
         private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var envParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var gameplayEnvironmentParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
-        private data class PreparedGameplayEnvironmentDraw(
-            val part: GlbRuntimeLoader.Part,
-            val modelMatrix: FloatArray,
-            val baseColor: FloatArray,
-            val materialKind: Int,
-            val albedoTexture: Int,
-            val normalTexture: Int,
-            val emission: Float,
-            val receivesShadow: Boolean
-        )
-        private var preparedGameplayEnvironmentDraws: List<PreparedGameplayEnvironmentDraw> = emptyList()
+        private var preparedGameplayEnvironmentDraws: List<GameplayEnvironmentBatcher.Batch> = emptyList()
+        private var preparedGameplayEnvironmentSourcePartCount = 0
         private var gameplayEnvironmentHasDoubleSidedParts = false
         private data class PreparedBoardDraw(
             val part: GlbRuntimeLoader.Part,
@@ -1451,6 +1446,7 @@ class LudoBoardView(
             lastActiveParticleCount = 0
             java.util.Arrays.fill(particleDrawTimingScratch, 0L)
             preparedGameplayEnvironmentDraws = emptyList()
+            preparedGameplayEnvironmentSourcePartCount = 0
             gameplayEnvironmentHasDoubleSidedParts = false
             preparedBoardBatches = emptyList()
             preparedBoardShadowMeshes = emptyList()
@@ -1876,7 +1872,7 @@ class LudoBoardView(
                     android.util.Log.i("LudoMadaRender", "PBR_FIRST_FRAME_COMPLETE")
                     val environmentPartCount =
                         if (GameplayEnvironmentComposition.hasRequiredBlenderGameplayParts(gameplayEnvironmentParts.keys)) {
-                            preparedGameplayEnvironmentDraws.size
+                            preparedGameplayEnvironmentSourcePartCount
                         } else {
                             0
                         }
@@ -1894,7 +1890,9 @@ class LudoBoardView(
                         preparedBoardBatches.size,
                         preparedBoardShadowMeshes.size,
                         5,
-                        heroPawnMeshes.size
+                        heroPawnMeshes.size,
+                        preparedGameplayEnvironmentSourcePartCount,
+                        preparedGameplayEnvironmentDraws.size
                     )
                 } else {
                     android.util.Log.e(
@@ -2051,24 +2049,31 @@ class LudoBoardView(
                     val normalTexture = if (
                         textureKind == GameplayEnvironmentComposition.WOOD_MATERIAL_KIND
                     ) woodNormalTex else normalTex
-                    PreparedGameplayEnvironmentDraw(
-                        part = part,
-                        modelMatrix = modelMatrix,
+                    GameplayEnvironmentBatcher.Input(
+                        name = part.name,
+                        drawOrder = GameplayEnvironmentComposition.blenderPartDrawOrder(part.name),
+                        mesh = part.mesh,
+                        transform = modelMatrix,
                         baseColor = GameplayEnvironmentComposition.blenderMaterialColor(
                             part.materialName,
                             part.baseColor
                         ),
+                        roughness = part.roughness,
+                        metallic = part.metallic,
+                        materialName = part.materialName,
                         materialKind = GameplayEnvironmentComposition.blenderMaterialKind(part.materialName),
                         albedoTexture = albedoTexture,
                         normalTexture = normalTexture,
                         emission = if (textureKind == 4) 0.006f else 0f,
                         receivesShadow = GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow(
                             part.name
-                        )
+                        ),
+                        doubleSided = part.doubleSided
                     )
                 }
-            preparedGameplayEnvironmentDraws = prepared
-            gameplayEnvironmentHasDoubleSidedParts = prepared.any { it.part.doubleSided }
+            preparedGameplayEnvironmentSourcePartCount = prepared.size
+            preparedGameplayEnvironmentDraws = GameplayEnvironmentBatcher.merge(prepared)
+            gameplayEnvironmentHasDoubleSidedParts = prepared.any { it.doubleSided }
             val revision7EnvironmentReady =
                 GameplayEnvironmentComposition.hasRevision7BatchedGameplayEnvironment(
                     gameplayEnvironmentParts.keys
@@ -2076,39 +2081,40 @@ class LudoBoardView(
             android.util.Log.i(
                 "LudoMadaRender",
                 "GAMEPLAY_ENVIRONMENT_PREPARED drawParts=" + prepared.size +
+                    " sourceParts=" + prepared.size +
+                    " drawBatches=" + preparedGameplayEnvironmentDraws.size +
                     " revision7Complete=" + revision7EnvironmentReady +
                     " doubleSided=" + gameplayEnvironmentHasDoubleSidedParts +
-                    " cachedTransformsAndMaterials=true"
+                    " cachedTransformsMaterialsAndBatches=true"
             )
         }
 
         private fun drawBlenderGameplayEnvironment(){
-            val parts = preparedGameplayEnvironmentDraws
-            if (parts.isEmpty()) return
-            val cullingWasEnabled=GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
-            if(gameplayEnvironmentHasDoubleSidedParts)GLES30.glDisable(GLES30.GL_CULL_FACE)
+            val batches = preparedGameplayEnvironmentDraws
+            if (batches.isEmpty()) return
+            val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if (gameplayEnvironmentHasDoubleSidedParts) GLES30.glDisable(GLES30.GL_CULL_FACE)
             try {
-                for(prepared in parts){
-                    val part = prepared.part
+                for (batch in batches) {
                     drawMesh(
-                        part.mesh,
-                        prepared.modelMatrix,
-                        prepared.baseColor,
-                        part.roughness,
-                        part.metallic,
+                        batch.mesh,
+                        identityModel,
+                        batch.baseColor,
+                        batch.roughness,
+                        batch.metallic,
                         0.98f,
-                        prepared.emission,
-                        prepared.materialKind,
+                        batch.emission,
+                        batch.materialKind,
                         false,
-                        prepared.albedoTexture,
-                        prepared.normalTexture,
+                        batch.albedoTexture,
+                        batch.normalTexture,
                         0,
-                        receivesShadow = prepared.receivesShadow,
+                        receivesShadow = batch.receivesShadow,
                         preserveAlbedo = true
                     )
                 }
             } finally {
-                if(cullingWasEnabled)GLES30.glEnable(GLES30.GL_CULL_FACE)
+                if (cullingWasEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
                 else GLES30.glDisable(GLES30.GL_CULL_FACE)
             }
         }
