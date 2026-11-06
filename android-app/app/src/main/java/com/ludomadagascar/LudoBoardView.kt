@@ -132,6 +132,7 @@ class LudoBoardView(
     }
 
     @Volatile private var rendererReadyDescription: String? = null
+    @Volatile private var rendererTelemetryDescription: String = ""
     @Volatile private var latestPawnTargetSignature: String = ""
 
     internal fun markRendererReady(
@@ -169,8 +170,10 @@ class LudoBoardView(
             " | ENV_R7_COMPLETE=" + (if (revision7EnvironmentReady) "1" else "0") +
             " | BOARD_VIEWPORT=${viewportWidth}x${viewportHeight}" + batchMarker
         rendererReadyDescription = marker
+        rendererTelemetryDescription = ""
+        latestPawnTargetSignature = ""
         post {
-            if (contentDescription != marker) contentDescription = marker
+            if (rendererReadyDescription == marker && contentDescription != marker) contentDescription = marker
         }
     }
 
@@ -191,9 +194,19 @@ class LudoBoardView(
         }
     }
 
+    internal fun publishRendererTelemetry(description: String) {
+        if (!BuildConfig.DEBUG || homePreview) return
+        val normalized = description.trim()
+        if (normalized.isEmpty() || rendererTelemetryDescription == normalized) return
+        rendererTelemetryDescription = normalized
+        publishPawnTapTargets()
+    }
+
     internal fun publishPawnTapTargets() {
         if (!BuildConfig.DEBUG || homePreview) return
-        val marker = rendererReadyDescription ?: return
+        val readyMarker = rendererReadyDescription ?: return
+        val telemetryMarker = rendererTelemetryDescription
+        val marker = if (telemetryMarker.isEmpty()) readyMarker else "$readyMarker | $telemetryMarker"
         val activePlayer = player
         val dice = state?.optInt("dice", 0) ?: 0
         val players = state?.optJSONArray("players")
@@ -213,13 +226,14 @@ class LudoBoardView(
                 }
             }
         }
-        val signature = targets.joinToString(";") { (index, p) ->
+        val targetSignature = targets.joinToString(";") { (index, p) ->
             "$index@" + String.format(java.util.Locale.US, "%.1f,%.1f", p[0], p[1])
         }
+        val signature = "$targetSignature|$telemetryMarker"
         if (signature == latestPawnTargetSignature) return
         latestPawnTargetSignature = signature
         post {
-            if (rendererReadyDescription != marker) return@post
+            if (rendererReadyDescription != readyMarker || rendererTelemetryDescription != telemetryMarker) return@post
             val origin = IntArray(2)
             getLocationOnScreen(origin)
             val metrics = resources.displayMetrics
@@ -1373,6 +1387,9 @@ class LudoBoardView(
         private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
         private val pipelinePhaseTelemetry = if (BuildConfig.DEBUG) RenderPipelinePhaseTelemetry() else null
         private val sceneBreakdownTelemetry = if (BuildConfig.DEBUG) RenderSceneBreakdownTelemetry() else null
+        private var latestFramePerfSnapshot: RenderFramePerfSnapshot? = null
+        private var latestPipelinePhaseSnapshot: RenderPipelinePhaseSnapshot? = null
+        private var latestSceneBreakdownSnapshot: RenderSceneBreakdownSnapshot? = null
         private var lastShadowCpuNanos = 0L
         private var lastSceneCpuNanos = 0L
         private var lastPostCpuNanos = 0L
@@ -1432,6 +1449,9 @@ class LudoBoardView(
             frameTelemetry?.reset()
             pipelinePhaseTelemetry?.reset()
             sceneBreakdownTelemetry?.reset()
+            latestFramePerfSnapshot = null
+            latestPipelinePhaseSnapshot = null
+            latestSceneBreakdownSnapshot = null
             lastShadowCpuNanos = 0L
             lastSceneCpuNanos = 0L
             lastPostCpuNanos = 0L
@@ -1618,6 +1638,7 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             val updateCpuNanos = System.nanoTime() - updateStartedNanos
             val glSubmissionDurationNanos = renderDirectFrame()
+            var rendererTelemetryUpdated = false
             sceneBreakdownTelemetry?.record(
                 now,
                 lastSceneSetupCpuNanos,
@@ -1635,6 +1656,8 @@ class LudoBoardView(
                 lastParticleCleanupCpuNanos,
                 lastActiveParticleCount
             )?.let { phases ->
+                latestSceneBreakdownSnapshot = phases
+                rendererTelemetryUpdated = true
                 android.util.Log.i(
                     "LudoMadaRender",
                     "PERF_SCENE_BREAKDOWN samples=" + phases.sampleCount +
@@ -1683,6 +1706,8 @@ class LudoBoardView(
                     lastPostCpuNanos,
                     pawnTargetsCpuNanos
                 )?.let { phases ->
+                    latestPipelinePhaseSnapshot = phases
+                    rendererTelemetryUpdated = true
                     android.util.Log.i(
                         "LudoMadaRender",
                         "PERF_PIPELINE_PHASES samples=" + phases.sampleCount +
@@ -1700,6 +1725,8 @@ class LudoBoardView(
                     )
                 }
                 frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
+                    latestFramePerfSnapshot = stats
+                    rendererTelemetryUpdated = true
                     android.util.Log.i(
                         "LudoMadaRender",
                         "PERF_FRAME_STATS renderer=GLES3_PBR surface=" + sceneWidth + "x" + sceneHeight +
@@ -1715,6 +1742,16 @@ class LudoBoardView(
                             " gpuExecutionTime=not_measured"
                     )
                 }
+            }
+            if (rendererTelemetryUpdated && !host.homePreview) {
+                RendererTelemetryAccessibility.format(
+                    deviceDiagnostic = glDeviceDiagnostic,
+                    surfaceWidth = sceneWidth,
+                    surfaceHeight = sceneHeight,
+                    frame = latestFramePerfSnapshot,
+                    pipeline = latestPipelinePhaseSnapshot,
+                    scene = latestSceneBreakdownSnapshot
+                )?.let(host::publishRendererTelemetry)
             }
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
