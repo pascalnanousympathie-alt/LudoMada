@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android { namespace="com.ludomadagascar"; compileSdk=35
  buildFeatures { buildConfig = true }
@@ -92,9 +94,9 @@ val prepareR7GameplayEnvironmentAssets = tasks.register("prepareR7GameplayEnviro
         check(runtimeGlb.isFile && runtimeGlb.length() == 2011296L) {
             "LudoMada Blender r7 GLB is missing or has an unexpected size"
         }
-        val sha256 = java.security.MessageDigest.getInstance("SHA-256")
+        val sha256 = MessageDigest.getInstance("SHA-256")
             .digest(runtimeGlb.readBytes())
-            .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
         check(sha256 == "1973b119d4ad02647c9cce9f193a37c25b0ae0ca778507f20b7078276f6d9cba") {
             "LudoMada Blender r7 GLB SHA-256 mismatch: $sha256"
         }
