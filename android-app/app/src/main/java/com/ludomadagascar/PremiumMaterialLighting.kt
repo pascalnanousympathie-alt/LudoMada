@@ -366,6 +366,14 @@ internal object GameplayEnvironmentComposition {
                 "GMENV_DiceTray_Insert_$suffix" in names
         }
 
+    fun hasRevision7BatchedGameplayEnvironment(names: Collection<String>): Boolean =
+        "GMENV_Studio_Floor" in names &&
+            "GMENV_Walnut_Structure_Batch" in names &&
+            "GMENV_Tabletop_Walnut" in names &&
+            "GMENV_Brass_Details_Batch" in names &&
+            "GMENV_Baobab_Brass_Inlay" in names &&
+            hasCompleteBlenderDiceTraySet(names)
+
     fun blenderMaterialKind(materialName: String): Int = when (materialName) {
         "LM_Walnut_Edge", "LM_Walnut_Dark" -> WOOD_MATERIAL_KIND
         "LM_Tray_Chrome" -> BLENDER_CHROME_MATERIAL_KIND
