@@ -395,11 +395,14 @@ internal object GameplayEnvironmentComposition {
 
     fun blenderPartDrawOrder(partName: String): Int = when {
         partName == "GMENV_Studio_Floor" -> 0
+        partName == "GMENV_Walnut_Structure_Batch" -> 1
+        // Retain the original part rules for v1 environments during migration.
         partName.startsWith("GMENV_Table_Leg_") -> 1
         partName.startsWith("GMENV_Leg_Ferrule_") -> 2
         partName.startsWith("GMENV_Apron_") -> 3
         partName == "GMENV_Tabletop_Walnut" -> 4
         partName.startsWith("GMENV_Perimeter_Inlay_") -> 5
+        partName == "GMENV_Brass_Details_Batch" -> 6
         partName.startsWith("GMENV_Brass_Pin_") -> 6
         partName.startsWith("GMENV_DiceTray_Insert_") -> 7
         partName.startsWith("GMENV_DiceTray_Frame_") -> 8
