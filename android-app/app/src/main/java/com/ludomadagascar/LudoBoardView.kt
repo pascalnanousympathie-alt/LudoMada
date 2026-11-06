@@ -3021,6 +3021,80 @@ class LudoBoardView(
         val n:FloatBuffer=ByteBuffer.allocateDirect(normals.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(normals);position(0)}
         val uv:FloatBuffer=ByteBuffer.allocateDirect(uvData.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(uvData);position(0)}
         val i:ShortBuffer=ByteBuffer.allocateDirect(indices.size*2).order(ByteOrder.nativeOrder()).asShortBuffer().apply{put(indices);position(0)}
+        private var gles3Vao = 0
+        private var gles3Buffers = IntArray(0)
+
+        /**
+         * Upload immutable mesh streams once per GL context and capture their layout in a VAO.
+         * The GLES2 CPU buffers above remain available to the fallback renderer.
+         */
+        internal fun bindGles3Static() {
+            if (gles3Vao == 0) {
+                val vao = IntArray(1)
+                val buffers = IntArray(4)
+                GLES30.glGenVertexArrays(1, vao, 0)
+                GLES30.glGenBuffers(buffers.size, buffers, 0)
+                if (vao[0] == 0 || buffers.any { it == 0 }) {
+                    if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+                    if (buffers.any { it != 0 }) GLES30.glDeleteBuffers(buffers.size, buffers, 0)
+                    throw IllegalStateException("Unable to allocate GLES3 static mesh objects")
+                }
+                gles3Vao = vao[0]
+                gles3Buffers = buffers
+                try {
+                    GLES30.glBindVertexArray(gles3Vao)
+
+                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[0])
+                    GLES30.glBufferData(
+                        GLES30.GL_ARRAY_BUFFER,
+                        positions.size * Float.SIZE_BYTES,
+                        p,
+                        GLES30.GL_STATIC_DRAW
+                    )
+                    GLES30.glEnableVertexAttribArray(0)
+                    GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
+
+                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[1])
+                    GLES30.glBufferData(
+                        GLES30.GL_ARRAY_BUFFER,
+                        normals.size * Float.SIZE_BYTES,
+                        n,
+                        GLES30.GL_STATIC_DRAW
+                    )
+                    GLES30.glEnableVertexAttribArray(1)
+                    GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, 0, 0)
+
+                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[2])
+                    GLES30.glBufferData(
+                        GLES30.GL_ARRAY_BUFFER,
+                        uvData.size * Float.SIZE_BYTES,
+                        uv,
+                        GLES30.GL_STATIC_DRAW
+                    )
+                    GLES30.glEnableVertexAttribArray(2)
+                    GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, 0, 0)
+
+                    GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, buffers[3])
+                    GLES30.glBufferData(
+                        GLES30.GL_ELEMENT_ARRAY_BUFFER,
+                        indices.size * 2,
+                        i,
+                        GLES30.GL_STATIC_DRAW
+                    )
+                } catch (error: Throwable) {
+                    GLES30.glBindVertexArray(0)
+                    GLES30.glDeleteVertexArrays(1, vao, 0)
+                    GLES30.glDeleteBuffers(buffers.size, buffers, 0)
+                    gles3Vao = 0
+                    gles3Buffers = IntArray(0)
+                    throw error
+                }
+                GLES30.glBindVertexArray(0)
+                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+            }
+            GLES30.glBindVertexArray(gles3Vao)
+        }
+
         internal fun uvsCopy(): FloatArray = uvData.copyOf()
     }
 
@@ -3056,7 +3130,10 @@ class LudoBoardView(
             uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uRoughTex=GLES30.glGetUniformLocation(program,"uRoughTex");uRoughTexEnabled=GLES30.glGetUniformLocation(program,"uRoughTexEnabled");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowNormalBias=GLES30.glGetUniformLocation(program,"uShadowNormalBias");uReceivesShadow=GLES30.glGetUniformLocation(program,"uReceivesShadow");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize");uPreserveAlbedo=GLES30.glGetUniformLocation(program,"uPreserveAlbedo")
         }
         fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0);GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0);GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY);GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0);GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0);GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY);GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0);GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0);GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY);GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY);GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS);GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
-        fun endFrame(){GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)}
+        fun endFrame(){
+            GLES30.glBindVertexArray(0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)
+        }
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean,albedoOverride:Int=0,normalOverride:Int=0,roughOverride:Int=0,receivesShadow:Boolean=true,preserveAlbedo:Boolean=false){
             val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
             val normalId=if(normalOverride!=0)normalOverride else normal
@@ -3064,7 +3141,8 @@ class LudoBoardView(
             Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
             GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias);GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow));GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
             GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId);GLES30.glUniform1i(uNormalTex,1);GLES30.glActiveTexture(GLES30.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId);GLES30.glUniform1i(uRoughTex,4);GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
-            GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glVertexAttribPointer(1,3,GLES30.GL_FLOAT,false,0,mesh.n);GLES30.glVertexAttribPointer(2,2,GLES30.GL_FLOAT,false,0,mesh.uv);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2)
+            mesh.bindGles3Static()
+            GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,0)
         }
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException("GL shader: "+GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException("GL link: "+GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
@@ -3076,8 +3154,15 @@ class LudoBoardView(
         """.trimIndent();val fs="""#version 300 es
             precision mediump float;void main(){}
         """.trimIndent();program=buildProgram(vs,fs);uM=GLES30.glGetUniformLocation(program,"uLightMvp")}
-        fun begin(v:FloatArray){System.arraycopy(v,0,lightVp,0,16);GLES30.glUseProgram(program)};fun end(){}
-        fun draw(mesh:Mesh,model:FloatArray){Matrix.multiplyMM(scratch,0,lightVp,0,model,0);GLES30.glUseProgram(program);GLES30.glUniformMatrix4fv(uM,1,false,scratch,0);GLES30.glEnableVertexAttribArray(0);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,mesh.p);GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,mesh.i);GLES30.glDisableVertexAttribArray(0)}
+        fun begin(v:FloatArray){System.arraycopy(v,0,lightVp,0,16);GLES30.glUseProgram(program)}
+        fun end(){GLES30.glBindVertexArray(0)}
+        fun draw(mesh:Mesh,model:FloatArray){
+            // begin() binds the shadow program once for the complete depth pass.
+            Matrix.multiplyMM(scratch,0,lightVp,0,model,0)
+            GLES30.glUniformMatrix4fv(uM,1,false,scratch,0)
+            mesh.bindGles3Static()
+            GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,0)
+        }
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 
