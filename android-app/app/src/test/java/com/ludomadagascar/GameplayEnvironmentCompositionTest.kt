@@ -159,5 +159,18 @@ class GameplayEnvironmentCompositionTest {
         assertEquals(0.88f, chrome[2], 0.001f)
         assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Frame_01"))
         assertTrue(GameplayEnvironmentComposition.blenderPartReceivesGameplayShadow("GMENV_DiceTray_Insert_01"))
+        assertEquals(1f, PremiumMaterialLighting.Calibration.CHROME_METALLIC, 0f)
+        assertEquals(0.055f, PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS, 0f)
+        assertEquals(0.72f, PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT, 0f)
+        assertEquals(0.055f, PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS, 0f)
+
+        val sourceObsidian = floatArrayOf(0.018f, 0.027f, 0.043f, 1f)
+        val obsidian = GameplayEnvironmentComposition.blenderMaterialColor(
+            "LM_Tray_Obsidian",
+            sourceObsidian
+        )
+        assertEquals(5, GameplayEnvironmentComposition.blenderMaterialKind("LM_Tray_Obsidian"))
+        assertEquals(3, GameplayEnvironmentComposition.blenderTextureKind("LM_Tray_Obsidian"))
+        assertTrue(obsidian.contentEquals(sourceObsidian))
     }
 }
