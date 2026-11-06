@@ -71,7 +71,7 @@ class GameplayEnvironmentBatcherTest {
 
         assertEquals(7, batches.size)
         assertEquals(13, batches.sumOf { it.sourcePartCount })
-        assertEquals(listOf(1, 1, 1, 1, 2, 4, 4), batches.map { it.sourcePartCount }.sorted())
+        assertEquals(listOf(1, 1, 1, 1, 1, 4, 4), batches.map { it.sourcePartCount }.sorted())
         assertEquals(listOf(0, 1, 4, 6, 7, 8, 9), batches.map { it.drawOrder })
         assertEquals(13 * 3, batches.sumOf { it.mesh.positions.size / 3 })
         assertTrue("all source indices remain valid after batch merge", batches.all { batch ->
