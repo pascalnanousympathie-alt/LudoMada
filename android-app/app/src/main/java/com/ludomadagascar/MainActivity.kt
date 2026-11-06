@@ -370,6 +370,13 @@ class MainActivity : Activity() {
         refreshAccountBalance()
     }
 
+    @kotlin.jvm.JvmName("selectHomeStake")
+    internal fun selectHomeStake(amount: Int) {
+        if (amount !in entryFees) return
+        entryFee = amount
+        window.decorView.postInvalidate()
+    }
+
     private fun profile() {
         page("profile","Profil")
         add(card("Kaonty","${if(username.isBlank())"—" else username}",Color.rgb(130,85,180)))
