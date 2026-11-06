@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 function parseRendererReadiness(label) {
@@ -35,6 +35,34 @@ function rendererReadinessFailureReason(readiness) {
 
 function rendererReadinessPassed(readiness) {
   return rendererReadinessFailureReason(readiness) === null;
+}
+
+function readJpegDimensions(path) {
+  if (!existsSync(path)) return null;
+  const bytes = readFileSync(path);
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  const sofMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+  let offset = 2;
+  while (offset + 4 <= bytes.length) {
+    if (bytes[offset] !== 0xff) return null;
+    while (offset < bytes.length && bytes[offset] === 0xff) offset++;
+    if (offset >= bytes.length) return null;
+    const marker = bytes[offset++];
+    if (marker === 0xd9 || marker === 0xda) return null;
+    if (marker >= 0xd0 && marker <= 0xd7) continue;
+    if (offset + 2 > bytes.length) return null;
+    const segmentLength = bytes.readUInt16BE(offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+    if (sofMarkers.has(marker)) {
+      if (segmentLength < 7) return null;
+      return {
+        height: bytes.readUInt16BE(offset + 3),
+        width: bytes.readUInt16BE(offset + 5)
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
 }
 
 function parseFramebufferReadback(line, expectedLabel) {
@@ -1165,6 +1193,91 @@ try {
   const homeShot=runAllowError("screenshot","--session",session,"--out","ramus-home-screen.jpg");
   if (!homeShot.ok) throw new Error("Could not capture the static Home reference image");
   console.log("HOME_STATIC_IMAGE_SCREENSHOT_CAPTURED");
+
+  // Verify the actual player entry path, not only the login-screen offline
+  // shortcut above. Home requests landscape; the gameplay surface must inherit it.
+  modeTree = openModePickerFromHome();
+  tapTreeNode(modeTree, "MODE_OFFLINE");
+  waitStable(700);
+  offlineMenuTree = readTree();
+  for (const expected of ["👤 2 joueurs", "👥 3 joueurs", "👥 4 joueurs"]) {
+    if (!treeHas(offlineMenuTree, expected)) {
+      throw new Error(`Landscape offline menu is missing ${expected}. Accessibility tree: ` + JSON.stringify(treeLabels(offlineMenuTree)).slice(0, 5000));
+    }
+  }
+  tapTreeNode(offlineMenuTree, "👥 4 joueurs");
+  const landscapeBoard = waitForSnapshot("LudoMada 3D Ludo board", 8000) ?? readTree();
+  if (!treeHas(landscapeBoard, "LudoMada 3D Ludo board")) {
+    throw new Error("Home → JOUER → Hors-ligne did not open the 4-player gameplay board: " + JSON.stringify(treeLabels(landscapeBoard)).slice(0, 5000));
+  }
+  assertTurn("Joueur 1/4");
+  assertRuntimeGlbLoaded(18000);
+  const landscapeShot = runAllowError("screenshot", "--session", session, "--out", "ramus-landscape-gameplay-screen.jpg");
+  if (!landscapeShot.ok) throw new Error("Could not capture gameplay from the real landscape Home entry path");
+  const landscapeDimensions = readJpegDimensions("ramus-landscape-gameplay-screen.jpg");
+  if (!landscapeDimensions || landscapeDimensions.width <= landscapeDimensions.height) {
+    throw new Error("Home gameplay must remain landscape; screenshot dimensions=" + JSON.stringify(landscapeDimensions));
+  }
+  console.log(`LANDSCAPE GAMEPLAY SCREENSHOT PASS ${landscapeDimensions.width}x${landscapeDimensions.height}`);
+  console.log("HOME→JOUER→OFFLINE→4-PLAYER LANDSCAPE GAMEPLAY PASS");
+
+  let landscapeGotSix = false;
+  for (let i = 0; i < 36; i++) {
+    target = findRef("Lancer le dé");
+    run("tap", target.ref, "--gen", String(target.gen), "--session", session);
+    const six = waitForSix(2200);
+    const diceStatus = pendingDiceValue().status;
+    console.log("RAMUS_LANDSCAPE_DICE_ROLL_ATTEMPT=" + (i + 1) + " STATUS=" + diceStatus.slice(0, 100));
+    if (six) {
+      landscapeGotSix = true;
+      break;
+    }
+    runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
+  }
+  if (!landscapeGotSix) throw new Error("Landscape 4-player flow did not roll a six within 36 attempts: " + pendingDiceValue().status);
+  console.log("LANDSCAPE DICE SIX PASS");
+
+  target = findRef("Lancer le dé");
+  const landscapeReroll = runAllowError("tap", target.ref, "--gen", String(target.gen), "--session", session);
+  const landscapeRerollBlocked = runAllowError(
+    "wait", "--text", "Jouez d'abord le pion", "--timeout", "1800", "--session", session
+  );
+  const landscapeSixPreserved = runAllowError("snapshot", "--session", session, "--find", "Dé: 6");
+  if (!landscapeReroll.ok || !landscapeRerollBlocked.ok || !landscapeSixPreserved.ok || !landscapeSixPreserved.value.elements?.length) {
+    throw new Error("Landscape pending six was not protected against a second roll: " + JSON.stringify({reroll:landscapeReroll.value,blocked:landscapeRerollBlocked.value,preserved:landscapeSixPreserved.value}));
+  }
+  console.log("LANDSCAPE PENDING DICE REROLL BLOCK PASS");
+  if (!moveAnyLegalPawnAfterRoll()) throw new Error("Landscape pending six had no legal 3D pawn target");
+  const landscapeReplay = runAllowError("wait", "--text", "Rejouez", "--timeout", "2500", "--session", session);
+  if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
+  console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
+
+  // Capture renderer telemetry when Ramus exposes the Android app log stream.
+  // GPU execution time remains explicitly unmeasured by the current renderer.
+  const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);
+  const rendererLines = normalizeLogcatRows(rendererLogs).map(entry => entry.line);
+  const perfLines = rendererLines.filter(line => line.includes("PERF_FRAME_STATS"));
+  const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
+  if (sceneReadbacks.length) {
+    const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
+    const match = lastReadback.match(/size=(\d+)x(\d+).*glError=0x([0-9a-f]+)/i);
+    if (match) {
+      const width = Number(match[1]);
+      const height = Number(match[2]);
+      const glError = Number.parseInt(match[3], 16);
+      console.log(`RAMUS_LANDSCAPE_GL_READBACK ${width}x${height} glError=0x${glError.toString(16)}`);
+      if (width <= height || glError !== 0) {
+        throw new Error("Landscape gameplay GL readback has invalid orientation or GL error: " + lastReadback);
+      }
+    }
+  } else {
+    console.log("RAMUS_RENDERER_LOGCAT_UNAVAILABLE trial mode did not expose app-tag readback rows");
+  }
+  if (perfLines.length) {
+    for (const line of perfLines.slice(-3)) console.log("RAMUS_RENDER_PERF " + line.slice(0, 1200));
+  } else {
+    console.log("RAMUS_PERF_METRICS_UNAVAILABLE no PERF_FRAME_STATS rows exposed by Ramus logcat");
+  }
 
   success = true;
   console.log("RAMUS_SMOKE_PASS");
