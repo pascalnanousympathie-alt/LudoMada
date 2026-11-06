@@ -1360,9 +1360,17 @@ class LudoBoardView(
         private val identityModel = FloatArray(16).apply { Matrix.setIdentityM(this, 0) }
         private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
         private val pipelinePhaseTelemetry = if (BuildConfig.DEBUG) RenderPipelinePhaseTelemetry() else null
+        private val sceneBreakdownTelemetry = if (BuildConfig.DEBUG) RenderSceneBreakdownTelemetry() else null
         private var lastShadowCpuNanos = 0L
         private var lastSceneCpuNanos = 0L
         private var lastPostCpuNanos = 0L
+        private var lastSceneSetupCpuNanos = 0L
+        private var lastSceneBackdropCpuNanos = 0L
+        private var lastSceneBoardCpuNanos = 0L
+        private var lastScenePawnsCpuNanos = 0L
+        private var lastSceneDiceCpuNanos = 0L
+        private var lastSceneShaderEndCpuNanos = 0L
+        private var lastSceneParticlesCpuNanos = 0L
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1401,9 +1409,17 @@ class LudoBoardView(
             firstDrawMarkerPersisted = false
             frameTelemetry?.reset()
             pipelinePhaseTelemetry?.reset()
+            sceneBreakdownTelemetry?.reset()
             lastShadowCpuNanos = 0L
             lastSceneCpuNanos = 0L
             lastPostCpuNanos = 0L
+            lastSceneSetupCpuNanos = 0L
+            lastSceneBackdropCpuNanos = 0L
+            lastSceneBoardCpuNanos = 0L
+            lastScenePawnsCpuNanos = 0L
+            lastSceneDiceCpuNanos = 0L
+            lastSceneShaderEndCpuNanos = 0L
+            lastSceneParticlesCpuNanos = 0L
             preparedGameplayEnvironmentDraws = emptyList()
             gameplayEnvironmentHasDoubleSidedParts = false
             preparedBoardBatches = emptyList()
@@ -1560,6 +1576,36 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             val updateCpuNanos = System.nanoTime() - updateStartedNanos
             val glSubmissionDurationNanos = renderDirectFrame()
+            sceneBreakdownTelemetry?.record(
+                now,
+                lastSceneSetupCpuNanos,
+                lastSceneBackdropCpuNanos,
+                lastSceneBoardCpuNanos,
+                lastScenePawnsCpuNanos,
+                lastSceneDiceCpuNanos,
+                lastSceneShaderEndCpuNanos,
+                lastSceneParticlesCpuNanos
+            )?.let { phases ->
+                android.util.Log.i(
+                    "LudoMadaRender",
+                    "PERF_SCENE_BREAKDOWN samples=" + phases.sampleCount +
+                        " setupCpuMsP50=" + phases.setupCpuP50Ms +
+                        " setupCpuMsP95=" + phases.setupCpuP95Ms +
+                        " backdropCpuMsP50=" + phases.backdropCpuP50Ms +
+                        " backdropCpuMsP95=" + phases.backdropCpuP95Ms +
+                        " boardCpuMsP50=" + phases.boardCpuP50Ms +
+                        " boardCpuMsP95=" + phases.boardCpuP95Ms +
+                        " pawnsCpuMsP50=" + phases.pawnsCpuP50Ms +
+                        " pawnsCpuMsP95=" + phases.pawnsCpuP95Ms +
+                        " diceCpuMsP50=" + phases.diceCpuP50Ms +
+                        " diceCpuMsP95=" + phases.diceCpuP95Ms +
+                        " shaderEndCpuMsP50=" + phases.shaderEndCpuP50Ms +
+                        " shaderEndCpuMsP95=" + phases.shaderEndCpuP95Ms +
+                        " particlesCpuMsP50=" + phases.particlesCpuP50Ms +
+                        " particlesCpuMsP95=" + phases.particlesCpuP95Ms +
+                        " gpuExecutionTime=not_measured"
+                )
+            }
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             val pawnTargetsStartedNanos = System.nanoTime()
             host.publishPawnTapTargets()
@@ -1678,7 +1724,23 @@ class LudoBoardView(
             }
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
+            val setupStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo)
+            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+            shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            if (setupStarted != 0L) lastSceneSetupCpuNanos = System.nanoTime() - setupStarted
+
+            drawWorld(false)
+
+            val shaderEndStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            shader.endFrame()
+            if (shaderEndStarted != 0L) lastSceneShaderEndCpuNanos = System.nanoTime() - shaderEndStarted
+
+            val particlesStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+            drawParticles()
+            if (particlesStarted != 0L) lastSceneParticlesCpuNanos = System.nanoTime() - particlesStarted
             // The final backbuffer readback in renderDirectFrame validates the completed
             // scene after post-processing. A second glFinish/readback here only stalls the
             // GPU on the first frame and must not contaminate render CPU-time telemetry.
@@ -1837,11 +1899,15 @@ class LudoBoardView(
                 }
                 return
             }
+            val backdropStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             if (homePreview) {
                 drawHomeEnvironment()
             } else {
                 drawGameplayBackdrop()
             }
+            if (backdropStarted != 0L) lastSceneBackdropCpuNanos = System.nanoTime() - backdropStarted
+
+            val boardStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             if(preparedBoardBatches.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
@@ -1862,8 +1928,15 @@ class LudoBoardView(
                         drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)
                 }
             }
+            if (boardStarted != 0L) lastSceneBoardCpuNanos = System.nanoTime() - boardStarted
+
+            val pawnsStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
+            if (pawnsStarted != 0L) lastScenePawnsCpuNanos = System.nanoTime() - pawnsStarted
+
+            val diceStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             for(pi in 0..3) drawDie(pi)
+            if (diceStarted != 0L) lastSceneDiceCpuNanos = System.nanoTime() - diceStarted
         }
         private fun drawGameplayBackdrop(){
             // Prefer the authored Blender table when its tabletop and floor are both
