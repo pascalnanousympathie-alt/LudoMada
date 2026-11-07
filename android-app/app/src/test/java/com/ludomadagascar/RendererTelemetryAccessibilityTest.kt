@@ -52,7 +52,8 @@ class RendererTelemetryAccessibilityTest {
             surfaceHeight = 424,
             frame = frame,
             pipeline = pipeline,
-            scene = scene
+            scene = scene,
+            preparedStaticMeshCount = 24
         )
 
         assertNotNull(label)
@@ -62,6 +63,7 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("GPU_RENDERER=SwiftShader"))
         assertTrue(label.contains("GLES=OpenGL ES 3.0"))
         assertTrue(label.contains("SURFACE=1419x424"))
+        assertTrue(label.contains("STATIC_MESH_VAO_COUNT=24"))
         assertTrue(label.contains("FPS=5.14"))
         assertTrue(label.contains("FRAME_MS=194.55/218.20"))
         assertTrue(label.contains("GL_CPU_MS=18.25/28.50"))
@@ -89,7 +91,8 @@ class RendererTelemetryAccessibilityTest {
             320,
             noIntervals,
             pipeline,
-            scene
+            scene,
+            24
         )
         assertNotNull(label)
         assertTrue(label!!.contains("FPS=INSUFFICIENT"))
@@ -98,14 +101,29 @@ class RendererTelemetryAccessibilityTest {
 
     @Test
     fun waitsUntilFramePipelineAndSceneSnapshotsAreAvailable() {
-        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, null, scene))
+        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, null, scene, 24))
         assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, null))
         assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, null, pipeline, scene))
     }
 
     @Test
+    fun refusesToPublishTelemetryUntilStaticMeshesArePreloaded() {
+        assertNull(
+            RendererTelemetryAccessibility.format(
+                "vendor=Google renderer=SwiftShader version=OpenGL ES 3.0",
+                100,
+                100,
+                frame,
+                pipeline,
+                scene,
+                0
+            )
+        )
+    }
+
+    @Test
     fun rejectsMissingOrMalformedGpuIdentity() {
-        assertNull(RendererTelemetryAccessibility.format("vendor= renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, scene))
+        assertNull(RendererTelemetryAccessibility.format("vendor= renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, scene, 24))
         assertNull(RendererTelemetryAccessibility.format("unknown", 100, 100, frame, pipeline, scene))
     }
 }
