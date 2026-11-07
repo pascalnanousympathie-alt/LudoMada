@@ -10,9 +10,10 @@ internal object RendererTelemetryAccessibility {
         surfaceHeight: Int,
         frame: RenderFramePerfSnapshot?,
         pipeline: RenderPipelinePhaseSnapshot?,
-        scene: RenderSceneBreakdownSnapshot?
+        scene: RenderSceneBreakdownSnapshot?,
+        preparedStaticMeshCount: Int
     ): String? {
-        if (frame == null || pipeline == null || scene == null) return null
+        if (frame == null || pipeline == null || scene == null || preparedStaticMeshCount <= 0) return null
 
         val vendor = deviceField(deviceDiagnostic, "vendor", "renderer")
         val renderer = deviceField(deviceDiagnostic, "renderer", "version")
@@ -27,6 +28,7 @@ internal object RendererTelemetryAccessibility {
             "GPU_RENDERER=" + compact(renderer),
             "GLES=" + compact(gles),
             "SURFACE=${surfaceWidth.coerceAtLeast(1)}x${surfaceHeight.coerceAtLeast(1)}",
+            "STATIC_MESH_VAO_COUNT=$preparedStaticMeshCount",
             "FPS=$fps",
             "FRAME_MS=" + nullablePair(frame.activeFrameIntervalP50Ms, frame.activeFrameIntervalP95Ms),
             "GL_CPU_MS=" + pair(frame.glSubmitP50Ms, frame.glSubmitP95Ms),
