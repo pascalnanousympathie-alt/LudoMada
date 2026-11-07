@@ -3162,9 +3162,9 @@ class LudoBoardView(
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
         }
 
-        /** Bind a mesh whose static VAO/VBO streams were prepared during surface setup. */
+        /** Binding is draw-only; every mesh must have been uploaded during surface setup. */
         internal fun bindGles3Static() {
-            prepareGles3Static()
+            check(gles3Vao != 0) { "GLES3 static mesh was not prepared before the render loop" }
             GLES30.glBindVertexArray(gles3Vao)
         }
 
