@@ -1390,6 +1390,7 @@ class LudoBoardView(
         private var latestFramePerfSnapshot: RenderFramePerfSnapshot? = null
         private var latestPipelinePhaseSnapshot: RenderPipelinePhaseSnapshot? = null
         private var latestSceneBreakdownSnapshot: RenderSceneBreakdownSnapshot? = null
+        private var preparedGles3StaticMeshCount = 0
         private var lastShadowCpuNanos = 0L
         private var lastSceneCpuNanos = 0L
         private var lastPostCpuNanos = 0L
@@ -1452,6 +1453,7 @@ class LudoBoardView(
             latestFramePerfSnapshot = null
             latestPipelinePhaseSnapshot = null
             latestSceneBreakdownSnapshot = null
+            preparedGles3StaticMeshCount = 0
             lastShadowCpuNanos = 0L
             lastSceneCpuNanos = 0L
             lastPostCpuNanos = 0L
@@ -1597,8 +1599,36 @@ class LudoBoardView(
                 GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER, 128 * 8 * 4, null, GLES30.GL_STREAM_DRAW)
             }
             GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+            prepareGles3StaticMeshes()
             Matrix.setLookAtM(lightView,0,-7.5f,11.0f,8.5f,0f,0.2f,0f,0f,1f,0f);Matrix.orthoM(lightProj,0,-8.5f,8.5f,-8.5f,8.5f,1f,25f);Matrix.multiplyMM(lightVp,0,lightProj,0,lightView,0)
         }
+
+        /** Upload immutable draw meshes during surface setup, never inside the first visible frame. */
+        private fun prepareGles3StaticMeshes() {
+            val meshes = java.util.LinkedHashSet<Mesh>()
+            meshes.addAll(listOf(cube, pathMesh, pawnBody, sphere, roundedBox, disk, pips, heroRing))
+            meshes.addAll(coloredZones)
+            meshes.addAll(coloredLanes)
+            meshes.addAll(diePipMeshes)
+            glbParts.values.forEach { meshes.add(it.mesh) }
+            envParts.values.forEach { meshes.add(it.mesh) }
+            baobabParts.values.forEach { meshes.add(it.mesh) }
+            preparedGameplayEnvironmentDraws.forEach { meshes.add(it.mesh) }
+            preparedBoardBatches.forEach { meshes.add(it.mesh) }
+            preparedBoardShadowMeshes.forEach { meshes.add(it) }
+            heroPawnMeshes.forEach { meshes.add(it) }
+
+            val startedNanos = System.nanoTime()
+            meshes.forEach { it.prepareGles3Static() }
+            preparedGles3StaticMeshCount = meshes.size
+            val elapsedMs = (System.nanoTime() - startedNanos) / 1_000_000f
+            android.util.Log.i(
+                "LudoMadaRender",
+                "GLES3_STATIC_MESHES_PREPARED count=" + preparedGles3StaticMeshCount +
+                    " uploadMs=" + String.format(java.util.Locale.US, "%.2f", elapsedMs)
+            )
+        }
+
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
@@ -1750,7 +1780,8 @@ class LudoBoardView(
                     surfaceHeight = sceneHeight,
                     frame = latestFramePerfSnapshot,
                     pipeline = latestPipelinePhaseSnapshot,
-                    scene = latestSceneBreakdownSnapshot
+                    scene = latestSceneBreakdownSnapshot,
+                    preparedStaticMeshCount = preparedGles3StaticMeshCount
                 )?.let(host::publishRendererTelemetry)
             }
         }
@@ -3065,70 +3096,75 @@ class LudoBoardView(
          * Upload immutable mesh streams once per GL context and capture their layout in a VAO.
          * The GLES2 CPU buffers above remain available to the fallback renderer.
          */
-        internal fun bindGles3Static() {
-            if (gles3Vao == 0) {
-                val vao = IntArray(1)
-                val buffers = IntArray(4)
-                GLES30.glGenVertexArrays(1, vao, 0)
-                GLES30.glGenBuffers(buffers.size, buffers, 0)
-                if (vao[0] == 0 || buffers.any { it == 0 }) {
-                    if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
-                    if (buffers.any { it != 0 }) GLES30.glDeleteBuffers(buffers.size, buffers, 0)
-                    throw IllegalStateException("Unable to allocate GLES3 static mesh objects")
-                }
-                gles3Vao = vao[0]
-                gles3Buffers = buffers
-                try {
-                    GLES30.glBindVertexArray(gles3Vao)
-
-                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[0])
-                    GLES30.glBufferData(
-                        GLES30.GL_ARRAY_BUFFER,
-                        positions.size * Float.SIZE_BYTES,
-                        p,
-                        GLES30.GL_STATIC_DRAW
-                    )
-                    GLES30.glEnableVertexAttribArray(0)
-                    GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
-
-                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[1])
-                    GLES30.glBufferData(
-                        GLES30.GL_ARRAY_BUFFER,
-                        normals.size * Float.SIZE_BYTES,
-                        n,
-                        GLES30.GL_STATIC_DRAW
-                    )
-                    GLES30.glEnableVertexAttribArray(1)
-                    GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, 0, 0)
-
-                    GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[2])
-                    GLES30.glBufferData(
-                        GLES30.GL_ARRAY_BUFFER,
-                        uvData.size * Float.SIZE_BYTES,
-                        uv,
-                        GLES30.GL_STATIC_DRAW
-                    )
-                    GLES30.glEnableVertexAttribArray(2)
-                    GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, 0, 0)
-
-                    GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, buffers[3])
-                    GLES30.glBufferData(
-                        GLES30.GL_ELEMENT_ARRAY_BUFFER,
-                        indices.size * 2,
-                        i,
-                        GLES30.GL_STATIC_DRAW
-                    )
-                } catch (error: Throwable) {
-                    GLES30.glBindVertexArray(0)
-                    GLES30.glDeleteVertexArrays(1, vao, 0)
-                    GLES30.glDeleteBuffers(buffers.size, buffers, 0)
-                    gles3Vao = 0
-                    gles3Buffers = IntArray(0)
-                    throw error
-                }
-                GLES30.glBindVertexArray(0)
-                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+        /** Upload all immutable streams once while the GL context is active. */
+        internal fun prepareGles3Static() {
+            if (gles3Vao != 0) return
+            val vao = IntArray(1)
+            val buffers = IntArray(4)
+            GLES30.glGenVertexArrays(1, vao, 0)
+            GLES30.glGenBuffers(buffers.size, buffers, 0)
+            if (vao[0] == 0 || buffers.any { it == 0 }) {
+                if (vao[0] != 0) GLES30.glDeleteVertexArrays(1, vao, 0)
+                if (buffers.any { it != 0 }) GLES30.glDeleteBuffers(buffers.size, buffers, 0)
+                throw IllegalStateException("Unable to allocate GLES3 static mesh objects")
             }
+            gles3Vao = vao[0]
+            gles3Buffers = buffers
+            try {
+                GLES30.glBindVertexArray(gles3Vao)
+
+                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[0])
+                GLES30.glBufferData(
+                    GLES30.GL_ARRAY_BUFFER,
+                    positions.size * Float.SIZE_BYTES,
+                    p,
+                    GLES30.GL_STATIC_DRAW
+                )
+                GLES30.glEnableVertexAttribArray(0)
+                GLES30.glVertexAttribPointer(0, 3, GLES30.GL_FLOAT, false, 0, 0)
+
+                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[1])
+                GLES30.glBufferData(
+                    GLES30.GL_ARRAY_BUFFER,
+                    normals.size * Float.SIZE_BYTES,
+                    n,
+                    GLES30.GL_STATIC_DRAW
+                )
+                GLES30.glEnableVertexAttribArray(1)
+                GLES30.glVertexAttribPointer(1, 3, GLES30.GL_FLOAT, false, 0, 0)
+
+                GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, buffers[2])
+                GLES30.glBufferData(
+                    GLES30.GL_ARRAY_BUFFER,
+                    uvData.size * Float.SIZE_BYTES,
+                    uv,
+                    GLES30.GL_STATIC_DRAW
+                )
+                GLES30.glEnableVertexAttribArray(2)
+                GLES30.glVertexAttribPointer(2, 2, GLES30.GL_FLOAT, false, 0, 0)
+
+                GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, buffers[3])
+                GLES30.glBufferData(
+                    GLES30.GL_ELEMENT_ARRAY_BUFFER,
+                    indices.size * 2,
+                    i,
+                    GLES30.GL_STATIC_DRAW
+                )
+            } catch (error: Throwable) {
+                GLES30.glBindVertexArray(0)
+                GLES30.glDeleteVertexArrays(1, vao, 0)
+                GLES30.glDeleteBuffers(buffers.size, buffers, 0)
+                gles3Vao = 0
+                gles3Buffers = IntArray(0)
+                throw error
+            }
+            GLES30.glBindVertexArray(0)
+            GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+        }
+
+        /** Binding is draw-only; every mesh must have been uploaded during surface setup. */
+        internal fun bindGles3Static() {
+            check(gles3Vao != 0) { "GLES3 static mesh was not prepared before the render loop" }
             GLES30.glBindVertexArray(gles3Vao)
         }
 
