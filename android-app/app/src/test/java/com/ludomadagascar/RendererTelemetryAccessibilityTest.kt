@@ -102,8 +102,8 @@ class RendererTelemetryAccessibilityTest {
     @Test
     fun waitsUntilFramePipelineAndSceneSnapshotsAreAvailable() {
         assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, null, scene, 24))
-        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, null))
-        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, null, pipeline, scene))
+        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, null, 24))
+        assertNull(RendererTelemetryAccessibility.format("vendor=Google renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, null, pipeline, scene, 24))
     }
 
     @Test
@@ -124,6 +124,6 @@ class RendererTelemetryAccessibilityTest {
     @Test
     fun rejectsMissingOrMalformedGpuIdentity() {
         assertNull(RendererTelemetryAccessibility.format("vendor= renderer=SwiftShader version=OpenGL ES 3.0", 100, 100, frame, pipeline, scene, 24))
-        assertNull(RendererTelemetryAccessibility.format("unknown", 100, 100, frame, pipeline, scene))
+        assertNull(RendererTelemetryAccessibility.format("unknown", 100, 100, frame, pipeline, scene, 24))
     }
 }
