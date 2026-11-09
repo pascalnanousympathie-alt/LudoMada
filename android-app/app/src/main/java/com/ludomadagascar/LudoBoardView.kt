@@ -1575,6 +1575,7 @@ class LudoBoardView(
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
             softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
+            val softwarePostProcessActive = SoftwareRendererPolicy.useFastPostProcess(glRenderer, host.homePreview)
             shadowSize = SoftwareRendererPolicy.shadowMapResolution(
                 glRenderer,
                 premiumLighting.shadowMapResolution,
@@ -1586,6 +1587,7 @@ class LudoBoardView(
                 "PBR_SOFTWARE_PROFILE renderer=" + glRenderer +
                     " shadowMap=" + shadowSize +
                     " softwarePbrShader=" + softwareRendererActive +
+                    " softwarePostProcess=" + softwarePostProcessActive +
                     " configuredShadowMap=" + premiumLighting.shadowMapResolution
             )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
@@ -1597,7 +1599,7 @@ class LudoBoardView(
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
             rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
-            shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
+            shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader(softwarePostProcessActive);particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);diePipMeshes=DicePipBatcher.build(pips);heroRing=ringMesh(64,1.02f,0.72f)
 
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createFlatNormalTexture();woodNormalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
@@ -3485,20 +3487,63 @@ class LudoBoardView(
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 
-    private class PostShader{
+    private class PostShader(private val softwareFastPath: Boolean){
         private val program:Int;private val scene:Int;private val depth:Int;private val res:Int;private val ssao:Int;private val bloom:Int;private val pos:FloatBuffer;private val uv:FloatBuffer
         init{val v=floatArrayOf(-1f,-1f,0f,1f,-1f,0f,-1f,1f,0f,1f,1f,0f);val u=floatArrayOf(0f,1f,1f,1f,0f,0f,1f,0f);pos=ByteBuffer.allocateDirect(v.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(v);position(0)};uv=ByteBuffer.allocateDirect(u.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(u);position(0)}
             val vs="""#version 300 es
                 layout(location=0)in vec3 aPos;layout(location=1)in vec2 aUv;out vec2 vUv;void main(){vUv=aUv;gl_Position=vec4(aPos,1.0);}
             """.trimIndent()
-            val fs="""#version 300 es
+            val premiumFs="""#version 300 es
                 precision highp float;uniform sampler2D uScene,uDepth;uniform vec2 uInvRes;uniform float uSsao,uBloom;in vec2 vUv;layout(location=0)out vec4 fragColor;
                 float luma(vec3 c){return dot(c,vec3(0.299,0.587,0.114));}vec3 aces(vec3 x){const float a=2.51;const float b=0.03;const float c=2.43;const float d=0.59;const float e=0.14;return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);}
                 void main(){vec4 sceneSample=texture(uScene,vUv);if(sceneSample.a<=0.001){fragColor=vec4(0.0);return;}vec3 base=sceneSample.rgb,bl=vec3(0);float w[5]=float[](0.32,0.20,0.12,0.08,0.05);for(int i=1;i<=4;i++){vec2 p=uInvRes*float(i)*1.6;bl+=(texture(uScene,vUv+vec2(p.x,0)).rgb+texture(uScene,vUv-vec2(p.x,0)).rgb+texture(uScene,vUv+vec2(0,p.y)).rgb+texture(uScene,vUv-vec2(0,p.y)).rgb)*w[i];}bl*=max(luma(base)-0.68,0.0)*uBloom;float d0=texture(uDepth,vUv).r,occ=0.0;vec2 o[8]=vec2[](vec2(1,0),vec2(-1,0),vec2(0,1),vec2(0,-1),vec2(1,1),vec2(-1,1),vec2(1,-1),vec2(-1,-1));for(int i=0;i<8;i++){float dn=texture(uDepth,vUv+o[i]*uInvRes*2.0).r;occ+=smoothstep(0.0,0.025,max(0.0,dn-d0));}float ao=1.0-clamp(occ/8.0*uSsao,0.0,0.34);vec3 color=aces((base+bl)*ao);color=pow(max(color,vec3(0)),vec3(0.4545));float y=luma(color);color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);fragColor=vec4(color,sceneSample.a);}
             """.trimIndent()
+            val softwareFs="""#version 300 es
+                precision mediump float;
+                uniform sampler2D uScene;
+                in vec2 vUv;
+                layout(location=0)out vec4 fragColor;
+                vec3 aces(vec3 x){
+                    const float a=2.51;const float b=0.03;const float c=2.43;const float d=0.59;const float e=0.14;
+                    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+                }
+                void main(){
+                    vec4 sceneSample=texture(uScene,vUv);
+                    if(sceneSample.a<=0.001){fragColor=vec4(0.0);return;}
+                    vec3 color=aces(sceneSample.rgb);
+                    color=pow(max(color,vec3(0.0)),vec3(0.4545));
+                    float y=dot(color,vec3(0.299,0.587,0.114));
+                    color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);
+                    fragColor=vec4(color,sceneSample.a);
+                }
+            """.trimIndent()
+            val fs=if(softwareFastPath)softwareFs else premiumFs
             program=buildProgram(vs,fs);scene=GLES30.glGetUniformLocation(program,"uScene");depth=GLES30.glGetUniformLocation(program,"uDepth");res=GLES30.glGetUniformLocation(program,"uInvRes");ssao=GLES30.glGetUniformLocation(program,"uSsao");bloom=GLES30.glGetUniformLocation(program,"uBloom")
         }
-        fun draw(sceneTex:Int,depthTex:Int,w:Int,h:Int,ao:Float,bl:Float){GLES30.glUseProgram(program);GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,sceneTex);GLES30.glUniform1i(scene,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,depthTex);GLES30.glUniform1i(depth,1);GLES30.glUniform2f(res,1f/w,1f/h);GLES30.glUniform1f(ssao,ao);GLES30.glUniform1f(bloom,bl);GLES30.glDisable(GLES30.GL_CULL_FACE);GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,pos);GLES30.glVertexAttribPointer(1,2,GLES30.GL_FLOAT,false,0,uv);GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP,0,4);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glEnable(GLES30.GL_CULL_FACE)}
+        fun draw(sceneTex:Int,depthTex:Int,w:Int,h:Int,ao:Float,bl:Float){
+            GLES30.glUseProgram(program)
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,sceneTex)
+            GLES30.glUniform1i(scene,0)
+            if(!softwareFastPath){
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,depthTex)
+                GLES30.glUniform1i(depth,1)
+                GLES30.glUniform2f(res,1f/w,1f/h)
+                GLES30.glUniform1f(ssao,ao)
+                GLES30.glUniform1f(bloom,bl)
+            }
+            GLES30.glDisable(GLES30.GL_CULL_FACE)
+            GLES30.glEnableVertexAttribArray(0)
+            GLES30.glEnableVertexAttribArray(1)
+            GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,pos)
+            GLES30.glVertexAttribPointer(1,2,GLES30.GL_FLOAT,false,0,uv)
+            GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP,0,4)
+            GLES30.glDisableVertexAttribArray(0)
+            GLES30.glDisableVertexAttribArray(1)
+            GLES30.glEnable(GLES30.GL_CULL_FACE)
+        }
+
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 
