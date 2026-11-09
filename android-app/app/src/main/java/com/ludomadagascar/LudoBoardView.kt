@@ -1468,6 +1468,8 @@ class LudoBoardView(
         private var lastActiveParticleCount = 0
         private val particleDrawTimingScratch = LongArray(5)
         private var glDeviceDiagnostic = "unavailable"
+        internal var softwareRendererActive = false
+            private set
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1572,6 +1574,7 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
             shadowSize = SoftwareRendererPolicy.shadowMapResolution(
                 glRenderer,
                 premiumLighting.shadowMapResolution,
@@ -1582,6 +1585,7 @@ class LudoBoardView(
                 "LudoMadaRender",
                 "PBR_SOFTWARE_PROFILE renderer=" + glRenderer +
                     " shadowMap=" + shadowSize +
+                    " softwarePbrShader=" + softwareRendererActive +
                     " configuredShadowMap=" + premiumLighting.shadowMapResolution
             )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
@@ -3308,7 +3312,7 @@ class LudoBoardView(
                 uniform mat4 uMvp,uMv,uModel,uLightVp;uniform float uShadowNormalBias;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vec3 worldNormal=normalize(transpose(inverse(mat3(uModel)))*aNormal);vec4 shadowWorld=vec4(w.xyz+worldNormal*uShadowNormalBias,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*shadowWorld;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
-            val fs="""#version 300 es
+            val premiumFs="""#version 300 es
                 precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uRoughTex,uShadowMap;uniform float uRoughTexEnabled,uPreserveAlbedo;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
@@ -3324,6 +3328,49 @@ class LudoBoardView(
                     float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*0.72+envS*f*(0.26+0.74*fres))*uAO*uIBLIntensity+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0.0)),uColor.a);
                 }
             """.trimIndent()
+            val softwareFs="""#version 300 es
+                precision highp float;
+                uniform vec4 uColor;
+                uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit;
+                uniform float uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow,uPreserveAlbedo;
+                uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;
+                uniform sampler2D uAlbedoTex,uShadowMap;
+                in vec3 vN,vP;in vec2 vUv;in vec4 vShadow;
+                layout(location=0)out vec4 fragColor;
+                float shadowV(){
+                    vec3 p=vShadow.xyz/max(vShadow.w,0.0001);
+                    p=p*0.5+0.5;
+                    if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;
+                    float currentDepth=p.z-uShadowBias;
+                    float storedDepth=texture(uShadowMap,p.xy).r;
+                    return currentDepth<=storedDepth?1.0:0.48;
+                }
+                void main(){
+                    vec3 N=normalize(vN);
+                    vec3 V=normalize(-vP);
+                    vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;
+                    vec3 texturedAlbedo=uColor.rgb*tex;
+                    vec3 albedo=uPreserveAlbedo>0.5?texturedAlbedo:mix(texturedAlbedo,uColor.rgb,0.52);
+                    float keyLambert=max(dot(N,normalize(uKeyDirection)),0.0);
+                    float fillLambert=max(dot(N,normalize(uFillDirection)),0.0);
+                    float rimLambert=max(dot(N,normalize(uRimDirection)),0.0);
+                    float shadow=uReceivesShadow>0.5?shadowV():1.0;
+                    vec3 ambient=vec3(0.17)*uAO*(0.55+0.45*uIBLIntensity);
+                    vec3 lighting=ambient
+                        +uKeyColor*(keyLambert*uKeyIntensity*shadow)
+                        +uFillColor*(fillLambert*uFillIntensity)
+                        +uRimColor*(rimLambert*uRimIntensity*0.32);
+                    vec3 halfVector=normalize(V+normalize(uKeyDirection));
+                    float specularPower=mix(52.0,5.0,clamp(uRoughness,0.05,1.0));
+                    float specular=pow(max(dot(N,halfVector),0.0),specularPower)
+                        *keyLambert*(0.025+0.22*clamp(uMetallic,0.0,1.0))
+                        *uKeyIntensity*shadow;
+                    vec3 color=albedo*lighting+uKeyColor*specular+albedo*uEmission;
+                    if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
+                    fragColor=vec4(max(color,vec3(0.0)),uColor.a);
+                }
+            """.trimIndent()
+            val fs=if(renderer.softwareRendererActive)softwareFs else premiumFs
             program=buildProgram(vs,fs)
             uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uRoughTex=GLES30.glGetUniformLocation(program,"uRoughTex");uRoughTexEnabled=GLES30.glGetUniformLocation(program,"uRoughTexEnabled");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowNormalBias=GLES30.glGetUniformLocation(program,"uShadowNormalBias");uReceivesShadow=GLES30.glGetUniformLocation(program,"uReceivesShadow");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize");uPreserveAlbedo=GLES30.glGetUniformLocation(program,"uPreserveAlbedo")
         }
@@ -3335,8 +3382,10 @@ class LudoBoardView(
             GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0)
             GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias)
             GLES30.glUniform1i(uAlbedoTex,0)
-            GLES30.glUniform1i(uNormalTex,1)
-            GLES30.glUniform1i(uRoughTex,4)
+            if (!renderer.softwareRendererActive) {
+                GLES30.glUniform1i(uNormalTex,1)
+                GLES30.glUniform1i(uRoughTex,4)
+            }
             GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0)
             GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0)
             GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY)
@@ -3355,9 +3404,11 @@ class LudoBoardView(
             GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex)
             GLES30.glUniform1i(uShadowMap,2)
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
-            GLES30.glUniform1i(uEnvCube,3)
+            if (!renderer.softwareRendererActive) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
+                GLES30.glUniform1i(uEnvCube,3)
+            }
         }
         fun endFrame(){
             GLES30.glBindVertexArray(0)
@@ -3380,25 +3431,29 @@ class LudoBoardView(
             GLES30.glUniform1f(uAO,ao)
             GLES30.glUniform1f(uEmission,emission)
             GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f)
-            GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f)
-            GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f})
-            GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            if (!renderer.softwareRendererActive) {
+                GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f)
+                GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f})
+                GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            }
             if (boundAlbedoTexture != albedo) {
                 GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
                 GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo)
                 boundAlbedoTexture=albedo
             }
-            if (boundNormalTexture != normalId) {
-                GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId)
-                boundNormalTexture=normalId
+            if (!renderer.softwareRendererActive) {
+                if (boundNormalTexture != normalId) {
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId)
+                    boundNormalTexture=normalId
+                }
+                if (boundRoughTexture != roughId) {
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE4)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId)
+                    boundRoughTexture=roughId
+                }
+                GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
             }
-            if (boundRoughTexture != roughId) {
-                GLES30.glActiveTexture(GLES30.GL_TEXTURE4)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId)
-                boundRoughTexture=roughId
-            }
-            GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
             mesh.bindGles3Static()
             GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,0)
         }
