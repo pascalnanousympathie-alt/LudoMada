@@ -336,7 +336,6 @@ class LudoBoardView(
                     if (diceAnimator === animation) diceAnimator = null
                     diceRolling = false
                     renderer.diceAnim = 1f
-                    requestRender()
                     endAnimationRendering()
                 }
             })
@@ -368,13 +367,28 @@ class LudoBoardView(
         stateAnimator?.cancel()
         var maxSteps = 0
         var pawnMoved = false
+        var hasVisualPositionChange = false
         for (pi in 0..3) for (ti in 0..3) {
             val from = oldPos[pi][ti]
             val to = newPos[pi][ti]
+            if (from != Int.MIN_VALUE && from != to) hasVisualPositionChange = true
             if (PawnMoveSoundPolicy.shouldPlay(from, to)) pawnMoved = true
             if (from >= 0 && to > from) maxSteps = max(maxSteps, min(6, to - from))
             if (from < 0 && to >= 0) maxSteps = max(maxSteps, 1)
             if (from >= 0 && to < 0) maxSteps = max(maxSteps, 2)
+        }
+        // State refreshes often change only the die/turn. Do not run a 320 ms
+        // continuous GL animation when no pawn position changed.
+        if (!hasVisualPositionChange) {
+            for (pi in 0..3) for (ti in 0..3) {
+                display[pi][ti][0] = targets[pi][ti][0]
+                display[pi][ti][1] = targets[pi][ti][1]
+                renderer.lift[pi][ti] = 0f
+                renderer.bounce[pi][ti] = 0f
+                lastPos[pi][ti] = newPos[pi][ti]
+            }
+            requestRender()
+            return
         }
         // A pawn sound belongs to a committed position change, not to a tap attempt.
         if (pawnMoved && !homePreview) audio().play(0f, 0.62f, 520.0)
@@ -412,7 +426,6 @@ class LudoBoardView(
                         else 0f
                     }
                 }
-                requestRender()
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -424,7 +437,6 @@ class LudoBoardView(
                         renderer.bounce[pi][ti] = 0f
                         lastPos[pi][ti] = newPos[pi][ti]
                     }
-                    requestRender()
                     endAnimationRendering()
                 }
             })
