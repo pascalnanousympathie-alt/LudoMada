@@ -2218,6 +2218,8 @@ class LudoBoardView(
                 "GAMEPLAY_ENVIRONMENT_PREPARED drawParts=" + prepared.size +
                     " sourceParts=" + prepared.size +
                     " drawBatches=" + preparedGameplayEnvironmentDraws.size +
+                    " singleSidedBatches=" + preparedGameplayEnvironmentDraws.count { !it.doubleSided } +
+                    " doubleSidedBatches=" + preparedGameplayEnvironmentDraws.count { it.doubleSided } +
                     " revision7Complete=" + revision7EnvironmentReady +
                     " doubleSided=" + gameplayEnvironmentHasDoubleSidedParts +
                     " cachedTransformsMaterialsAndBatches=true"
@@ -2228,9 +2230,18 @@ class LudoBoardView(
             val batches = preparedGameplayEnvironmentDraws
             if (batches.isEmpty()) return
             val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
-            if (gameplayEnvironmentHasDoubleSidedParts) GLES30.glDisable(GLES30.GL_CULL_FACE)
+            var cullingEnabled = cullingWasEnabled
             try {
                 for (batch in batches) {
+                    // Respect glTF doubleSided per merged batch. Disabling culling
+                    // for every environment batch when only one is double-sided
+                    // needlessly rasterizes backfaces across the entire backdrop.
+                    val batchCullingEnabled = cullingWasEnabled && !batch.doubleSided
+                    if (batchCullingEnabled != cullingEnabled) {
+                        if (batchCullingEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
+                        else GLES30.glDisable(GLES30.GL_CULL_FACE)
+                        cullingEnabled = batchCullingEnabled
+                    }
                     drawMesh(
                         batch.mesh,
                         identityModel,
