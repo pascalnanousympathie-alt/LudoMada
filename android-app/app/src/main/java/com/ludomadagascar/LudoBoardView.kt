@@ -74,7 +74,10 @@ class LudoBoardView(
     }
 
     private var stateAnimator: ValueAnimator? = null
+    private var diceAnimator: ValueAnimator? = null
     private var diceRolling = false
+    @Volatile private var animatedRendering = false
+    private var animationRenderOwners = 0
     private val homeFrameHandler = Handler(Looper.getMainLooper())
     private val homeFrameTick = object : Runnable {
         override fun run() {
@@ -291,7 +294,33 @@ class LudoBoardView(
 
     override fun onPause() {
         homeFrameHandler.removeCallbacks(homeFrameTick)
+        stateAnimator?.cancel()
+        stateAnimator = null
+        diceAnimator?.cancel()
+        diceAnimator = null
+        diceRolling = false
         super.onPause()
+    }
+
+    private fun beginAnimationRendering() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Animation render ownership must be changed on the main thread"
+        }
+        animationRenderOwners += 1
+        animatedRendering = true
+        renderMode = RENDERMODE_CONTINUOUSLY
+    }
+
+    private fun endAnimationRendering() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Animation render ownership must be changed on the main thread"
+        }
+        animationRenderOwners = (animationRenderOwners - 1).coerceAtLeast(0)
+        if (animationRenderOwners == 0 && animatedRendering) {
+            animatedRendering = false
+            renderMode = RENDERMODE_WHEN_DIRTY
+            requestRender()
+        }
     }
 
     fun startDiceAnimation() {
@@ -299,16 +328,19 @@ class LudoBoardView(
         diceRolling = true
         audio().play(0f, 0.85f, 760.0)
         pulseHaptic(24L, 180)
-        ValueAnimator.ofFloat(0f, 1f).apply {
+        diceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 720L
-            addUpdateListener { renderer.diceAnim = it.animatedValue as Float; requestRender() }
+            addUpdateListener { renderer.diceAnim = it.animatedValue as Float }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (diceAnimator === animation) diceAnimator = null
                     diceRolling = false
                     renderer.diceAnim = 1f
                     requestRender()
+                    endAnimationRendering()
                 }
             })
+            beginAnimationRendering()
             start()
         }
     }
@@ -384,6 +416,7 @@ class LudoBoardView(
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (stateAnimator === animation) stateAnimator = null
                     for (pi in 0..3) for (ti in 0..3) {
                         display[pi][ti][0] = targets[pi][ti][0]
                         display[pi][ti][1] = targets[pi][ti][1]
@@ -392,8 +425,10 @@ class LudoBoardView(
                         lastPos[pi][ti] = newPos[pi][ti]
                     }
                     requestRender()
+                    endAnimationRendering()
                 }
             })
+            beginAnimationRendering()
             start()
         }
     }
@@ -588,6 +623,11 @@ class LudoBoardView(
 
     override fun onDetachedFromWindow() {
         homeFrameHandler.removeCallbacks(homeFrameTick)
+        stateAnimator?.cancel()
+        stateAnimator = null
+        diceAnimator?.cancel()
+        diceAnimator = null
+        diceRolling = false
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
@@ -1754,7 +1794,7 @@ class LudoBoardView(
                             " gpuExecutionTime=not_measured"
                     )
                 }
-                frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
+                frameTelemetry?.record(now, glSubmissionDurationNanos, animatedRendering)?.let { stats ->
                     latestFramePerfSnapshot = stats
                     rendererTelemetryUpdated = true
                     android.util.Log.i(
