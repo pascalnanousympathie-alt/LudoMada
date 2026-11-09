@@ -3592,7 +3592,8 @@ class LudoBoardView(
             GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,8*4,0)
             GLES30.glVertexAttribPointer(1,4,GLES30.GL_FLOAT,false,8*4,3*4)
             GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4)
-            GLES30.glEnable(0x8642);GLES30.glDepthMask(false)
+            // GLES 3 uses gl_PointSize from the vertex shader directly; no enable capability is required.
+            GLES30.glDepthMask(false)
             if (timings != null) { timings[1] = System.nanoTime() - started; started = System.nanoTime() }
             GLES30.glBufferSubData(GLES30.GL_ARRAY_BUFFER, 0, count * 8 * 4, buffer)
             if (timings != null) { timings[2] = System.nanoTime() - started; started = System.nanoTime() }
