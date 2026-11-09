@@ -31,6 +31,7 @@ internal object RendererTelemetryAccessibility {
             "STATIC_MESH_VAO_COUNT=$preparedStaticMeshCount",
             "FPS=$fps",
             "FRAME_MS=" + nullablePair(frame.activeFrameIntervalP50Ms, frame.activeFrameIntervalP95Ms),
+            "AFTER_CALLBACK_GAP_MS=" + nullablePair(frame.afterCallbackGapP50Ms, frame.afterCallbackGapP95Ms),
             "GL_CPU_MS=" + pair(frame.glSubmitP50Ms, frame.glSubmitP95Ms),
             "SCENE_CPU_MS=" + pair(pipeline.sceneCpuP50Ms, pipeline.sceneCpuP95Ms),
             "BACKDROP_CPU_MS=" + pair(scene.backdropCpuP50Ms, scene.backdropCpuP95Ms),
