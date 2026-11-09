@@ -196,7 +196,7 @@ export function validateCimdMetadata(clientId, metadata) {
   const tokenAuthMethods = Array.isArray(metadata.token_endpoint_auth_methods_supported)
     ? metadata.token_endpoint_auth_methods_supported
     : [metadata.token_endpoint_auth_method || ""];
-  // ChatGPT publishes both methods; this server accepts public-client token exchange with "none".
+  // Only public-client token authentication ("none") is accepted for the supported PKCE CIMD clients.
   if (!tokenAuthMethods.includes("none")) return false;
   if (metadata.redirect_uris.some(uri => typeof uri !== "string" || !isApprovedOAuthRedirect(uri))) return false;
   return true;
@@ -447,7 +447,7 @@ async function handleOAuthAuthorize(req, res, url) {
   const resource = url.searchParams.get("resource") || "";
   const scopes = parseScopes(url.searchParams.get("scope") || REQUIRED_SCOPE);
   if (responseType !== "code") return jsonError(res, 400, "unsupported_response_type");
-  if (!await clientIdAllowed(clientId)) return jsonError(res, 400, "unauthorized_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+  if (!await clientIdAllowed(clientId)) return jsonError(res, 400, "unauthorized_client", "Client ID is neither on the configured allowlist nor a valid supported MCP client metadata document.");
   if (!await clientRedirectAllowed(clientId, redirectUri)) return jsonError(res, 400, "invalid_request", "Redirect URI is not registered for this OAuth client.");
   if (state.length < 16 || state.length > 1024) return jsonError(res, 400, "invalid_request", "A strong OAuth state value is required.");
   if (challengeMethod !== "S256" || !/^[A-Za-z0-9_-]{43}$/.test(verifierChallenge)) return oauthErrorRedirect(res, redirectUri, state, "invalid_request", "PKCE S256 is required.");
@@ -664,7 +664,7 @@ async function handleOAuthToken(req, res) {
   // unexpired refresh token proves the previously validated client binding, so renewal
   // must not depend on a fresh remote metadata fetch succeeding.
   if (!clientId || clientId.length > 2048 || (!isRefreshGrant && !await clientIdAllowed(clientId))) {
-    return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid OpenAI client metadata document.");
+    return jsonError(res, 400, "invalid_client", "Client ID is neither on the configured allowlist nor a valid supported MCP client metadata document.");
   }
   if (body.grant_type === "authorization_code") {
     const code = String(body.code || "");
