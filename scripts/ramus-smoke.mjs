@@ -1609,7 +1609,8 @@ try {
         animationFps: accessibilityTelemetry.animationFps,
         frameSamples: accessibilityTelemetry.animationFrameSamples,
         frameMs: accessibilityTelemetry.animationFrameMs,
-        afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs
+        afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
+        fullRendererTelemetry: accessibilityTelemetry
       }));
   }
   console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
