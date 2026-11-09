@@ -23,7 +23,9 @@ internal data class RenderFramePerfSnapshot(
     val glSubmissionSampleCount: Int,
     val glSubmitP50Ms: Float,
     val glSubmitP95Ms: Float,
-    val glSubmitMaxMs: Float
+    val glSubmitMaxMs: Float,
+    val afterCallbackGapP50Ms: Float? = null,
+    val afterCallbackGapP95Ms: Float? = null
 )
 
 internal class RenderFrameTelemetry(
@@ -39,13 +41,17 @@ internal class RenderFrameTelemetry(
 
     private val activeIntervalsNanos = LongArray(windowSize)
     private val glSubmitNanos = LongArray(windowSize)
+    private val afterCallbackGapNanos = LongArray(windowSize)
     private val percentileScratch = LongArray(windowSize)
     private var nextActiveIndex = 0
     private var nextSubmissionIndex = 0
+    private var nextAfterCallbackGapIndex = 0
     private var activeFrameSampleCount = 0
     private var glSubmissionSampleCount = 0
+    private var afterCallbackGapSampleCount = 0
     private var hasPreviousFrame = false
     private var previousFrameStartNanos = 0L
+    private var previousCallbackDurationNanos = 0L
     private var nextReportAtNanos = 0L
 
     fun record(frameStartNanos: Long, glSubmissionDurationNanos: Long): RenderFramePerfSnapshot? {
@@ -59,6 +65,12 @@ internal class RenderFrameTelemetry(
                 activeIntervalsNanos[nextActiveIndex] = interval
                 nextActiveIndex = (nextActiveIndex + 1) % windowSize
                 activeFrameSampleCount = min(windowSize, activeFrameSampleCount + 1)
+                // This is the wait after onDrawFrame returns until the next callback.
+                // It includes EGL presentation/vsync/scheduling; it is not GPU execution time.
+                afterCallbackGapNanos[nextAfterCallbackGapIndex] =
+                    (interval - previousCallbackDurationNanos).coerceAtLeast(0L)
+                nextAfterCallbackGapIndex = (nextAfterCallbackGapIndex + 1) % windowSize
+                afterCallbackGapSampleCount = min(windowSize, afterCallbackGapSampleCount + 1)
             }
         } else if (hasPreviousFrame && frameStartNanos <= previousFrameStartNanos) {
             return null
@@ -76,16 +88,27 @@ internal class RenderFrameTelemetry(
         return createSnapshot()
     }
 
+    /** Call at the end of onDrawFrame to separate callback work from the following framework/presentation gap. */
+    fun finishCallback(frameStartNanos: Long, callbackDurationNanos: Long) {
+        if (hasPreviousFrame && frameStartNanos == previousFrameStartNanos) {
+            previousCallbackDurationNanos = callbackDurationNanos.coerceAtLeast(0L)
+        }
+    }
+
     fun reset() {
         Arrays.fill(activeIntervalsNanos, 0L)
         Arrays.fill(glSubmitNanos, 0L)
+        Arrays.fill(afterCallbackGapNanos, 0L)
         Arrays.fill(percentileScratch, 0L)
         nextActiveIndex = 0
         nextSubmissionIndex = 0
+        nextAfterCallbackGapIndex = 0
         activeFrameSampleCount = 0
         glSubmissionSampleCount = 0
+        afterCallbackGapSampleCount = 0
         hasPreviousFrame = false
         previousFrameStartNanos = 0L
+        previousCallbackDurationNanos = 0L
         nextReportAtNanos = 0L
     }
 
@@ -109,7 +132,9 @@ internal class RenderFrameTelemetry(
             glSubmissionSampleCount = glSubmissionSampleCount,
             glSubmitP50Ms = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 0.50) ?: 0f,
             glSubmitP95Ms = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 0.95) ?: 0f,
-            glSubmitMaxMs = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 1.0) ?: 0f
+            glSubmitMaxMs = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 1.0) ?: 0f,
+            afterCallbackGapP50Ms = percentileMillis(afterCallbackGapNanos, afterCallbackGapSampleCount, 0.50),
+            afterCallbackGapP95Ms = percentileMillis(afterCallbackGapNanos, afterCallbackGapSampleCount, 0.95)
         )
     }
 
