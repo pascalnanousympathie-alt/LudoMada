@@ -8,7 +8,9 @@ import kotlin.math.min
  * Fixed-size, allocation-free-per-frame renderer diagnostics.
  *
  * A GLSurfaceView using RENDERMODE_WHEN_DIRTY can sit idle between user actions.
- * Long callback gaps are therefore excluded from active-frame FPS calculations;
+ * Long callback gaps are excluded from ordinary active-frame FPS calculations.
+ * Consecutive frames inside an explicit gameplay animation are sampled separately,
+ * including long stalls, so missed animation frames cannot disappear from FPS.
  * GL submission CPU time is measured independently for every callback.
  *
  * GL submission duration measures CPU time issuing GL commands, not asynchronous
@@ -25,7 +27,13 @@ internal data class RenderFramePerfSnapshot(
     val glSubmitP95Ms: Float,
     val glSubmitMaxMs: Float,
     val afterCallbackGapP50Ms: Float? = null,
-    val afterCallbackGapP95Ms: Float? = null
+    val afterCallbackGapP95Ms: Float? = null,
+    val animationFrameSampleCount: Int = 0,
+    val animationFrameFps: Float? = null,
+    val animationFrameIntervalP50Ms: Float? = null,
+    val animationFrameIntervalP95Ms: Float? = null,
+    val animationAfterCallbackGapP50Ms: Float? = null,
+    val animationAfterCallbackGapP95Ms: Float? = null
 )
 
 internal class RenderFrameTelemetry(
@@ -42,26 +50,38 @@ internal class RenderFrameTelemetry(
     private val activeIntervalsNanos = LongArray(windowSize)
     private val glSubmitNanos = LongArray(windowSize)
     private val afterCallbackGapNanos = LongArray(windowSize)
+    private val animationIntervalsNanos = LongArray(windowSize)
+    private val animationAfterCallbackGapNanos = LongArray(windowSize)
     private val percentileScratch = LongArray(windowSize)
     private var nextActiveIndex = 0
     private var nextSubmissionIndex = 0
     private var nextAfterCallbackGapIndex = 0
+    private var nextAnimationIndex = 0
+    private var nextAnimationGapIndex = 0
     private var activeFrameSampleCount = 0
     private var glSubmissionSampleCount = 0
     private var afterCallbackGapSampleCount = 0
+    private var animationFrameSampleCount = 0
+    private var animationGapSampleCount = 0
     private var hasPreviousFrame = false
     private var previousFrameStartNanos = 0L
+    private var previousFrameWasAnimating = false
     private var previousCallbackDurationNanos = 0L
     private var nextReportAtNanos = 0L
 
-    fun record(frameStartNanos: Long, glSubmissionDurationNanos: Long): RenderFramePerfSnapshot? {
+    fun record(
+        frameStartNanos: Long,
+        glSubmissionDurationNanos: Long,
+        continuousAnimationActive: Boolean = false
+    ): RenderFramePerfSnapshot? {
         if (frameStartNanos <= 0L) return null
 
         if (hasPreviousFrame && frameStartNanos > previousFrameStartNanos) {
             val interval = frameStartNanos - previousFrameStartNanos
             // Long gaps in WHEN_DIRTY mode usually mean no frame was requested.
             // Keep them out of active FPS rather than reporting false sub-1 FPS.
-            if (interval <= maxActiveFrameIntervalNanos) {
+            val animationInterval = continuousAnimationActive && previousFrameWasAnimating
+            if (interval <= maxActiveFrameIntervalNanos || animationInterval) {
                 activeIntervalsNanos[nextActiveIndex] = interval
                 nextActiveIndex = (nextActiveIndex + 1) % windowSize
                 activeFrameSampleCount = min(windowSize, activeFrameSampleCount + 1)
@@ -72,12 +92,24 @@ internal class RenderFrameTelemetry(
                 nextAfterCallbackGapIndex = (nextAfterCallbackGapIndex + 1) % windowSize
                 afterCallbackGapSampleCount = min(windowSize, afterCallbackGapSampleCount + 1)
             }
+            // Count only intervals whose endpoints both belong to the animation loop.
+            // This excludes the idle-to-animation transition but includes real missed frames.
+            if (animationInterval) {
+                animationIntervalsNanos[nextAnimationIndex] = interval
+                nextAnimationIndex = (nextAnimationIndex + 1) % windowSize
+                animationFrameSampleCount = min(windowSize, animationFrameSampleCount + 1)
+                animationAfterCallbackGapNanos[nextAnimationGapIndex] =
+                    (interval - previousCallbackDurationNanos).coerceAtLeast(0L)
+                nextAnimationGapIndex = (nextAnimationGapIndex + 1) % windowSize
+                animationGapSampleCount = min(windowSize, animationGapSampleCount + 1)
+            }
         } else if (hasPreviousFrame && frameStartNanos <= previousFrameStartNanos) {
             return null
         }
 
         hasPreviousFrame = true
         previousFrameStartNanos = frameStartNanos
+        previousFrameWasAnimating = continuousAnimationActive
         glSubmitNanos[nextSubmissionIndex] = glSubmissionDurationNanos.coerceAtLeast(0L)
         nextSubmissionIndex = (nextSubmissionIndex + 1) % windowSize
         glSubmissionSampleCount = min(windowSize, glSubmissionSampleCount + 1)
@@ -99,15 +131,22 @@ internal class RenderFrameTelemetry(
         Arrays.fill(activeIntervalsNanos, 0L)
         Arrays.fill(glSubmitNanos, 0L)
         Arrays.fill(afterCallbackGapNanos, 0L)
+        Arrays.fill(animationIntervalsNanos, 0L)
+        Arrays.fill(animationAfterCallbackGapNanos, 0L)
         Arrays.fill(percentileScratch, 0L)
         nextActiveIndex = 0
         nextSubmissionIndex = 0
         nextAfterCallbackGapIndex = 0
+        nextAnimationIndex = 0
+        nextAnimationGapIndex = 0
         activeFrameSampleCount = 0
         glSubmissionSampleCount = 0
         afterCallbackGapSampleCount = 0
+        animationFrameSampleCount = 0
+        animationGapSampleCount = 0
         hasPreviousFrame = false
         previousFrameStartNanos = 0L
+        previousFrameWasAnimating = false
         previousCallbackDurationNanos = 0L
         nextReportAtNanos = 0L
     }
@@ -134,8 +173,23 @@ internal class RenderFrameTelemetry(
             glSubmitP95Ms = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 0.95) ?: 0f,
             glSubmitMaxMs = percentileMillis(glSubmitNanos, glSubmissionSampleCount, 1.0) ?: 0f,
             afterCallbackGapP50Ms = percentileMillis(afterCallbackGapNanos, afterCallbackGapSampleCount, 0.50),
-            afterCallbackGapP95Ms = percentileMillis(afterCallbackGapNanos, afterCallbackGapSampleCount, 0.95)
+            afterCallbackGapP95Ms = percentileMillis(afterCallbackGapNanos, afterCallbackGapSampleCount, 0.95),
+            animationFrameSampleCount = animationFrameSampleCount,
+            animationFrameFps = framesPerSecond(animationIntervalsNanos, animationFrameSampleCount),
+            animationFrameIntervalP50Ms = percentileMillis(animationIntervalsNanos, animationFrameSampleCount, 0.50),
+            animationFrameIntervalP95Ms = percentileMillis(animationIntervalsNanos, animationFrameSampleCount, 0.95),
+            animationAfterCallbackGapP50Ms = percentileMillis(animationAfterCallbackGapNanos, animationGapSampleCount, 0.50),
+            animationAfterCallbackGapP95Ms = percentileMillis(animationAfterCallbackGapNanos, animationGapSampleCount, 0.95)
         )
+    }
+
+    private fun framesPerSecond(samples: LongArray, count: Int): Float? {
+        if (count < 2) return null
+        var totalIntervalNanos = 0.0
+        for (i in 0 until count) totalIntervalNanos += samples[i].toDouble()
+        return if (totalIntervalNanos > 0.0) {
+            (count.toDouble() * 1_000_000_000.0 / totalIntervalNanos).toFloat()
+        } else null
     }
 
     private fun percentileMillis(samples: LongArray, count: Int, percentile: Double): Float? {
