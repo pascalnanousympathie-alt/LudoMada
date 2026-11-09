@@ -1794,7 +1794,7 @@ class LudoBoardView(
                             " gpuExecutionTime=not_measured"
                     )
                 }
-                frameTelemetry?.record(now, glSubmissionDurationNanos, animatedRendering)?.let { stats ->
+                frameTelemetry?.record(now, glSubmissionDurationNanos, host.animatedRendering)?.let { stats ->
                     latestFramePerfSnapshot = stats
                     rendererTelemetryUpdated = true
                     android.util.Log.i(
