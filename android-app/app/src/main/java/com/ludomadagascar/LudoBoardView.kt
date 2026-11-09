@@ -2295,7 +2295,7 @@ class LudoBoardView(
                         batch.normalTexture,
                         0,
                         // SwiftShader is CPU-bound: keep environment shadow reception on hardware, not its software fallback.
-                        receivesShadow = batch.receivesShadow && !renderer.softwareRendererActive,
+                        receivesShadow = batch.receivesShadow && !softwareRendererActive,
                         preserveAlbedo = true
                     )
                 }
