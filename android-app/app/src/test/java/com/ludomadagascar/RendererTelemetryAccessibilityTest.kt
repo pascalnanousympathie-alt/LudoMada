@@ -18,7 +18,13 @@ class RendererTelemetryAccessibilityTest {
         glSubmitP95Ms = 28.50f,
         glSubmitMaxMs = 39.00f,
         afterCallbackGapP50Ms = 170.0f,
-        afterCallbackGapP95Ms = 187.0f
+        afterCallbackGapP95Ms = 187.0f,
+        animationFrameSampleCount = 42,
+        animationFrameFps = 58.0f,
+        animationFrameIntervalP50Ms = 16.67f,
+        animationFrameIntervalP95Ms = 33.33f,
+        animationAfterCallbackGapP50Ms = 3.5f,
+        animationAfterCallbackGapP95Ms = 18.0f
     )
     private val pipeline = RenderPipelinePhaseSnapshot(
         sampleCount = 60,
@@ -69,6 +75,10 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("FPS=5.14"))
         assertTrue(label.contains("FRAME_MS=194.55/218.20"))
         assertTrue(label.contains("AFTER_CALLBACK_GAP_MS=170.00/187.00"))
+        assertTrue(label.contains("ANIM_FPS=58.00"))
+        assertTrue(label.contains("ANIM_FRAME_MS=16.67/33.33"))
+        assertTrue(label.contains("ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00"))
+        assertTrue(label.contains("ANIM_FRAME_SAMPLES=42"))
         assertTrue(label.contains("GL_CPU_MS=18.25/28.50"))
         assertTrue(label.contains("BACKDROP_CPU_MS=12.30/16.50"))
         assertTrue(label.contains("PAWNS_CPU_MS=4.20/7.00"))
