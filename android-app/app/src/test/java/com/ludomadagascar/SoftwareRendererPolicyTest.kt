@@ -25,6 +25,14 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun fastPbrShaderIsRestrictedToSoftwareGameplayAndNeverHomePreview() {
+        assertTrue(SoftwareRendererPolicy.useFastPbrShader("Google SwiftShader", homePreview = false))
+        assertTrue(SoftwareRendererPolicy.useFastPbrShader("llvmpipe", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.useFastPbrShader("Mali-G51", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.useFastPbrShader("Google SwiftShader", homePreview = true))
+    }
+
+    @Test
     fun hardwareRendererKeepsFullResolutionAndConfiguredShadows() {
         val renderer = "Mali-G51"
         assertFalse(SoftwareRendererPolicy.isSoftwareRenderer(renderer))
