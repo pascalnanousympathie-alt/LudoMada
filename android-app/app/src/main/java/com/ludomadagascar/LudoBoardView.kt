@@ -1765,6 +1765,7 @@ class LudoBoardView(
                             " activeFrameIntervalMsP50=" + (stats.activeFrameIntervalP50Ms?.toString() ?: "unavailable") +
                             " activeFrameIntervalMsP95=" + (stats.activeFrameIntervalP95Ms?.toString() ?: "unavailable") +
                             " activeFrameIntervalMsMax=" + (stats.activeFrameIntervalMaxMs?.toString() ?: "unavailable") +
+                            " afterCallbackGapMsP50P95=" + stats.afterCallbackGapP50Ms + "/" + stats.afterCallbackGapP95Ms +
                             " glSubmissionSamples=" + stats.glSubmissionSampleCount +
                             " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
                             " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
@@ -1784,6 +1785,9 @@ class LudoBoardView(
                     preparedStaticMeshCount = preparedGles3StaticMeshCount
                 )?.let(host::publishRendererTelemetry)
             }
+            // Includes the whole GL callback, but deliberately excludes the following
+            // GLSurfaceView EGL swap/vsync wait measured by the next callback interval.
+            frameTelemetry?.finishCallback(now, System.nanoTime() - now)
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
