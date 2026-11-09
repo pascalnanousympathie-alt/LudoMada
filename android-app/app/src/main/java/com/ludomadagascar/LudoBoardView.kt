@@ -3305,6 +3305,9 @@ class LudoBoardView(
         private var boundAlbedoTexture = Int.MIN_VALUE
         private var boundNormalTexture = Int.MIN_VALUE
         private var boundRoughTexture = Int.MIN_VALUE
+        // Batches that share an already world-space transform do not need
+        // repeated MV/MVP multiplication or uniform submission within a frame.
+        private val modelMatrixCache = PbrModelMatrixCache()
         init{
             val vs="""#version 300 es
                 precision highp float;
@@ -3376,6 +3379,7 @@ class LudoBoardView(
         }
         fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){
             wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex
+            modelMatrixCache.reset()
             System.arraycopy(lightVp,0,light,0,16)
             // One program bind and frame-invariant uniforms per scene, not per mesh.
             GLES30.glUseProgram(program)
@@ -3418,11 +3422,13 @@ class LudoBoardView(
             val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
             val normalId=if(normalOverride!=0)normalOverride else normal
             val roughId=if(roughOverride!=0)roughOverride else neutral
-            Matrix.multiplyMM(mv,0,renderer.view,0,model,0)
-            Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0)
-            GLES30.glUniformMatrix4fv(uMv,1,false,mv,0)
-            GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
+            if (modelMatrixCache.shouldUpload(model)) {
+                Matrix.multiplyMM(mv,0,renderer.view,0,model,0)
+                Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0)
+                GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0)
+                GLES30.glUniformMatrix4fv(uMv,1,false,mv,0)
+                GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
+            }
             GLES30.glUniform4fv(uColor,1,color,0)
             GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
             GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
