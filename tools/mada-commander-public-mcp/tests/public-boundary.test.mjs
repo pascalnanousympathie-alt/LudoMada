@@ -150,7 +150,7 @@ test("OAuth consent tolerates embedded browser origins while requiring one-time 
   assert.doesNotMatch(approveHandler, /await clientIdAllowed|await clientRedirectAllowed/, "consent must not refetch remote client metadata");
   assert.match(approveHandler, /staticClientAllowed/);
   assert.match(approveHandler, /dynamicCimdClientAllowed/);
-  assert.match(approveHandler, /isApprovedOAuthRedirect\\(row\\.redirect_uri\\)/);
+  assert.ok(approveHandler.includes("isApprovedOAuthRedirect(row.redirect_uri)"));
   assert.ok(api.includes("AbortSignal.timeout(12_000)"), "CIMD fetch timeout should tolerate metadata latency");
 });
 
