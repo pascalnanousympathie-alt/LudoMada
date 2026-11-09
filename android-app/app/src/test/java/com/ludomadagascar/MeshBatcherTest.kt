@@ -105,6 +105,41 @@ class MeshBatcherTest {
     }
 
     @Test
+    fun writesOpenGlColumnMajorInverseTransposeForShearedNonUniformScale() {
+        val transform = identity().also {
+            // Model rows: [2, 1, 0], [0, 3, 0], [0, 0, 4].
+            it[0] = 2f
+            it[4] = 1f
+            it[5] = 3f
+            it[10] = 4f
+        }
+        val normalMatrix = FloatArray(9)
+
+        MeshBatcher.inverseTranspose3x3ColumnMajor(transform, normalMatrix)
+
+        assertArrayEquals(
+            floatArrayOf(
+                0.5f, -1f / 6f, 0f,
+                0f, 1f / 3f, 0f,
+                0f, 0f, 0.25f
+            ),
+            normalMatrix,
+            0.0001f
+        )
+    }
+
+    @Test
+    fun rejectsSingularOpenGlNormalMatrixAndInvalidOutputSize() {
+        val singular = identity().also { it[0] = 0f }
+        assertThrows(IllegalArgumentException::class.java) {
+            MeshBatcher.inverseTranspose3x3ColumnMajor(singular, FloatArray(9))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            MeshBatcher.inverseTranspose3x3ColumnMajor(identity(), FloatArray(8))
+        }
+    }
+
+    @Test
     fun rejectsSingularTransformsAndOutOfRangeIndices() {
         val singular = identity().also { it[0] = 0f }
         assertThrows(IllegalArgumentException::class.java) {
