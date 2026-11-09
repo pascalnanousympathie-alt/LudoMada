@@ -33,6 +33,14 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun fastPostProcessIsRestrictedToSoftwareGameplayAndNeverHomePreview() {
+        assertTrue(SoftwareRendererPolicy.useFastPostProcess("Google SwiftShader", homePreview = false))
+        assertTrue(SoftwareRendererPolicy.useFastPostProcess("llvmpipe", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.useFastPostProcess("Mali-G51", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.useFastPostProcess("Google SwiftShader", homePreview = true))
+    }
+
+    @Test
     fun hardwareRendererKeepsFullResolutionAndConfiguredShadows() {
         val renderer = "Mali-G51"
         assertFalse(SoftwareRendererPolicy.isSoftwareRenderer(renderer))
