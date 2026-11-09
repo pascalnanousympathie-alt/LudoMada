@@ -19,6 +19,10 @@ internal object SoftwareRendererPolicy {
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /** The cloud software rasterizer cannot afford the premium full-surface bloom/SSAO pass. */
+    fun useFastPostProcess(rendererIdentity: String, homePreview: Boolean): Boolean =
+        !homePreview && isSoftwareRenderer(rendererIdentity)
+
     fun renderScale(rendererIdentity: String, homePreview: Boolean): Float =
         if (!homePreview && isSoftwareRenderer(rendererIdentity)) {
             SOFTWARE_RENDER_SCALE
