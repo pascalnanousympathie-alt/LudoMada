@@ -1579,6 +1579,18 @@ try {
   if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
   console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
 
+  // Sample the renderer over several complete, legal turn animations after
+  // the final orientation switch. Earlier portrait runs may lose their GL
+  // context when Android recreates the landscape surface, so the FPS gate
+  // must have enough active animation intervals on the final surface itself.
+  for (const nextTurn of ["Joueur 2/4", "Joueur 3/4", "Joueur 4/4", "Joueur 1/4"]) {
+    advanceToTurn(nextTurn);
+    // Dice animators last 720 ms and pawn movement can last up to 1,040 ms.
+    // Let both finish before requesting the next roll.
+    waitStable(1150);
+  }
+  console.log("LANDSCAPE FPS SAMPLE TURN ROTATION PASS");
+
   // Accessibility is the primary telemetry channel: Ramus trial mode may hide
   // Android app-tag logcat rows, but it still exposes the renderer contentDescription.
   const telemetryTree = readTree();
