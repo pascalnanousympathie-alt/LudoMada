@@ -16,7 +16,7 @@ class SoftwareRendererPolicyTest {
             "lavapipe"
         )) {
             assertTrue(renderer, SoftwareRendererPolicy.isSoftwareRenderer(renderer))
-            assertEquals(0.375f, SoftwareRendererPolicy.renderScale(renderer, homePreview = false))
+            assertEquals(0.25f, SoftwareRendererPolicy.renderScale(renderer, homePreview = false))
             assertEquals(
                 256,
                 SoftwareRendererPolicy.shadowMapResolution(renderer, 512, homePreview = false)
@@ -57,11 +57,11 @@ class SoftwareRendererPolicyTest {
 
     @Test
     fun scaledDimensionsStayPositiveAndPreserveLandscapeProportionWithinRounding() {
-        val width = SoftwareRendererPolicy.scaledDimension(1419, 0.375f)
-        val height = SoftwareRendererPolicy.scaledDimension(424, 0.375f)
-        assertEquals(532, width)
-        assertEquals(159, height)
+        val width = SoftwareRendererPolicy.scaledDimension(1419, 0.25f)
+        val height = SoftwareRendererPolicy.scaledDimension(424, 0.25f)
+        assertEquals(355, width)
+        assertEquals(106, height)
         assertTrue(width > height)
-        assertEquals(1, SoftwareRendererPolicy.scaledDimension(1, 0.375f))
+        assertEquals(1, SoftwareRendererPolicy.scaledDimension(1, 0.25f))
     }
 }
