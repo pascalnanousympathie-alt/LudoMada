@@ -3176,6 +3176,11 @@ class LudoBoardView(
         private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uClearCoat:Int;private val uClearCoatRoughness:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uRoughTex:Int;private val uRoughTexEnabled:Int;private val uShadowMap:Int;private val uEnvCube:Int;private val uKeyDirection:Int;private val uKeyColor:Int;private val uKeyIntensity:Int;private val uFillDirection:Int;private val uFillColor:Int;private val uFillIntensity:Int;private val uRimDirection:Int;private val uRimColor:Int;private val uRimIntensity:Int;private val uIBLIntensity:Int;private val uShadowBias:Int;private val uShadowNormalBias:Int;private val uReceivesShadow:Int;private val uShadowInvSize:Int;private val uPreserveAlbedo:Int
         private val mv=FloatArray(16);private val mvp=FloatArray(16);private val light=FloatArray(16)
         private var wood=0;private var board=0;private var neutral=0;private var metal=0;private var normal=0
+        // Texture bindings are stable across the PBR draw sequence. Invalidate at
+        // beginFrame because post-processing uses texture units 0 and 1 afterwards.
+        private var boundAlbedoTexture = Int.MIN_VALUE
+        private var boundNormalTexture = Int.MIN_VALUE
+        private var boundRoughTexture = Int.MIN_VALUE
         init{
             val vs="""#version 300 es
                 precision highp float;
@@ -3202,7 +3207,38 @@ class LudoBoardView(
             program=buildProgram(vs,fs)
             uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uRoughTex=GLES30.glGetUniformLocation(program,"uRoughTex");uRoughTexEnabled=GLES30.glGetUniformLocation(program,"uRoughTexEnabled");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowNormalBias=GLES30.glGetUniformLocation(program,"uShadowNormalBias");uReceivesShadow=GLES30.glGetUniformLocation(program,"uReceivesShadow");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize");uPreserveAlbedo=GLES30.glGetUniformLocation(program,"uPreserveAlbedo")
         }
-        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0);GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0);GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY);GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0);GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0);GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY);GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0);GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0);GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY);GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY);GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS);GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
+        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){
+            wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex
+            System.arraycopy(lightVp,0,light,0,16)
+            // One program bind and frame-invariant uniforms per scene, not per mesh.
+            GLES30.glUseProgram(program)
+            GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0)
+            GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias)
+            GLES30.glUniform1i(uAlbedoTex,0)
+            GLES30.glUniform1i(uNormalTex,1)
+            GLES30.glUniform1i(uRoughTex,4)
+            GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0)
+            GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0)
+            GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY)
+            GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0)
+            GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0)
+            GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY)
+            GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0)
+            GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0)
+            GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY)
+            GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY)
+            GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS)
+            GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution)
+            boundAlbedoTexture=Int.MIN_VALUE
+            boundNormalTexture=Int.MIN_VALUE
+            boundRoughTexture=Int.MIN_VALUE
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex)
+            GLES30.glUniform1i(uShadowMap,2)
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
+            GLES30.glUniform1i(uEnvCube,3)
+        }
         fun endFrame(){
             GLES30.glBindVertexArray(0)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)
@@ -3211,9 +3247,38 @@ class LudoBoardView(
             val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
             val normalId=if(normalOverride!=0)normalOverride else normal
             val roughId=if(roughOverride!=0)roughOverride else neutral
-            Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias);GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow));GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId);GLES30.glUniform1i(uNormalTex,1);GLES30.glActiveTexture(GLES30.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId);GLES30.glUniform1i(uRoughTex,4);GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
+            Matrix.multiplyMM(mv,0,renderer.view,0,model,0)
+            Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0)
+            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0)
+            GLES30.glUniformMatrix4fv(uMv,1,false,mv,0)
+            GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
+            GLES30.glUniform4fv(uColor,1,color,0)
+            GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
+            GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
+            GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow))
+            GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
+            GLES30.glUniform1f(uAO,ao)
+            GLES30.glUniform1f(uEmission,emission)
+            GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f)
+            GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f)
+            GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f})
+            GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            if (boundAlbedoTexture != albedo) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo)
+                boundAlbedoTexture=albedo
+            }
+            if (boundNormalTexture != normalId) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId)
+                boundNormalTexture=normalId
+            }
+            if (boundRoughTexture != roughId) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE4)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId)
+                boundRoughTexture=roughId
+            }
+            GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
             mesh.bindGles3Static()
             GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,0)
         }
