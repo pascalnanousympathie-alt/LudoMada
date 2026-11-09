@@ -2294,7 +2294,8 @@ class LudoBoardView(
                         batch.albedoTexture,
                         batch.normalTexture,
                         0,
-                        receivesShadow = batch.receivesShadow,
+                        // SwiftShader is CPU-bound: keep environment shadow reception on hardware, not its software fallback.
+                        receivesShadow = batch.receivesShadow && !softwareRendererActive,
                         preserveAlbedo = true
                     )
                 }
@@ -3311,12 +3312,52 @@ class LudoBoardView(
         // repeated MV/MVP multiplication or uniform submission within a frame.
         private val modelMatrixCache = PbrModelMatrixCache()
         init{
-            val vs="""#version 300 es
+            val premiumVs="""#version 300 es
                 precision highp float;
                 layout(location=0)in vec3 aPos;layout(location=1)in vec3 aNormal;layout(location=2)in vec2 aUv;
                 uniform mat4 uMvp,uMv,uModel,uLightVp;uniform mat3 uNormalModel;uniform float uShadowNormalBias;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vec3 worldNormal=normalize(uNormalModel*aNormal);vec4 shadowWorld=vec4(w.xyz+worldNormal*uShadowNormalBias,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*shadowWorld;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
+            // CPU-backed renderers interpolate cheap lighting terms. Keep texture
+            // and shadow sampling per-fragment; the premium hardware shader is unchanged.
+            val softwareVs="""#version 300 es
+                precision highp float;
+                layout(location=0)in vec3 aPos;layout(location=1)in vec3 aNormal;layout(location=2)in vec2 aUv;
+                uniform mat4 uMvp,uMv,uModel,uLightVp;uniform mat3 uNormalModel;
+                uniform float uShadowNormalBias,uAO,uIBLIntensity,uKeyIntensity,uFillIntensity,uRimIntensity,uMetallic,uRoughness,uReceivesShadow;
+                uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;
+                out vec2 vUv;out vec4 vShadow;out vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
+                void main(){
+                    vec4 local=vec4(aPos,1.0);
+                    vec4 world=uModel*local;
+                    if(uReceivesShadow>0.5){
+                        vec3 worldNormal=normalize(uNormalModel*aNormal);
+                        vShadow=uLightVp*vec4(world.xyz+worldNormal*uShadowNormalBias,1.0);
+                    }else{
+                        vShadow=vec4(0.0);
+                    }
+                    vec3 N=normalize(mat3(uMv)*aNormal);
+                    vec3 V=normalize(-(uMv*local).xyz);
+                    vec3 L=normalize(uKeyDirection);
+                    vec3 fillL=normalize(uFillDirection);
+                    vec3 rimL=normalize(uRimDirection);
+                    float keyLambert=max(dot(N,L),0.0);
+                    float fillLambert=max(dot(N,fillL),0.0);
+                    float rimLambert=max(dot(N,rimL),0.0);
+                    vAmbientFillRim=vec3(0.17)*uAO*(0.55+0.45*uIBLIntensity)
+                        +uFillColor*(fillLambert*uFillIntensity)
+                        +uRimColor*(rimLambert*uRimIntensity*0.32);
+                    float specularPower=mix(52.0,5.0,clamp(uRoughness,0.05,1.0));
+                    vec3 halfVector=normalize(V+L);
+                    float specular=pow(max(dot(N,halfVector),0.0),specularPower)
+                        *keyLambert*(0.025+0.22*clamp(uMetallic,0.0,1.0))*uKeyIntensity;
+                    vKeyDiffuse=uKeyColor*(keyLambert*uKeyIntensity);
+                    vKeySpecular=uKeyColor*specular;
+                    vUv=aUv;
+                    gl_Position=uMvp*local;
+                }
+            """.trimIndent()
+            val vs=if(renderer.softwareRendererActive)softwareVs else premiumVs
             val premiumFs="""#version 300 es
                 precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uRoughTex,uShadowMap;uniform float uRoughTexEnabled,uPreserveAlbedo;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
@@ -3336,11 +3377,9 @@ class LudoBoardView(
             val softwareFs="""#version 300 es
                 precision highp float;
                 uniform vec4 uColor;
-                uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit;
-                uniform float uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow,uPreserveAlbedo;
-                uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;
+                uniform float uEmission,uUnlit,uShadowBias,uReceivesShadow,uPreserveAlbedo;
                 uniform sampler2D uAlbedoTex,uShadowMap;
-                in vec3 vN,vP;in vec2 vUv;in vec4 vShadow;
+                in vec2 vUv;in vec4 vShadow;in vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
                 layout(location=0)out vec4 fragColor;
                 float shadowV(){
                     vec3 p=vShadow.xyz/max(vShadow.w,0.0001);
@@ -3351,26 +3390,12 @@ class LudoBoardView(
                     return currentDepth<=storedDepth?1.0:0.48;
                 }
                 void main(){
-                    vec3 N=normalize(vN);
-                    vec3 V=normalize(-vP);
                     vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;
                     vec3 texturedAlbedo=uColor.rgb*tex;
                     vec3 albedo=uPreserveAlbedo>0.5?texturedAlbedo:mix(texturedAlbedo,uColor.rgb,0.52);
-                    float keyLambert=max(dot(N,normalize(uKeyDirection)),0.0);
-                    float fillLambert=max(dot(N,normalize(uFillDirection)),0.0);
-                    float rimLambert=max(dot(N,normalize(uRimDirection)),0.0);
                     float shadow=uReceivesShadow>0.5?shadowV():1.0;
-                    vec3 ambient=vec3(0.17)*uAO*(0.55+0.45*uIBLIntensity);
-                    vec3 lighting=ambient
-                        +uKeyColor*(keyLambert*uKeyIntensity*shadow)
-                        +uFillColor*(fillLambert*uFillIntensity)
-                        +uRimColor*(rimLambert*uRimIntensity*0.32);
-                    vec3 halfVector=normalize(V+normalize(uKeyDirection));
-                    float specularPower=mix(52.0,5.0,clamp(uRoughness,0.05,1.0));
-                    float specular=pow(max(dot(N,halfVector),0.0),specularPower)
-                        *keyLambert*(0.025+0.22*clamp(uMetallic,0.0,1.0))
-                        *uKeyIntensity*shadow;
-                    vec3 color=albedo*lighting+uKeyColor*specular+albedo*uEmission;
+                    vec3 color=albedo*(vAmbientFillRim+vKeyDiffuse*shadow)
+                        +vKeySpecular*shadow+albedo*uEmission;
                     if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
                     fragColor=vec4(max(color,vec3(0.0)),uColor.a);
                 }
