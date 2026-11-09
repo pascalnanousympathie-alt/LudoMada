@@ -60,7 +60,7 @@ class SoftwareRendererPolicyTest {
         val width = SoftwareRendererPolicy.scaledDimension(1419, 0.25f)
         val height = SoftwareRendererPolicy.scaledDimension(424, 0.25f)
         assertEquals(355, width)
-        assertEquals(107, height)
+        assertEquals(106, height)
         assertTrue(width > height)
         assertEquals(1, SoftwareRendererPolicy.scaledDimension(1, 0.25f))
     }
