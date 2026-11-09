@@ -27,6 +27,17 @@ The MCP advertises eighteen OAuth-scoped tools:
 
 The public MCP includes `mada_run_command` for approved executables and `mada_run_shell` for explicit full-shell operations on the paired local device. Full-shell mode supports pipelines, redirects and chaining, executes as the paired OS user, and can read, create, modify or delete any files that user can access or use the network. The registered project is only the starting directory, not an OS sandbox. Output redaction is best-effort and cannot guarantee every unknown secret is removed, so never include or deliberately print credentials. Treat both terminal tools as high privilege, keep OAuth and agent tokens private, and revoke the paired agent when it is no longer trusted. The fixed `mada_run_task` tool remains available for routine tests/builds, and Opera control still targets only the paired agent's loopback CDP port.
 
+## Grok Web custom MCP connector (OAuth)
+
+Grok Web publishes its public OAuth client metadata at `https://grok.com/oauth/mcp-client.json`. When `MADA_OAUTH_CIMD_ENABLED=true`, the public MCP validates that exact client ID and fetches its metadata over HTTPS. The allowed callbacks are restricted to the two exact URIs published by xAI:
+
+- `https://grok.com/connectors-oauth-exchange-code/`
+- `https://console.x.ai/connectors-oauth-exchange-code/`
+
+The Grok client is public (`token_endpoint_auth_method: none`) and must use PKCE S256. No Grok client secret is required or stored by this service. Users still sign in and explicitly approve the workspace consent page. Do not add wildcard callback hosts, arbitrary redirect paths, or third-party client metadata URLs.
+
+After this source change is deployed to the canonical public MCP service, the Grok Web connector URL is `https://mada-commander-public-mcp.vercel.app/mcp`. A branch-only change does not update production; verify the deployed version and complete a real Grok OAuth consent/tool-call test before treating the integration as connected.
+
 ## Run local structural/protocol tests
 
 Use Node.js 20 or newer. The verification command runs a public-boundary audit and the tests; neither needs live database or Google OAuth credentials:
