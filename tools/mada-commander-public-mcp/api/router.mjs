@@ -158,8 +158,13 @@ function baseSafeHttpsUrl(uri) {
 export function isTrustedCimdUrl(clientId) {
   try {
     const u = new URL(clientId);
-    if (u.protocol !== "https:" || u.hostname !== "chatgpt.com" || u.port || u.username || u.password || u.search || u.hash) return false;
-    return u.pathname === "/oauth/client.json" || /^\/oauth\/[A-Za-z0-9_-]+\/client\.json$/.test(u.pathname);
+    if (u.protocol !== "https:" || u.port || u.username || u.password || u.search || u.hash) return false;
+    if (u.hostname === "chatgpt.com") {
+      return u.pathname === "/oauth/client.json" || /^\/oauth\/[A-Za-z0-9_-]+\/client\.json$/.test(u.pathname);
+    }
+    // xAI publishes one fixed public client metadata document for Grok Web.
+    if (u.hostname === "grok.com") return u.pathname === "/oauth/mcp-client.json";
+    return false;
   } catch { return false; }
 }
 
@@ -173,6 +178,16 @@ export function isApprovedChatGptRedirect(uri) {
   } catch { return false; }
 }
 
+export function isApprovedOAuthRedirect(uri) {
+  if (isApprovedChatGptRedirect(uri)) return true;
+  if (!baseSafeHttpsUrl(uri)) return false;
+  try {
+    const u = new URL(uri);
+    return (u.origin === "https://grok.com" || u.origin === "https://console.x.ai")
+      && u.pathname === "/connectors-oauth-exchange-code/";
+  } catch { return false; }
+}
+
 export function validateCimdMetadata(clientId, metadata) {
   if (!isTrustedCimdUrl(clientId) || !metadata || metadata.client_id !== clientId
     || !Array.isArray(metadata.redirect_uris) || !metadata.redirect_uris.length
@@ -183,7 +198,7 @@ export function validateCimdMetadata(clientId, metadata) {
     : [metadata.token_endpoint_auth_method || ""];
   // ChatGPT publishes both methods; this server accepts public-client token exchange with "none".
   if (!tokenAuthMethods.includes("none")) return false;
-  if (metadata.redirect_uris.some(uri => typeof uri !== "string" || !isApprovedChatGptRedirect(uri))) return false;
+  if (metadata.redirect_uris.some(uri => typeof uri !== "string" || !isApprovedOAuthRedirect(uri))) return false;
   return true;
 }
 
@@ -610,10 +625,10 @@ async function handleOAuthApprove(req, res) {
     // transient network/timeout failures here incorrectly reject an otherwise valid consent.
     const staticClientAllowed = allowedList("MADA_OAUTH_CLIENT_IDS").includes(row.client_id)
       && allowedList("MADA_OAUTH_REDIRECT_URIS").includes(row.redirect_uri);
-    const dynamicChatGptClientAllowed = CIMD_ENABLED
+    const dynamicCimdClientAllowed = CIMD_ENABLED
       && isTrustedCimdUrl(row.client_id)
-      && isApprovedChatGptRedirect(row.redirect_uri);
-    if (!staticClientAllowed && !dynamicChatGptClientAllowed) {
+      && isApprovedOAuthRedirect(row.redirect_uri);
+    if (!staticClientAllowed && !dynamicCimdClientAllowed) {
       consentFailureReason = "client_redirect_not_allowed";
       return null;
     }
