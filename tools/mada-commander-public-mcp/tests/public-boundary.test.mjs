@@ -78,7 +78,7 @@ test("PKCE S256 and hashed token helpers are deterministic and do not reveal the
   assert.equal(safeEqual("abc", "longer"), false);
 });
 
-test("CIMD accepts only fixed HTTPS ChatGPT metadata URL shapes and callbacks", () => {
+test("CIMD accepts only fixed HTTPS ChatGPT and Grok metadata URL shapes and callbacks", () => {
   assert.equal(isTrustedCimdUrl("https://chatgpt.com/oauth/client.json"), true);
   assert.equal(isTrustedCimdUrl("https://chatgpt.com/oauth/callback_123/client.json"), true);
   assert.equal(isTrustedCimdUrl("https://evil.example/oauth/client.json"), false);
