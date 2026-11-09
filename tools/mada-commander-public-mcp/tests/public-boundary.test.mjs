@@ -108,6 +108,35 @@ test("CIMD accepts only fixed HTTPS ChatGPT metadata URL shapes and callbacks", 
   assert.equal(validateCimdMetadata(clientId, { ...metadata, redirect_uris: ["https://evil.example/callback"] }), false);
   assert.equal(validateCimdMetadata(clientId, { ...metadata, token_endpoint_auth_methods_supported: ["private_key_jwt"] }), false);
   assert.equal(validateCimdMetadata(clientId, { ...metadata, client_id: "https://evil.example/client.json" }), false);
+
+  // Shape is fetched from xAI's published Grok Web public-client metadata document.
+  const grokClientId = "https://grok.com/oauth/mcp-client.json";
+  assert.equal(isTrustedCimdUrl(grokClientId), true);
+  assert.equal(isTrustedCimdUrl("https://grok.com/oauth/client.json"), false);
+  assert.equal(isTrustedCimdUrl("https://grok.com.evil.example/oauth/mcp-client.json"), false);
+  assert.equal(isTrustedCimdUrl("https://grok.com/oauth/mcp-client.json?next=https://evil.example"), false);
+  const grokMetadata = {
+    client_id: grokClientId,
+    client_name: "Grok",
+    client_uri: "https://grok.com",
+    redirect_uris: [
+      "https://grok.com/connectors-oauth-exchange-code/",
+      "https://console.x.ai/connectors-oauth-exchange-code/"
+    ],
+    grant_types: ["authorization_code", "refresh_token"],
+    response_types: ["code"],
+    token_endpoint_auth_method: "none"
+  };
+  assert.equal(validateCimdMetadata(grokClientId, grokMetadata), true);
+  assert.equal(validateCimdMetadata(grokClientId, {
+    ...grokMetadata, redirect_uris: ["https://evil.example/connectors-oauth-exchange-code/"]
+  }), false);
+  assert.equal(validateCimdMetadata(grokClientId, {
+    ...grokMetadata, redirect_uris: [...grokMetadata.redirect_uris, "https://grok.com.evil.example/callback"]
+  }), false);
+  assert.equal(validateCimdMetadata(grokClientId, {
+    ...grokMetadata, client_id: "https://grok.com.evil.example/oauth/mcp-client.json"
+  }), false);
 });
 
 test("OAuth consent tolerates embedded browser origins while requiring one-time nonce for approve and deny", async () => {
@@ -120,7 +149,8 @@ test("OAuth consent tolerates embedded browser origins while requiring one-time 
   const approveHandler = api.slice(api.indexOf("async function handleOAuthApprove"), api.indexOf("async function handleOAuthToken"));
   assert.doesNotMatch(approveHandler, /await clientIdAllowed|await clientRedirectAllowed/, "consent must not refetch remote client metadata");
   assert.match(approveHandler, /staticClientAllowed/);
-  assert.match(approveHandler, /dynamicChatGptClientAllowed/);
+  assert.match(approveHandler, /dynamicCimdClientAllowed/);
+  assert.match(approveHandler, /isApprovedOAuthRedirect\\(row\\.redirect_uri\\)/);
   assert.ok(api.includes("AbortSignal.timeout(12_000)"), "CIMD fetch timeout should tolerate metadata latency");
 });
 
