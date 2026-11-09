@@ -1394,9 +1394,15 @@ class LudoBoardView(
         private var fallbackShadowTex=0
         internal val premiumLighting = PremiumMaterialLighting.lighting
         internal val premiumPost = PremiumMaterialLighting.post
-        private val shadowSize=premiumLighting.shadowMapResolution
+        private var shadowSize=premiumLighting.shadowMapResolution
+        internal val shadowMapResolution: Int get() = shadowSize
+        // sceneWidth/Height are the physical GLSurfaceView dimensions. The
+        // internal target may be smaller only for software rasterizers.
         private var sceneWidth=1
         private var sceneHeight=1
+        private var renderTargetWidth=1
+        private var renderTargetHeight=1
+        private var renderScale=1f
         private var firstFrameDiagnosticsCaptured=false
         private var homePreviewFirstFrameCaptured=false
         private var woodTex=0
@@ -1566,7 +1572,18 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            shadowSize = SoftwareRendererPolicy.shadowMapResolution(
+                glRenderer,
+                premiumLighting.shadowMapResolution,
+                host.homePreview
+            )
             android.util.Log.i("LudoMadaRender", "GLES_DEVICE_INFO " + glDeviceDiagnostic)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_SOFTWARE_PROFILE renderer=" + glRenderer +
+                    " shadowMap=" + shadowSize +
+                    " configuredShadowMap=" + premiumLighting.shadowMapResolution
+            )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
             GLES30.glDepthFunc(GLES30.GL_LEQUAL)
@@ -1687,8 +1704,18 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
-            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
-            createSceneTargets(sceneWidth,sceneHeight)
+            renderScale = SoftwareRendererPolicy.renderScale(glDeviceDiagnostic, host.homePreview)
+            renderTargetWidth = SoftwareRendererPolicy.scaledDimension(sceneWidth, renderScale)
+            renderTargetHeight = SoftwareRendererPolicy.scaledDimension(sceneHeight, renderScale)
+            GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
+            createSceneTargets(renderTargetWidth,renderTargetHeight)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_RENDER_TARGET surface=" + sceneWidth + "x" + sceneHeight +
+                    " target=" + renderTargetWidth + "x" + renderTargetHeight +
+                    " scale=" + renderScale +
+                    " softwareRenderer=" + SoftwareRendererPolicy.isSoftwareRenderer(glDeviceDiagnostic)
+            )
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
@@ -1812,6 +1839,9 @@ class LudoBoardView(
                     android.util.Log.i(
                         "LudoMadaRender",
                         "PERF_FRAME_STATS renderer=GLES3_PBR surface=" + sceneWidth + "x" + sceneHeight +
+                            " renderTarget=" + renderTargetWidth + "x" + renderTargetHeight +
+                            " renderScale=" + renderScale +
+                            " shadowMap=" + shadowSize +
                             " activeFrameSamples=" + stats.activeFrameSampleCount +
                             " activeFrameFps=" + (stats.activeFrameFps?.toString() ?: "insufficient_samples") +
                             " activeFrameIntervalMsP50=" + (stats.activeFrameIntervalP50Ms?.toString() ?: "unavailable") +
@@ -1832,7 +1862,10 @@ class LudoBoardView(
             }
             if (rendererTelemetryUpdated && !host.homePreview) {
                 RendererTelemetryAccessibility.format(
-                    deviceDiagnostic = glDeviceDiagnostic,
+                    deviceDiagnostic = glDeviceDiagnostic +
+                        " renderTarget=" + renderTargetWidth + "x" + renderTargetHeight +
+                        " renderScale=" + renderScale +
+                        " shadowMap=" + shadowSize,
                     surfaceWidth = sceneWidth,
                     surfaceHeight = sceneHeight,
                     frame = latestFramePerfSnapshot,
@@ -1912,13 +1945,13 @@ class LudoBoardView(
                 GLES30.glColorMask(true,true,true,true)
                 GLES30.glDisable(GLES30.GL_POLYGON_OFFSET_FILL)
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
-                GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+                GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             }
         }
         private fun renderScene(){
             val setupStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo)
-            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
             shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
@@ -1940,7 +1973,7 @@ class LudoBoardView(
         }
 
         private fun renderDirectFrame(): Long {
-            if (sceneFbo == 0) createSceneTargets(sceneWidth, sceneHeight)
+            if (sceneFbo == 0) createSceneTargets(renderTargetWidth, renderTargetHeight)
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
@@ -2857,7 +2890,23 @@ class LudoBoardView(
             lastParticleDrawSubmitCpuNanos = timings?.let { it[3] } ?: 0L
             lastParticleCleanupCpuNanos = timings?.let { it[4] } ?: 0L
         }
-        private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
+        private fun renderPostProcess(){
+            // The scene/depth textures may be reduced-resolution on SwiftShader,
+            // but the final post-process pass always fills the physical surface.
+            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+            GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO)
+            postShader.draw(
+                sceneColorTex,
+                sceneDepthTex,
+                renderTargetWidth,
+                renderTargetHeight,
+                premiumPost.ssao,
+                premiumPost.bloom
+            )
+            GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+            GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        }
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val rgb=PbrMaterialTextures.colorRgb(kind,x,y,size);data.put((rgb shr 16).toByte()).put((rgb shr 8).toByte()).put(rgb.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createFlatNormalTexture():Int{val data=ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());data.put(128.toByte()).put(128.toByte()).put(255.toByte()).put(255.toByte());data.position(0);return uploadTexture(1,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val wave=sin(x*0.055+sin(y*0.025)*0.45);val nx=(128+wave*2.5+cos(y*0.065)*1.0).toInt().coerceIn(0,255);val ny=(128+cos(x*0.045+sin(y*0.03))*2.2+sin(y*0.07)*0.8).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
@@ -3299,7 +3348,7 @@ class LudoBoardView(
             GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY)
             GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY)
             GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS)
-            GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution)
+            GLES30.glUniform2f(uShadowInvSize,1f/renderer.shadowMapResolution,1f/renderer.shadowMapResolution)
             boundAlbedoTexture=Int.MIN_VALUE
             boundNormalTexture=Int.MIN_VALUE
             boundRoughTexture=Int.MIN_VALUE
