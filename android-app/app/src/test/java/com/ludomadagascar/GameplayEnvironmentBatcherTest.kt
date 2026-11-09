@@ -80,6 +80,32 @@ class GameplayEnvironmentBatcherTest {
     }
 
     @Test
+    fun doubleSidedMetadataIsPreservedAndPreventsUnsafeBatchMerging() {
+        val color = floatArrayOf(0.39f, 0.17f, 0.065f, 1f)
+        val singleA = input(
+            "single-a", 1, "LM_Walnut_Edge", color, 0.42f, 0.04f,
+            1, 1, 6, 0f, false, doubleSided = false
+        )
+        val doubleSided = singleA.copy(
+            name = "double-sided",
+            mesh = triangle(),
+            transform = transform(1f),
+            doubleSided = true
+        )
+        val singleB = singleA.copy(
+            name = "single-b",
+            mesh = triangle(),
+            transform = transform(2f)
+        )
+
+        val batches = GameplayEnvironmentBatcher.merge(listOf(singleA, doubleSided, singleB))
+
+        assertEquals(2, batches.size)
+        assertEquals(listOf(false, true), batches.map { it.doubleSided })
+        assertEquals(listOf(2, 1), batches.map { it.sourcePartCount })
+    }
+
+    @Test
     fun differentShadowOrMaterialPropertiesNeverShareABatch() {
         val color = floatArrayOf(0.72f, 0.46f, 0.19f, 1f)
         val sameMaterial = input("brass-a", 6, "LM_Champagne_Brass", color, 0.23f, 0.82f, 5, 4, 5, 0.006f, false)

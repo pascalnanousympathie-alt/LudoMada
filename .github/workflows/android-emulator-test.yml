@@ -9,8 +9,15 @@ on:
     # Run the same real-device smoke contract for PRs that change Android runtime
     # code, the Ramus harness, or this workflow itself.
     paths:
+      # Runtime/app or GLB/texture changes need the real cloud device smoke.
       - 'android-app/**'
+      - '!android-app/**/src/test/**'
+      - 'assets/**'
+      - '3d/**'
       - 'scripts/ramus-smoke.mjs'
+      - 'scripts/check-3d-assets.mjs'
+      - 'scripts/check-3d-optimization.mjs'
+      - 'scripts/check-apk-3d-asset.mjs'
       - '.github/workflows/android-emulator-test.yml'
 
 permissions:

@@ -74,7 +74,10 @@ class LudoBoardView(
     }
 
     private var stateAnimator: ValueAnimator? = null
+    private var diceAnimator: ValueAnimator? = null
     private var diceRolling = false
+    @Volatile private var animatedRendering = false
+    private var animationRenderOwners = 0
     private val homeFrameHandler = Handler(Looper.getMainLooper())
     private val homeFrameTick = object : Runnable {
         override fun run() {
@@ -291,7 +294,33 @@ class LudoBoardView(
 
     override fun onPause() {
         homeFrameHandler.removeCallbacks(homeFrameTick)
+        stateAnimator?.cancel()
+        stateAnimator = null
+        diceAnimator?.cancel()
+        diceAnimator = null
+        diceRolling = false
         super.onPause()
+    }
+
+    private fun beginAnimationRendering() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Animation render ownership must be changed on the main thread"
+        }
+        animationRenderOwners += 1
+        animatedRendering = true
+        renderMode = RENDERMODE_CONTINUOUSLY
+    }
+
+    private fun endAnimationRendering() {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "Animation render ownership must be changed on the main thread"
+        }
+        animationRenderOwners = (animationRenderOwners - 1).coerceAtLeast(0)
+        if (animationRenderOwners == 0 && animatedRendering) {
+            animatedRendering = false
+            renderMode = RENDERMODE_WHEN_DIRTY
+            requestRender()
+        }
     }
 
     fun startDiceAnimation() {
@@ -299,16 +328,18 @@ class LudoBoardView(
         diceRolling = true
         audio().play(0f, 0.85f, 760.0)
         pulseHaptic(24L, 180)
-        ValueAnimator.ofFloat(0f, 1f).apply {
+        diceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 720L
-            addUpdateListener { renderer.diceAnim = it.animatedValue as Float; requestRender() }
+            addUpdateListener { renderer.diceAnim = it.animatedValue as Float }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (diceAnimator === animation) diceAnimator = null
                     diceRolling = false
                     renderer.diceAnim = 1f
-                    requestRender()
+                    endAnimationRendering()
                 }
             })
+            beginAnimationRendering()
             start()
         }
     }
@@ -336,13 +367,28 @@ class LudoBoardView(
         stateAnimator?.cancel()
         var maxSteps = 0
         var pawnMoved = false
+        var hasVisualPositionChange = false
         for (pi in 0..3) for (ti in 0..3) {
             val from = oldPos[pi][ti]
             val to = newPos[pi][ti]
+            if (from != Int.MIN_VALUE && from != to) hasVisualPositionChange = true
             if (PawnMoveSoundPolicy.shouldPlay(from, to)) pawnMoved = true
             if (from >= 0 && to > from) maxSteps = max(maxSteps, min(6, to - from))
             if (from < 0 && to >= 0) maxSteps = max(maxSteps, 1)
             if (from >= 0 && to < 0) maxSteps = max(maxSteps, 2)
+        }
+        // State refreshes often change only the die/turn. Do not run a 320 ms
+        // continuous GL animation when no pawn position changed.
+        if (!hasVisualPositionChange) {
+            for (pi in 0..3) for (ti in 0..3) {
+                display[pi][ti][0] = targets[pi][ti][0]
+                display[pi][ti][1] = targets[pi][ti][1]
+                renderer.lift[pi][ti] = 0f
+                renderer.bounce[pi][ti] = 0f
+                lastPos[pi][ti] = newPos[pi][ti]
+            }
+            requestRender()
+            return
         }
         // A pawn sound belongs to a committed position change, not to a tap attempt.
         if (pawnMoved && !homePreview) audio().play(0f, 0.62f, 520.0)
@@ -380,10 +426,10 @@ class LudoBoardView(
                         else 0f
                     }
                 }
-                requestRender()
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (stateAnimator === animation) stateAnimator = null
                     for (pi in 0..3) for (ti in 0..3) {
                         display[pi][ti][0] = targets[pi][ti][0]
                         display[pi][ti][1] = targets[pi][ti][1]
@@ -391,9 +437,10 @@ class LudoBoardView(
                         renderer.bounce[pi][ti] = 0f
                         lastPos[pi][ti] = newPos[pi][ti]
                     }
-                    requestRender()
+                    endAnimationRendering()
                 }
             })
+            beginAnimationRendering()
             start()
         }
     }
@@ -588,6 +635,11 @@ class LudoBoardView(
 
     override fun onDetachedFromWindow() {
         homeFrameHandler.removeCallbacks(homeFrameTick)
+        stateAnimator?.cancel()
+        stateAnimator = null
+        diceAnimator?.cancel()
+        diceAnimator = null
+        diceRolling = false
         gameAudio?.release()
         gameAudio = null
         super.onDetachedFromWindow()
@@ -1342,9 +1394,15 @@ class LudoBoardView(
         private var fallbackShadowTex=0
         internal val premiumLighting = PremiumMaterialLighting.lighting
         internal val premiumPost = PremiumMaterialLighting.post
-        private val shadowSize=premiumLighting.shadowMapResolution
+        private var shadowSize=premiumLighting.shadowMapResolution
+        internal val shadowMapResolution: Int get() = shadowSize
+        // sceneWidth/Height are the physical GLSurfaceView dimensions. The
+        // internal target may be smaller only for software rasterizers.
         private var sceneWidth=1
         private var sceneHeight=1
+        private var renderTargetWidth=1
+        private var renderTargetHeight=1
+        private var renderScale=1f
         private var firstFrameDiagnosticsCaptured=false
         private var homePreviewFirstFrameCaptured=false
         private var woodTex=0
@@ -1410,6 +1468,8 @@ class LudoBoardView(
         private var lastActiveParticleCount = 0
         private val particleDrawTimingScratch = LongArray(5)
         private var glDeviceDiagnostic = "unavailable"
+        internal var softwareRendererActive = false
+            private set
         private var firstDrawMarkerPersisted = false
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1514,7 +1574,22 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
+            val softwarePostProcessActive = SoftwareRendererPolicy.useFastPostProcess(glRenderer, host.homePreview)
+            shadowSize = SoftwareRendererPolicy.shadowMapResolution(
+                glRenderer,
+                premiumLighting.shadowMapResolution,
+                host.homePreview
+            )
             android.util.Log.i("LudoMadaRender", "GLES_DEVICE_INFO " + glDeviceDiagnostic)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_SOFTWARE_PROFILE renderer=" + glRenderer +
+                    " shadowMap=" + shadowSize +
+                    " softwarePbrShader=" + softwareRendererActive +
+                    " softwarePostProcess=" + softwarePostProcessActive +
+                    " configuredShadowMap=" + premiumLighting.shadowMapResolution
+            )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
             GLES30.glEnable(GLES30.GL_DEPTH_TEST)
             GLES30.glDepthFunc(GLES30.GL_LEQUAL)
@@ -1524,7 +1599,7 @@ class LudoBoardView(
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
             rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
-            shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader();particleShader=ParticleShader()
+            shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader(softwarePostProcessActive);particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);diePipMeshes=DicePipBatcher.build(pips);heroRing=ringMesh(64,1.02f,0.72f)
 
             woodTex=createMaterialTexture(0);boardTex=createMaterialTexture(1);neutralTex=createMaterialTexture(2);metalTex=createMaterialTexture(3);normalTex=createFlatNormalTexture();woodNormalTex=createNormalTexture();envCube=createEnvironmentCubemap();fallbackShadowTex=createFallbackShadowTexture()
@@ -1635,8 +1710,18 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
-            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
-            createSceneTargets(sceneWidth,sceneHeight)
+            renderScale = SoftwareRendererPolicy.renderScale(glDeviceDiagnostic, host.homePreview)
+            renderTargetWidth = SoftwareRendererPolicy.scaledDimension(sceneWidth, renderScale)
+            renderTargetHeight = SoftwareRendererPolicy.scaledDimension(sceneHeight, renderScale)
+            GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
+            createSceneTargets(renderTargetWidth,renderTargetHeight)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_RENDER_TARGET surface=" + sceneWidth + "x" + sceneHeight +
+                    " target=" + renderTargetWidth + "x" + renderTargetHeight +
+                    " scale=" + renderScale +
+                    " softwareRenderer=" + SoftwareRendererPolicy.isSoftwareRenderer(glDeviceDiagnostic)
+            )
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
@@ -1754,17 +1839,25 @@ class LudoBoardView(
                             " gpuExecutionTime=not_measured"
                     )
                 }
-                frameTelemetry?.record(now, glSubmissionDurationNanos)?.let { stats ->
+                frameTelemetry?.record(now, glSubmissionDurationNanos, host.animatedRendering)?.let { stats ->
                     latestFramePerfSnapshot = stats
                     rendererTelemetryUpdated = true
                     android.util.Log.i(
                         "LudoMadaRender",
                         "PERF_FRAME_STATS renderer=GLES3_PBR surface=" + sceneWidth + "x" + sceneHeight +
+                            " renderTarget=" + renderTargetWidth + "x" + renderTargetHeight +
+                            " renderScale=" + renderScale +
+                            " shadowMap=" + shadowSize +
                             " activeFrameSamples=" + stats.activeFrameSampleCount +
                             " activeFrameFps=" + (stats.activeFrameFps?.toString() ?: "insufficient_samples") +
                             " activeFrameIntervalMsP50=" + (stats.activeFrameIntervalP50Ms?.toString() ?: "unavailable") +
                             " activeFrameIntervalMsP95=" + (stats.activeFrameIntervalP95Ms?.toString() ?: "unavailable") +
                             " activeFrameIntervalMsMax=" + (stats.activeFrameIntervalMaxMs?.toString() ?: "unavailable") +
+                            " afterCallbackGapMsP50P95=" + stats.afterCallbackGapP50Ms + "/" + stats.afterCallbackGapP95Ms +
+                            " animationSamples=" + stats.animationFrameSampleCount +
+                            " animationFps=" + (stats.animationFrameFps?.toString() ?: "insufficient_samples") +
+                            " animationFrameMsP50P95=" + stats.animationFrameIntervalP50Ms + "/" + stats.animationFrameIntervalP95Ms +
+                            " animationAfterCallbackGapMsP50P95=" + stats.animationAfterCallbackGapP50Ms + "/" + stats.animationAfterCallbackGapP95Ms +
                             " glSubmissionSamples=" + stats.glSubmissionSampleCount +
                             " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
                             " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
@@ -1775,7 +1868,10 @@ class LudoBoardView(
             }
             if (rendererTelemetryUpdated && !host.homePreview) {
                 RendererTelemetryAccessibility.format(
-                    deviceDiagnostic = glDeviceDiagnostic,
+                    deviceDiagnostic = glDeviceDiagnostic +
+                        " renderTarget=" + renderTargetWidth + "x" + renderTargetHeight +
+                        " renderScale=" + renderScale +
+                        " shadowMap=" + shadowSize,
                     surfaceWidth = sceneWidth,
                     surfaceHeight = sceneHeight,
                     frame = latestFramePerfSnapshot,
@@ -1784,6 +1880,9 @@ class LudoBoardView(
                     preparedStaticMeshCount = preparedGles3StaticMeshCount
                 )?.let(host::publishRendererTelemetry)
             }
+            // Includes the whole GL callback, but deliberately excludes the following
+            // GLSurfaceView EGL swap/vsync wait measured by the next callback interval.
+            frameTelemetry?.finishCallback(now, System.nanoTime() - now)
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
@@ -1852,13 +1951,13 @@ class LudoBoardView(
                 GLES30.glColorMask(true,true,true,true)
                 GLES30.glDisable(GLES30.GL_POLYGON_OFFSET_FILL)
                 GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
-                GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+                GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             }
         }
         private fun renderScene(){
             val setupStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo)
-            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
             shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
@@ -1880,7 +1979,7 @@ class LudoBoardView(
         }
 
         private fun renderDirectFrame(): Long {
-            if (sceneFbo == 0) createSceneTargets(sceneWidth, sceneHeight)
+            if (sceneFbo == 0) createSceneTargets(renderTargetWidth, renderTargetHeight)
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
@@ -2158,6 +2257,8 @@ class LudoBoardView(
                 "GAMEPLAY_ENVIRONMENT_PREPARED drawParts=" + prepared.size +
                     " sourceParts=" + prepared.size +
                     " drawBatches=" + preparedGameplayEnvironmentDraws.size +
+                    " singleSidedBatches=" + preparedGameplayEnvironmentDraws.count { !it.doubleSided } +
+                    " doubleSidedBatches=" + preparedGameplayEnvironmentDraws.count { it.doubleSided } +
                     " revision7Complete=" + revision7EnvironmentReady +
                     " doubleSided=" + gameplayEnvironmentHasDoubleSidedParts +
                     " cachedTransformsMaterialsAndBatches=true"
@@ -2168,9 +2269,18 @@ class LudoBoardView(
             val batches = preparedGameplayEnvironmentDraws
             if (batches.isEmpty()) return
             val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
-            if (gameplayEnvironmentHasDoubleSidedParts) GLES30.glDisable(GLES30.GL_CULL_FACE)
+            var cullingEnabled = cullingWasEnabled
             try {
                 for (batch in batches) {
+                    // Respect glTF doubleSided per merged batch. Disabling culling
+                    // for every environment batch when only one is double-sided
+                    // needlessly rasterizes backfaces across the entire backdrop.
+                    val batchCullingEnabled = cullingWasEnabled && !batch.doubleSided
+                    if (batchCullingEnabled != cullingEnabled) {
+                        if (batchCullingEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
+                        else GLES30.glDisable(GLES30.GL_CULL_FACE)
+                        cullingEnabled = batchCullingEnabled
+                    }
                     drawMesh(
                         batch.mesh,
                         identityModel,
@@ -2786,7 +2896,23 @@ class LudoBoardView(
             lastParticleDrawSubmitCpuNanos = timings?.let { it[3] } ?: 0L
             lastParticleCleanupCpuNanos = timings?.let { it[4] } ?: 0L
         }
-        private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
+        private fun renderPostProcess(){
+            // The scene/depth textures may be reduced-resolution on SwiftShader,
+            // but the final post-process pass always fills the physical surface.
+            GLES30.glViewport(0,0,sceneWidth,sceneHeight)
+            GLES30.glDisable(GLES30.GL_DEPTH_TEST)
+            GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO)
+            postShader.draw(
+                sceneColorTex,
+                sceneDepthTex,
+                renderTargetWidth,
+                renderTargetHeight,
+                premiumPost.ssao,
+                premiumPost.bloom
+            )
+            GLES30.glEnable(GLES30.GL_DEPTH_TEST)
+            GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
+        }
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val rgb=PbrMaterialTextures.colorRgb(kind,x,y,size);data.put((rgb shr 16).toByte()).put((rgb shr 8).toByte()).put(rgb.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createFlatNormalTexture():Int{val data=ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());data.put(128.toByte()).put(128.toByte()).put(255.toByte()).put(255.toByte());data.position(0);return uploadTexture(1,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val wave=sin(x*0.055+sin(y*0.025)*0.45);val nx=(128+wave*2.5+cos(y*0.065)*1.0).toInt().coerceIn(0,255);val ny=(128+cos(x*0.045+sin(y*0.03))*2.2+sin(y*0.07)*0.8).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
@@ -3176,6 +3302,14 @@ class LudoBoardView(
         private val uMvp:Int;private val uMv:Int;private val uModel:Int;private val uLightVp:Int;private val uColor:Int;private val uMetallic:Int;private val uRoughness:Int;private val uAO:Int;private val uEmission:Int;private val uUnlit:Int;private val uNormalStrength:Int;private val uClearCoat:Int;private val uClearCoatRoughness:Int;private val uAlbedoTex:Int;private val uNormalTex:Int;private val uRoughTex:Int;private val uRoughTexEnabled:Int;private val uShadowMap:Int;private val uEnvCube:Int;private val uKeyDirection:Int;private val uKeyColor:Int;private val uKeyIntensity:Int;private val uFillDirection:Int;private val uFillColor:Int;private val uFillIntensity:Int;private val uRimDirection:Int;private val uRimColor:Int;private val uRimIntensity:Int;private val uIBLIntensity:Int;private val uShadowBias:Int;private val uShadowNormalBias:Int;private val uReceivesShadow:Int;private val uShadowInvSize:Int;private val uPreserveAlbedo:Int
         private val mv=FloatArray(16);private val mvp=FloatArray(16);private val light=FloatArray(16)
         private var wood=0;private var board=0;private var neutral=0;private var metal=0;private var normal=0
+        // Texture bindings are stable across the PBR draw sequence. Invalidate at
+        // beginFrame because post-processing uses texture units 0 and 1 afterwards.
+        private var boundAlbedoTexture = Int.MIN_VALUE
+        private var boundNormalTexture = Int.MIN_VALUE
+        private var boundRoughTexture = Int.MIN_VALUE
+        // Batches that share an already world-space transform do not need
+        // repeated MV/MVP multiplication or uniform submission within a frame.
+        private val modelMatrixCache = PbrModelMatrixCache()
         init{
             val vs="""#version 300 es
                 precision highp float;
@@ -3183,7 +3317,7 @@ class LudoBoardView(
                 uniform mat4 uMvp,uMv,uModel,uLightVp;uniform float uShadowNormalBias;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vec3 worldNormal=normalize(transpose(inverse(mat3(uModel)))*aNormal);vec4 shadowWorld=vec4(w.xyz+worldNormal*uShadowNormalBias,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*shadowWorld;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
-            val fs="""#version 300 es
+            val premiumFs="""#version 300 es
                 precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uRoughTex,uShadowMap;uniform float uRoughTexEnabled,uPreserveAlbedo;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
@@ -3199,10 +3333,89 @@ class LudoBoardView(
                     float fres=pow(clamp(1.0-max(dot(N,V),0.0),0.0,1.0),5.0);vec3 color=(envD*albedo*kd*0.72+envS*f*(0.26+0.74*fres))*uAO*uIBLIntensity+direct+albedo*uEmission;if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);fragColor=vec4(max(color,vec3(0.0)),uColor.a);
                 }
             """.trimIndent()
+            val softwareFs="""#version 300 es
+                precision highp float;
+                uniform vec4 uColor;
+                uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit;
+                uniform float uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias,uReceivesShadow,uPreserveAlbedo;
+                uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;
+                uniform sampler2D uAlbedoTex,uShadowMap;
+                in vec3 vN,vP;in vec2 vUv;in vec4 vShadow;
+                layout(location=0)out vec4 fragColor;
+                float shadowV(){
+                    vec3 p=vShadow.xyz/max(vShadow.w,0.0001);
+                    p=p*0.5+0.5;
+                    if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;
+                    float currentDepth=p.z-uShadowBias;
+                    float storedDepth=texture(uShadowMap,p.xy).r;
+                    return currentDepth<=storedDepth?1.0:0.48;
+                }
+                void main(){
+                    vec3 N=normalize(vN);
+                    vec3 V=normalize(-vP);
+                    vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;
+                    vec3 texturedAlbedo=uColor.rgb*tex;
+                    vec3 albedo=uPreserveAlbedo>0.5?texturedAlbedo:mix(texturedAlbedo,uColor.rgb,0.52);
+                    float keyLambert=max(dot(N,normalize(uKeyDirection)),0.0);
+                    float fillLambert=max(dot(N,normalize(uFillDirection)),0.0);
+                    float rimLambert=max(dot(N,normalize(uRimDirection)),0.0);
+                    float shadow=uReceivesShadow>0.5?shadowV():1.0;
+                    vec3 ambient=vec3(0.17)*uAO*(0.55+0.45*uIBLIntensity);
+                    vec3 lighting=ambient
+                        +uKeyColor*(keyLambert*uKeyIntensity*shadow)
+                        +uFillColor*(fillLambert*uFillIntensity)
+                        +uRimColor*(rimLambert*uRimIntensity*0.32);
+                    vec3 halfVector=normalize(V+normalize(uKeyDirection));
+                    float specularPower=mix(52.0,5.0,clamp(uRoughness,0.05,1.0));
+                    float specular=pow(max(dot(N,halfVector),0.0),specularPower)
+                        *keyLambert*(0.025+0.22*clamp(uMetallic,0.0,1.0))
+                        *uKeyIntensity*shadow;
+                    vec3 color=albedo*lighting+uKeyColor*specular+albedo*uEmission;
+                    if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
+                    fragColor=vec4(max(color,vec3(0.0)),uColor.a);
+                }
+            """.trimIndent()
+            val fs=if(renderer.softwareRendererActive)softwareFs else premiumFs
             program=buildProgram(vs,fs)
             uEnvCube=GLES30.glGetUniformLocation(program,"uEnvCube");uMvp=GLES30.glGetUniformLocation(program,"uMvp");uMv=GLES30.glGetUniformLocation(program,"uMv");uModel=GLES30.glGetUniformLocation(program,"uModel");uLightVp=GLES30.glGetUniformLocation(program,"uLightVp");uColor=GLES30.glGetUniformLocation(program,"uColor");uMetallic=GLES30.glGetUniformLocation(program,"uMetallic");uRoughness=GLES30.glGetUniformLocation(program,"uRoughness");uAO=GLES30.glGetUniformLocation(program,"uAO");uEmission=GLES30.glGetUniformLocation(program,"uEmission");uUnlit=GLES30.glGetUniformLocation(program,"uUnlit");uNormalStrength=GLES30.glGetUniformLocation(program,"uNormalStrength");uClearCoat=GLES30.glGetUniformLocation(program,"uClearCoat");uClearCoatRoughness=GLES30.glGetUniformLocation(program,"uClearCoatRoughness");uAlbedoTex=GLES30.glGetUniformLocation(program,"uAlbedoTex");uNormalTex=GLES30.glGetUniformLocation(program,"uNormalTex");uRoughTex=GLES30.glGetUniformLocation(program,"uRoughTex");uRoughTexEnabled=GLES30.glGetUniformLocation(program,"uRoughTexEnabled");uShadowMap=GLES30.glGetUniformLocation(program,"uShadowMap");uKeyDirection=GLES30.glGetUniformLocation(program,"uKeyDirection");uKeyColor=GLES30.glGetUniformLocation(program,"uKeyColor");uKeyIntensity=GLES30.glGetUniformLocation(program,"uKeyIntensity");uFillDirection=GLES30.glGetUniformLocation(program,"uFillDirection");uFillColor=GLES30.glGetUniformLocation(program,"uFillColor");uFillIntensity=GLES30.glGetUniformLocation(program,"uFillIntensity");uRimDirection=GLES30.glGetUniformLocation(program,"uRimDirection");uRimColor=GLES30.glGetUniformLocation(program,"uRimColor");uRimIntensity=GLES30.glGetUniformLocation(program,"uRimIntensity");uIBLIntensity=GLES30.glGetUniformLocation(program,"uIBLIntensity");uShadowBias=GLES30.glGetUniformLocation(program,"uShadowBias");uShadowNormalBias=GLES30.glGetUniformLocation(program,"uShadowNormalBias");uReceivesShadow=GLES30.glGetUniformLocation(program,"uReceivesShadow");uShadowInvSize=GLES30.glGetUniformLocation(program,"uShadowInvSize");uPreserveAlbedo=GLES30.glGetUniformLocation(program,"uPreserveAlbedo")
         }
-        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex;System.arraycopy(lightVp,0,light,0,16);GLES30.glUseProgram(program);GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0);GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0);GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY);GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0);GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0);GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY);GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0);GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0);GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY);GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY);GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS);GLES30.glUniform2f(uShadowInvSize,1f/renderer.premiumLighting.shadowMapResolution,1f/renderer.premiumLighting.shadowMapResolution);GLES30.glActiveTexture(GLES30.GL_TEXTURE2);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex);GLES30.glUniform1i(uShadowMap,2);GLES30.glActiveTexture(GLES30.GL_TEXTURE3);GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex);GLES30.glUniform1i(uEnvCube,3)}
+        fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){
+            wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex
+            modelMatrixCache.reset()
+            System.arraycopy(lightVp,0,light,0,16)
+            // One program bind and frame-invariant uniforms per scene, not per mesh.
+            GLES30.glUseProgram(program)
+            GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0)
+            GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias)
+            GLES30.glUniform1i(uAlbedoTex,0)
+            if (!renderer.softwareRendererActive) {
+                GLES30.glUniform1i(uNormalTex,1)
+                GLES30.glUniform1i(uRoughTex,4)
+            }
+            GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0)
+            GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0)
+            GLES30.glUniform1f(uKeyIntensity,PremiumMaterialLighting.Calibration.KEY_INTENSITY)
+            GLES30.glUniform3fv(uFillDirection,1,renderer.premiumLighting.fillDirection,0)
+            GLES30.glUniform3fv(uFillColor,1,renderer.premiumLighting.fillColor,0)
+            GLES30.glUniform1f(uFillIntensity,PremiumMaterialLighting.Calibration.FILL_INTENSITY)
+            GLES30.glUniform3fv(uRimDirection,1,renderer.premiumLighting.rimDirection,0)
+            GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0)
+            GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY)
+            GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY)
+            GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS)
+            GLES30.glUniform2f(uShadowInvSize,1f/renderer.shadowMapResolution,1f/renderer.shadowMapResolution)
+            boundAlbedoTexture=Int.MIN_VALUE
+            boundNormalTexture=Int.MIN_VALUE
+            boundRoughTexture=Int.MIN_VALUE
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex)
+            GLES30.glUniform1i(uShadowMap,2)
+            if (!renderer.softwareRendererActive) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
+                GLES30.glUniform1i(uEnvCube,3)
+            }
+        }
         fun endFrame(){
             GLES30.glBindVertexArray(0)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)
@@ -3211,9 +3424,44 @@ class LudoBoardView(
             val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
             val normalId=if(normalOverride!=0)normalOverride else normal
             val roughId=if(roughOverride!=0)roughOverride else neutral
-            Matrix.multiplyMM(mv,0,renderer.view,0,model,0);Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0);GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0);GLES30.glUniformMatrix4fv(uMv,1,false,mv,0);GLES30.glUniformMatrix4fv(uModel,1,false,model,0);GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0);GLES30.glUniform4fv(uColor,1,color,0);GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic);GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough);GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias);GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow));GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f);GLES30.glUniform1f(uAO,ao);GLES30.glUniform1f(uEmission,emission);GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f);GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f);GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f});GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo);GLES30.glUniform1i(uAlbedoTex,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId);GLES30.glUniform1i(uNormalTex,1);GLES30.glActiveTexture(GLES30.GL_TEXTURE4);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId);GLES30.glUniform1i(uRoughTex,4);GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
+            if (modelMatrixCache.shouldUpload(model)) {
+                Matrix.multiplyMM(mv,0,renderer.view,0,model,0)
+                Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0)
+                GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0)
+                GLES30.glUniformMatrix4fv(uMv,1,false,mv,0)
+                GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
+            }
+            GLES30.glUniform4fv(uColor,1,color,0)
+            GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
+            GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
+            GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow))
+            GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
+            GLES30.glUniform1f(uAO,ao)
+            GLES30.glUniform1f(uEmission,emission)
+            GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f)
+            if (!renderer.softwareRendererActive) {
+                GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f)
+                GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f})
+                GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
+            }
+            if (boundAlbedoTexture != albedo) {
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo)
+                boundAlbedoTexture=albedo
+            }
+            if (!renderer.softwareRendererActive) {
+                if (boundNormalTexture != normalId) {
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId)
+                    boundNormalTexture=normalId
+                }
+                if (boundRoughTexture != roughId) {
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE4)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,roughId)
+                    boundRoughTexture=roughId
+                }
+                GLES30.glUniform1f(uRoughTexEnabled,if(roughOverride!=0)1f else 0f)
+            }
             mesh.bindGles3Static()
             GLES30.glDrawElements(GLES30.GL_TRIANGLES,mesh.indices.size,GLES30.GL_UNSIGNED_SHORT,0)
         }
@@ -3239,20 +3487,63 @@ class LudoBoardView(
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 
-    private class PostShader{
+    private class PostShader(private val softwareFastPath: Boolean){
         private val program:Int;private val scene:Int;private val depth:Int;private val res:Int;private val ssao:Int;private val bloom:Int;private val pos:FloatBuffer;private val uv:FloatBuffer
         init{val v=floatArrayOf(-1f,-1f,0f,1f,-1f,0f,-1f,1f,0f,1f,1f,0f);val u=floatArrayOf(0f,1f,1f,1f,0f,0f,1f,0f);pos=ByteBuffer.allocateDirect(v.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(v);position(0)};uv=ByteBuffer.allocateDirect(u.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().apply{put(u);position(0)}
             val vs="""#version 300 es
                 layout(location=0)in vec3 aPos;layout(location=1)in vec2 aUv;out vec2 vUv;void main(){vUv=aUv;gl_Position=vec4(aPos,1.0);}
             """.trimIndent()
-            val fs="""#version 300 es
+            val premiumFs="""#version 300 es
                 precision highp float;uniform sampler2D uScene,uDepth;uniform vec2 uInvRes;uniform float uSsao,uBloom;in vec2 vUv;layout(location=0)out vec4 fragColor;
                 float luma(vec3 c){return dot(c,vec3(0.299,0.587,0.114));}vec3 aces(vec3 x){const float a=2.51;const float b=0.03;const float c=2.43;const float d=0.59;const float e=0.14;return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);}
                 void main(){vec4 sceneSample=texture(uScene,vUv);if(sceneSample.a<=0.001){fragColor=vec4(0.0);return;}vec3 base=sceneSample.rgb,bl=vec3(0);float w[5]=float[](0.32,0.20,0.12,0.08,0.05);for(int i=1;i<=4;i++){vec2 p=uInvRes*float(i)*1.6;bl+=(texture(uScene,vUv+vec2(p.x,0)).rgb+texture(uScene,vUv-vec2(p.x,0)).rgb+texture(uScene,vUv+vec2(0,p.y)).rgb+texture(uScene,vUv-vec2(0,p.y)).rgb)*w[i];}bl*=max(luma(base)-0.68,0.0)*uBloom;float d0=texture(uDepth,vUv).r,occ=0.0;vec2 o[8]=vec2[](vec2(1,0),vec2(-1,0),vec2(0,1),vec2(0,-1),vec2(1,1),vec2(-1,1),vec2(1,-1),vec2(-1,-1));for(int i=0;i<8;i++){float dn=texture(uDepth,vUv+o[i]*uInvRes*2.0).r;occ+=smoothstep(0.0,0.025,max(0.0,dn-d0));}float ao=1.0-clamp(occ/8.0*uSsao,0.0,0.34);vec3 color=aces((base+bl)*ao);color=pow(max(color,vec3(0)),vec3(0.4545));float y=luma(color);color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);fragColor=vec4(color,sceneSample.a);}
             """.trimIndent()
+            val softwareFs="""#version 300 es
+                precision mediump float;
+                uniform sampler2D uScene;
+                in vec2 vUv;
+                layout(location=0)out vec4 fragColor;
+                vec3 aces(vec3 x){
+                    const float a=2.51;const float b=0.03;const float c=2.43;const float d=0.59;const float e=0.14;
+                    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+                }
+                void main(){
+                    vec4 sceneSample=texture(uScene,vUv);
+                    if(sceneSample.a<=0.001){fragColor=vec4(0.0);return;}
+                    vec3 color=aces(sceneSample.rgb);
+                    color=pow(max(color,vec3(0.0)),vec3(0.4545));
+                    float y=dot(color,vec3(0.299,0.587,0.114));
+                    color=mix(color,vec3(y),0.025)+vec3(0.010,0.005,0.0);
+                    fragColor=vec4(color,sceneSample.a);
+                }
+            """.trimIndent()
+            val fs=if(softwareFastPath)softwareFs else premiumFs
             program=buildProgram(vs,fs);scene=GLES30.glGetUniformLocation(program,"uScene");depth=GLES30.glGetUniformLocation(program,"uDepth");res=GLES30.glGetUniformLocation(program,"uInvRes");ssao=GLES30.glGetUniformLocation(program,"uSsao");bloom=GLES30.glGetUniformLocation(program,"uBloom")
         }
-        fun draw(sceneTex:Int,depthTex:Int,w:Int,h:Int,ao:Float,bl:Float){GLES30.glUseProgram(program);GLES30.glActiveTexture(GLES30.GL_TEXTURE0);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,sceneTex);GLES30.glUniform1i(scene,0);GLES30.glActiveTexture(GLES30.GL_TEXTURE1);GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,depthTex);GLES30.glUniform1i(depth,1);GLES30.glUniform2f(res,1f/w,1f/h);GLES30.glUniform1f(ssao,ao);GLES30.glUniform1f(bloom,bl);GLES30.glDisable(GLES30.GL_CULL_FACE);GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,pos);GLES30.glVertexAttribPointer(1,2,GLES30.GL_FLOAT,false,0,uv);GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP,0,4);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glEnable(GLES30.GL_CULL_FACE)}
+        fun draw(sceneTex:Int,depthTex:Int,w:Int,h:Int,ao:Float,bl:Float){
+            GLES30.glUseProgram(program)
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,sceneTex)
+            GLES30.glUniform1i(scene,0)
+            if(!softwareFastPath){
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,depthTex)
+                GLES30.glUniform1i(depth,1)
+                GLES30.glUniform2f(res,1f/w,1f/h)
+                GLES30.glUniform1f(ssao,ao)
+                GLES30.glUniform1f(bloom,bl)
+            }
+            GLES30.glDisable(GLES30.GL_CULL_FACE)
+            GLES30.glEnableVertexAttribArray(0)
+            GLES30.glEnableVertexAttribArray(1)
+            GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,0,pos)
+            GLES30.glVertexAttribPointer(1,2,GLES30.GL_FLOAT,false,0,uv)
+            GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP,0,4)
+            GLES30.glDisableVertexAttribArray(0)
+            GLES30.glDisableVertexAttribArray(1)
+            GLES30.glEnable(GLES30.GL_CULL_FACE)
+        }
+
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 

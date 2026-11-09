@@ -125,6 +125,15 @@ function parseRendererAccessibilityTelemetry(label) {
   const fpsValue = field("FPS");
   const fps = fpsValue === "INSUFFICIENT" ? null : Number(fpsValue);
   const frameMs = field("FRAME_MS") === "NA/NA" ? null : pair(field("FRAME_MS"));
+  const afterCallbackGapField = field("AFTER_CALLBACK_GAP_MS");
+  const afterCallbackGapMs = afterCallbackGapField === "NA/NA" ? null : pair(afterCallbackGapField);
+  const animationFpsField = field("ANIM_FPS");
+  const animationFps = animationFpsField === "INSUFFICIENT" ? null : Number(animationFpsField);
+  const animationFrameMsField = field("ANIM_FRAME_MS");
+  const animationFrameMs = animationFrameMsField === "NA/NA" ? null : pair(animationFrameMsField);
+  const animationAfterCallbackGapField = field("ANIM_AFTER_CALLBACK_GAP_MS");
+  const animationAfterCallbackGapMs = animationAfterCallbackGapField === "NA/NA" ? null : pair(animationAfterCallbackGapField);
+  const animationFrameSamples = integer(field("ANIM_FRAME_SAMPLES"));
   const glCpuMs = pair(field("GL_CPU_MS"));
   const sceneCpuMs = pair(field("SCENE_CPU_MS"));
   const backdropCpuMs = pair(field("BACKDROP_CPU_MS"));
@@ -148,6 +157,13 @@ function parseRendererAccessibilityTelemetry(label) {
       (fps !== null && (!Number.isFinite(fps) || fps <= 0)) ||
       (fps !== null && (!frameMs || frameMs.some(value => value <= 0))) ||
       (fps === null && field("FRAME_MS") !== "NA/NA") ||
+      afterCallbackGapField === null || (afterCallbackGapField !== "NA/NA" && !afterCallbackGapMs) ||
+      animationFpsField === null ||
+      (animationFps !== null && (!Number.isFinite(animationFps) || animationFps <= 0 || !animationFrameMs || animationFrameMs.some(value => value <= 0))) ||
+      (animationFps === null && animationFrameMsField !== "NA/NA") ||
+      animationAfterCallbackGapField === null ||
+      (animationAfterCallbackGapField !== "NA/NA" && !animationAfterCallbackGapMs) ||
+      animationFrameSamples === null ||
       !glCpuMs || !sceneCpuMs || !backdropCpuMs || !boardCpuMs || !pawnsCpuMs ||
       !diceCpuMs || !particlesCpuMs || !particleUploadCpuMs || !shadowCpuMs ||
       !postCpuMs || !pawnTargetsCpuMs ||
@@ -158,7 +174,8 @@ function parseRendererAccessibilityTelemetry(label) {
   return {
     vendor, renderer, gles,
     surface: `${Number(surface[1])}x${Number(surface[2])}`,
-    fps, frameMs, glCpuMs, sceneCpuMs, backdropCpuMs, boardCpuMs,
+    fps, frameMs, afterCallbackGapMs, animationFps, animationFrameMs,
+    animationAfterCallbackGapMs, animationFrameSamples, glCpuMs, sceneCpuMs, backdropCpuMs, boardCpuMs,
     pawnsCpuMs, diceCpuMs, particlesCpuMs, particleUploadCpuMs,
     shadowCpuMs, postCpuMs, pawnTargetsCpuMs,
     frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount
@@ -294,11 +311,15 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
-  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
   const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
     .replace("FPS=5.14", "FPS=INSUFFICIENT")
     .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
-    .replace("FRAME_SAMPLES=18", "FRAME_SAMPLES=0");
+    .replace("FRAME_SAMPLES=18", "FRAME_SAMPLES=0")
+    .replace("ANIM_FPS=58.00", "ANIM_FPS=INSUFFICIENT")
+    .replace("ANIM_FRAME_MS=16.67/33.33", "ANIM_FRAME_MS=NA/NA")
+    .replace("ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00", "ANIM_AFTER_CALLBACK_GAP_MS=NA/NA")
+    .replace("ANIM_FRAME_SAMPLES=42", "ANIM_FRAME_SAMPLES=0");
   const invalidAccessibilityTelemetry = accessibilityTelemetryLabel.replace("GPU_TIME=NOT_MEASURED", "GPU_TIME=measured");
   const invalidStaticMeshVaoTelemetry = accessibilityTelemetryLabel.replace("STATIC_MESH_VAO_COUNT=24", "STATIC_MESH_VAO_COUNT=0");
 
@@ -318,7 +339,7 @@ function selfTestFramebufferReadback() {
     ["accessibility gameplay environment contract rejects an unbatched environment", !gameplayEnvironmentBatchSummaryValid(parseGameplayEnvironmentBatchSummary(invalidEnvironmentBatchLabel))],
     ["accessibility dice pip contract accepts six face meshes with one draw per die", dicePipBatchSummaryValid(parseDicePipBatchSummary(dicePipBatchLabel))],
     ["accessibility dice pip contract rejects separate pip draws", !dicePipBatchSummaryValid(parseDicePipBatchSummary(invalidDicePipBatchLabel))],
-    ["accessibility renderer telemetry exposes GPU identity, FPS and CPU phase metrics", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.fps === 5.14],
+    ["accessibility renderer telemetry exposes GPU identity, FPS, callback gap and animation cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.fps === 5.14 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.afterCallbackGapMs?.[0] === 170 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.animationFps === 58 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.animationFrameSamples === 42],
     ["accessibility renderer telemetry requires eagerly prepared static VAOs", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.staticMeshVaoCount === 24],
     ["accessibility renderer telemetry rejects missing static VAO preparation", parseRendererAccessibilityTelemetry(invalidStaticMeshVaoTelemetry) === null],
     ["accessibility renderer telemetry explicitly reports insufficient FPS samples", parseRendererAccessibilityTelemetry(insufficientAccessibilityTelemetry)?.fps === null],
@@ -1558,6 +1579,18 @@ try {
   if (!landscapeReplay.ok) throw new Error("Landscape six-to-pawn movement did not preserve the replay");
   console.log("LANDSCAPE SIX→3D PAWN TAP→REPLAY PASS");
 
+  // Sample the renderer over several complete, legal turn animations after
+  // the final orientation switch. Earlier portrait runs may lose their GL
+  // context when Android recreates the landscape surface, so the FPS gate
+  // must have enough active animation intervals on the final surface itself.
+  for (const nextTurn of ["Joueur 2/4", "Joueur 3/4", "Joueur 4/4", "Joueur 1/4"]) {
+    advanceToTurn(nextTurn);
+    // Dice animators last 720 ms and pawn movement can last up to 1,040 ms.
+    // Let both finish before requesting the next roll.
+    waitStable(1150);
+  }
+  console.log("LANDSCAPE FPS SAMPLE TURN ROTATION PASS");
+
   // Accessibility is the primary telemetry channel: Ramus trial mode may hide
   // Android app-tag logcat rows, but it still exposes the renderer contentDescription.
   const telemetryTree = readTree();
@@ -1572,12 +1605,37 @@ try {
     throw new Error("Renderer accessibility telemetry was captured, but active FPS/phase samples are insufficient: " +
       JSON.stringify(accessibilityTelemetry));
   }
+  const minimumAnimationSamples = 20;
+  const minimumAnimationFps = 24;
+  const maximumAnimationFrameP95Ms = 50;
+  if (accessibilityTelemetry.animationFps === null ||
+      accessibilityTelemetry.animationFrameSamples < minimumAnimationSamples ||
+      accessibilityTelemetry.animationFps < minimumAnimationFps ||
+      !accessibilityTelemetry.animationFrameMs ||
+      accessibilityTelemetry.animationFrameMs[1] > maximumAnimationFrameP95Ms) {
+    throw new Error("Gameplay animation frame cadence is not stable: " +
+      JSON.stringify({
+        minSamples: minimumAnimationSamples,
+        minFps: minimumAnimationFps,
+        maxP95Ms: maximumAnimationFrameP95Ms,
+        animationFps: accessibilityTelemetry.animationFps,
+        frameSamples: accessibilityTelemetry.animationFrameSamples,
+        frameMs: accessibilityTelemetry.animationFrameMs,
+        afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
+        fullRendererTelemetry: accessibilityTelemetry
+      }));
+  }
   console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
   console.log("RAMUS_ACCESSIBILITY_FPS=" + accessibilityTelemetry.fps +
     " frameSamples=" + accessibilityTelemetry.frameSamples +
     " intervalP50P95Ms=" + accessibilityTelemetry.frameMs.join("/") +
+    " afterCallbackGapP50P95Ms=" + (accessibilityTelemetry.afterCallbackGapMs?.join("/") || "NA") +
     " GLSubmitP50P95Ms=" + accessibilityTelemetry.glCpuMs.join("/") +
     " renderer=" + accessibilityTelemetry.renderer);
+  console.log("RAMUS_ANIMATION_FPS=" + accessibilityTelemetry.animationFps +
+    " frameSamples=" + accessibilityTelemetry.animationFrameSamples +
+    " intervalP50P95Ms=" + (accessibilityTelemetry.animationFrameMs?.join("/") || "NA") +
+    " afterCallbackGapP50P95Ms=" + (accessibilityTelemetry.animationAfterCallbackGapMs?.join("/") || "NA"));
 
   // Logcat is still useful as a secondary diagnostic channel, never the only one.
   const rendererLogs = runAllowError("logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session);

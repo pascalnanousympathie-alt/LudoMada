@@ -27,6 +27,49 @@ class RenderFrameTelemetryTest {
     }
 
     @Test
+    fun separatesCallbackCpuWorkFromTheFollowingPresentationAndSchedulingGap() {
+        val telemetry = RenderFrameTelemetry(windowSize = 4, reportIntervalNanos = 30_000_000L)
+        assertNull(telemetry.record(1_000_000_000L, 5_000_000L))
+        telemetry.finishCallback(1_000_000_000L, 6_000_000L)
+        assertNull(telemetry.record(1_010_000_000L, 8_000_000L))
+        telemetry.finishCallback(1_010_000_000L, 8_000_000L)
+        val snapshot = telemetry.record(1_030_000_000L, 25_000_000L)
+
+        assertNotNull(snapshot)
+        snapshot!!
+        assertEquals(2, snapshot.activeFrameSampleCount)
+        assertEquals(4f, snapshot.afterCallbackGapP50Ms!!, 0.01f)
+        assertEquals(12f, snapshot.afterCallbackGapP95Ms!!, 0.01f)
+    }
+
+    @Test
+    fun countsLongMissedFramesDuringContinuousAnimationButExcludesIdleTransition() {
+        val telemetry = RenderFrameTelemetry(windowSize = 8, reportIntervalNanos = 100_000_000L)
+        assertNull(telemetry.record(1_000_000_000L, 5_000_000L, continuousAnimationActive = false))
+        telemetry.finishCallback(1_000_000_000L, 10_000_000L)
+
+        // First continuous frame follows a long idle gap; it must establish the baseline,
+        // not turn the idle period into a false animation frame.
+        val transition = telemetry.record(2_000_000_000L, 20_000_000L, continuousAnimationActive = true)
+        assertNotNull(transition)
+        assertEquals(0, transition!!.animationFrameSampleCount)
+        telemetry.finishCallback(2_000_000_000L, 20_000_000L)
+
+        telemetry.record(2_100_000_000L, 20_000_000L, continuousAnimationActive = true)
+        telemetry.finishCallback(2_100_000_000L, 20_000_000L)
+        val snapshot = telemetry.record(2_600_000_000L, 20_000_000L, continuousAnimationActive = true)
+
+        assertNotNull(snapshot)
+        snapshot!!
+        assertEquals(2, snapshot.animationFrameSampleCount)
+        assertEquals(3.33f, snapshot.animationFrameFps!!, 0.02f)
+        assertEquals(100f, snapshot.animationFrameIntervalP50Ms!!, 0.01f)
+        assertEquals(500f, snapshot.animationFrameIntervalP95Ms!!, 0.01f)
+        assertEquals(80f, snapshot.animationAfterCallbackGapP50Ms!!, 0.01f)
+        assertEquals(480f, snapshot.animationAfterCallbackGapP95Ms!!, 0.01f)
+    }
+
+    @Test
     fun excludesLongDirtyRenderIdleGapsFromTheActiveFpsEstimate() {
         val telemetry = RenderFrameTelemetry(windowSize = 8, reportIntervalNanos = 20_000_000L)
         telemetry.record(1_000_000_000L, 65_000_000L)
