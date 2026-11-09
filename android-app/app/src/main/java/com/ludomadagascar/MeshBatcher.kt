@@ -105,8 +105,28 @@ internal object MeshBatcher {
         return result
     }
 
-    /** Returns the inverse-transpose of the upper-left 3x3 in column-major layout. */
-    private fun inverseTranspose3x3(m: FloatArray): FloatArray {
+    /** Returns the inverse-transpose of the upper-left 3x3 in row-major layout. */
+    private fun inverseTranspose3x3(m: FloatArray): FloatArray =
+        FloatArray(9).also { writeInverseTranspose3x3(m, it, columnMajor = false) }
+
+    /**
+     * Writes the exact inverse-transpose normal matrix in OpenGL column-major layout.
+     * The output is caller-owned so the renderer can reuse one 9-float scratch array
+     * and upload this matrix once per changed model transform instead of inverting
+     * mat3(uModel) for every vertex in the shader.
+     */
+    internal fun inverseTranspose3x3ColumnMajor(m: FloatArray, output: FloatArray) {
+        writeInverseTranspose3x3(m, output, columnMajor = true)
+    }
+
+    private fun writeInverseTranspose3x3(
+        m: FloatArray,
+        output: FloatArray,
+        columnMajor: Boolean
+    ) {
+        require(m.size == 16) { "Model matrix must contain 16 values" }
+        require(output.size == 9) { "Normal matrix output must contain 9 values" }
+
         val a = m[0]; val b = m[4]; val c = m[8]
         val d = m[1]; val e = m[5]; val f = m[9]
         val g = m[2]; val h = m[6]; val i = m[10]
@@ -120,12 +140,31 @@ internal object MeshBatcher {
         val c21 = c * d - a * f
         val c22 = a * e - b * d
         val determinant = a * c00 + b * c01 + c * c02
-        require(kotlin.math.abs(determinant) > 0.0000001f) { "Mesh transform has a singular normal matrix" }
+        require(kotlin.math.abs(determinant) > 0.0000001f) {
+            "Mesh transform has a singular normal matrix"
+        }
         val invDet = 1f / determinant
-        return floatArrayOf(
-            c00 * invDet, c01 * invDet, c02 * invDet,
-            c10 * invDet, c11 * invDet, c12 * invDet,
-            c20 * invDet, c21 * invDet, c22 * invDet
-        )
+
+        if (columnMajor) {
+            output[0] = c00 * invDet
+            output[1] = c10 * invDet
+            output[2] = c20 * invDet
+            output[3] = c01 * invDet
+            output[4] = c11 * invDet
+            output[5] = c21 * invDet
+            output[6] = c02 * invDet
+            output[7] = c12 * invDet
+            output[8] = c22 * invDet
+        } else {
+            output[0] = c00 * invDet
+            output[1] = c01 * invDet
+            output[2] = c02 * invDet
+            output[3] = c10 * invDet
+            output[4] = c11 * invDet
+            output[5] = c12 * invDet
+            output[6] = c20 * invDet
+            output[7] = c21 * invDet
+            output[8] = c22 * invDet
+        }
     }
 }
