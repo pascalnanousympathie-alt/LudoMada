@@ -9,7 +9,7 @@ package com.ludomadagascar
  * The post-process pass still presents into the full-size surface.
  */
 internal object SoftwareRendererPolicy {
-    const val SOFTWARE_RENDER_SCALE = 0.375f
+    const val SOFTWARE_RENDER_SCALE = 0.25f
     const val SOFTWARE_SHADOW_MAP_MAX = 256
 
     fun isSoftwareRenderer(rendererIdentity: String): Boolean =
