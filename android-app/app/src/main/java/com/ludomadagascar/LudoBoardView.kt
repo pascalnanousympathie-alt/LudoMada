@@ -1806,6 +1806,10 @@ class LudoBoardView(
                             " activeFrameIntervalMsP95=" + (stats.activeFrameIntervalP95Ms?.toString() ?: "unavailable") +
                             " activeFrameIntervalMsMax=" + (stats.activeFrameIntervalMaxMs?.toString() ?: "unavailable") +
                             " afterCallbackGapMsP50P95=" + stats.afterCallbackGapP50Ms + "/" + stats.afterCallbackGapP95Ms +
+                            " animationSamples=" + stats.animationFrameSampleCount +
+                            " animationFps=" + (stats.animationFrameFps?.toString() ?: "insufficient_samples") +
+                            " animationFrameMsP50P95=" + stats.animationFrameIntervalP50Ms + "/" + stats.animationFrameIntervalP95Ms +
+                            " animationAfterCallbackGapMsP50P95=" + stats.animationAfterCallbackGapP50Ms + "/" + stats.animationAfterCallbackGapP95Ms +
                             " glSubmissionSamples=" + stats.glSubmissionSampleCount +
                             " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
                             " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
