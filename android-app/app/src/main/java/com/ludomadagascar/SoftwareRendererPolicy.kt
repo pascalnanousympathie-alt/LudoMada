@@ -16,6 +16,9 @@ internal object SoftwareRendererPolicy {
         listOf("swiftshader", "llvmpipe", "softpipe", "lavapipe")
             .any { rendererIdentity.contains(it, ignoreCase = true) }
 
+    fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
+        !homePreview && isSoftwareRenderer(rendererIdentity)
+
     fun renderScale(rendererIdentity: String, homePreview: Boolean): Float =
         if (!homePreview && isSoftwareRenderer(rendererIdentity)) {
             SOFTWARE_RENDER_SCALE
