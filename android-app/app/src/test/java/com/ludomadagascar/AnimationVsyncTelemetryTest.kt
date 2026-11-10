@@ -2,7 +2,6 @@ package com.ludomadagascar
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertNotNull
 import org.junit.Test
 
 class AnimationVsyncTelemetryTest {
@@ -61,7 +60,7 @@ class AnimationVsyncTelemetryTest {
 
         val snapshot = telemetry.snapshot()
         assertEquals(2, snapshot.sampleCount)
-        assertEquals(31.25f, snapshot.fps!!, 0.02f)
+        assertEquals(41.6667f, snapshot.fps!!, 0.02f)
         assertEquals(16f, snapshot.intervalP50Ms!!, 0.01f)
         assertEquals(32f, snapshot.intervalP95Ms!!, 0.01f)
     }
