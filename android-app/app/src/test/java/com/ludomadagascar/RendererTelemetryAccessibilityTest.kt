@@ -70,7 +70,15 @@ class RendererTelemetryAccessibilityTest {
             frame = frame,
             pipeline = pipeline,
             scene = scene,
-            preparedStaticMeshCount = 24
+            preparedStaticMeshCount = 24,
+            gpu = GpuTimerSnapshot(
+                status = "MEASURED",
+                sampleCount = 60,
+                p50Ms = 8.50f,
+                p95Ms = 15.20f,
+                disjointCount = 0,
+                skippedFrames = 2
+            )
         )
 
         assertNotNull(label)
@@ -103,8 +111,37 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("PARTICLE_UPLOAD_CPU_MS=0.23/1.67"))
         assertTrue(label.contains("FRAME_SAMPLES=18"))
         assertTrue(label.contains("SCENE_SAMPLES=60"))
-        assertTrue(label.contains("GPU_TIME=NOT_MEASURED"))
-        assertTrue(label.length < 1100)
+        assertTrue(label.contains("GPU_TIME=MEASURED"))
+        assertTrue(label.contains("GPU_FRAME_MS=8.50/15.20"))
+        assertTrue(label.contains("GPU_TIMER_SAMPLES=60"))
+        assertTrue(label.contains("GPU_TIMER_DISJOINTS=0"))
+        assertTrue(label.contains("GPU_TIMER_SKIPPED_FRAMES=2"))
+        assertTrue(label.length < 1250)
+    }
+
+    @Test
+    fun reportsGpuTimerUnsupportedWithoutInventingExecutionTime() {
+        val label = RendererTelemetryAccessibility.format(
+            "vendor=Google renderer=SwiftShader version=OpenGL ES 3.0",
+            720,
+            320,
+            frame,
+            pipeline,
+            scene,
+            24,
+            GpuTimerSnapshot(
+                status = "UNSUPPORTED",
+                sampleCount = 0,
+                p50Ms = null,
+                p95Ms = null,
+                disjointCount = 0,
+                skippedFrames = 0
+            )
+        )
+        assertNotNull(label)
+        assertTrue(label!!.contains("GPU_TIME=UNSUPPORTED"))
+        assertTrue(label.contains("GPU_FRAME_MS=NA/NA"))
+        assertTrue(label.contains("GPU_TIMER_SAMPLES=0"))
     }
 
     @Test
