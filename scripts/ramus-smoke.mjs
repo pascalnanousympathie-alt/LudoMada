@@ -1723,7 +1723,10 @@ try {
     " gpuFence=" + accessibilityTelemetry.gpuFenceStatus +
     " gpuFenceP50P95Ms=" + (accessibilityTelemetry.gpuFenceMs?.join("/") || "NA") +
     " gpuFencePending=" + accessibilityTelemetry.gpuFencePending +
-    " gpuFenceOldestMs=" + (accessibilityTelemetry.gpuFenceOldestMs ?? "NA"));
+    " gpuFenceOldestMs=" + (accessibilityTelemetry.gpuFenceOldestMs ?? "NA") +
+    " gpuFenceTimeouts=" + accessibilityTelemetry.gpuFenceTimeouts +
+    " gpuFenceFailures=" + accessibilityTelemetry.gpuFenceFailures +
+    " gpuFenceSkips=" + accessibilityTelemetry.gpuFenceSkips);
   const minimumAnimationSamples = 20;
   const minimumAnimationFps = 24;
   const maximumAnimationFrameP95Ms = 50;
