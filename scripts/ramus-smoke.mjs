@@ -180,6 +180,16 @@ function parseRendererAccessibilityTelemetry(label) {
   const uiVsyncFrameMs = uiVsyncFrameMsField === "NA/NA" ? null : pair(uiVsyncFrameMsField);
   const displayRefreshHzField = field("DISPLAY_REFRESH_HZ");
   const displayRefreshHz = displayRefreshHzField === "NA" ? null : Number(displayRefreshHzField);
+  const gpuFenceStatus = field("GPU_FENCE_STATUS");
+  const gpuFenceMsField = field("GPU_FENCE_MS");
+  const gpuFenceMs = gpuFenceMsField === "NA/NA" ? null : pair(gpuFenceMsField);
+  const gpuFenceSamples = integer(field("GPU_FENCE_SAMPLES"));
+  const gpuFencePending = integer(field("GPU_FENCE_PENDING"));
+  const gpuFenceOldestField = field("GPU_FENCE_OLDEST_MS");
+  const gpuFenceOldestMs = gpuFenceOldestField === "NA" ? null : Number(gpuFenceOldestField);
+  const gpuFenceTimeouts = integer(field("GPU_FENCE_TIMEOUTS"));
+  const gpuFenceFailures = integer(field("GPU_FENCE_FAILURES"));
+  const gpuFenceSkips = integer(field("GPU_FENCE_SKIPS"));
 
   if (!vendor || !renderer || !gles || !surface ||
       !Number.isSafeInteger(Number(surface[1])) || !Number.isSafeInteger(Number(surface[2])) ||
@@ -223,7 +233,17 @@ function parseRendererAccessibilityTelemetry(label) {
       (uiVsyncFps === null && uiVsyncFrameMsField !== "NA/NA") ||
       (uiVsyncFps !== null && (!uiVsyncFrameMs || uiVsyncFrameMs.some(value => value <= 0))) ||
       displayRefreshHzField === null ||
-      (displayRefreshHz !== null && (!Number.isFinite(displayRefreshHz) || displayRefreshHz <= 0))) return null;
+      (displayRefreshHz !== null && (!Number.isFinite(displayRefreshHz) || displayRefreshHz <= 0)) ||
+      !["MEASURED", "INSUFFICIENT", "UNSUPPORTED"].includes(gpuFenceStatus) ||
+      gpuFenceMsField === null || gpuFenceSamples === null || gpuFenceSamples < 0 ||
+      gpuFencePending === null || gpuFencePending < 0 ||
+      gpuFenceOldestField === null ||
+      (gpuFenceOldestMs !== null && (!Number.isFinite(gpuFenceOldestMs) || gpuFenceOldestMs < 0)) ||
+      gpuFenceTimeouts === null || gpuFenceTimeouts < 0 ||
+      gpuFenceFailures === null || gpuFenceFailures < 0 ||
+      gpuFenceSkips === null || gpuFenceSkips < 0 ||
+      (gpuFenceStatus === "MEASURED" && (gpuFenceSamples < 20 || !gpuFenceMs || gpuFenceMs.some(value => value <= 0))) ||
+      (gpuFenceStatus !== "MEASURED" && gpuFenceMsField !== "NA/NA")) return null;
 
   return {
     vendor, renderer, gles,
@@ -237,7 +257,9 @@ function parseRendererAccessibilityTelemetry(label) {
     frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount,
     backdropBatchCount, backdropBatchCpuP95Ms, backdropBatchVertexCounts, backdropBatchIndexCounts,
     gpuTime, gpuFrameMs, gpuTimerSamples, gpuTimerDisjoints, gpuTimerSkippedFrames,
-    uiVsyncSamples, uiVsyncFps, uiVsyncFrameMs, displayRefreshHz
+    uiVsyncSamples, uiVsyncFps, uiVsyncFrameMs, displayRefreshHz,
+    gpuFenceStatus, gpuFenceMs, gpuFenceSamples, gpuFencePending,
+    gpuFenceOldestMs, gpuFenceTimeouts, gpuFenceFailures, gpuFenceSkips
   };
 }
 
@@ -370,7 +392,7 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
-  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40 | BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10 | BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08 | BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60 | BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=MEASURED | GPU_FRAME_MS=8.50/15.20 | GPU_TIMER_SAMPLES=60 | GPU_TIMER_DISJOINTS=0 | GPU_TIMER_SKIPPED_FRAMES=2 | UI_VSYNC_SAMPLES=60 | UI_VSYNC_FPS=60.00 | UI_VSYNC_FRAME_MS=16.60/16.80 | DISPLAY_REFRESH_HZ=60.00";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40 | BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10 | BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08 | BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60 | BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=MEASURED | GPU_FRAME_MS=8.50/15.20 | GPU_TIMER_SAMPLES=60 | GPU_TIMER_DISJOINTS=0 | GPU_TIMER_SKIPPED_FRAMES=2 | UI_VSYNC_SAMPLES=60 | UI_VSYNC_FPS=60.00 | UI_VSYNC_FRAME_MS=16.60/16.80 | DISPLAY_REFRESH_HZ=60.00 | GPU_FENCE_STATUS=MEASURED | GPU_FENCE_MS=12.00/84.00 | GPU_FENCE_SAMPLES=60 | GPU_FENCE_PENDING=1 | GPU_FENCE_OLDEST_MS=16.00 | GPU_FENCE_TIMEOUTS=3 | GPU_FENCE_FAILURES=0 | GPU_FENCE_SKIPS=1";
   const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
     .replace("FPS=5.14", "FPS=INSUFFICIENT")
     .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
@@ -389,6 +411,14 @@ function selfTestFramebufferReadback() {
     "BACKDROP_BATCH_CPU_P95_MS=1.25,8.50",
     "BACKDROP_BATCH_CPU_P95_MS=1.25"
   );
+  const invalidGpuFenceTelemetry = accessibilityTelemetryLabel.replace(
+    "GPU_FENCE_STATUS=MEASURED",
+    "GPU_FENCE_STATUS=UNKNOWN"
+  );
+  const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
+    .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
+    .replace("GPU_FENCE_MS=12.00/84.00", "GPU_FENCE_MS=NA/NA")
+    .replace("GPU_FENCE_SAMPLES=60", "GPU_FENCE_SAMPLES=4");
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -412,6 +442,9 @@ function selfTestFramebufferReadback() {
     ["accessibility renderer telemetry exposes main-thread vsync cadence and display refresh", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFps === 60 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFrameMs?.[1] === 16.8 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.displayRefreshHz === 60],
     ["accessibility renderer telemetry rejects missing main-thread vsync cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("UI_VSYNC_FPS=60.00", "UI_VSYNC_FPS=NA")) === null],
     ["accessibility renderer telemetry rejects malformed display refresh rate", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("DISPLAY_REFRESH_HZ=60.00", "DISPLAY_REFRESH_HZ=fast")) === null],
+    ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
+    ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
+    ["accessibility renderer telemetry accepts insufficient fence samples without inventing a duration", parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceStatus === "INSUFFICIENT" && parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceMs === null],
     ["accessibility renderer telemetry rejects malformed GPU timer results", parseRendererAccessibilityTelemetry(invalidGpuTimerTelemetry) === null],
     ["accessibility renderer telemetry exposes per-batch backdrop CPU and geometry", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchCount === 2 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchCpuP95Ms?.[1] === 8.5 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchVertexCounts?.[1] === 9000],
     ["accessibility renderer telemetry rejects incomplete backdrop batch samples", parseRendererAccessibilityTelemetry(invalidBackdropBatchTelemetry) === null],
@@ -1686,7 +1719,11 @@ try {
     " samples=" + accessibilityTelemetry.uiVsyncSamples +
     " intervalP50P95Ms=" + (accessibilityTelemetry.uiVsyncFrameMs?.join("/") || "NA") +
     " displayRefreshHz=" + (accessibilityTelemetry.displayRefreshHz ?? "NA") +
-    " gpuTimer=" + accessibilityTelemetry.gpuTime);
+    " gpuTimer=" + accessibilityTelemetry.gpuTime +
+    " gpuFence=" + accessibilityTelemetry.gpuFenceStatus +
+    " gpuFenceP50P95Ms=" + (accessibilityTelemetry.gpuFenceMs?.join("/") || "NA") +
+    " gpuFencePending=" + accessibilityTelemetry.gpuFencePending +
+    " gpuFenceOldestMs=" + (accessibilityTelemetry.gpuFenceOldestMs ?? "NA"));
   const minimumAnimationSamples = 20;
   const minimumAnimationFps = 24;
   const maximumAnimationFrameP95Ms = 50;
