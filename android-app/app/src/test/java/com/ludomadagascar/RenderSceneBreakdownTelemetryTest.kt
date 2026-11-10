@@ -78,6 +78,37 @@ class RenderSceneBreakdownTelemetryTest {
     }
 
     @Test
+    fun reportsBackdropBatchCpuPercentilesAndGeometrySizes() {
+        val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 1L)
+        telemetry.record(
+            100L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(1_000_000L, 9_000_000L),
+            backdropBatchVertexCounts = intArrayOf(100, 900),
+            backdropBatchIndexCounts = intArrayOf(300, 2_700)
+        )
+        telemetry.record(
+            101L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(3_000_000L, 12_000_000L),
+            backdropBatchVertexCounts = intArrayOf(110, 950),
+            backdropBatchIndexCounts = intArrayOf(330, 2_850)
+        )
+        val snapshot = telemetry.record(
+            102L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(2_000_000L, 10_000_000L),
+            backdropBatchVertexCounts = intArrayOf(120, 1_000),
+            backdropBatchIndexCounts = intArrayOf(360, 3_000)
+        )!!
+
+        assertEquals(2, snapshot.backdropBatchCount)
+        assertEquals(listOf(3f, 12f), snapshot.backdropBatchCpuP95Ms)
+        assertEquals(listOf(120, 1_000), snapshot.backdropBatchVertexCounts)
+        assertEquals(listOf(360, 3_000), snapshot.backdropBatchIndexCounts)
+    }
+
+    @Test
     fun resetClearsSamplesAndRestartsTheReportInterval() {
         val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 10L)
         telemetry.record(100L, 1L, 1L, 1L, 1L, 1L, 1L, 1L)
