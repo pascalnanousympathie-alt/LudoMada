@@ -78,6 +78,82 @@ class RenderSceneBreakdownTelemetryTest {
     }
 
     @Test
+    fun reportsBackdropBatchCpuPercentilesAndGeometrySizes() {
+        val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 1L)
+        telemetry.record(
+            100L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(1_000_000L, 9_000_000L),
+            backdropBatchVertexCounts = intArrayOf(100, 900),
+            backdropBatchIndexCounts = intArrayOf(300, 2_700)
+        )
+        telemetry.record(
+            101L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(3_000_000L, 12_000_000L),
+            backdropBatchVertexCounts = intArrayOf(110, 950),
+            backdropBatchIndexCounts = intArrayOf(330, 2_850)
+        )
+        val snapshot = telemetry.record(
+            102L, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(2_000_000L, 10_000_000L),
+            backdropBatchVertexCounts = intArrayOf(120, 1_000),
+            backdropBatchIndexCounts = intArrayOf(360, 3_000)
+        )!!
+
+        assertEquals(2, snapshot.backdropBatchCount)
+        assertEquals(listOf(3f, 12f), snapshot.backdropBatchCpuP95Ms)
+        assertEquals(listOf(120, 1_000), snapshot.backdropBatchVertexCounts)
+        assertEquals(listOf(360, 3_000), snapshot.backdropBatchIndexCounts)
+    }
+
+    @Test
+    fun separatesBackdropStateCostsBatchSubmissionsAndUnattributedTime() {
+        val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 1L)
+        val batches = longArrayOf(1_000_000L, 2_000_000L)
+        val vertices = intArrayOf(100, 200)
+        val indices = intArrayOf(300, 600)
+        telemetry.record(
+            100L, 0L, 20_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = batches,
+            backdropBatchVertexCounts = vertices,
+            backdropBatchIndexCounts = indices,
+            backdropCullingQueryCpuNanos = 3_000_000L,
+            backdropCullingTransitionCpuNanos = 1_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )
+        telemetry.record(
+            101L, 0L, 22_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(2_000_000L, 3_000_000L),
+            backdropCullingQueryCpuNanos = 4_000_000L,
+            backdropCullingTransitionCpuNanos = 1_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )
+        val snapshot = telemetry.record(
+            102L, 0L, 24_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(3_000_000L, 4_000_000L),
+            backdropCullingQueryCpuNanos = 5_000_000L,
+            backdropCullingTransitionCpuNanos = 2_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )!!
+
+        assertEquals(4f, snapshot.backdropCullingQueryCpuP50Ms, 0.001f)
+        assertEquals(5f, snapshot.backdropCullingQueryCpuP95Ms, 0.001f)
+        assertEquals(1f, snapshot.backdropCullingTransitionCpuP50Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingTransitionCpuP95Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingRestoreCpuP50Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingRestoreCpuP95Ms, 0.001f)
+        assertEquals(5f, snapshot.backdropBatchTotalCpuP50Ms, 0.001f)
+        assertEquals(7f, snapshot.backdropBatchTotalCpuP95Ms, 0.001f)
+        assertEquals(10f, snapshot.backdropUnattributedCpuP50Ms, 0.001f)
+        assertEquals(11f, snapshot.backdropUnattributedCpuP95Ms, 0.001f)
+    }
+
+    @Test
     fun resetClearsSamplesAndRestartsTheReportInterval() {
         val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 10L)
         telemetry.record(100L, 1L, 1L, 1L, 1L, 1L, 1L, 1L)

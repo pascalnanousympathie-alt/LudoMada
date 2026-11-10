@@ -49,7 +49,16 @@ class RendererTelemetryAccessibilityTest {
         particleBufferUploadCpuP50Ms = 0.23f, particleBufferUploadCpuP95Ms = 1.67f,
         particleDrawSubmitCpuP50Ms = 0.01f, particleDrawSubmitCpuP95Ms = 0.76f,
         particleCleanupCpuP50Ms = 0.01f, particleCleanupCpuP95Ms = 0.02f,
-        activeParticlesP50 = 12, activeParticlesP95 = 18
+        activeParticlesP50 = 12, activeParticlesP95 = 18,
+        backdropBatchCount = 2,
+        backdropBatchCpuP95Ms = listOf(1.25f, 8.50f),
+        backdropBatchVertexCounts = listOf(1_200, 9_000),
+        backdropBatchIndexCounts = listOf(3_600, 27_000),
+        backdropCullingQueryCpuP50Ms = 0.20f, backdropCullingQueryCpuP95Ms = 1.40f,
+        backdropCullingTransitionCpuP50Ms = 0.01f, backdropCullingTransitionCpuP95Ms = 0.10f,
+        backdropCullingRestoreCpuP50Ms = 0.01f, backdropCullingRestoreCpuP95Ms = 0.08f,
+        backdropBatchTotalCpuP50Ms = 0.30f, backdropBatchTotalCpuP95Ms = 0.60f,
+        backdropUnattributedCpuP50Ms = 11.78f, backdropUnattributedCpuP95Ms = 14.32f
     )
 
     @Test
@@ -61,7 +70,15 @@ class RendererTelemetryAccessibilityTest {
             frame = frame,
             pipeline = pipeline,
             scene = scene,
-            preparedStaticMeshCount = 24
+            preparedStaticMeshCount = 24,
+            gpu = GpuTimerSnapshot(
+                status = "MEASURED",
+                sampleCount = 60,
+                p50Ms = 8.50f,
+                p95Ms = 15.20f,
+                disjointCount = 0,
+                skippedFrames = 2
+            )
         )
 
         assertNotNull(label)
@@ -81,12 +98,50 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("ANIM_FRAME_SAMPLES=42"))
         assertTrue(label.contains("GL_CPU_MS=18.25/28.50"))
         assertTrue(label.contains("BACKDROP_CPU_MS=12.30/16.50"))
+        assertTrue(label.contains("BACKDROP_BATCH_COUNT=2"))
+        assertTrue(label.contains("BACKDROP_BATCH_CPU_P95_MS=1.25,8.50"))
+        assertTrue(label.contains("BACKDROP_BATCH_VERTEX_COUNTS=1200,9000"))
+        assertTrue(label.contains("BACKDROP_BATCH_INDEX_COUNTS=3600,27000"))
+        assertTrue(label.contains("BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40"))
+        assertTrue(label.contains("BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10"))
+        assertTrue(label.contains("BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08"))
+        assertTrue(label.contains("BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60"))
+        assertTrue(label.contains("BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32"))
         assertTrue(label.contains("PAWNS_CPU_MS=4.20/7.00"))
         assertTrue(label.contains("PARTICLE_UPLOAD_CPU_MS=0.23/1.67"))
         assertTrue(label.contains("FRAME_SAMPLES=18"))
         assertTrue(label.contains("SCENE_SAMPLES=60"))
-        assertTrue(label.contains("GPU_TIME=NOT_MEASURED"))
-        assertTrue(label.length < 1100)
+        assertTrue(label.contains("GPU_TIME=MEASURED"))
+        assertTrue(label.contains("GPU_FRAME_MS=8.50/15.20"))
+        assertTrue(label.contains("GPU_TIMER_SAMPLES=60"))
+        assertTrue(label.contains("GPU_TIMER_DISJOINTS=0"))
+        assertTrue(label.contains("GPU_TIMER_SKIPPED_FRAMES=2"))
+        assertTrue(label.length < 1250)
+    }
+
+    @Test
+    fun reportsGpuTimerUnsupportedWithoutInventingExecutionTime() {
+        val label = RendererTelemetryAccessibility.format(
+            "vendor=Google renderer=SwiftShader version=OpenGL ES 3.0",
+            720,
+            320,
+            frame,
+            pipeline,
+            scene,
+            24,
+            GpuTimerSnapshot(
+                status = "UNSUPPORTED",
+                sampleCount = 0,
+                p50Ms = null,
+                p95Ms = null,
+                disjointCount = 0,
+                skippedFrames = 0
+            )
+        )
+        assertNotNull(label)
+        assertTrue(label!!.contains("GPU_TIME=UNSUPPORTED"))
+        assertTrue(label.contains("GPU_FRAME_MS=NA/NA"))
+        assertTrue(label.contains("GPU_TIMER_SAMPLES=0"))
     }
 
     @Test
