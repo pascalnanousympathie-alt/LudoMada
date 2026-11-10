@@ -82,12 +82,12 @@ class LudoBoardView(
     @Volatile private var animatedRendering = false
     @Volatile private var uiAnimationVsyncDescription = ""
     private var animationRenderOwners = 0
-    private val uiAnimationVsyncTelemetry = AnimationVsyncTelemetry()
+    private val uiAnimationVsyncTelemetry = if (BuildConfig.DEBUG) AnimationVsyncTelemetry() else null
     private val animationChoreographer by lazy(LazyThreadSafetyMode.NONE) { Choreographer.getInstance() }
     private val animationVsyncFrameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!animatedRendering) return
-            uiAnimationVsyncTelemetry.record(frameTimeNanos)
+            uiAnimationVsyncTelemetry?.record(frameTimeNanos)
             animationChoreographer.postFrameCallback(this)
         }
     }
@@ -326,10 +326,12 @@ class LudoBoardView(
         val firstOwner = animationRenderOwners == 0
         animationRenderOwners += 1
         if (firstOwner) {
-            uiAnimationVsyncTelemetry.reset()
-            uiAnimationVsyncDescription = ""
+            if (BuildConfig.DEBUG) {
+                uiAnimationVsyncTelemetry?.reset()
+                uiAnimationVsyncDescription = ""
+                animationChoreographer.postFrameCallback(animationVsyncFrameCallback)
+            }
             animatedRendering = true
-            animationChoreographer.postFrameCallback(animationVsyncFrameCallback)
         } else {
             animatedRendering = true
         }
@@ -343,15 +345,17 @@ class LudoBoardView(
         animationRenderOwners = (animationRenderOwners - 1).coerceAtLeast(0)
         if (animationRenderOwners == 0 && animatedRendering) {
             animatedRendering = false
-            animationChoreographer.removeFrameCallback(animationVsyncFrameCallback)
-            uiAnimationVsyncDescription = formatUiAnimationVsyncDiagnostic()
+            if (BuildConfig.DEBUG) {
+                animationChoreographer.removeFrameCallback(animationVsyncFrameCallback)
+                uiAnimationVsyncDescription = formatUiAnimationVsyncDiagnostic()
+            }
             renderMode = RENDERMODE_WHEN_DIRTY
             requestRender()
         }
     }
 
     private fun formatUiAnimationVsyncDiagnostic(): String {
-        val snapshot = uiAnimationVsyncTelemetry.snapshot()
+        val snapshot = uiAnimationVsyncTelemetry?.snapshot() ?: return ""
         val refreshRate = runCatching {
             (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
                 ?.defaultDisplay?.refreshRate
