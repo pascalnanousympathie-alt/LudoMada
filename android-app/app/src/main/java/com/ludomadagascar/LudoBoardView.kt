@@ -1471,6 +1471,9 @@ class LudoBoardView(
         private val backdropBatchVertexScratch = IntArray(RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES)
         private val backdropBatchIndexScratch = IntArray(RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES)
         private var lastBackdropBatchCount = 0
+        private var lastBackdropCullingQueryCpuNanos = 0L
+        private var lastBackdropCullingTransitionCpuNanos = 0L
+        private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
         internal var softwareRendererActive = false
             private set
@@ -1536,6 +1539,9 @@ class LudoBoardView(
             lastParticleCleanupCpuNanos = 0L
             lastActiveParticleCount = 0
             lastBackdropBatchCount = 0
+            lastBackdropCullingQueryCpuNanos = 0L
+            lastBackdropCullingTransitionCpuNanos = 0L
+            lastBackdropCullingRestoreCpuNanos = 0L
             java.util.Arrays.fill(particleDrawTimingScratch, 0L)
             java.util.Arrays.fill(backdropBatchCpuScratch, 0L)
             java.util.Arrays.fill(backdropBatchVertexScratch, 0)
@@ -1781,7 +1787,10 @@ class LudoBoardView(
                 backdropBatchCount = lastBackdropBatchCount,
                 backdropBatchCpuNanos = backdropBatchCpuScratch,
                 backdropBatchVertexCounts = backdropBatchVertexScratch,
-                backdropBatchIndexCounts = backdropBatchIndexScratch
+                backdropBatchIndexCounts = backdropBatchIndexScratch,
+                backdropCullingQueryCpuNanos = lastBackdropCullingQueryCpuNanos,
+                backdropCullingTransitionCpuNanos = lastBackdropCullingTransitionCpuNanos,
+                backdropCullingRestoreCpuNanos = lastBackdropCullingRestoreCpuNanos
             )?.let { phases ->
                 latestSceneBreakdownSnapshot = phases
                 rendererTelemetryUpdated = true
@@ -1792,6 +1801,11 @@ class LudoBoardView(
                         " setupCpuMsP95=" + phases.setupCpuP95Ms +
                         " backdropCpuMsP50=" + phases.backdropCpuP50Ms +
                         " backdropCpuMsP95=" + phases.backdropCpuP95Ms +
+                        " backdropCullingQueryCpuMsP95=" + phases.backdropCullingQueryCpuP95Ms +
+                        " backdropCullingTransitionCpuMsP95=" + phases.backdropCullingTransitionCpuP95Ms +
+                        " backdropCullingRestoreCpuMsP95=" + phases.backdropCullingRestoreCpuP95Ms +
+                        " backdropBatchTotalCpuMsP95=" + phases.backdropBatchTotalCpuP95Ms +
+                        " backdropUnattributedCpuMsP95=" + phases.backdropUnattributedCpuP95Ms +
                         " boardCpuMsP50=" + phases.boardCpuP50Ms +
                         " boardCpuMsP95=" + phases.boardCpuP95Ms +
                         " pawnsCpuMsP50=" + phases.pawnsCpuP50Ms +
@@ -2152,6 +2166,9 @@ class LudoBoardView(
                 return
             }
             lastBackdropBatchCount = 0
+            lastBackdropCullingQueryCpuNanos = 0L
+            lastBackdropCullingTransitionCpuNanos = 0L
+            lastBackdropCullingRestoreCpuNanos = 0L
             java.util.Arrays.fill(backdropBatchCpuScratch, 0L)
             java.util.Arrays.fill(backdropBatchVertexScratch, 0)
             java.util.Arrays.fill(backdropBatchIndexScratch, 0)
@@ -2284,7 +2301,11 @@ class LudoBoardView(
         private fun drawBlenderGameplayEnvironment(){
             val batches = preparedGameplayEnvironmentDraws
             if (batches.isEmpty()) return
+            val cullingQueryStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
+            if (cullingQueryStarted != 0L) {
+                lastBackdropCullingQueryCpuNanos = System.nanoTime() - cullingQueryStarted
+            }
             var cullingEnabled = cullingWasEnabled
             var batchIndex = 0
             try {
@@ -2295,8 +2316,12 @@ class LudoBoardView(
                     // needlessly rasterizes backfaces across the entire backdrop.
                     val batchCullingEnabled = cullingWasEnabled && !batch.doubleSided
                     if (batchCullingEnabled != cullingEnabled) {
+                        val transitionStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                         if (batchCullingEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
                         else GLES30.glDisable(GLES30.GL_CULL_FACE)
+                        if (transitionStarted != 0L) {
+                            lastBackdropCullingTransitionCpuNanos += System.nanoTime() - transitionStarted
+                        }
                         cullingEnabled = batchCullingEnabled
                     }
                     drawMesh(
@@ -2328,8 +2353,12 @@ class LudoBoardView(
                     0,
                     RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES
                 )
+                val restoreStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                 if (cullingWasEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
                 else GLES30.glDisable(GLES30.GL_CULL_FACE)
+                if (restoreStarted != 0L) {
+                    lastBackdropCullingRestoreCpuNanos = System.nanoTime() - restoreStarted
+                }
             }
         }
 
