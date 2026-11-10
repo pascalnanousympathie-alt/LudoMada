@@ -49,7 +49,11 @@ class RendererTelemetryAccessibilityTest {
         particleBufferUploadCpuP50Ms = 0.23f, particleBufferUploadCpuP95Ms = 1.67f,
         particleDrawSubmitCpuP50Ms = 0.01f, particleDrawSubmitCpuP95Ms = 0.76f,
         particleCleanupCpuP50Ms = 0.01f, particleCleanupCpuP95Ms = 0.02f,
-        activeParticlesP50 = 12, activeParticlesP95 = 18
+        activeParticlesP50 = 12, activeParticlesP95 = 18,
+        backdropBatchCount = 2,
+        backdropBatchCpuP95Ms = listOf(1.25f, 8.50f),
+        backdropBatchVertexCounts = listOf(1_200, 9_000),
+        backdropBatchIndexCounts = listOf(3_600, 27_000)
     )
 
     @Test
@@ -81,6 +85,10 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("ANIM_FRAME_SAMPLES=42"))
         assertTrue(label.contains("GL_CPU_MS=18.25/28.50"))
         assertTrue(label.contains("BACKDROP_CPU_MS=12.30/16.50"))
+        assertTrue(label.contains("BACKDROP_BATCH_COUNT=2"))
+        assertTrue(label.contains("BACKDROP_BATCH_CPU_P95_MS=1.25,8.50"))
+        assertTrue(label.contains("BACKDROP_BATCH_VERTEX_COUNTS=1200,9000"))
+        assertTrue(label.contains("BACKDROP_BATCH_INDEX_COUNTS=3600,27000"))
         assertTrue(label.contains("PAWNS_CPU_MS=4.20/7.00"))
         assertTrue(label.contains("PARTICLE_UPLOAD_CPU_MS=0.23/1.67"))
         assertTrue(label.contains("FRAME_SAMPLES=18"))
