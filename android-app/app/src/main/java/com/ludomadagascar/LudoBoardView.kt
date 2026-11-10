@@ -11,8 +11,10 @@ import android.opengl.GLES30
 import android.opengl.GLUtils
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import android.view.Choreographer
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.WindowManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -25,6 +27,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.io.File
 import java.nio.ShortBuffer
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.floor
@@ -77,7 +80,17 @@ class LudoBoardView(
     private var diceAnimator: ValueAnimator? = null
     private var diceRolling = false
     @Volatile private var animatedRendering = false
+    @Volatile private var uiAnimationVsyncDescription = ""
     private var animationRenderOwners = 0
+    private val uiAnimationVsyncTelemetry = if (BuildConfig.DEBUG) AnimationVsyncTelemetry() else null
+    private val animationChoreographer by lazy(LazyThreadSafetyMode.NONE) { Choreographer.getInstance() }
+    private val animationVsyncFrameCallback = object : Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!animatedRendering) return
+            uiAnimationVsyncTelemetry?.record(frameTimeNanos)
+            animationChoreographer.postFrameCallback(this)
+        }
+    }
     private val homeFrameHandler = Handler(Looper.getMainLooper())
     private val homeFrameTick = object : Runnable {
         override fun run() {
@@ -209,7 +222,11 @@ class LudoBoardView(
         if (!BuildConfig.DEBUG || homePreview) return
         val readyMarker = rendererReadyDescription ?: return
         val telemetryMarker = rendererTelemetryDescription
-        val marker = if (telemetryMarker.isEmpty()) readyMarker else "$readyMarker | $telemetryMarker"
+        val uiVsyncMarker = uiAnimationVsyncDescription
+        val marker = buildString {
+            append(if (telemetryMarker.isEmpty()) readyMarker else "$readyMarker | $telemetryMarker")
+            if (uiVsyncMarker.isNotEmpty()) append(" | ").append(uiVsyncMarker)
+        }
         val activePlayer = player
         val dice = state?.optInt("dice", 0) ?: 0
         val players = state?.optJSONArray("players")
@@ -232,7 +249,7 @@ class LudoBoardView(
         val targetSignature = targets.joinToString(";") { (index, p) ->
             "$index@" + String.format(java.util.Locale.US, "%.1f,%.1f", p[0], p[1])
         }
-        val signature = "$targetSignature|$telemetryMarker"
+        val signature = "$targetSignature|$telemetryMarker|$uiVsyncMarker"
         if (signature == latestPawnTargetSignature) return
         latestPawnTargetSignature = signature
         post {
@@ -306,8 +323,18 @@ class LudoBoardView(
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Animation render ownership must be changed on the main thread"
         }
+        val firstOwner = animationRenderOwners == 0
         animationRenderOwners += 1
-        animatedRendering = true
+        if (firstOwner) {
+            if (BuildConfig.DEBUG) {
+                uiAnimationVsyncTelemetry?.reset()
+                uiAnimationVsyncDescription = ""
+                animationChoreographer.postFrameCallback(animationVsyncFrameCallback)
+            }
+            animatedRendering = true
+        } else {
+            animatedRendering = true
+        }
         renderMode = RENDERMODE_CONTINUOUSLY
     }
 
@@ -318,9 +345,31 @@ class LudoBoardView(
         animationRenderOwners = (animationRenderOwners - 1).coerceAtLeast(0)
         if (animationRenderOwners == 0 && animatedRendering) {
             animatedRendering = false
+            if (BuildConfig.DEBUG) {
+                animationChoreographer.removeFrameCallback(animationVsyncFrameCallback)
+                uiAnimationVsyncDescription = formatUiAnimationVsyncDiagnostic()
+            }
             renderMode = RENDERMODE_WHEN_DIRTY
             requestRender()
         }
+    }
+
+    private fun formatUiAnimationVsyncDiagnostic(): String {
+        val snapshot = uiAnimationVsyncTelemetry?.snapshot() ?: return ""
+        val refreshRate = runCatching {
+            (context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager)
+                ?.defaultDisplay?.refreshRate
+        }.getOrNull()?.takeIf { it.isFinite() && it > 0f }
+        fun number(value: Float?): String =
+            value?.takeIf { it.isFinite() && it > 0f }?.let {
+                String.format(Locale.US, "%.2f", it)
+            } ?: "NA"
+        return listOf(
+            "UI_VSYNC_SAMPLES=${snapshot.sampleCount}",
+            "UI_VSYNC_FPS=" + number(snapshot.fps),
+            "UI_VSYNC_FRAME_MS=" + number(snapshot.intervalP50Ms) + "/" + number(snapshot.intervalP95Ms),
+            "DISPLAY_REFRESH_HZ=" + number(refreshRate)
+        ).joinToString(" | ")
     }
 
     fun startDiceAnimation() {
