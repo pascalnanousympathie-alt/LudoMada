@@ -78,6 +78,18 @@ internal class GlesGpuTimerQuery(
             if (allocated.isNotEmpty()) GLES30.glDeleteQueries(allocated.size, allocated, 0)
             Arrays.fill(queryIds, 0)
             supported = false
+            return
+        }
+
+        // The extension requires at least 30 timer bits. Since the Android
+        // GLES30 Java binding exposes a 32-bit result accessor, reject counters
+        // below 30 bits and discard any elapsed result at or above one second.
+        valueScratch[0] = 0
+        GLES30.glGetQueryiv(GL_TIME_ELAPSED_EXT, 0x8864, valueScratch, 0)
+        if (valueScratch[0] < 30) {
+            GLES30.glDeleteQueries(queryIds.size, queryIds, 0)
+            Arrays.fill(queryIds, 0)
+            supported = false
         }
     }
 
