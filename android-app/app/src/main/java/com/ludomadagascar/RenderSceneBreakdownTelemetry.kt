@@ -23,13 +23,21 @@ internal data class RenderSceneBreakdownSnapshot(
     val particleBufferUploadCpuP50Ms: Float, val particleBufferUploadCpuP95Ms: Float,
     val particleDrawSubmitCpuP50Ms: Float, val particleDrawSubmitCpuP95Ms: Float,
     val particleCleanupCpuP50Ms: Float, val particleCleanupCpuP95Ms: Float,
-    val activeParticlesP50: Int, val activeParticlesP95: Int
+    val activeParticlesP50: Int, val activeParticlesP95: Int,
+    val backdropBatchCount: Int = 0,
+    val backdropBatchCpuP95Ms: List<Float> = emptyList(),
+    val backdropBatchVertexCounts: List<Int> = emptyList(),
+    val backdropBatchIndexCounts: List<Int> = emptyList()
 )
 
 internal class RenderSceneBreakdownTelemetry(
     private val windowSize: Int = 60,
     private val reportIntervalNanos: Long = 5_000_000_000L
 ) {
+    companion object {
+        const val MAX_BACKDROP_BATCHES = 7
+    }
+
     init {
         require(windowSize >= 2) { "windowSize must be at least 2" }
         require(reportIntervalNanos > 0L) { "reportIntervalNanos must be positive" }
@@ -49,9 +57,13 @@ internal class RenderSceneBreakdownTelemetry(
     private val particleDrawSubmit = LongArray(windowSize)
     private val particleCleanup = LongArray(windowSize)
     private val activeParticles = IntArray(windowSize)
+    private val backdropBatchCpu = Array(MAX_BACKDROP_BATCHES) { LongArray(windowSize) }
+    private val backdropBatchVertices = Array(MAX_BACKDROP_BATCHES) { IntArray(windowSize) }
+    private val backdropBatchIndices = Array(MAX_BACKDROP_BATCHES) { IntArray(windowSize) }
     private val scratch = LongArray(windowSize)
     private var nextIndex = 0
     private var sampleCount = 0
+    private var backdropBatchCount = 0
     private var nextReportAtNanos = 0L
 
     fun record(
@@ -69,7 +81,11 @@ internal class RenderSceneBreakdownTelemetry(
         particleBufferUploadCpuNanos: Long = 0L,
         particleDrawSubmitCpuNanos: Long = 0L,
         particleCleanupCpuNanos: Long = 0L,
-        activeParticleCount: Int = 0
+        activeParticleCount: Int = 0,
+        backdropBatchCount: Int = 0,
+        backdropBatchCpuNanos: LongArray? = null,
+        backdropBatchVertexCounts: IntArray? = null,
+        backdropBatchIndexCounts: IntArray? = null
     ): RenderSceneBreakdownSnapshot? {
         if (frameStartNanos <= 0L) return null
         setup[nextIndex] = setupCpuNanos.coerceAtLeast(0L)
@@ -86,6 +102,19 @@ internal class RenderSceneBreakdownTelemetry(
         particleDrawSubmit[nextIndex] = particleDrawSubmitCpuNanos.coerceAtLeast(0L)
         particleCleanup[nextIndex] = particleCleanupCpuNanos.coerceAtLeast(0L)
         activeParticles[nextIndex] = activeParticleCount.coerceAtLeast(0)
+        this.backdropBatchCount = if (backdropBatchCpuNanos == null) 0 else
+            backdropBatchCount.coerceIn(0, MAX_BACKDROP_BATCHES).coerceAtMost(backdropBatchCpuNanos.size)
+        for (batch in 0 until MAX_BACKDROP_BATCHES) {
+            val present = batch < this.backdropBatchCount
+            this.backdropBatchCpu[batch][nextIndex] =
+                if (present) backdropBatchCpuNanos!![batch].coerceAtLeast(0L) else 0L
+            this.backdropBatchVertices[batch][nextIndex] =
+                if (present && backdropBatchVertexCounts != null && batch < backdropBatchVertexCounts.size)
+                    backdropBatchVertexCounts[batch].coerceAtLeast(0) else 0
+            this.backdropBatchIndices[batch][nextIndex] =
+                if (present && backdropBatchIndexCounts != null && batch < backdropBatchIndexCounts.size)
+                    backdropBatchIndexCounts[batch].coerceAtLeast(0) else 0
+        }
         nextIndex = (nextIndex + 1) % windowSize
         sampleCount = min(windowSize, sampleCount + 1)
 
@@ -110,9 +139,15 @@ internal class RenderSceneBreakdownTelemetry(
         Arrays.fill(particleDrawSubmit, 0L)
         Arrays.fill(particleCleanup, 0L)
         Arrays.fill(activeParticles, 0)
+        for (batch in 0 until MAX_BACKDROP_BATCHES) {
+            Arrays.fill(backdropBatchCpu[batch], 0L)
+            Arrays.fill(backdropBatchVertices[batch], 0)
+            Arrays.fill(backdropBatchIndices[batch], 0)
+        }
         Arrays.fill(scratch, 0L)
         nextIndex = 0
         sampleCount = 0
+        backdropBatchCount = 0
         nextReportAtNanos = 0L
     }
 
@@ -145,7 +180,17 @@ internal class RenderSceneBreakdownTelemetry(
         particleCleanupCpuP50Ms = percentileMillis(particleCleanup, 0.50),
         particleCleanupCpuP95Ms = percentileMillis(particleCleanup, 0.95),
         activeParticlesP50 = percentileCount(0.50),
-        activeParticlesP95 = percentileCount(0.95)
+        activeParticlesP95 = percentileCount(0.95),
+        backdropBatchCount = backdropBatchCount,
+        backdropBatchCpuP95Ms = (0 until backdropBatchCount).map {
+            percentileMillis(backdropBatchCpu[it], 0.95)
+        },
+        backdropBatchVertexCounts = (0 until backdropBatchCount).map {
+            backdropBatchVertices[it][(nextIndex - 1 + windowSize) % windowSize]
+        },
+        backdropBatchIndexCounts = (0 until backdropBatchCount).map {
+            backdropBatchIndices[it][(nextIndex - 1 + windowSize) % windowSize]
+        }
     )
 
     private fun percentileMillis(values: LongArray, percentile: Double): Float {
