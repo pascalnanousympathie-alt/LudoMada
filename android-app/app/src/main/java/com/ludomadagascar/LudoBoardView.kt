@@ -2301,19 +2301,16 @@ class LudoBoardView(
         private fun drawBlenderGameplayEnvironment(){
             val batches = preparedGameplayEnvironmentDraws
             if (batches.isEmpty()) return
-            val cullingQueryStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
-            val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
-            if (cullingQueryStarted != 0L) {
-                lastBackdropCullingQueryCpuNanos = System.nanoTime() - cullingQueryStarted
-            }
-            var cullingEnabled = cullingWasEnabled
+
+            // The gameplay renderer enables face culling in onSurfaceCreated and
+            // this method restores that known state before returning. Do not query
+            // GL state here: glIsEnabled stalls SwiftShader for tens of milliseconds.
+            // glTF doubleSided metadata alone determines the per-batch override.
+            var cullingEnabled = true
             var batchIndex = 0
             try {
                 for (batch in batches) {
-                    // Respect glTF doubleSided per merged batch. Disabling culling
-                    // for every environment batch when only one is double-sided
-                    // needlessly rasterizes backfaces across the entire backdrop.
-                    val batchCullingEnabled = cullingWasEnabled && !batch.doubleSided
+                    val batchCullingEnabled = !batch.doubleSided
                     if (batchCullingEnabled != cullingEnabled) {
                         val transitionStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                         if (batchCullingEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
@@ -2353,11 +2350,13 @@ class LudoBoardView(
                     0,
                     RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES
                 )
-                val restoreStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
-                if (cullingWasEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
-                else GLES30.glDisable(GLES30.GL_CULL_FACE)
-                if (restoreStarted != 0L) {
-                    lastBackdropCullingRestoreCpuNanos = System.nanoTime() - restoreStarted
+                // Restore only when a final double-sided batch left culling disabled.
+                if (!cullingEnabled) {
+                    val restoreStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
+                    GLES30.glEnable(GLES30.GL_CULL_FACE)
+                    if (restoreStarted != 0L) {
+                        lastBackdropCullingRestoreCpuNanos = System.nanoTime() - restoreStarted
+                    }
                 }
             }
         }
