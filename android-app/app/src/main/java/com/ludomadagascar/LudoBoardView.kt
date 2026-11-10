@@ -1525,6 +1525,7 @@ class LudoBoardView(
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
+        private val gpuFenceTelemetry = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuFenceTelemetry() else null
         internal var softwareRendererActive = false
             private set
         private var firstDrawMarkerPersisted = false
@@ -1640,6 +1641,7 @@ class LudoBoardView(
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
+            gpuFenceTelemetry?.initialize()
             android.util.Log.i(
                 "LudoMadaRender",
                 "GPU_TIMER_QUERY status=" + (gpuTimerQuery?.snapshot()?.status ?: "DISABLED")
@@ -1822,11 +1824,13 @@ class LudoBoardView(
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             val updateCpuNanos = System.nanoTime() - updateStartedNanos
+            gpuFenceTelemetry?.beginFrame(System.nanoTime())
             gpuTimerQuery?.beginFrame()
             val glSubmissionDurationNanos = try {
                 renderDirectFrame()
             } finally {
                 gpuTimerQuery?.endFrame()
+                gpuFenceTelemetry?.endFrame(System.nanoTime())
             }
             var rendererTelemetryUpdated = false
             sceneBreakdownTelemetry?.record(
@@ -1965,7 +1969,8 @@ class LudoBoardView(
                     pipeline = latestPipelinePhaseSnapshot,
                     scene = latestSceneBreakdownSnapshot,
                     preparedStaticMeshCount = preparedGles3StaticMeshCount,
-                    gpu = gpuTimerQuery?.snapshot()
+                    gpu = gpuTimerQuery?.snapshot(),
+                    gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime())
                 )?.let(host::publishRendererTelemetry)
             }
             // Includes the whole GL callback, but deliberately excludes the following
