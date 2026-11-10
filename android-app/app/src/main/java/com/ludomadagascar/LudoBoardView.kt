@@ -1475,6 +1475,7 @@ class LudoBoardView(
         private var lastBackdropCullingTransitionCpuNanos = 0L
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
+        private val gpuTimerQuery = if (BuildConfig.DEBUG) GlesGpuTimerQuery() else null
         internal var softwareRendererActive = false
             private set
         private var firstDrawMarkerPersisted = false
@@ -1588,6 +1589,12 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
+            gpuTimerQuery?.initialize(glExtensions)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "GPU_TIMER_QUERY status=" + (gpuTimerQuery?.snapshot()?.status ?: "DISABLED")
+            )
             softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
             val softwarePostProcessActive = SoftwareRendererPolicy.useFastPostProcess(glRenderer, host.homePreview)
             shadowSize = SoftwareRendererPolicy.shadowMapResolution(
@@ -1611,7 +1618,7 @@ class LudoBoardView(
             GLES30.glCullFace(GLES30.GL_BACK)
             GLES30.glEnable(GLES30.GL_BLEND)
             GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)
-            rayTracingHardware=RayTraceSupport.hasGlesRayTracing(GLES30.glGetString(GLES30.GL_EXTENSIONS))
+            rayTracingHardware=RayTraceSupport.hasGlesRayTracing(glExtensions)
             android.util.Log.i("LudoMadaRender", if (rayTracingHardware) "RayTracing=available" else "RayTracing=IBL_reflection_fallback")
             shader=PbrShader(this);shadowShader=ShadowShader();postShader=PostShader(softwarePostProcessActive);particleShader=ParticleShader()
             cube=cubeMesh();pathMesh=pathMesh();coloredZones=Array(4){zoneMesh(it)};coloredLanes=Array(4){laneMesh(it)};pawnBody=pawnBodyMesh();sphere=sphereMesh(18,12);roundedBox=roundedBoxMesh(32,20);disk=diskMesh(32);pips=sphereMesh(10,6);diePipMeshes=DicePipBatcher.build(pips);heroRing=ringMesh(64,1.02f,0.72f)
@@ -1766,7 +1773,12 @@ class LudoBoardView(
             )
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             val updateCpuNanos = System.nanoTime() - updateStartedNanos
-            val glSubmissionDurationNanos = renderDirectFrame()
+            gpuTimerQuery?.beginFrame()
+            val glSubmissionDurationNanos = try {
+                renderDirectFrame()
+            } finally {
+                gpuTimerQuery?.endFrame()
+            }
             var rendererTelemetryUpdated = false
             sceneBreakdownTelemetry?.record(
                 now,
@@ -1903,7 +1915,8 @@ class LudoBoardView(
                     frame = latestFramePerfSnapshot,
                     pipeline = latestPipelinePhaseSnapshot,
                     scene = latestSceneBreakdownSnapshot,
-                    preparedStaticMeshCount = preparedGles3StaticMeshCount
+                    preparedStaticMeshCount = preparedGles3StaticMeshCount,
+                    gpu = gpuTimerQuery?.snapshot()
                 )?.let(host::publishRendererTelemetry)
             }
             // Includes the whole GL callback, but deliberately excludes the following
