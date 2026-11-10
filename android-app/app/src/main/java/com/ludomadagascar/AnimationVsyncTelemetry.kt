@@ -32,7 +32,8 @@ internal class AnimationVsyncTelemetry(
     fun record(frameTimeNanos: Long) {
         if (frameTimeNanos <= 0L) return
         val previous = previousFrameNanos
-        if (previous > 0L && frameTimeNanos > previous) {
+        if (previous > 0L && frameTimeNanos <= previous) return
+        if (previous > 0L) {
             intervalsNanos[nextIndex] = frameTimeNanos - previous
             nextIndex = (nextIndex + 1) % windowSize
             sampleCount = min(windowSize, sampleCount + 1)
