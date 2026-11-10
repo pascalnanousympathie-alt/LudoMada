@@ -12,6 +12,11 @@ internal data class RenderSceneBreakdownSnapshot(
     val sampleCount: Int,
     val setupCpuP50Ms: Float, val setupCpuP95Ms: Float,
     val backdropCpuP50Ms: Float, val backdropCpuP95Ms: Float,
+    val backdropCullingQueryCpuP50Ms: Float = 0f, val backdropCullingQueryCpuP95Ms: Float = 0f,
+    val backdropCullingTransitionCpuP50Ms: Float = 0f, val backdropCullingTransitionCpuP95Ms: Float = 0f,
+    val backdropCullingRestoreCpuP50Ms: Float = 0f, val backdropCullingRestoreCpuP95Ms: Float = 0f,
+    val backdropBatchTotalCpuP50Ms: Float = 0f, val backdropBatchTotalCpuP95Ms: Float = 0f,
+    val backdropUnattributedCpuP50Ms: Float = 0f, val backdropUnattributedCpuP95Ms: Float = 0f,
     val boardCpuP50Ms: Float, val boardCpuP95Ms: Float,
     val pawnsCpuP50Ms: Float, val pawnsCpuP95Ms: Float,
     val diceCpuP50Ms: Float, val diceCpuP95Ms: Float,
@@ -45,6 +50,11 @@ internal class RenderSceneBreakdownTelemetry(
 
     private val setup = LongArray(windowSize)
     private val backdrop = LongArray(windowSize)
+    private val backdropCullingQuery = LongArray(windowSize)
+    private val backdropCullingTransition = LongArray(windowSize)
+    private val backdropCullingRestore = LongArray(windowSize)
+    private val backdropBatchTotal = LongArray(windowSize)
+    private val backdropUnattributed = LongArray(windowSize)
     private val board = LongArray(windowSize)
     private val pawns = LongArray(windowSize)
     private val dice = LongArray(windowSize)
@@ -85,11 +95,31 @@ internal class RenderSceneBreakdownTelemetry(
         backdropBatchCount: Int = 0,
         backdropBatchCpuNanos: LongArray? = null,
         backdropBatchVertexCounts: IntArray? = null,
-        backdropBatchIndexCounts: IntArray? = null
+        backdropBatchIndexCounts: IntArray? = null,
+        backdropCullingQueryCpuNanos: Long = 0L,
+        backdropCullingTransitionCpuNanos: Long = 0L,
+        backdropCullingRestoreCpuNanos: Long = 0L
     ): RenderSceneBreakdownSnapshot? {
         if (frameStartNanos <= 0L) return null
         setup[nextIndex] = setupCpuNanos.coerceAtLeast(0L)
         backdrop[nextIndex] = backdropCpuNanos.coerceAtLeast(0L)
+        backdropCullingQuery[nextIndex] = backdropCullingQueryCpuNanos.coerceAtLeast(0L)
+        backdropCullingTransition[nextIndex] = backdropCullingTransitionCpuNanos.coerceAtLeast(0L)
+        backdropCullingRestore[nextIndex] = backdropCullingRestoreCpuNanos.coerceAtLeast(0L)
+        var batchTotalNanos = 0L
+        val recordedBatchCount = if (backdropBatchCpuNanos == null) 0 else
+            backdropBatchCount.coerceIn(0, MAX_BACKDROP_BATCHES).coerceAtMost(backdropBatchCpuNanos.size)
+        for (batch in 0 until recordedBatchCount) {
+            batchTotalNanos += backdropBatchCpuNanos!![batch].coerceAtLeast(0L)
+        }
+        backdropBatchTotal[nextIndex] = batchTotalNanos
+        backdropUnattributed[nextIndex] = (
+            backdrop[nextIndex] -
+                backdropCullingQuery[nextIndex] -
+                backdropCullingTransition[nextIndex] -
+                backdropCullingRestore[nextIndex] -
+                batchTotalNanos
+            ).coerceAtLeast(0L)
         board[nextIndex] = boardCpuNanos.coerceAtLeast(0L)
         pawns[nextIndex] = pawnsCpuNanos.coerceAtLeast(0L)
         dice[nextIndex] = diceCpuNanos.coerceAtLeast(0L)
@@ -127,6 +157,11 @@ internal class RenderSceneBreakdownTelemetry(
     fun reset() {
         Arrays.fill(setup, 0L)
         Arrays.fill(backdrop, 0L)
+        Arrays.fill(backdropCullingQuery, 0L)
+        Arrays.fill(backdropCullingTransition, 0L)
+        Arrays.fill(backdropCullingRestore, 0L)
+        Arrays.fill(backdropBatchTotal, 0L)
+        Arrays.fill(backdropUnattributed, 0L)
         Arrays.fill(board, 0L)
         Arrays.fill(pawns, 0L)
         Arrays.fill(dice, 0L)
@@ -157,6 +192,16 @@ internal class RenderSceneBreakdownTelemetry(
         setupCpuP95Ms = percentileMillis(setup, 0.95),
         backdropCpuP50Ms = percentileMillis(backdrop, 0.50),
         backdropCpuP95Ms = percentileMillis(backdrop, 0.95),
+        backdropCullingQueryCpuP50Ms = percentileMillis(backdropCullingQuery, 0.50),
+        backdropCullingQueryCpuP95Ms = percentileMillis(backdropCullingQuery, 0.95),
+        backdropCullingTransitionCpuP50Ms = percentileMillis(backdropCullingTransition, 0.50),
+        backdropCullingTransitionCpuP95Ms = percentileMillis(backdropCullingTransition, 0.95),
+        backdropCullingRestoreCpuP50Ms = percentileMillis(backdropCullingRestore, 0.50),
+        backdropCullingRestoreCpuP95Ms = percentileMillis(backdropCullingRestore, 0.95),
+        backdropBatchTotalCpuP50Ms = percentileMillis(backdropBatchTotal, 0.50),
+        backdropBatchTotalCpuP95Ms = percentileMillis(backdropBatchTotal, 0.95),
+        backdropUnattributedCpuP50Ms = percentileMillis(backdropUnattributed, 0.50),
+        backdropUnattributedCpuP95Ms = percentileMillis(backdropUnattributed, 0.95),
         boardCpuP50Ms = percentileMillis(board, 0.50),
         boardCpuP95Ms = percentileMillis(board, 0.95),
         pawnsCpuP50Ms = percentileMillis(pawns, 0.50),
