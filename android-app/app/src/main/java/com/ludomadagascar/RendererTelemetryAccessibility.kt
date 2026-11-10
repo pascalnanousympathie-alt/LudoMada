@@ -11,7 +11,8 @@ internal object RendererTelemetryAccessibility {
         frame: RenderFramePerfSnapshot?,
         pipeline: RenderPipelinePhaseSnapshot?,
         scene: RenderSceneBreakdownSnapshot?,
-        preparedStaticMeshCount: Int
+        preparedStaticMeshCount: Int,
+        gpu: GpuTimerSnapshot? = null
     ): String? {
         if (frame == null || pipeline == null || scene == null || preparedStaticMeshCount <= 0) return null
 
@@ -60,7 +61,11 @@ internal object RendererTelemetryAccessibility {
             "GL_SAMPLES=${frame.glSubmissionSampleCount}",
             "SCENE_SAMPLES=${scene.sampleCount}",
             "PIPELINE_SAMPLES=${pipeline.sampleCount}",
-            "GPU_TIME=NOT_MEASURED"
+            "GPU_TIME=" + (gpu?.status ?: "UNSUPPORTED"),
+            "GPU_FRAME_MS=" + if (gpu?.p50Ms != null && gpu.p95Ms != null) pair(gpu.p50Ms, gpu.p95Ms) else "NA/NA",
+            "GPU_TIMER_SAMPLES=${gpu?.sampleCount ?: 0}",
+            "GPU_TIMER_DISJOINTS=${gpu?.disjointCount ?: 0}",
+            "GPU_TIMER_SKIPPED_FRAMES=${gpu?.skippedFrames ?: 0}"
         ).joinToString(" | ")
     }
 
