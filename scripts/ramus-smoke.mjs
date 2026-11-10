@@ -109,6 +109,14 @@ function parseRendererAccessibilityTelemetry(label) {
     const number = Number(value);
     return Number.isSafeInteger(number) ? number : null;
   };
+  const numericList = (value, integersOnly = false) => {
+    if (typeof value !== "string") return null;
+    if (value === "") return [];
+    const pattern = integersOnly ? /^\d+$/ : /^\d+(?:\.\d+)?$/;
+    if (!value.split(",").every(item => pattern.test(item))) return null;
+    const values = value.split(",").map(Number);
+    return values.every(Number.isFinite) ? values : null;
+  };
   const pair = (value) => {
     if (typeof value !== "string") return null;
     const match = value.match(/^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);
@@ -150,6 +158,10 @@ function parseRendererAccessibilityTelemetry(label) {
   const sceneSamples = integer(field("SCENE_SAMPLES"));
   const pipelineSamples = integer(field("PIPELINE_SAMPLES"));
   const staticMeshVaoCount = integer(field("STATIC_MESH_VAO_COUNT"));
+  const backdropBatchCount = integer(field("BACKDROP_BATCH_COUNT"));
+  const backdropBatchCpuP95Ms = numericList(field("BACKDROP_BATCH_CPU_P95_MS"));
+  const backdropBatchVertexCounts = numericList(field("BACKDROP_BATCH_VERTEX_COUNTS"), true);
+  const backdropBatchIndexCounts = numericList(field("BACKDROP_BATCH_INDEX_COUNTS"), true);
 
   if (!vendor || !renderer || !gles || !surface ||
       !Number.isSafeInteger(Number(surface[1])) || !Number.isSafeInteger(Number(surface[2])) ||
@@ -169,6 +181,13 @@ function parseRendererAccessibilityTelemetry(label) {
       !postCpuMs || !pawnTargetsCpuMs ||
       frameSamples === null || glSamples === null || sceneSamples === null || pipelineSamples === null ||
       staticMeshVaoCount === null || staticMeshVaoCount <= 0 ||
+      backdropBatchCount === null || backdropBatchCount < 0 || backdropBatchCount > 7 ||
+      backdropBatchCpuP95Ms === null || backdropBatchCpuP95Ms.length !== backdropBatchCount ||
+      backdropBatchCpuP95Ms.some(value => value < 0) ||
+      backdropBatchVertexCounts === null || backdropBatchVertexCounts.length !== backdropBatchCount ||
+      backdropBatchVertexCounts.some(value => !Number.isSafeInteger(value)) ||
+      backdropBatchIndexCounts === null || backdropBatchIndexCounts.length !== backdropBatchCount ||
+      backdropBatchIndexCounts.some(value => !Number.isSafeInteger(value)) ||
       field("GPU_TIME") !== "NOT_MEASURED") return null;
 
   return {
@@ -178,7 +197,8 @@ function parseRendererAccessibilityTelemetry(label) {
     animationAfterCallbackGapMs, animationFrameSamples, glCpuMs, sceneCpuMs, backdropCpuMs, boardCpuMs,
     pawnsCpuMs, diceCpuMs, particlesCpuMs, particleUploadCpuMs,
     shadowCpuMs, postCpuMs, pawnTargetsCpuMs,
-    frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount
+    frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount,
+    backdropBatchCount, backdropBatchCpuP95Ms, backdropBatchVertexCounts, backdropBatchIndexCounts
   };
 }
 
@@ -311,7 +331,7 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
-  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
   const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
     .replace("FPS=5.14", "FPS=INSUFFICIENT")
     .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
@@ -322,6 +342,10 @@ function selfTestFramebufferReadback() {
     .replace("ANIM_FRAME_SAMPLES=42", "ANIM_FRAME_SAMPLES=0");
   const invalidAccessibilityTelemetry = accessibilityTelemetryLabel.replace("GPU_TIME=NOT_MEASURED", "GPU_TIME=measured");
   const invalidStaticMeshVaoTelemetry = accessibilityTelemetryLabel.replace("STATIC_MESH_VAO_COUNT=24", "STATIC_MESH_VAO_COUNT=0");
+  const invalidBackdropBatchTelemetry = accessibilityTelemetryLabel.replace(
+    "BACKDROP_BATCH_CPU_P95_MS=1.25,8.50",
+    "BACKDROP_BATCH_CPU_P95_MS=1.25"
+  );
 
   const cases = [
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
@@ -341,6 +365,8 @@ function selfTestFramebufferReadback() {
     ["accessibility dice pip contract rejects separate pip draws", !dicePipBatchSummaryValid(parseDicePipBatchSummary(invalidDicePipBatchLabel))],
     ["accessibility renderer telemetry exposes GPU identity, FPS, callback gap and animation cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.fps === 5.14 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.afterCallbackGapMs?.[0] === 170 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.animationFps === 58 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.animationFrameSamples === 42],
     ["accessibility renderer telemetry requires eagerly prepared static VAOs", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.staticMeshVaoCount === 24],
+    ["accessibility renderer telemetry exposes per-batch backdrop CPU and geometry", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchCount === 2 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchCpuP95Ms?.[1] === 8.5 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.backdropBatchVertexCounts?.[1] === 9000],
+    ["accessibility renderer telemetry rejects incomplete backdrop batch samples", parseRendererAccessibilityTelemetry(invalidBackdropBatchTelemetry) === null],
     ["accessibility renderer telemetry rejects missing static VAO preparation", parseRendererAccessibilityTelemetry(invalidStaticMeshVaoTelemetry) === null],
     ["accessibility renderer telemetry explicitly reports insufficient FPS samples", parseRendererAccessibilityTelemetry(insufficientAccessibilityTelemetry)?.fps === null],
     ["accessibility renderer telemetry rejects ambiguous GPU timing claims", parseRendererAccessibilityTelemetry(invalidAccessibilityTelemetry) === null],
