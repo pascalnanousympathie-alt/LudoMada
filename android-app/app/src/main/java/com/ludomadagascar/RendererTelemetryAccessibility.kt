@@ -68,7 +68,7 @@ internal object RendererTelemetryAccessibility {
             "GPU_TIMER_DISJOINTS=${gpu?.disjointCount ?: 0}",
             "GPU_TIMER_SKIPPED_FRAMES=${gpu?.skippedFrames ?: 0}",
             "GPU_FENCE_STATUS=" + (gpuFence?.status ?: "UNSUPPORTED"),
-            "GPU_FENCE_MS=" + if (gpuFence?.completionP50Ms != null && gpuFence.completionP95Ms != null) pair(gpuFence.completionP50Ms, gpuFence.completionP95Ms) else "NA/NA",
+            "GPU_FENCE_SIGNAL_DELAY_MS=" + if (gpuFence?.completionP50Ms != null && gpuFence.completionP95Ms != null) pair(gpuFence.completionP50Ms, gpuFence.completionP95Ms) else "NA/NA",
             "GPU_FENCE_SAMPLES=${gpuFence?.sampleCount ?: 0}",
             "GPU_FENCE_PENDING=${gpuFence?.pendingCount ?: 0}",
             "GPU_FENCE_OLDEST_MS=" + (gpuFence?.oldestPendingMs?.let(::number) ?: "NA"),
