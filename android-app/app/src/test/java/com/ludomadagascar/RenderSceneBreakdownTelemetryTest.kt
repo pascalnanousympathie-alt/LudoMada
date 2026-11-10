@@ -141,7 +141,7 @@ class RenderSceneBreakdownTelemetryTest {
             backdropCullingRestoreCpuNanos = 2_000_000L
         )!!
 
-        assertEquals(3f, snapshot.backdropCullingQueryCpuP50Ms, 0.001f)
+        assertEquals(4f, snapshot.backdropCullingQueryCpuP50Ms, 0.001f)
         assertEquals(5f, snapshot.backdropCullingQueryCpuP95Ms, 0.001f)
         assertEquals(1f, snapshot.backdropCullingTransitionCpuP50Ms, 0.001f)
         assertEquals(2f, snapshot.backdropCullingTransitionCpuP95Ms, 0.001f)
@@ -149,8 +149,8 @@ class RenderSceneBreakdownTelemetryTest {
         assertEquals(2f, snapshot.backdropCullingRestoreCpuP95Ms, 0.001f)
         assertEquals(5f, snapshot.backdropBatchTotalCpuP50Ms, 0.001f)
         assertEquals(7f, snapshot.backdropBatchTotalCpuP95Ms, 0.001f)
-        assertEquals(9f, snapshot.backdropUnattributedCpuP50Ms, 0.001f)
-        assertEquals(10f, snapshot.backdropUnattributedCpuP95Ms, 0.001f)
+        assertEquals(10f, snapshot.backdropUnattributedCpuP50Ms, 0.001f)
+        assertEquals(11f, snapshot.backdropUnattributedCpuP95Ms, 0.001f)
     }
 
     @Test
