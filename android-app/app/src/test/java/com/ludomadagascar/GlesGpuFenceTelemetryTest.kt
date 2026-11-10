@@ -75,9 +75,11 @@ class GlesGpuFenceTelemetryTest {
         api.signaled += 1L
         telemetry.beginFrame(1_060_000_000L)
         val completed = telemetry.snapshot(1_060_000_000L)
+        assertEquals("INSUFFICIENT", completed.status)
         assertEquals(0, completed.pendingCount)
         assertEquals(1, completed.sampleCount)
-        assertEquals(60f, completed.completionP50Ms!!, 0.01f)
+        assertNull(completed.completionP50Ms)
+        assertNull(completed.completionP95Ms)
     }
 
     @Test
