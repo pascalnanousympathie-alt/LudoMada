@@ -1475,7 +1475,7 @@ class LudoBoardView(
         private var lastBackdropCullingTransitionCpuNanos = 0L
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
-        private val gpuTimerQuery = if (BuildConfig.DEBUG) GlesGpuTimerQuery() else null
+        private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
         internal var softwareRendererActive = false
             private set
         private var firstDrawMarkerPersisted = false
