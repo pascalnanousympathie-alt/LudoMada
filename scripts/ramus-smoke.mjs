@@ -145,6 +145,11 @@ function parseRendererAccessibilityTelemetry(label) {
   const glCpuMs = pair(field("GL_CPU_MS"));
   const sceneCpuMs = pair(field("SCENE_CPU_MS"));
   const backdropCpuMs = pair(field("BACKDROP_CPU_MS"));
+  const backdropCullingQueryCpuMs = pair(field("BACKDROP_CULL_QUERY_CPU_MS"));
+  const backdropCullingTransitionCpuMs = pair(field("BACKDROP_CULL_TRANSITION_CPU_MS"));
+  const backdropCullingRestoreCpuMs = pair(field("BACKDROP_CULL_RESTORE_CPU_MS"));
+  const backdropBatchTotalCpuMs = pair(field("BACKDROP_BATCH_TOTAL_CPU_MS"));
+  const backdropUnattributedCpuMs = pair(field("BACKDROP_UNATTRIBUTED_CPU_MS"));
   const boardCpuMs = pair(field("BOARD_CPU_MS"));
   const pawnsCpuMs = pair(field("PAWNS_CPU_MS"));
   const diceCpuMs = pair(field("DICE_CPU_MS"));
@@ -176,7 +181,10 @@ function parseRendererAccessibilityTelemetry(label) {
       animationAfterCallbackGapField === null ||
       (animationAfterCallbackGapField !== "NA/NA" && !animationAfterCallbackGapMs) ||
       animationFrameSamples === null ||
-      !glCpuMs || !sceneCpuMs || !backdropCpuMs || !boardCpuMs || !pawnsCpuMs ||
+      !glCpuMs || !sceneCpuMs || !backdropCpuMs ||
+      !backdropCullingQueryCpuMs || !backdropCullingTransitionCpuMs ||
+      !backdropCullingRestoreCpuMs || !backdropBatchTotalCpuMs ||
+      !backdropUnattributedCpuMs || !boardCpuMs || !pawnsCpuMs ||
       !diceCpuMs || !particlesCpuMs || !particleUploadCpuMs || !shadowCpuMs ||
       !postCpuMs || !pawnTargetsCpuMs ||
       frameSamples === null || glSamples === null || sceneSamples === null || pipelineSamples === null ||
@@ -194,7 +202,9 @@ function parseRendererAccessibilityTelemetry(label) {
     vendor, renderer, gles,
     surface: `${Number(surface[1])}x${Number(surface[2])}`,
     fps, frameMs, afterCallbackGapMs, animationFps, animationFrameMs,
-    animationAfterCallbackGapMs, animationFrameSamples, glCpuMs, sceneCpuMs, backdropCpuMs, boardCpuMs,
+    animationAfterCallbackGapMs, animationFrameSamples, glCpuMs, sceneCpuMs, backdropCpuMs,
+    backdropCullingQueryCpuMs, backdropCullingTransitionCpuMs, backdropCullingRestoreCpuMs,
+    backdropBatchTotalCpuMs, backdropUnattributedCpuMs, boardCpuMs,
     pawnsCpuMs, diceCpuMs, particlesCpuMs, particleUploadCpuMs,
     shadowCpuMs, postCpuMs, pawnTargetsCpuMs,
     frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount,
@@ -331,7 +341,7 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
-  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40 | BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10 | BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08 | BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60 | BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=NOT_MEASURED";
   const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
     .replace("FPS=5.14", "FPS=INSUFFICIENT")
     .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
