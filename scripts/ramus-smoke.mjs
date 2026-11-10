@@ -450,11 +450,14 @@ function runCli(...args) {
   const command = String(args[0] || "");
   const waitIndex = args.indexOf("--timeout");
   const declaredWaitMs = waitIndex >= 0 ? Number(args[waitIndex + 1]) : 0;
-  // Ramus RPCs can occasionally hang if the cloud accessibility stream is stale.
-  // Bound every child process so retry/finally logic can recover and close our session.
-  const timeout = command === "session"
-    ? 45000
-    : command === "screenshot"
+  // Cloud session allocation includes device provisioning and can exceed the old 45s cap.
+  // A recorded Ramus run timed out here before the app smoke test could start.
+  // Give session start up to 120s; keep stop/other RPCs independently bounded.
+  const timeout = command === "session" && args[1] === "start"
+    ? 120000
+    : command === "session"
+      ? 45000
+      : command === "screenshot"
       ? 30000
       : command === "logcat"
         ? 15000
