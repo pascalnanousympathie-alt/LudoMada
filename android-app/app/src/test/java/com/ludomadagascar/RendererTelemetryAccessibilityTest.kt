@@ -78,6 +78,18 @@ class RendererTelemetryAccessibilityTest {
                 p95Ms = 15.20f,
                 disjointCount = 0,
                 skippedFrames = 2
+            ),
+            gpuFence = GpuFenceSnapshot(
+                status = "MEASURED",
+                sampleCount = 60,
+                completionP50Ms = 12.0f,
+                completionP95Ms = 84.0f,
+                pendingCount = 1,
+                oldestPendingMs = 16.0f,
+                waitTimeouts = 3,
+                waitFailures = 0,
+                createFailures = 0,
+                skippedFrames = 1
             )
         )
 
@@ -116,7 +128,45 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("GPU_TIMER_SAMPLES=60"))
         assertTrue(label.contains("GPU_TIMER_DISJOINTS=0"))
         assertTrue(label.contains("GPU_TIMER_SKIPPED_FRAMES=2"))
-        assertTrue(label.length < 1250)
+        assertTrue(label.contains("GPU_FENCE_STATUS=MEASURED"))
+        assertTrue(label.contains("GPU_FENCE_MS=12.00/84.00"))
+        assertTrue(label.contains("GPU_FENCE_SAMPLES=60"))
+        assertTrue(label.contains("GPU_FENCE_PENDING=1"))
+        assertTrue(label.contains("GPU_FENCE_OLDEST_MS=16.00"))
+        assertTrue(label.contains("GPU_FENCE_TIMEOUTS=3"))
+        assertTrue(label.contains("GPU_FENCE_FAILURES=0"))
+        assertTrue(label.contains("GPU_FENCE_SKIPS=1"))
+        assertTrue(label.length < 1800)
+    }
+
+    @Test
+    fun reportsFenceInsufficientWithoutInventingGpuExecutionTime() {
+        val label = RendererTelemetryAccessibility.format(
+            "vendor=Google renderer=SwiftShader version=OpenGL ES 3.0",
+            720,
+            320,
+            frame,
+            pipeline,
+            scene,
+            24,
+            gpuFence = GpuFenceSnapshot(
+                status = "INSUFFICIENT",
+                sampleCount = 4,
+                completionP50Ms = null,
+                completionP95Ms = null,
+                pendingCount = 2,
+                oldestPendingMs = 50f,
+                waitTimeouts = 8,
+                waitFailures = 0,
+                createFailures = 0,
+                skippedFrames = 0
+            )
+        )
+        assertNotNull(label)
+        assertTrue(label!!.contains("GPU_FENCE_STATUS=INSUFFICIENT"))
+        assertTrue(label.contains("GPU_FENCE_MS=NA/NA"))
+        assertTrue(label.contains("GPU_FENCE_SAMPLES=4"))
+        assertTrue(label.contains("GPU_FENCE_PENDING=2"))
     }
 
     @Test
