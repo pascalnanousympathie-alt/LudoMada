@@ -181,7 +181,7 @@ function parseRendererAccessibilityTelemetry(label) {
   const displayRefreshHzField = field("DISPLAY_REFRESH_HZ");
   const displayRefreshHz = displayRefreshHzField === "NA" ? null : Number(displayRefreshHzField);
   const gpuFenceStatus = field("GPU_FENCE_STATUS");
-  const gpuFenceMsField = field("GPU_FENCE_MS");
+  const gpuFenceMsField = field("GPU_FENCE_SIGNAL_DELAY_MS");
   const gpuFenceMs = gpuFenceMsField === "NA/NA" ? null : pair(gpuFenceMsField);
   const gpuFenceSamples = integer(field("GPU_FENCE_SAMPLES"));
   const gpuFencePending = integer(field("GPU_FENCE_PENDING"));
