@@ -2310,7 +2310,6 @@ class LudoBoardView(
             var batchIndex = 0
             try {
                 for (batch in batches) {
-                    val batchStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                     // Respect glTF doubleSided per merged batch. Disabling culling
                     // for every environment batch when only one is double-sided
                     // needlessly rasterizes backfaces across the entire backdrop.
@@ -2324,6 +2323,7 @@ class LudoBoardView(
                         }
                         cullingEnabled = batchCullingEnabled
                     }
+                    val batchStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                     drawMesh(
                         batch.mesh,
                         identityModel,
