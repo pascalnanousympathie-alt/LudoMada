@@ -12,7 +12,8 @@ internal object RendererTelemetryAccessibility {
         pipeline: RenderPipelinePhaseSnapshot?,
         scene: RenderSceneBreakdownSnapshot?,
         preparedStaticMeshCount: Int,
-        gpu: GpuTimerSnapshot? = null
+        gpu: GpuTimerSnapshot? = null,
+        gpuFence: GpuFenceSnapshot? = null
     ): String? {
         if (frame == null || pipeline == null || scene == null || preparedStaticMeshCount <= 0) return null
 
@@ -65,7 +66,15 @@ internal object RendererTelemetryAccessibility {
             "GPU_FRAME_MS=" + if (gpu?.p50Ms != null && gpu.p95Ms != null) pair(gpu.p50Ms, gpu.p95Ms) else "NA/NA",
             "GPU_TIMER_SAMPLES=${gpu?.sampleCount ?: 0}",
             "GPU_TIMER_DISJOINTS=${gpu?.disjointCount ?: 0}",
-            "GPU_TIMER_SKIPPED_FRAMES=${gpu?.skippedFrames ?: 0}"
+            "GPU_TIMER_SKIPPED_FRAMES=${gpu?.skippedFrames ?: 0}",
+            "GPU_FENCE_STATUS=" + (gpuFence?.status ?: "UNSUPPORTED"),
+            "GPU_FENCE_SIGNAL_DELAY_MS=" + if (gpuFence?.completionP50Ms != null && gpuFence.completionP95Ms != null) pair(gpuFence.completionP50Ms, gpuFence.completionP95Ms) else "NA/NA",
+            "GPU_FENCE_SAMPLES=${gpuFence?.sampleCount ?: 0}",
+            "GPU_FENCE_PENDING=${gpuFence?.pendingCount ?: 0}",
+            "GPU_FENCE_OLDEST_MS=" + (gpuFence?.oldestPendingMs?.let(::number) ?: "NA"),
+            "GPU_FENCE_TIMEOUTS=${gpuFence?.waitTimeouts ?: 0}",
+            "GPU_FENCE_FAILURES=${(gpuFence?.waitFailures ?: 0) + (gpuFence?.createFailures ?: 0)}",
+            "GPU_FENCE_SKIPS=${gpuFence?.skippedFrames ?: 0}"
         ).joinToString(" | ")
     }
 
