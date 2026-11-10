@@ -1467,6 +1467,10 @@ class LudoBoardView(
         private var lastParticleCleanupCpuNanos = 0L
         private var lastActiveParticleCount = 0
         private val particleDrawTimingScratch = LongArray(5)
+        private val backdropBatchCpuScratch = LongArray(RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES)
+        private val backdropBatchVertexScratch = IntArray(RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES)
+        private val backdropBatchIndexScratch = IntArray(RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES)
+        private var lastBackdropBatchCount = 0
         private var glDeviceDiagnostic = "unavailable"
         internal var softwareRendererActive = false
             private set
@@ -1531,7 +1535,11 @@ class LudoBoardView(
             lastParticleDrawSubmitCpuNanos = 0L
             lastParticleCleanupCpuNanos = 0L
             lastActiveParticleCount = 0
+            lastBackdropBatchCount = 0
             java.util.Arrays.fill(particleDrawTimingScratch, 0L)
+            java.util.Arrays.fill(backdropBatchCpuScratch, 0L)
+            java.util.Arrays.fill(backdropBatchVertexScratch, 0)
+            java.util.Arrays.fill(backdropBatchIndexScratch, 0)
             preparedGameplayEnvironmentDraws = emptyList()
             preparedGameplayEnvironmentSourcePartCount = 0
             gameplayEnvironmentHasDoubleSidedParts = false
@@ -1769,7 +1777,11 @@ class LudoBoardView(
                 lastParticleBufferUploadCpuNanos,
                 lastParticleDrawSubmitCpuNanos,
                 lastParticleCleanupCpuNanos,
-                lastActiveParticleCount
+                activeParticleCount = lastActiveParticleCount,
+                backdropBatchCount = lastBackdropBatchCount,
+                backdropBatchCpuNanos = backdropBatchCpuScratch,
+                backdropBatchVertexCounts = backdropBatchVertexScratch,
+                backdropBatchIndexCounts = backdropBatchIndexScratch
             )?.let { phases ->
                 latestSceneBreakdownSnapshot = phases
                 rendererTelemetryUpdated = true
@@ -2139,6 +2151,10 @@ class LudoBoardView(
                 }
                 return
             }
+            lastBackdropBatchCount = 0
+            java.util.Arrays.fill(backdropBatchCpuScratch, 0L)
+            java.util.Arrays.fill(backdropBatchVertexScratch, 0)
+            java.util.Arrays.fill(backdropBatchIndexScratch, 0)
             val backdropStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
             if (homePreview) {
                 drawHomeEnvironment()
@@ -2270,8 +2286,10 @@ class LudoBoardView(
             if (batches.isEmpty()) return
             val cullingWasEnabled = GLES30.glIsEnabled(GLES30.GL_CULL_FACE)
             var cullingEnabled = cullingWasEnabled
+            var batchIndex = 0
             try {
                 for (batch in batches) {
+                    val batchStarted = if (BuildConfig.DEBUG) System.nanoTime() else 0L
                     // Respect glTF doubleSided per merged batch. Disabling culling
                     // for every environment batch when only one is double-sided
                     // needlessly rasterizes backfaces across the entire backdrop.
@@ -2298,8 +2316,18 @@ class LudoBoardView(
                         receivesShadow = batch.receivesShadow && !softwareRendererActive,
                         preserveAlbedo = true
                     )
+                    if (batchStarted != 0L && batchIndex < backdropBatchCpuScratch.size) {
+                        backdropBatchCpuScratch[batchIndex] = System.nanoTime() - batchStarted
+                        backdropBatchVertexScratch[batchIndex] = batch.mesh.positions.size / 3
+                        backdropBatchIndexScratch[batchIndex] = batch.mesh.indices.size
+                    }
+                    batchIndex++
                 }
             } finally {
+                lastBackdropBatchCount = batchIndex.coerceIn(
+                    0,
+                    RenderSceneBreakdownTelemetry.MAX_BACKDROP_BATCHES
+                )
                 if (cullingWasEnabled) GLES30.glEnable(GLES30.GL_CULL_FACE)
                 else GLES30.glDisable(GLES30.GL_CULL_FACE)
             }
