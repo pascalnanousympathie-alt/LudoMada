@@ -53,7 +53,12 @@ class RendererTelemetryAccessibilityTest {
         backdropBatchCount = 2,
         backdropBatchCpuP95Ms = listOf(1.25f, 8.50f),
         backdropBatchVertexCounts = listOf(1_200, 9_000),
-        backdropBatchIndexCounts = listOf(3_600, 27_000)
+        backdropBatchIndexCounts = listOf(3_600, 27_000),
+        backdropCullingQueryCpuP50Ms = 0.20f, backdropCullingQueryCpuP95Ms = 1.40f,
+        backdropCullingTransitionCpuP50Ms = 0.01f, backdropCullingTransitionCpuP95Ms = 0.10f,
+        backdropCullingRestoreCpuP50Ms = 0.01f, backdropCullingRestoreCpuP95Ms = 0.08f,
+        backdropBatchTotalCpuP50Ms = 0.30f, backdropBatchTotalCpuP95Ms = 0.60f,
+        backdropUnattributedCpuP50Ms = 11.78f, backdropUnattributedCpuP95Ms = 14.32f
     )
 
     @Test
@@ -89,6 +94,11 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("BACKDROP_BATCH_CPU_P95_MS=1.25,8.50"))
         assertTrue(label.contains("BACKDROP_BATCH_VERTEX_COUNTS=1200,9000"))
         assertTrue(label.contains("BACKDROP_BATCH_INDEX_COUNTS=3600,27000"))
+        assertTrue(label.contains("BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40"))
+        assertTrue(label.contains("BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10"))
+        assertTrue(label.contains("BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08"))
+        assertTrue(label.contains("BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60"))
+        assertTrue(label.contains("BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32"))
         assertTrue(label.contains("PAWNS_CPU_MS=4.20/7.00"))
         assertTrue(label.contains("PARTICLE_UPLOAD_CPU_MS=0.23/1.67"))
         assertTrue(label.contains("FRAME_SAMPLES=18"))
