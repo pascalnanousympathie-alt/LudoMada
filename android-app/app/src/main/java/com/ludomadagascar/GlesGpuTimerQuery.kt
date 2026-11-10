@@ -44,13 +44,15 @@ internal class GlesGpuTimerQuery(
     }
 
     private val queryIds = IntArray(queryCount)
-    private val pending = BooleanArray(queryCount)
-    private val ready = BooleanArray(queryCount)
+    private val pendingSlots = IntArray(queryCount)
     private val valueScratch = IntArray(1)
     private val samplesNanos = LongArray(windowSize)
     private val percentileScratch = LongArray(windowSize)
     private var nextSampleIndex = 0
     private var sampleCount = 0
+    private var pendingHead = 0
+    private var pendingCount = 0
+    private var nextQuerySlot = 0
     private var activeSlot = -1
     private var supported = false
     private var initialized = false
@@ -60,9 +62,11 @@ internal class GlesGpuTimerQuery(
     /** Must be called on the GL thread after a new context is current. */
     fun initialize(extensions: String?) {
         Arrays.fill(queryIds, 0)
-        Arrays.fill(pending, false)
-        Arrays.fill(ready, false)
+        Arrays.fill(pendingSlots, 0)
         resetSamples()
+        pendingHead = 0
+        pendingCount = 0
+        nextQuerySlot = 0
         activeSlot = -1
         disjointCount = 0
         skippedFrames = 0
@@ -99,14 +103,14 @@ internal class GlesGpuTimerQuery(
         if (!initialized || !supported) return
 
         pollCompletedQueries()
-        for (slot in queryIds.indices) {
-            if (queryIds[slot] != 0 && !pending[slot]) {
-                GLES30.glBeginQuery(GL_TIME_ELAPSED_EXT, queryIds[slot])
-                activeSlot = slot
-                return
-            }
+        if (pendingCount >= queryCount) {
+            skippedFrames++
+            return
         }
-        skippedFrames++
+        val slot = nextQuerySlot
+        nextQuerySlot = (nextQuerySlot + 1) % queryCount
+        GLES30.glBeginQuery(GL_TIME_ELAPSED_EXT, queryIds[slot])
+        activeSlot = slot
     }
 
     /** Ends the current query after all commands for renderDirectFrame have been submitted. */
@@ -114,7 +118,9 @@ internal class GlesGpuTimerQuery(
         val slot = activeSlot
         if (slot < 0) return
         GLES30.glEndQuery(GL_TIME_ELAPSED_EXT)
-        pending[slot] = true
+        val tail = (pendingHead + pendingCount) % queryCount
+        pendingSlots[tail] = slot
+        pendingCount++
         activeSlot = -1
     }
 
@@ -137,50 +143,44 @@ internal class GlesGpuTimerQuery(
     }
 
     private fun pollCompletedQueries() {
-        var anyReady = false
-        for (slot in queryIds.indices) {
-            ready[slot] = false
-            if (!pending[slot]) continue
-            valueScratch[0] = 0
-            GLES30.glGetQueryObjectuiv(
-                queryIds[slot],
-                GL_QUERY_RESULT_AVAILABLE_EXT,
-                valueScratch,
-                0
-            )
-            ready[slot] = valueScratch[0] != 0
-            anyReady = anyReady || ready[slot]
-        }
-        if (!anyReady) return
+        if (pendingCount == 0) return
+        val slot = pendingSlots[pendingHead]
+        valueScratch[0] = 0
+        GLES30.glGetQueryObjectuiv(
+            queryIds[slot],
+            GL_QUERY_RESULT_AVAILABLE_EXT,
+            valueScratch,
+            0
+        )
+        // Availability is the only result query performed on an unfinished slot.
+        // Poll one FIFO entry per frame to keep instrumentation overhead bounded.
+        if (valueScratch[0] == 0) return
 
         valueScratch[0] = 0
         GLES30.glGetIntegerv(GL_GPU_DISJOINT_EXT, valueScratch, 0)
         if (valueScratch[0] != 0) {
             disjointCount++
             resetSamples()
-            Arrays.fill(pending, false)
-            Arrays.fill(ready, false)
+            pendingHead = 0
+            pendingCount = 0
             return
         }
 
-        for (slot in queryIds.indices) {
-            if (!ready[slot]) continue
-            valueScratch[0] = 0
-            GLES30.glGetQueryObjectuiv(
-                queryIds[slot],
-                GL_QUERY_RESULT_EXT,
-                valueScratch,
-                0
-            )
-            val elapsedNanos = valueScratch[0].toLong() and 0xffffffffL
-            if (elapsedNanos in 1L until MAX_UNAMBIGUOUS_RESULT_NANOS) {
-                samplesNanos[nextSampleIndex] = elapsedNanos
-                nextSampleIndex = (nextSampleIndex + 1) % windowSize
-                sampleCount = min(windowSize, sampleCount + 1)
-            }
-            pending[slot] = false
-            ready[slot] = false
+        valueScratch[0] = 0
+        GLES30.glGetQueryObjectuiv(
+            queryIds[slot],
+            GL_QUERY_RESULT_EXT,
+            valueScratch,
+            0
+        )
+        val elapsedNanos = valueScratch[0].toLong() and 0xffffffffL
+        if (elapsedNanos in 1L until MAX_UNAMBIGUOUS_RESULT_NANOS) {
+            samplesNanos[nextSampleIndex] = elapsedNanos
+            nextSampleIndex = (nextSampleIndex + 1) % windowSize
+            sampleCount = min(windowSize, sampleCount + 1)
         }
+        pendingHead = (pendingHead + 1) % queryCount
+        pendingCount--
     }
 
     private fun resetSamples() {
