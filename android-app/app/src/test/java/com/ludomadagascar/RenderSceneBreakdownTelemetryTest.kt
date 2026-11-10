@@ -109,6 +109,51 @@ class RenderSceneBreakdownTelemetryTest {
     }
 
     @Test
+    fun separatesBackdropStateCostsBatchSubmissionsAndUnattributedTime() {
+        val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 1L)
+        val batches = longArrayOf(1_000_000L, 2_000_000L)
+        val vertices = intArrayOf(100, 200)
+        val indices = intArrayOf(300, 600)
+        telemetry.record(
+            100L, 0L, 20_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = batches,
+            backdropBatchVertexCounts = vertices,
+            backdropBatchIndexCounts = indices,
+            backdropCullingQueryCpuNanos = 3_000_000L,
+            backdropCullingTransitionCpuNanos = 1_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )
+        telemetry.record(
+            101L, 0L, 22_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(2_000_000L, 3_000_000L),
+            backdropCullingQueryCpuNanos = 4_000_000L,
+            backdropCullingTransitionCpuNanos = 1_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )
+        val snapshot = telemetry.record(
+            102L, 0L, 24_000_000L, 0L, 0L, 0L, 0L, 0L,
+            backdropBatchCount = 2,
+            backdropBatchCpuNanos = longArrayOf(3_000_000L, 4_000_000L),
+            backdropCullingQueryCpuNanos = 5_000_000L,
+            backdropCullingTransitionCpuNanos = 2_000_000L,
+            backdropCullingRestoreCpuNanos = 2_000_000L
+        )!!
+
+        assertEquals(3f, snapshot.backdropCullingQueryCpuP50Ms, 0.001f)
+        assertEquals(5f, snapshot.backdropCullingQueryCpuP95Ms, 0.001f)
+        assertEquals(1f, snapshot.backdropCullingTransitionCpuP50Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingTransitionCpuP95Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingRestoreCpuP50Ms, 0.001f)
+        assertEquals(2f, snapshot.backdropCullingRestoreCpuP95Ms, 0.001f)
+        assertEquals(5f, snapshot.backdropBatchTotalCpuP50Ms, 0.001f)
+        assertEquals(7f, snapshot.backdropBatchTotalCpuP95Ms, 0.001f)
+        assertEquals(9f, snapshot.backdropUnattributedCpuP50Ms, 0.001f)
+        assertEquals(10f, snapshot.backdropUnattributedCpuP95Ms, 0.001f)
+    }
+
+    @Test
     fun resetClearsSamplesAndRestartsTheReportInterval() {
         val telemetry = RenderSceneBreakdownTelemetry(windowSize = 3, reportIntervalNanos = 10L)
         telemetry.record(100L, 1L, 1L, 1L, 1L, 1L, 1L, 1L)
