@@ -21,6 +21,8 @@ class SoftwareRendererPolicyTest {
                 256,
                 SoftwareRendererPolicy.shadowMapResolution(renderer, 512, homePreview = false)
             )
+            assertFalse(SoftwareRendererPolicy.useShadowMap(renderer, homePreview = false))
+            assertTrue(SoftwareRendererPolicy.useShadowMap(renderer, homePreview = true))
         }
     }
 
@@ -46,6 +48,7 @@ class SoftwareRendererPolicyTest {
         assertFalse(SoftwareRendererPolicy.isSoftwareRenderer(renderer))
         assertEquals(1f, SoftwareRendererPolicy.renderScale(renderer, homePreview = false))
         assertEquals(512, SoftwareRendererPolicy.shadowMapResolution(renderer, 512, homePreview = false))
+        assertTrue(SoftwareRendererPolicy.useShadowMap(renderer, homePreview = false))
     }
 
     @Test
@@ -53,6 +56,7 @@ class SoftwareRendererPolicyTest {
         val renderer = "Google SwiftShader"
         assertEquals(1f, SoftwareRendererPolicy.renderScale(renderer, homePreview = true))
         assertEquals(512, SoftwareRendererPolicy.shadowMapResolution(renderer, 512, homePreview = true))
+        assertTrue(SoftwareRendererPolicy.useShadowMap(renderer, homePreview = true))
     }
 
     @Test
