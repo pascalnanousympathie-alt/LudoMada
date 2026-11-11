@@ -23,6 +23,14 @@ internal object SoftwareRendererPolicy {
     fun useFastPostProcess(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /**
+     * Software rasterizers used by cloud emulators spend a second geometry pass
+     * building the shadow map. Keep authored shadows on hardware GPUs, but omit
+     * that pass for SwiftShader/llvmpipe gameplay validation.
+     */
+    fun useShadowMap(rendererIdentity: String, homePreview: Boolean): Boolean =
+        homePreview || !isSoftwareRenderer(rendererIdentity)
+
     fun renderScale(rendererIdentity: String, homePreview: Boolean): Float =
         if (!homePreview && isSoftwareRenderer(rendererIdentity)) {
             SOFTWARE_RENDER_SCALE
