@@ -3449,24 +3449,18 @@ class LudoBoardView(
                 uniform mat4 uMvp,uMv,uModel,uLightVp;uniform mat3 uNormalModel;uniform float uShadowNormalBias;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vec3 worldNormal=normalize(uNormalModel*aNormal);vec4 shadowWorld=vec4(w.xyz+worldNormal*uShadowNormalBias,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*shadowWorld;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
-            // CPU-backed renderers interpolate cheap lighting terms. Keep texture
-            // and shadow sampling per-fragment; the premium hardware shader is unchanged.
+            // SwiftShader/llvmpipe uses a compact per-vertex lighting path.
+            // Keep it texture-free and shadow-free: the cloud software rasterizer
+            // spends most of its frame budget in fragment texture sampling.
             val softwareVs="""#version 300 es
                 precision highp float;
-                layout(location=0)in vec3 aPos;layout(location=1)in vec3 aNormal;layout(location=2)in vec2 aUv;
-                uniform mat4 uMvp,uMv,uModel,uLightVp;uniform mat3 uNormalModel;
-                uniform float uShadowNormalBias,uAO,uIBLIntensity,uKeyIntensity,uFillIntensity,uRimIntensity,uMetallic,uRoughness,uReceivesShadow;
+                layout(location=0)in vec3 aPos;layout(location=1)in vec3 aNormal;
+                uniform mat4 uMvp,uMv;
+                uniform float uAO,uIBLIntensity,uKeyIntensity,uFillIntensity,uRimIntensity,uMetallic,uRoughness;
                 uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;
-                out vec2 vUv;out vec4 vShadow;out vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
+                out vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
                 void main(){
                     vec4 local=vec4(aPos,1.0);
-                    vec4 world=uModel*local;
-                    if(uReceivesShadow>0.5){
-                        vec3 worldNormal=normalize(uNormalModel*aNormal);
-                        vShadow=uLightVp*vec4(world.xyz+worldNormal*uShadowNormalBias,1.0);
-                    }else{
-                        vShadow=vec4(0.0);
-                    }
                     vec3 N=normalize(mat3(uMv)*aNormal);
                     vec3 V=normalize(-(uMv*local).xyz);
                     vec3 L=normalize(uKeyDirection);
@@ -3484,7 +3478,6 @@ class LudoBoardView(
                         *keyLambert*(0.025+0.22*clamp(uMetallic,0.0,1.0))*uKeyIntensity;
                     vKeyDiffuse=uKeyColor*(keyLambert*uKeyIntensity);
                     vKeySpecular=uKeyColor*specular;
-                    vUv=aUv;
                     gl_Position=uMvp*local;
                 }
             """.trimIndent()
@@ -3506,28 +3499,16 @@ class LudoBoardView(
                 }
             """.trimIndent()
             val softwareFs="""#version 300 es
-                precision highp float;
+                precision mediump float;
                 uniform vec4 uColor;
-                uniform float uEmission,uUnlit,uShadowBias,uReceivesShadow,uPreserveAlbedo;
-                uniform sampler2D uAlbedoTex,uShadowMap;
-                in vec2 vUv;in vec4 vShadow;in vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
+                uniform float uEmission,uUnlit;
+                in vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
                 layout(location=0)out vec4 fragColor;
-                float shadowV(){
-                    vec3 p=vShadow.xyz/max(vShadow.w,0.0001);
-                    p=p*0.5+0.5;
-                    if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;
-                    float currentDepth=p.z-uShadowBias;
-                    float storedDepth=texture(uShadowMap,p.xy).r;
-                    return currentDepth<=storedDepth?1.0:0.48;
-                }
                 void main(){
-                    vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;
-                    vec3 texturedAlbedo=uColor.rgb*tex;
-                    vec3 albedo=uPreserveAlbedo>0.5?texturedAlbedo:mix(texturedAlbedo,uColor.rgb,0.52);
-                    float shadow=uReceivesShadow>0.5?shadowV():1.0;
-                    vec3 color=albedo*(vAmbientFillRim+vKeyDiffuse*shadow)
-                        +vKeySpecular*shadow+albedo*uEmission;
-                    if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
+                    vec3 albedo=uColor.rgb;
+                    vec3 color=albedo*(vAmbientFillRim+vKeyDiffuse)
+                        +vKeySpecular+albedo*uEmission;
+                    if(uUnlit>0.5)color=albedo+albedo*uEmission;
                     fragColor=vec4(max(color,vec3(0.0)),uColor.a);
                 }
             """.trimIndent()
@@ -3538,15 +3519,26 @@ class LudoBoardView(
         fun beginFrame(shadowTex:Int,lightVp:FloatArray,woodTex:Int,boardTex:Int,neutralTex:Int,metalTex:Int,normalTex:Int,envCubeTex:Int){
             wood=woodTex;board=boardTex;neutral=neutralTex;metal=metalTex;normal=normalTex
             modelMatrixCache.reset()
-            System.arraycopy(lightVp,0,light,0,16)
-            // One program bind and frame-invariant uniforms per scene, not per mesh.
+            // One program bind and frame-invariant lighting uniforms per scene.
             GLES30.glUseProgram(program)
-            GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0)
-            GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias)
-            GLES30.glUniform1i(uAlbedoTex,0)
             if (!renderer.softwareRendererActive) {
+                System.arraycopy(lightVp,0,light,0,16)
+                GLES30.glUniformMatrix4fv(uLightVp,1,false,light,0)
+                GLES30.glUniform1f(uShadowNormalBias,renderer.premiumLighting.shadowNormalBias)
+                GLES30.glUniform1i(uAlbedoTex,0)
                 GLES30.glUniform1i(uNormalTex,1)
                 GLES30.glUniform1i(uRoughTex,4)
+                GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS)
+                GLES30.glUniform2f(uShadowInvSize,1f/renderer.shadowMapResolution,1f/renderer.shadowMapResolution)
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex)
+                GLES30.glUniform1i(uShadowMap,2)
+                GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
+                GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
+                GLES30.glUniform1i(uEnvCube,3)
+                boundAlbedoTexture=Int.MIN_VALUE
+                boundNormalTexture=Int.MIN_VALUE
+                boundRoughTexture=Int.MIN_VALUE
             }
             GLES30.glUniform3fv(uKeyDirection,1,renderer.premiumLighting.keyDirection,0)
             GLES30.glUniform3fv(uKeyColor,1,renderer.premiumLighting.keyColor,0)
@@ -3558,59 +3550,44 @@ class LudoBoardView(
             GLES30.glUniform3fv(uRimColor,1,renderer.premiumLighting.rimColor,0)
             GLES30.glUniform1f(uRimIntensity,PremiumMaterialLighting.Calibration.RIM_INTENSITY)
             GLES30.glUniform1f(uIBLIntensity,PremiumMaterialLighting.Calibration.AMBIENT_IBL_INTENSITY)
-            GLES30.glUniform1f(uShadowBias,PremiumMaterialLighting.Calibration.SHADOW_BIAS)
-            GLES30.glUniform2f(uShadowInvSize,1f/renderer.shadowMapResolution,1f/renderer.shadowMapResolution)
-            boundAlbedoTexture=Int.MIN_VALUE
-            boundNormalTexture=Int.MIN_VALUE
-            boundRoughTexture=Int.MIN_VALUE
-            GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
-            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,shadowTex)
-            GLES30.glUniform1i(uShadowMap,2)
-            if (!renderer.softwareRendererActive) {
-                GLES30.glActiveTexture(GLES30.GL_TEXTURE3)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_CUBE_MAP,envCubeTex)
-                GLES30.glUniform1i(uEnvCube,3)
-            }
         }
         fun endFrame(){
             GLES30.glBindVertexArray(0)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,0)
         }
         fun draw(mesh:Mesh,model:FloatArray,color:FloatArray,rough:Float,metallic:Float,ao:Float,emission:Float,material:Int,unlit:Boolean,albedoOverride:Int=0,normalOverride:Int=0,roughOverride:Int=0,receivesShadow:Boolean=true,preserveAlbedo:Boolean=false){
-            val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
-            val normalId=if(normalOverride!=0)normalOverride else normal
-            val roughId=if(roughOverride!=0)roughOverride else neutral
+            val software=renderer.softwareRendererActive
             if (modelMatrixCache.shouldUpload(model)) {
                 Matrix.multiplyMM(mv,0,renderer.view,0,model,0)
                 Matrix.multiplyMM(mvp,0,renderer.proj,0,mv,0)
                 GLES30.glUniformMatrix4fv(uMvp,1,false,mvp,0)
                 GLES30.glUniformMatrix4fv(uMv,1,false,mv,0)
-                GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
-                MeshBatcher.inverseTranspose3x3ColumnMajor(model,normalModel)
-                GLES30.glUniformMatrix3fv(uNormalModel,1,false,normalModel,0)
+                if (!software) {
+                    GLES30.glUniformMatrix4fv(uModel,1,false,model,0)
+                    MeshBatcher.inverseTranspose3x3ColumnMajor(model,normalModel)
+                    GLES30.glUniformMatrix3fv(uNormalModel,1,false,normalModel,0)
+                }
             }
             GLES30.glUniform4fv(uColor,1,color,0)
             GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
             GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
-            GLES30.glUniform1f(
-                uReceivesShadow,
-                PbrShadowReception.uniformValue(receivesShadow && !renderer.softwareRendererActive)
-            )
-            GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
             GLES30.glUniform1f(uAO,ao)
             GLES30.glUniform1f(uEmission,emission)
             GLES30.glUniform1f(uUnlit,if(unlit)1f else 0f)
-            if (!renderer.softwareRendererActive) {
+            if (!software) {
+                val albedo=if(albedoOverride!=0)albedoOverride else when(material){1->wood;2->board;3->neutral;4->metal;else->neutral}
+                val normalId=if(normalOverride!=0)normalOverride else normal
+                val roughId=if(roughOverride!=0)roughOverride else neutral
+                GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow))
+                GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
                 GLES30.glUniform1f(uNormalStrength,if(material==4)PremiumMaterialLighting.die().normalStrength else if(material==6)0.40f else 0.20f)
                 GLES30.glUniform1f(uClearCoat,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT;3->0.34f;2->0.16f;else->0.10f})
                 GLES30.glUniform1f(uClearCoatRoughness,when(material){4->PremiumMaterialLighting.Calibration.CHROME_CLEAR_COAT_ROUGHNESS;3->0.12f;else->0.18f})
-            }
-            if (boundAlbedoTexture != albedo) {
-                GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-                GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo)
-                boundAlbedoTexture=albedo
-            }
-            if (!renderer.softwareRendererActive) {
+                if (boundAlbedoTexture != albedo) {
+                    GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+                    GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,albedo)
+                    boundAlbedoTexture=albedo
+                }
                 if (boundNormalTexture != normalId) {
                     GLES30.glActiveTexture(GLES30.GL_TEXTURE1)
                     GLES30.glBindTexture(GLES30.GL_TEXTURE_2D,normalId)
