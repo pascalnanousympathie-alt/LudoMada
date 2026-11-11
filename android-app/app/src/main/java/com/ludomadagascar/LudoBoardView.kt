@@ -88,6 +88,10 @@ class LudoBoardView(
         override fun doFrame(frameTimeNanos: Long) {
             if (!animatedRendering) return
             uiAnimationVsyncTelemetry?.record(frameTimeNanos)
+            // Drive one GL frame from each display-vsync callback instead of
+            // letting GLSurfaceView continuously render and build presentation
+            // back-pressure on software or hardware EGL implementations.
+            requestRender()
             animationChoreographer.postFrameCallback(this)
         }
     }
@@ -329,13 +333,18 @@ class LudoBoardView(
             if (BuildConfig.DEBUG) {
                 uiAnimationVsyncTelemetry?.reset()
                 uiAnimationVsyncDescription = ""
-                animationChoreographer.postFrameCallback(animationVsyncFrameCallback)
             }
             animatedRendering = true
+            animationChoreographer.postFrameCallback(animationVsyncFrameCallback)
         } else {
             animatedRendering = true
         }
-        renderMode = RENDERMODE_CONTINUOUSLY
+        // Keep GLSurfaceView in demand mode. Choreographer requests a single
+        // render at display cadence while animations are active; idle gameplay
+        // therefore stays quiet and slow EGL swaps cannot accumulate free-running
+        // render requests.
+        renderMode = RENDERMODE_WHEN_DIRTY
+        requestRender()
     }
 
     private fun endAnimationRendering() {
@@ -345,8 +354,8 @@ class LudoBoardView(
         animationRenderOwners = (animationRenderOwners - 1).coerceAtLeast(0)
         if (animationRenderOwners == 0 && animatedRendering) {
             animatedRendering = false
+            animationChoreographer.removeFrameCallback(animationVsyncFrameCallback)
             if (BuildConfig.DEBUG) {
-                animationChoreographer.removeFrameCallback(animationVsyncFrameCallback)
                 uiAnimationVsyncDescription = formatUiAnimationVsyncDiagnostic()
             }
             renderMode = RENDERMODE_WHEN_DIRTY
