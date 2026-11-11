@@ -1660,6 +1660,7 @@ class LudoBoardView(
                     " shadowMap=" + shadowSize +
                     " softwarePbrShader=" + softwareRendererActive +
                     " softwarePostProcess=" + softwarePostProcessActive +
+                    " softwareShadowPass=" + if (SoftwareRendererPolicy.useShadowMap(glRenderer, host.homePreview)) "enabled" else "disabled" +
                     " configuredShadowMap=" + premiumLighting.shadowMapResolution
             )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
@@ -2053,7 +2054,8 @@ class LudoBoardView(
             GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-            shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            val frameShadowTexture = if (softwareRendererActive) fallbackShadowTex else shadowTex
+            shader.beginFrame(frameShadowTexture,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
             if (setupStarted != 0L) lastSceneSetupCpuNanos = System.nanoTime() - setupStarted
 
             drawWorld(false)
@@ -2076,9 +2078,15 @@ class LudoBoardView(
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
-            val shadowStartedNanos = System.nanoTime()
-            renderShadowMap()
-            lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            if (SoftwareRendererPolicy.useShadowMap(glDeviceDiagnostic, host.homePreview)) {
+                val shadowStartedNanos = System.nanoTime()
+                renderShadowMap()
+                lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            } else {
+                // SwiftShader/llvmpipe gameplay uses an unshadowed material path:
+                // avoid the second depth-only geometry pass entirely.
+                lastShadowCpuNanos = 0L
+            }
             val sceneStartedNanos = System.nanoTime()
             renderScene()
             lastSceneCpuNanos = System.nanoTime() - sceneStartedNanos
@@ -3584,7 +3592,10 @@ class LudoBoardView(
             GLES30.glUniform4fv(uColor,1,color,0)
             GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
             GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
-            GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow))
+            GLES30.glUniform1f(
+                uReceivesShadow,
+                PbrShadowReception.uniformValue(receivesShadow && !renderer.softwareRendererActive)
+            )
             GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
             GLES30.glUniform1f(uAO,ao)
             GLES30.glUniform1f(uEmission,emission)
