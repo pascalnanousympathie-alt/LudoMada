@@ -18,8 +18,12 @@ class SoftwareRendererPolicyTest {
             assertTrue(renderer, SoftwareRendererPolicy.isSoftwareRenderer(renderer))
             assertEquals(0.25f, SoftwareRendererPolicy.renderScale(renderer, homePreview = false))
             assertEquals(
-                256,
+                128,
                 SoftwareRendererPolicy.shadowMapResolution(renderer, 512, homePreview = false)
+            )
+            assertEquals(
+                96,
+                SoftwareRendererPolicy.shadowMapResolution(renderer, 96, homePreview = false)
             )
         }
     }
