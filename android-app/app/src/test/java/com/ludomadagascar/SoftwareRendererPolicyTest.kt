@@ -40,6 +40,24 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun uncappedEglSwapIntervalIsRequestedOnlyForDebugSoftwareGameplay() {
+        for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
+            assertTrue(SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+                renderer, homePreview = false, debugBuild = true
+            ))
+        }
+        assertFalse(SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+            "Google SwiftShader", homePreview = false, debugBuild = false
+        ))
+        assertFalse(SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+            "Google SwiftShader", homePreview = true, debugBuild = true
+        ))
+        assertFalse(SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+            "Mali-G51", homePreview = false, debugBuild = true
+        ))
+    }
+
+    @Test
     fun reducedSurfaceBufferAvoidsApplyingTheSceneScaleTwice() {
         assertEquals(0.25f, SoftwareRendererPolicy.renderScale("Google SwiftShader", homePreview = false))
         assertEquals(
