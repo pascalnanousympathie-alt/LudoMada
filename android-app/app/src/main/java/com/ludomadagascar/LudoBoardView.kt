@@ -1883,6 +1883,9 @@ class LudoBoardView(
                 }.isSuccess
                 if (markerSaved) firstDrawMarkerPersisted = true
             }
+            val glThreadCpuStartNanos = if (BuildConfig.DEBUG) {
+                android.os.Debug.threadCpuTimeNanos().takeIf { it >= 0L }
+            } else null
             val now=System.nanoTime()
             val updateStartedNanos = now
             val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
@@ -2009,7 +2012,12 @@ class LudoBoardView(
                             " gpuExecutionTime=not_measured"
                     )
                 }
-                frameTelemetry?.record(now, glSubmissionDurationNanos, host.animatedRendering)?.let { stats ->
+                frameTelemetry?.record(
+                    now,
+                    glSubmissionDurationNanos,
+                    host.animatedRendering,
+                    glThreadCpuTimeNanos = glThreadCpuStartNanos
+                )?.let { stats ->
                     latestFramePerfSnapshot = stats
                     rendererTelemetryUpdated = true
                     android.util.Log.i(
@@ -2028,6 +2036,7 @@ class LudoBoardView(
                             " animationFps=" + (stats.animationFrameFps?.toString() ?: "insufficient_samples") +
                             " animationFrameMsP50P95=" + stats.animationFrameIntervalP50Ms + "/" + stats.animationFrameIntervalP95Ms +
                             " animationAfterCallbackGapMsP50P95=" + stats.animationAfterCallbackGapP50Ms + "/" + stats.animationAfterCallbackGapP95Ms +
+                             " animationGlThreadPostCallbackCpuMsP50P95=" + stats.animationGlThreadPostCallbackCpuP50Ms + "/" + stats.animationGlThreadPostCallbackCpuP95Ms +
                             " glSubmissionSamples=" + stats.glSubmissionSampleCount +
                             " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
                             " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
@@ -2054,7 +2063,10 @@ class LudoBoardView(
             }
             // Includes the whole GL callback, but deliberately excludes the following
             // GLSurfaceView EGL swap/vsync wait measured by the next callback interval.
-            frameTelemetry?.finishCallback(now, System.nanoTime() - now)
+            val callbackGlThreadCpuNanos = glThreadCpuStartNanos?.let { started ->
+                android.os.Debug.threadCpuTimeNanos().takeIf { it >= started }?.minus(started)
+            }
+            frameTelemetry?.finishCallback(now, System.nanoTime() - now, callbackGlThreadCpuNanos)
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int):Boolean{
             val safeW=max(1,w);val safeH=max(1,h)
