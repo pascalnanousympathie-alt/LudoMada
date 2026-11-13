@@ -52,7 +52,7 @@ internal object SupremeOnlineStateAdapter {
                     id = tokenIndex,
                     color = color,
                     state = tokenState,
-                    trackPosition = if (position in 0..51) ((color.startSquareIndex - 1 + position) % 52) else -1,
+                    trackPosition = if (position in 0..51) ((color.startSquareIndex + position) % 52) else -1,
                     homeStretchPosition = if (position in 52..56) position - 52 else -1,
                     stepsMoved = if (position < 0) 0 else (position + 1).coerceAtMost(57)
                 )
