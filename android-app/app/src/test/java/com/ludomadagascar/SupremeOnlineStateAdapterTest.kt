@@ -7,6 +7,64 @@ import org.junit.Test
 
 class SupremeOnlineStateAdapterTest {
     @Test
+    fun onlineStateRevisionGuardAcceptsOnlyCurrentGameAndNonStaleVersions() {
+        assertTrue(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-1",
+                requestedGameId = "game-1",
+                responseGameId = "game-1",
+                currentVersion = 7,
+                incomingVersion = 8
+            )
+        )
+        assertTrue(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-1",
+                requestedGameId = "game-1",
+                responseGameId = "game-1",
+                currentVersion = 8,
+                incomingVersion = 8
+            )
+        )
+        assertFalse(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-2",
+                requestedGameId = "game-1",
+                responseGameId = "game-1",
+                currentVersion = 7,
+                incomingVersion = 9
+            )
+        )
+        assertFalse(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-1",
+                requestedGameId = "game-1",
+                responseGameId = "game-2",
+                currentVersion = 7,
+                incomingVersion = 9
+            )
+        )
+        assertFalse(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-1",
+                requestedGameId = "game-1",
+                responseGameId = "game-1",
+                currentVersion = 9,
+                incomingVersion = 8
+            )
+        )
+        assertFalse(
+            OnlineStateRevisionGuard.shouldApply(
+                currentGameId = "game-1",
+                requestedGameId = "game-1",
+                responseGameId = "game-1",
+                currentVersion = 0,
+                incomingVersion = -1
+            )
+        )
+    }
+
+    @Test
     fun mapsServerSeatsDiceAndFinishedPawnsIntoSupremePresentation() {
         val response = JSONObject(
             """{
