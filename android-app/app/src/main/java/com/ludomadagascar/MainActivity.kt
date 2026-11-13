@@ -10,6 +10,11 @@ import android.net.Uri
 import android.content.Context
 import java.util.Locale
 import android.widget.*
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -33,6 +38,7 @@ class MainActivity : Activity() {
     private fun t(en:String, fr:String, mg:String) = when(selectedLanguage) { "fr" -> fr; "mg" -> mg; else -> en }
     private lateinit var root: LinearLayout; private lateinit var status: TextView; private lateinit var music: CalmMusic; private lateinit var musicButton: Button
     private var boardHost: LudoBoardView? = null
+    private val supremeOnlineUiState = mutableStateOf<SupremeOnlineUiState?>(null)
     private var moveOverlay: View? = null
     private var gameModeOverlay: AlertDialog? = null
     private var movePending = false
@@ -871,7 +877,14 @@ class MainActivity : Activity() {
     }
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,5)
+        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,3)
+supremeOnlineUiState.value = SupremeOnlineStateAdapter.fromServer(state,userId,username)
+val supremeStrip=ComposeView(this).apply{
+    setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+    setContent { SupremeOnlinePlayerStrip(supremeOnlineUiState.value, Modifier.fillMaxWidth()) }
+    contentDescription="Ludo Supreme online player status"
+}
+add(supremeStrip,62,0,4)
         val host=LudoBoardView(this, onRollTap = { if(currentScreen=="board") roll() }, onPawnTap = { tokenIndex -> if(currentScreen=="board") move(tokenIndex) }); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
         status=st
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
@@ -885,22 +898,36 @@ class MainActivity : Activity() {
 
     private fun updateBoard(host:LudoBoardView){
         host.state=state;host.player=playerIndex();host.animateState();
+        supremeOnlineUiState.value = SupremeOnlineStateAdapter.fromServer(state,userId,username)
         val i=state?.optInt("currentPlayerIndex",0)?:0;val d=state?.optInt("dice",0)?:0
         status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"
     }
 
-    private fun refreshState(){get("/api/games/$gameId/state"){j->
-        retryCount=0;state=j;version=j.optInt("stateVersion",0)
-        runOnUiThread{
+    private fun refreshState(){
+        val requestedGameId=gameId
+        if(requestedGameId.isBlank()) return
+        get("/api/games/$requestedGameId/state"){j->
+            val incomingVersion=j.optInt("stateVersion",-1)
+            val responseGameId=j.optString("gameId",requestedGameId)
+            if(!OnlineStateRevisionGuard.shouldApply(
+                currentGameId=gameId,
+                requestedGameId=requestedGameId,
+                responseGameId=responseGameId,
+                currentVersion=version,
+                incomingVersion=incomingVersion
+            )) return@get
+            retryCount=0
+            state=j
+            version=incomingVersion
             val serverStatus=j.optString("status")
             if(serverStatus=="PLAYING" && currentScreen!="board"){
                 showBoardEntry()
-                return@runOnUiThread
+                return@get
             }
             if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
             else if(currentScreen=="board") board()
         }
-    }}
+    }
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
     private fun roll(){
         if(gameId.isBlank() || movePending || boardHost==null) return
