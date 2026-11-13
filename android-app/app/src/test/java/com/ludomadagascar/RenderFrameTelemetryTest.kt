@@ -73,7 +73,7 @@ class RenderFrameTelemetryTest {
         assertNotNull(snapshot)
         snapshot!!
         assertEquals(2, snapshot.animationFrameSampleCount)
-        assertEquals(2, snapshot.animationGlThreadPostCallbackCpuP50Ms!!.toInt())
+        assertEquals(6f, snapshot.animationGlThreadPostCallbackCpuP50Ms!!, 0.01f)
         assertEquals(15f, snapshot.animationGlThreadPostCallbackCpuP95Ms!!, 0.01f)
     }
 
