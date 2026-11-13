@@ -27,6 +27,10 @@ internal object SoftwareRendererPolicy {
     fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /** Keeps software rasterization on requested display frames instead of an unbounded GL loop. */
+    fun shouldUseVsyncDrivenRendering(rendererIdentity: String, homePreview: Boolean): Boolean =
+        !homePreview && isSoftwareRenderer(rendererIdentity)
+
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
