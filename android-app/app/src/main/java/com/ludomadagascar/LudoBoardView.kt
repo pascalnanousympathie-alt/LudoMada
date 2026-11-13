@@ -2036,7 +2036,7 @@ class LudoBoardView(
                             " animationFps=" + (stats.animationFrameFps?.toString() ?: "insufficient_samples") +
                             " animationFrameMsP50P95=" + stats.animationFrameIntervalP50Ms + "/" + stats.animationFrameIntervalP95Ms +
                             " animationAfterCallbackGapMsP50P95=" + stats.animationAfterCallbackGapP50Ms + "/" + stats.animationAfterCallbackGapP95Ms +
-                             " animationGlThreadPostCallbackCpuMsP50P95=" + stats.animationGlThreadPostCallbackCpuP50Ms + "/" + stats.animationGlThreadPostCallbackCpuP95Ms +
+                            " animationGlThreadPostCallbackCpuMsP50P95=" + stats.animationGlThreadPostCallbackCpuP50Ms + "/" + stats.animationGlThreadPostCallbackCpuP95Ms +
                             " glSubmissionSamples=" + stats.glSubmissionSampleCount +
                             " glSubmitCpuMsP50=" + stats.glSubmitP50Ms +
                             " glSubmitCpuMsP95=" + stats.glSubmitP95Ms +
