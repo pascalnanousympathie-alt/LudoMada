@@ -27,6 +27,16 @@ internal object SoftwareRendererPolicy {
     fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /**
+     * Diagnostic only: test whether SwiftShader's GL callback gap is caused by
+     * EGL's swap interval. Never alter release builds, Home preview or hardware GPUs.
+     */
+    fun shouldRequestUncappedSwapInterval(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = debugBuild && !homePreview && isSoftwareRenderer(rendererIdentity)
+
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 

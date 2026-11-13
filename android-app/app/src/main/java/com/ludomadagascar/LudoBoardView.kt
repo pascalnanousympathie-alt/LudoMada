@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.opengl.EGL14
 import android.opengl.GLES20
 import android.opengl.GLES30
 import android.opengl.GLUtils
@@ -1588,6 +1589,7 @@ class LudoBoardView(
         private var lastBackdropCullingTransitionCpuNanos = 0L
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
+        private var eglSwapIntervalDescription = "NOT_REQUESTED"
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
         private var gpuFenceTelemetry: GlesGpuFenceTelemetry? = null
         internal var softwareRendererActive = false
@@ -1702,7 +1704,15 @@ class LudoBoardView(
             val glVendor = GLES30.glGetString(GLES30.GL_VENDOR) ?: "unknown"
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
-            glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            eglSwapIntervalDescription = requestSoftwareSwapIntervalZero(glRenderer)
+            glDeviceDiagnostic = "vendor=" + glVendor +
+                " renderer=" + glRenderer +
+                " eglSwapInterval=" + eglSwapIntervalDescription +
+                " version=" + glVersion
+            android.util.Log.i(
+                "LudoMadaRender",
+                "EGL_SWAP_INTERVAL_SOFTWARE_DIAGNOSTIC=" + eglSwapIntervalDescription
+            )
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
             softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
@@ -1848,6 +1858,29 @@ class LudoBoardView(
                 "GLES3_STATIC_MESHES_PREPARED count=" + preparedGles3StaticMeshCount +
                     " uploadMs=" + String.format(java.util.Locale.US, "%.2f", elapsedMs)
             )
+        }
+
+        private fun requestSoftwareSwapIntervalZero(rendererIdentity: String): String {
+            if (!SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+                    rendererIdentity,
+                    host.homePreview,
+                    BuildConfig.DEBUG
+                )
+            ) return "NOT_REQUESTED"
+
+            return runCatching {
+                val display = EGL14.eglGetCurrentDisplay()
+                if (display == EGL14.EGL_NO_DISPLAY) return@runCatching "NO_CURRENT_DISPLAY"
+                val drawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
+                if (drawSurface == EGL14.EGL_NO_SURFACE) return@runCatching "NO_CURRENT_DRAW_SURFACE"
+                if (EGL14.eglSwapInterval(display, 0)) {
+                    "REQUEST_ACCEPTED"
+                } else {
+                    "REQUEST_REJECTED_0x" + EGL14.eglGetError().toString(16)
+                }
+            }.getOrElse { error ->
+                "REQUEST_ERROR_" + error.javaClass.simpleName
+            }
         }
 
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
