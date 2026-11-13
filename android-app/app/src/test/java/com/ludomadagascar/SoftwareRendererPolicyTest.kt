@@ -35,8 +35,8 @@ class SoftwareRendererPolicyTest {
         }
         assertFalse(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer("Mali-G51", homePreview = false))
         assertFalse(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer("Google SwiftShader", homePreview = true))
-        assertEquals(355, SoftwareRendererPolicy.scaledDimension(1419, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
-        assertEquals(106, SoftwareRendererPolicy.scaledDimension(424, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
+        assertEquals(177, SoftwareRendererPolicy.scaledDimension(1419, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
+        assertEquals(53, SoftwareRendererPolicy.scaledDimension(424, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
     }
 
     @Test
@@ -109,11 +109,11 @@ class SoftwareRendererPolicyTest {
 
     @Test
     fun scaledDimensionsStayPositiveAndPreserveLandscapeProportionWithinRounding() {
-        val width = SoftwareRendererPolicy.scaledDimension(1419, 0.25f)
-        val height = SoftwareRendererPolicy.scaledDimension(424, 0.25f)
-        assertEquals(355, width)
-        assertEquals(106, height)
+        val width = SoftwareRendererPolicy.scaledDimension(1419, 0.125f)
+        val height = SoftwareRendererPolicy.scaledDimension(424, 0.125f)
+        assertEquals(177, width)
+        assertEquals(53, height)
         assertTrue(width > height)
-        assertEquals(1, SoftwareRendererPolicy.scaledDimension(1, 0.25f))
+        assertEquals(1, SoftwareRendererPolicy.scaledDimension(1, 0.125f))
     }
 }
