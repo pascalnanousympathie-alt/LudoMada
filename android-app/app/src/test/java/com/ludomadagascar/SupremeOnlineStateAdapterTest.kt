@@ -33,6 +33,8 @@ class SupremeOnlineStateAdapterTest {
         assertEquals(6, state.diceValue)
         assertEquals("Nanou", state.players[1].name)
         assertEquals("RED", state.players[0].color.name)
+        assertEquals(1, state.players[0].tokens[3].trackPosition)
+        assertEquals(14, state.players[1].tokens[0].trackPosition)
         assertEquals(1, state.players[0].finishedTokensCount)
         assertFalse(state.players[0].hasWon)
         assertEquals(TokenState.FINISHED, state.players[0].tokens[0].state)
