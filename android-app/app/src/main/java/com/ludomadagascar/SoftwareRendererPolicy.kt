@@ -27,6 +27,10 @@ internal object SoftwareRendererPolicy {
     fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /** Software rasterizers skip per-frame dynamic depth rendering during gameplay. */
+    fun shouldRenderDynamicShadows(rendererIdentity: String, homePreview: Boolean): Boolean =
+        homePreview || !isSoftwareRenderer(rendererIdentity)
+
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 

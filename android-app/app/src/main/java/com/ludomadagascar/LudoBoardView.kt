@@ -1734,6 +1734,7 @@ class LudoBoardView(
                     " shadowMap=" + shadowSize +
                     " softwarePbrShader=" + softwareRendererActive +
                     " softwarePostProcess=" + softwarePostProcessActive +
+                    " dynamicShadowPass=" + SoftwareRendererPolicy.shouldRenderDynamicShadows(glRenderer, host.homePreview) +
                     " configuredShadowMap=" + premiumLighting.shadowMapResolution
             )
             GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
@@ -2131,7 +2132,8 @@ class LudoBoardView(
             GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
             GLES30.glClearColor(0.008f,0.018f,0.045f,if(host.homePreview)0f else 1f)
             GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
-            shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            val frameShadowTexture = if (softwareRendererActive) fallbackShadowTex else shadowTex
+            shader.beginFrame(frameShadowTexture,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
             if (setupStarted != 0L) lastSceneSetupCpuNanos = System.nanoTime() - setupStarted
 
             drawWorld(false)
@@ -2154,9 +2156,16 @@ class LudoBoardView(
             val pipelineStartedNanos = System.nanoTime()
             // Render CPU timing intentionally ends after scene + post process and
             // before any blocking framebuffer readback (glFinish/glReadPixels).
-            val shadowStartedNanos = System.nanoTime()
-            renderShadowMap()
-            lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            if (SoftwareRendererPolicy.shouldRenderDynamicShadows(glDeviceDiagnostic, host.homePreview)) {
+                val shadowStartedNanos = System.nanoTime()
+                renderShadowMap()
+                lastShadowCpuNanos = System.nanoTime() - shadowStartedNanos
+            } else {
+                // SwiftShader's CPU rasterizer otherwise drains the per-frame
+                // board/pawn depth-caster sequence during EGL presentation.
+                // Keep authored contact-shadow disks; omit only this dynamic pass.
+                lastShadowCpuNanos = 0L
+            }
             val sceneStartedNanos = System.nanoTime()
             renderScene()
             lastSceneCpuNanos = System.nanoTime() - sceneStartedNanos
@@ -3605,25 +3614,16 @@ class LudoBoardView(
             val softwareFs="""#version 300 es
                 precision highp float;
                 uniform vec4 uColor;
-                uniform float uEmission,uUnlit,uShadowBias,uReceivesShadow,uPreserveAlbedo;
-                uniform sampler2D uAlbedoTex,uShadowMap;
-                in vec2 vUv;in vec4 vShadow;in vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
+                uniform float uEmission,uUnlit,uPreserveAlbedo;
+                uniform sampler2D uAlbedoTex;
+                in vec2 vUv;in vec3 vAmbientFillRim,vKeyDiffuse,vKeySpecular;
                 layout(location=0)out vec4 fragColor;
-                float shadowV(){
-                    vec3 p=vShadow.xyz/max(vShadow.w,0.0001);
-                    p=p*0.5+0.5;
-                    if(p.z>1.0||p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0)return 1.0;
-                    float currentDepth=p.z-uShadowBias;
-                    float storedDepth=texture(uShadowMap,p.xy).r;
-                    return currentDepth<=storedDepth?1.0:0.48;
-                }
                 void main(){
                     vec3 tex=texture(uAlbedoTex,vUv*2.0).rgb;
                     vec3 texturedAlbedo=uColor.rgb*tex;
                     vec3 albedo=uPreserveAlbedo>0.5?texturedAlbedo:mix(texturedAlbedo,uColor.rgb,0.52);
-                    float shadow=uReceivesShadow>0.5?shadowV():1.0;
-                    vec3 color=albedo*(vAmbientFillRim+vKeyDiffuse*shadow)
-                        +vKeySpecular*shadow+albedo*uEmission;
+                    vec3 color=albedo*(vAmbientFillRim+vKeyDiffuse)
+                        +vKeySpecular+albedo*uEmission;
                     if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
                     fragColor=vec4(max(color,vec3(0.0)),uColor.a);
                 }
@@ -3689,7 +3689,10 @@ class LudoBoardView(
             GLES30.glUniform4fv(uColor,1,color,0)
             GLES30.glUniform1f(uMetallic,if(material==4)PremiumMaterialLighting.Calibration.CHROME_METALLIC else metallic)
             GLES30.glUniform1f(uRoughness,if(material==4)PremiumMaterialLighting.Calibration.CHROME_ROUGHNESS else rough)
-            GLES30.glUniform1f(uReceivesShadow,PbrShadowReception.uniformValue(receivesShadow))
+            GLES30.glUniform1f(
+                uReceivesShadow,
+                if (renderer.softwareRendererActive) 0f else PbrShadowReception.uniformValue(receivesShadow)
+            )
             GLES30.glUniform1f(uPreserveAlbedo,if(preserveAlbedo)1f else 0f)
             GLES30.glUniform1f(uAO,ao)
             GLES30.glUniform1f(uEmission,emission)
