@@ -29,6 +29,38 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun reducedOutputSurfaceIsOnlyUsedForSoftwareGameplay() {
+        for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
+            assertTrue(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer(renderer, homePreview = false))
+        }
+        assertFalse(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer("Mali-G51", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer("Google SwiftShader", homePreview = true))
+        assertEquals(355, SoftwareRendererPolicy.scaledDimension(1419, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
+        assertEquals(106, SoftwareRendererPolicy.scaledDimension(424, SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE))
+    }
+
+    @Test
+    fun reducedSurfaceBufferAvoidsApplyingTheSceneScaleTwice() {
+        assertEquals(0.25f, SoftwareRendererPolicy.renderScale("Google SwiftShader", homePreview = false))
+        assertEquals(
+            1f,
+            SoftwareRendererPolicy.renderScale(
+                "Google SwiftShader",
+                homePreview = false,
+                outputSurfaceAlreadyScaled = true
+            )
+        )
+        assertEquals(
+            1f,
+            SoftwareRendererPolicy.renderScale(
+                "Mali-G51",
+                homePreview = false,
+                outputSurfaceAlreadyScaled = true
+            )
+        )
+    }
+
+    @Test
     fun fastPbrShaderIsRestrictedToSoftwareGameplayAndNeverHomePreview() {
         assertTrue(SoftwareRendererPolicy.useFastPbrShader("Google SwiftShader", homePreview = false))
         assertTrue(SoftwareRendererPolicy.useFastPbrShader("llvmpipe", homePreview = false))
