@@ -420,11 +420,13 @@ class LudoBoardView(
         for (pi in 0..3) for (ti in 0..3) {
             val from = oldPos[pi][ti]
             val to = newPos[pi][ti]
-            if (from != Int.MIN_VALUE && from != to) hasVisualPositionChange = true
-            if (PawnMoveSoundPolicy.shouldPlay(from, to)) pawnMoved = true
-            if (from >= 0 && to > from) maxSteps = max(maxSteps, min(6, to - from))
-            if (from < 0 && to >= 0) maxSteps = max(maxSteps, 1)
-            if (from >= 0 && to < 0) maxSteps = max(maxSteps, 2)
+            if (PawnAnimationPolicy.shouldAnimate(from, to)) {
+                hasVisualPositionChange = true
+                if (PawnMoveSoundPolicy.shouldPlay(from, to)) pawnMoved = true
+                if (from >= 0 && to > from) maxSteps = max(maxSteps, min(6, to - from))
+                if (from < 0 && to >= 0) maxSteps = max(maxSteps, 1)
+                if (from >= 0 && to < 0) maxSteps = max(maxSteps, 2)
+            }
         }
         // State refreshes often change only the die/turn. Do not run a 320 ms
         // continuous GL animation when no pawn position changed.
@@ -449,10 +451,16 @@ class LudoBoardView(
             addUpdateListener {
                 val f = it.animatedValue as Float
                 for (pi in 0..3) for (ti in 0..3) {
-                    renderer.bounce[pi][ti] = f
                     val from = oldPos[pi][ti]
                     val to = newPos[pi][ti]
-                    val base = if (from == Int.MIN_VALUE) to else from
+                    if (!PawnAnimationPolicy.shouldAnimate(from, to)) {
+                        display[pi][ti][0] = targets[pi][ti][0]
+                        display[pi][ti][1] = targets[pi][ti][1]
+                        renderer.lift[pi][ti] = 0f
+                        renderer.bounce[pi][ti] = 0f
+                        continue
+                    }
+                    renderer.bounce[pi][ti] = f
                     if (from >= 0 && to > from) {
                         val span = max(1, to - from)
                         val u = f * span
@@ -464,7 +472,7 @@ class LudoBoardView(
                         display[pi][ti][1] = a[1] + (b[1] - a[1]) * local
                         renderer.lift[pi][ti] = LudoMotionPhysics.ballisticArc(local, 0.18f)
                     } else {
-                        val start = if (base < 0) homeGrid(pi, ti) else animationGrid(pi, base)
+                        val start = if (from < 0) homeGrid(pi, ti) else animationGrid(pi, from)
                         val end = targets[pi][ti]
                         display[pi][ti][0] = start[0] + (end[0] - start[0]) * f
                         display[pi][ti][1] = start[1] + (end[1] - start[1]) * f
@@ -541,12 +549,14 @@ class LudoBoardView(
         }
     }
 
-    private fun visualPath(): List<Pair<Int, Int>> = listOf(
+    private val cachedVisualPath: List<Pair<Int, Int>> = listOf(
         6 to 0, 6 to 1, 6 to 2, 6 to 3, 6 to 4, 6 to 5, 5 to 6, 4 to 6, 3 to 6, 2 to 6, 1 to 6, 0 to 6,
         0 to 7, 0 to 8, 1 to 8, 2 to 8, 3 to 8, 4 to 8, 5 to 8, 6 to 9, 6 to 10, 6 to 11, 6 to 12, 6 to 13, 6 to 14,
         7 to 14, 8 to 14, 8 to 13, 8 to 12, 8 to 11, 8 to 10, 8 to 9, 9 to 8, 10 to 8, 11 to 8, 12 to 8, 13 to 8, 14 to 8,
         14 to 7, 14 to 6, 13 to 6, 12 to 6, 11 to 6, 10 to 6, 9 to 6, 8 to 5, 8 to 4, 8 to 3, 8 to 2, 8 to 1, 8 to 0, 7 to 0
     )
+
+    private fun visualPath(): List<Pair<Int, Int>> = cachedVisualPath
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (homePreview) {
@@ -1491,6 +1501,8 @@ class LudoBoardView(
         private var authoredBoardPartCount = 0
         private var heroPawnMeshes: List<Mesh> = emptyList()
         private val identityModel = FloatArray(16).apply { Matrix.setIdentityM(this, 0) }
+        private val pawnRootScratch = Array(4) { Array(4) { FloatArray(16) } }
+        private val pawnModelScratch = Array(4) { Array(4) { FloatArray(16) } }
         private val frameTelemetry = if (BuildConfig.DEBUG) RenderFrameTelemetry() else null
         private val pipelinePhaseTelemetry = if (BuildConfig.DEBUG) RenderPipelinePhaseTelemetry() else null
         private val sceneBreakdownTelemetry = if (BuildConfig.DEBUG) RenderSceneBreakdownTelemetry() else null
@@ -1525,7 +1537,7 @@ class LudoBoardView(
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
-        private val gpuFenceTelemetry = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuFenceTelemetry() else null
+        private var gpuFenceTelemetry: GlesGpuFenceTelemetry? = null
         internal var softwareRendererActive = false
             private set
         private var firstDrawMarkerPersisted = false
@@ -1641,12 +1653,19 @@ class LudoBoardView(
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
-            gpuFenceTelemetry?.initialize()
+            softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
+            gpuFenceTelemetry = if (
+                BuildConfig.DEBUG &&
+                SoftwareRendererPolicy.shouldMeasureGpuFence(glRenderer, host.homePreview)
+            ) {
+                GlesGpuFenceTelemetry().also { it.initialize() }
+            } else {
+                null
+            }
             android.util.Log.i(
                 "LudoMadaRender",
                 "GPU_TIMER_QUERY status=" + (gpuTimerQuery?.snapshot()?.status ?: "DISABLED")
             )
-            softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
             val softwarePostProcessActive = SoftwareRendererPolicy.useFastPostProcess(glRenderer, host.homePreview)
             shadowSize = SoftwareRendererPolicy.shadowMapResolution(
                 glRenderer,
@@ -2758,29 +2777,31 @@ class LudoBoardView(
             val head=glbParts["LM_Pawn_Spherical_Head"]
             if(body!=null && head!=null && heroPawnMeshes.isNotEmpty()){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
-                val elastic=LudoMotionPhysics.elasticOut(b)
+                val isAnimating=b>0.001f
+                val elastic=if(isAnimating)LudoMotionPhysics.elasticOut(b) else b
                 val overshoot=elastic-b
-                val backOvershoot=LudoMotionPhysics.backOut(b)-b
+                val backOvershoot=if(isAnimating)LudoMotionPhysics.backOut(b)-b else 0f
                 val sx=0.72f*(1f-0.055f*overshoot)
                 val sy=0.72f*(1f+0.115f*overshoot)
-                val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
-                val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
-                val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
-                val model=heroPawnModel(identityModel,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
+                val phase=if(isAnimating)((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f else 0f
+                val swayZ=if(isAnimating)LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f else 0f
+                val swayX=if(isAnimating)LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f else 0f
+                val model=heroPawnModelForToken(identityModel,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX,pi,ti)
                 val pm=PremiumMaterialLighting.pawn(color)
                 for (mesh in heroPawnMeshes) {
                     drawMesh(mesh,model,rgba(color),pm.roughness,pm.metallic,pm.ao,pm.emission,5,false)
                 }
             }else if(body!=null && head!=null){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
-                val elastic=LudoMotionPhysics.elasticOut(b)
+                val isAnimating=b>0.001f
+                val elastic=if(isAnimating)LudoMotionPhysics.elasticOut(b) else b
                 val overshoot=elastic-b
-                val backOvershoot=LudoMotionPhysics.backOut(b)-b
+                val backOvershoot=if(isAnimating)LudoMotionPhysics.backOut(b)-b else 0f
                 val sx=0.72f*(1f-0.055f*overshoot)
                 val sy=0.72f*(1f+0.115f*overshoot)
-                val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
-                val swayZ=LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f
-                val swayX=LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f
+                val phase=if(isAnimating)((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f else 0f
+                val swayZ=if(isAnimating)LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f else 0f
+                val swayX=if(isAnimating)LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f else 0f
                 listOf(
                     "LM_Pawn_Underside_Insert",
                     "LM_Pawn_Base_Weighted",
@@ -2789,7 +2810,7 @@ class LudoBoardView(
                     "LM_Pawn_Spherical_Head"
                 ).forEach { name ->
                     glbParts[name]?.let { part ->
-                        val model=heroPawnModel(part.transform,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX)
+                        val model=heroPawnModelForToken(part.transform,x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,swayZ,swayX,pi,ti)
                         val pm=PremiumMaterialLighting.pawn(color)
                         drawMesh(part.mesh,model,rgba(color),pm.roughness,pm.metallic,pm.ao,pm.emission,5,false)
                     }
@@ -2802,10 +2823,25 @@ class LudoBoardView(
 
         private fun heroPawnModel(partTransform:FloatArray,x:Float,y:Float,z:Float,sx:Float,sy:Float,rotZ:Float,rotX:Float):FloatArray{
             val root=identityAt(x,y,z,1f,1f,1f)
-            Matrix.rotateM(root,0,rotZ,0f,0f,1f)
-            Matrix.rotateM(root,0,rotX,1f,0f,0f)
+            if(rotZ!=0f)Matrix.rotateM(root,0,rotZ,0f,0f,1f)
+            if(rotX!=0f)Matrix.rotateM(root,0,rotX,1f,0f,0f)
             Matrix.scaleM(root,0,sx,sy,sx)
             val out=FloatArray(16)
+            Matrix.multiplyMM(out,0,root,0,partTransform,0)
+            return out
+        }
+
+        private fun heroPawnModelForToken(
+            partTransform:FloatArray,x:Float,y:Float,z:Float,
+            sx:Float,sy:Float,rotZ:Float,rotX:Float,pi:Int,ti:Int
+        ):FloatArray{
+            val root=pawnRootScratch[pi][ti]
+            Matrix.setIdentityM(root,0)
+            Matrix.translateM(root,0,x,y,z)
+            if(rotZ!=0f)Matrix.rotateM(root,0,rotZ,0f,0f,1f)
+            if(rotX!=0f)Matrix.rotateM(root,0,rotX,1f,0f,0f)
+            Matrix.scaleM(root,0,sx,sy,sx)
+            val out=pawnModelScratch[pi][ti]
             Matrix.multiplyMM(out,0,root,0,partTransform,0)
             return out
         }
@@ -2818,27 +2854,33 @@ class LudoBoardView(
         }
         private fun pawnModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
-            val overshoot=(elastic-b)
-            val backOvershoot=LudoMotionPhysics.backOut(b)-b
+            val isAnimating=b>0.001f
+            val elastic=if(isAnimating)LudoMotionPhysics.elasticOut(b) else b
+            val overshoot=elastic-b
+            val backOvershoot=if(isAnimating)LudoMotionPhysics.backOut(b)-b else 0f
             val sx=pawnScale*(1f-0.055f*overshoot)
             val sy=pawnScale*(1f+0.115f*overshoot)
             val m=identityAt(x,y+PremiumVisualMotion.landingBounce(b),z,sx,sy,sx)
-            val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
-            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
-            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
+            if(isAnimating){
+                val phase=((System.nanoTime()/18_000_000L+pi*37L+ti*11L)%360L).toFloat()/360f
+                Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,3.5f)+overshoot*6.5f+backOvershoot*2.8f,0f,0f,1f)
+                Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.2f)-overshoot*3.0f+backOvershoot*1.4f,1f,0f,0f)
+            }
             return m
         }
         private fun pawnHeadModel(x:Float,y:Float,z:Float,pi:Int,ti:Int):FloatArray{
             val b=bounce[pi][ti].coerceIn(0f,1f)
-            val elastic=LudoMotionPhysics.elasticOut(b)
+            val isAnimating=b>0.001f
+            val elastic=if(isAnimating)LudoMotionPhysics.elasticOut(b) else b
             val overshoot=elastic-b
-            val backOvershoot=LudoMotionPhysics.backOut(b)-b
+            val backOvershoot=if(isAnimating)LudoMotionPhysics.backOut(b)-b else 0f
             val s=pawnScale*0.37f*(1f-0.035f*overshoot)
             val sy=pawnScale*0.37f*(1f+0.065f*overshoot)
             val m=identityAt(x,y+pawnScale*0.74f+PremiumVisualMotion.landingBounce(b)*0.65f,z,s,sy,s)
-            val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
-            Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
+            if(isAnimating){
+                val phase=((System.nanoTime()/20_000_000L+pi*31L+ti*7L)%360L).toFloat()/360f
+                Matrix.rotateM(m,0,LudoMotionPhysics.sway(phase,2.5f)+overshoot*4.0f+backOvershoot*1.8f,0f,0f,1f)
+            }
             return m
         }
         private fun dieValue(pi:Int):Int{

@@ -16,6 +16,13 @@ internal object SoftwareRendererPolicy {
         listOf("swiftshader", "llvmpipe", "softpipe", "lavapipe")
             .any { rendererIdentity.contains(it, ignoreCase = true) }
 
+    /**
+     * A software driver's fence signal delay includes host-emulator scheduling,
+     * so it is not a useful GPU-queue measurement and adds work to the FPS run.
+     */
+    fun shouldMeasureGpuFence(rendererIdentity: String, homePreview: Boolean): Boolean =
+        !homePreview && !isSoftwareRenderer(rendererIdentity)
+
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
