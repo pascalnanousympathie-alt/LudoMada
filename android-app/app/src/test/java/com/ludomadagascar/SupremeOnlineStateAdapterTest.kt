@@ -33,7 +33,7 @@ class SupremeOnlineStateAdapterTest {
         assertEquals(6, state.diceValue)
         assertEquals("Nanou", state.players[1].name)
         assertEquals("RED", state.players[0].color.name)
-        assertEquals(1, state.players[0].tokens[3].trackPosition)
+        assertEquals(9, state.players[0].tokens[3].trackPosition)
         assertEquals(14, state.players[1].tokens[0].trackPosition)
         assertEquals(1, state.players[0].finishedTokensCount)
         assertFalse(state.players[0].hasWon)
@@ -69,6 +69,31 @@ class SupremeOnlineStateAdapterTest {
         assertEquals(4, state.players[0].finishedTokensCount)
         assertEquals(1, state.players[0].rank)
         assertNull(state.diceValue)
+    }
+
+    @Test
+    fun mapsEachServerColorStartToSupremeBoardCoordinate() {
+        val response = JSONObject(
+            """{
+              "status":"PLAYING",
+              "state":{
+                "phase":"PLAYING",
+                "stateVersion":1,
+                "currentPlayerIndex":0,
+                "dice":null,
+                "players":[
+                  {"id":"red","color":"RED","tokens":[{"pos":0},{"pos":-1},{"pos":-1},{"pos":-1}]},
+                  {"id":"green","color":"GREEN","tokens":[{"pos":0},{"pos":-1},{"pos":-1},{"pos":-1}]},
+                  {"id":"yellow","color":"YELLOW","tokens":[{"pos":0},{"pos":-1},{"pos":-1},{"pos":-1}]},
+                  {"id":"blue","color":"BLUE","tokens":[{"pos":0},{"pos":-1},{"pos":-1},{"pos":-1}]}
+                ]
+              }
+            }"""
+        )
+
+        val state = SupremeOnlineStateAdapter.fromServer(response, "red", "Nanou")!!
+
+        assertEquals(listOf(1, 14, 27, 40), state.players.map { it.tokens[0].trackPosition })
     }
 
     @Test
