@@ -33,7 +33,9 @@ internal data class RenderFramePerfSnapshot(
     val animationFrameIntervalP50Ms: Float? = null,
     val animationFrameIntervalP95Ms: Float? = null,
     val animationAfterCallbackGapP50Ms: Float? = null,
-    val animationAfterCallbackGapP95Ms: Float? = null
+    val animationAfterCallbackGapP95Ms: Float? = null,
+    val animationGlThreadPostCallbackCpuP50Ms: Float? = null,
+    val animationGlThreadPostCallbackCpuP95Ms: Float? = null
 )
 
 internal class RenderFrameTelemetry(
@@ -52,17 +54,22 @@ internal class RenderFrameTelemetry(
     private val afterCallbackGapNanos = LongArray(windowSize)
     private val animationIntervalsNanos = LongArray(windowSize)
     private val animationAfterCallbackGapNanos = LongArray(windowSize)
+    private val animationGlThreadPostCallbackCpuNanos = LongArray(windowSize)
     private val percentileScratch = LongArray(windowSize)
     private var nextActiveIndex = 0
     private var nextSubmissionIndex = 0
     private var nextAfterCallbackGapIndex = 0
     private var nextAnimationIndex = 0
     private var nextAnimationGapIndex = 0
+    private var nextAnimationGlThreadCpuIndex = 0
     private var activeFrameSampleCount = 0
     private var glSubmissionSampleCount = 0
     private var afterCallbackGapSampleCount = 0
     private var animationFrameSampleCount = 0
     private var animationGapSampleCount = 0
+    private var animationGlThreadCpuSampleCount = 0
+    private var previousFrameGlThreadCpuStartNanos = 0L
+    private var previousCallbackGlThreadCpuNanos = 0L
     private var hasPreviousFrame = false
     private var previousFrameStartNanos = 0L
     private var previousFrameWasAnimating = false
@@ -72,7 +79,8 @@ internal class RenderFrameTelemetry(
     fun record(
         frameStartNanos: Long,
         glSubmissionDurationNanos: Long,
-        continuousAnimationActive: Boolean = false
+        continuousAnimationActive: Boolean = false,
+        glThreadCpuTimeNanos: Long? = null
     ): RenderFramePerfSnapshot? {
         if (frameStartNanos <= 0L) return null
 
@@ -102,6 +110,21 @@ internal class RenderFrameTelemetry(
                     (interval - previousCallbackDurationNanos).coerceAtLeast(0L)
                 nextAnimationGapIndex = (nextAnimationGapIndex + 1) % windowSize
                 animationGapSampleCount = min(windowSize, animationGapSampleCount + 1)
+                // CPU consumed on the GL thread after the previous callback and before
+                // this callback approximates driver/EGL work outside onDrawFrame.
+                // A low value with a large wall-clock gap indicates waiting/scheduling;
+                // a high value points to CPU work during presentation/swap.
+                if (glThreadCpuTimeNanos != null &&
+                    previousFrameGlThreadCpuStartNanos > 0L &&
+                    previousCallbackGlThreadCpuNanos > 0L &&
+                    glThreadCpuTimeNanos >= previousFrameGlThreadCpuStartNanos
+                ) {
+                    val threadCpuInterval = glThreadCpuTimeNanos - previousFrameGlThreadCpuStartNanos
+                    val postCallbackCpu = (threadCpuInterval - previousCallbackGlThreadCpuNanos).coerceAtLeast(0L)
+                    animationGlThreadPostCallbackCpuNanos[nextAnimationGlThreadCpuIndex] = postCallbackCpu
+                    nextAnimationGlThreadCpuIndex = (nextAnimationGlThreadCpuIndex + 1) % windowSize
+                    animationGlThreadCpuSampleCount = min(windowSize, animationGlThreadCpuSampleCount + 1)
+                }
             }
         } else if (hasPreviousFrame && frameStartNanos <= previousFrameStartNanos) {
             return null
@@ -110,6 +133,8 @@ internal class RenderFrameTelemetry(
         hasPreviousFrame = true
         previousFrameStartNanos = frameStartNanos
         previousFrameWasAnimating = continuousAnimationActive
+        previousFrameGlThreadCpuStartNanos = glThreadCpuTimeNanos?.takeIf { it >= 0L } ?: 0L
+        previousCallbackGlThreadCpuNanos = 0L
         glSubmitNanos[nextSubmissionIndex] = glSubmissionDurationNanos.coerceAtLeast(0L)
         nextSubmissionIndex = (nextSubmissionIndex + 1) % windowSize
         glSubmissionSampleCount = min(windowSize, glSubmissionSampleCount + 1)
@@ -121,9 +146,14 @@ internal class RenderFrameTelemetry(
     }
 
     /** Call at the end of onDrawFrame to separate callback work from the following framework/presentation gap. */
-    fun finishCallback(frameStartNanos: Long, callbackDurationNanos: Long) {
+    fun finishCallback(
+        frameStartNanos: Long,
+        callbackDurationNanos: Long,
+        callbackGlThreadCpuNanos: Long? = null
+    ) {
         if (hasPreviousFrame && frameStartNanos == previousFrameStartNanos) {
             previousCallbackDurationNanos = callbackDurationNanos.coerceAtLeast(0L)
+            previousCallbackGlThreadCpuNanos = callbackGlThreadCpuNanos?.takeIf { it >= 0L } ?: 0L
         }
     }
 
@@ -133,17 +163,22 @@ internal class RenderFrameTelemetry(
         Arrays.fill(afterCallbackGapNanos, 0L)
         Arrays.fill(animationIntervalsNanos, 0L)
         Arrays.fill(animationAfterCallbackGapNanos, 0L)
+        Arrays.fill(animationGlThreadPostCallbackCpuNanos, 0L)
         Arrays.fill(percentileScratch, 0L)
         nextActiveIndex = 0
         nextSubmissionIndex = 0
         nextAfterCallbackGapIndex = 0
         nextAnimationIndex = 0
         nextAnimationGapIndex = 0
+        nextAnimationGlThreadCpuIndex = 0
         activeFrameSampleCount = 0
         glSubmissionSampleCount = 0
         afterCallbackGapSampleCount = 0
         animationFrameSampleCount = 0
         animationGapSampleCount = 0
+        animationGlThreadCpuSampleCount = 0
+        previousFrameGlThreadCpuStartNanos = 0L
+        previousCallbackGlThreadCpuNanos = 0L
         hasPreviousFrame = false
         previousFrameStartNanos = 0L
         previousFrameWasAnimating = false
@@ -179,7 +214,9 @@ internal class RenderFrameTelemetry(
             animationFrameIntervalP50Ms = percentileMillis(animationIntervalsNanos, animationFrameSampleCount, 0.50),
             animationFrameIntervalP95Ms = percentileMillis(animationIntervalsNanos, animationFrameSampleCount, 0.95),
             animationAfterCallbackGapP50Ms = percentileMillis(animationAfterCallbackGapNanos, animationGapSampleCount, 0.50),
-            animationAfterCallbackGapP95Ms = percentileMillis(animationAfterCallbackGapNanos, animationGapSampleCount, 0.95)
+            animationAfterCallbackGapP95Ms = percentileMillis(animationAfterCallbackGapNanos, animationGapSampleCount, 0.95),
+            animationGlThreadPostCallbackCpuP50Ms = percentileMillis(animationGlThreadPostCallbackCpuNanos, animationGlThreadCpuSampleCount, 0.50),
+            animationGlThreadPostCallbackCpuP95Ms = percentileMillis(animationGlThreadPostCallbackCpuNanos, animationGlThreadCpuSampleCount, 0.95)
         )
     }
 
