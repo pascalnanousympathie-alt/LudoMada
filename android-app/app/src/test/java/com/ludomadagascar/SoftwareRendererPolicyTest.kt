@@ -29,6 +29,15 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun vsyncDrivenRenderingIsRestrictedToSoftwareGameplay() {
+        for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
+            assertTrue(SoftwareRendererPolicy.shouldUseVsyncDrivenRendering(renderer, homePreview = false))
+        }
+        assertFalse(SoftwareRendererPolicy.shouldUseVsyncDrivenRendering("Mali-G51", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.shouldUseVsyncDrivenRendering("Google SwiftShader", homePreview = true))
+    }
+
+    @Test
     fun reducedOutputSurfaceIsOnlyUsedForSoftwareGameplay() {
         for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
             assertTrue(SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer(renderer, homePreview = false))
