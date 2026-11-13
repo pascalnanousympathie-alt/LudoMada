@@ -43,6 +43,41 @@ class RenderFrameTelemetryTest {
     }
 
     @Test
+    fun measuresGlThreadCpuConsumedAfterThePreviousAnimationCallback() {
+        val telemetry = RenderFrameTelemetry(windowSize = 4, reportIntervalNanos = 30_000_000L)
+
+        assertNull(
+            telemetry.record(
+                1_000_000_000L, 5_000_000L,
+                continuousAnimationActive = true,
+                glThreadCpuTimeNanos = 100_000_000L
+            )
+        )
+        telemetry.finishCallback(1_000_000_000L, 6_000_000L, callbackGlThreadCpuNanos = 4_000_000L)
+
+        assertNull(
+            telemetry.record(
+                1_010_000_000L, 5_000_000L,
+                continuousAnimationActive = true,
+                glThreadCpuTimeNanos = 110_000_000L
+            )
+        )
+        telemetry.finishCallback(1_010_000_000L, 7_000_000L, callbackGlThreadCpuNanos = 5_000_000L)
+
+        val snapshot = telemetry.record(
+            1_030_000_000L, 5_000_000L,
+            continuousAnimationActive = true,
+            glThreadCpuTimeNanos = 130_000_000L
+        )
+
+        assertNotNull(snapshot)
+        snapshot!!
+        assertEquals(2, snapshot.animationFrameSampleCount)
+        assertEquals(2, snapshot.animationGlThreadPostCallbackCpuP50Ms!!.toInt())
+        assertEquals(15f, snapshot.animationGlThreadPostCallbackCpuP95Ms!!, 0.01f)
+    }
+
+    @Test
     fun countsLongMissedFramesDuringContinuousAnimationButExcludesIdleTransition() {
         val telemetry = RenderFrameTelemetry(windowSize = 8, reportIntervalNanos = 100_000_000L)
         assertNull(telemetry.record(1_000_000_000L, 5_000_000L, continuousAnimationActive = false))
