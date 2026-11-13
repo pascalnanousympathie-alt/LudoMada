@@ -79,6 +79,11 @@ class LudoBoardView(
     private var stateAnimator: ValueAnimator? = null
     private var diceAnimator: ValueAnimator? = null
     private var diceRolling = false
+    @Volatile private var softwareSurfaceBufferRequested = false
+    @Volatile private var softwareSurfaceBufferActive = false
+    @Volatile private var softwareSurfaceBufferScale = 1f
+    private var appliedSoftwareSurfaceBufferWidth = 0
+    private var appliedSoftwareSurfaceBufferHeight = 0
     @Volatile private var animatedRendering = false
     @Volatile private var uiAnimationVsyncDescription = ""
     private var animationRenderOwners = 0
@@ -114,6 +119,53 @@ class LudoBoardView(
             m.contains("emulator") || m.contains("android sdk") ||
             h.contains("ranchu") || h.contains("goldfish") ||
             p.contains("sdk") || p.contains("emulator")
+    }
+
+    internal val hasSoftwareSurfaceBuffer: Boolean
+        get() = softwareSurfaceBufferActive
+
+    /**
+     * The SwiftShader path renders the 3D scene to a quarter-size FBO. Request
+     * a matching EGL window buffer so the final post-process pass does not
+     * rasterize the same result across the full-size emulated surface.
+     */
+    internal fun requestSoftwareSurfaceBuffer(scale: Float) {
+        if (homePreview || !scale.isFinite() || scale !in 0.01f..1f) return
+        softwareSurfaceBufferScale = scale
+        softwareSurfaceBufferRequested = true
+        post { applySoftwareSurfaceBufferSize(width, height) }
+    }
+
+    private fun applySoftwareSurfaceBufferSize(viewWidth: Int, viewHeight: Int) {
+        if (!softwareSurfaceBufferRequested || viewWidth <= 0 || viewHeight <= 0) return
+        val targetWidth = SoftwareRendererPolicy.scaledDimension(viewWidth, softwareSurfaceBufferScale)
+        val targetHeight = SoftwareRendererPolicy.scaledDimension(viewHeight, softwareSurfaceBufferScale)
+        if (targetWidth == appliedSoftwareSurfaceBufferWidth &&
+            targetHeight == appliedSoftwareSurfaceBufferHeight &&
+            softwareSurfaceBufferActive
+        ) return
+        // Mark active before setFixedSize: SurfaceChanged may be delivered on
+        // the GL thread immediately after the native surface request completes.
+        softwareSurfaceBufferActive = true
+        runCatching {
+            holder.setFixedSize(targetWidth, targetHeight)
+            appliedSoftwareSurfaceBufferWidth = targetWidth
+            appliedSoftwareSurfaceBufferHeight = targetHeight
+            android.util.Log.i(
+                "LudoMadaRender",
+                "SOFTWARE_SURFACE_BUFFER view=" + viewWidth + "x" + viewHeight +
+                    " buffer=" + targetWidth + "x" + targetHeight +
+                    " scale=" + softwareSurfaceBufferScale
+            )
+        }.onFailure {
+            softwareSurfaceBufferActive = false
+            android.util.Log.e("LudoMadaRender", "SOFTWARE_SURFACE_BUFFER_REQUEST_FAILED", it)
+        }
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        applySoftwareSurfaceBufferSize(w, h)
     }
 
     init {
@@ -1455,8 +1507,8 @@ class LudoBoardView(
         internal val premiumPost = PremiumMaterialLighting.post
         private var shadowSize=premiumLighting.shadowMapResolution
         internal val shadowMapResolution: Int get() = shadowSize
-        // sceneWidth/Height are the physical GLSurfaceView dimensions. The
-        // internal target may be smaller only for software rasterizers.
+        // sceneWidth/Height are the EGL window-buffer dimensions. On SwiftShader
+        // the buffer itself may be smaller than the full Android View bounds.
         private var sceneWidth=1
         private var sceneHeight=1
         private var renderTargetWidth=1
@@ -1654,6 +1706,9 @@ class LudoBoardView(
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
             softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
+            if (SoftwareRendererPolicy.shouldUseReducedSurfaceBuffer(glRenderer, host.homePreview)) {
+                host.requestSoftwareSurfaceBuffer(SoftwareRendererPolicy.SOFTWARE_SURFACE_SCALE)
+            }
             gpuFenceTelemetry = if (
                 BuildConfig.DEBUG &&
                 SoftwareRendererPolicy.shouldMeasureGpuFence(glRenderer, host.homePreview)
@@ -1801,7 +1856,11 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
-            renderScale = SoftwareRendererPolicy.renderScale(glDeviceDiagnostic, host.homePreview)
+            renderScale = SoftwareRendererPolicy.renderScale(
+                glDeviceDiagnostic,
+                host.homePreview,
+                outputSurfaceAlreadyScaled = host.hasSoftwareSurfaceBuffer
+            )
             renderTargetWidth = SoftwareRendererPolicy.scaledDimension(sceneWidth, renderScale)
             renderTargetHeight = SoftwareRendererPolicy.scaledDimension(sceneHeight, renderScale)
             GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
@@ -2193,12 +2252,16 @@ class LudoBoardView(
         }
         override fun projectedTokens(pi:Int):Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
-            for(ti in 0..3){val xz=host.display[pi][ti];val x=xz[0];val z=xz[1];if(x.isNaN())continue;val y=boardTop+0.60f;val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[ti][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[ti][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
+            val viewWidth=host.width.coerceAtLeast(1)
+            val viewHeight=host.height.coerceAtLeast(1)
+            for(ti in 0..3){val xz=host.display[pi][ti];val x=xz[0];val z=xz[1];if(x.isNaN())continue;val y=boardTop+0.60f;val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[ti][0]=(cx/cw*0.5f+0.5f)*viewWidth;out[ti][1]=(1f-(cy/cw*0.5f+0.5f))*viewHeight}}
             return out
         }
         override fun projectedDice():Array<FloatArray>{
             val out=Array(4){FloatArray(2){-1000f}};val m=projectionSnapshot;if(m[0]==0f)return out
-            for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*sceneWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*sceneHeight}}
+            val viewWidth=host.width.coerceAtLeast(1)
+            val viewHeight=host.height.coerceAtLeast(1)
+            for(pi in 0..3){val p=dieCenterWorld(pi);val x=p[0];val y=p[1]+0.38f;val z=p[2];val cx=m[0]*x+m[4]*y+m[8]*z+m[12];val cy=m[1]*x+m[5]*y+m[9]*z+m[13];val cw=m[3]*x+m[7]*y+m[11]*z+m[15];if(cw!=0f){out[pi][0]=(cx/cw*0.5f+0.5f)*viewWidth;out[pi][1]=(1f-(cy/cw*0.5f+0.5f))*viewHeight}}
             return out
         }
         private fun dieCenterWorld(pi:Int):FloatArray = when(pi){
@@ -3063,8 +3126,8 @@ class LudoBoardView(
             lastParticleCleanupCpuNanos = timings?.let { it[4] } ?: 0L
         }
         private fun renderPostProcess(){
-            // The scene/depth textures may be reduced-resolution on SwiftShader,
-            // but the final post-process pass always fills the physical surface.
+            // On SwiftShader the EGL buffer is quarter-size too, so this pass
+            // fills only that buffer; SurfaceFlinger scales it to View bounds.
             GLES30.glViewport(0,0,sceneWidth,sceneHeight)
             GLES30.glDisable(GLES30.GL_DEPTH_TEST)
             GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO)

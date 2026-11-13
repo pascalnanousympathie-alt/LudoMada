@@ -10,6 +10,7 @@ package com.ludomadagascar
  */
 internal object SoftwareRendererPolicy {
     const val SOFTWARE_RENDER_SCALE = 0.25f
+    const val SOFTWARE_SURFACE_SCALE = 0.25f
     const val SOFTWARE_SHADOW_MAP_MAX = 128
 
     fun isSoftwareRenderer(rendererIdentity: String): Boolean =
@@ -23,6 +24,9 @@ internal object SoftwareRendererPolicy {
     fun shouldMeasureGpuFence(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && !isSoftwareRenderer(rendererIdentity)
 
+    fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
+        !homePreview && isSoftwareRenderer(rendererIdentity)
+
     fun useFastPbrShader(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
@@ -30,8 +34,12 @@ internal object SoftwareRendererPolicy {
     fun useFastPostProcess(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
-    fun renderScale(rendererIdentity: String, homePreview: Boolean): Float =
-        if (!homePreview && isSoftwareRenderer(rendererIdentity)) {
+    fun renderScale(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        outputSurfaceAlreadyScaled: Boolean = false
+    ): Float =
+        if (!homePreview && isSoftwareRenderer(rendererIdentity) && !outputSurfaceAlreadyScaled) {
             SOFTWARE_RENDER_SCALE
         } else {
             1f
