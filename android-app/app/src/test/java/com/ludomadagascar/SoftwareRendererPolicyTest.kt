@@ -61,6 +61,14 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun dynamicShadowPassIsDisabledOnlyForSoftwareGameplay() {
+        assertFalse(SoftwareRendererPolicy.shouldRenderDynamicShadows("Google SwiftShader", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.shouldRenderDynamicShadows("llvmpipe", homePreview = false))
+        assertTrue(SoftwareRendererPolicy.shouldRenderDynamicShadows("Mali-G51", homePreview = false))
+        assertTrue(SoftwareRendererPolicy.shouldRenderDynamicShadows("Google SwiftShader", homePreview = true))
+    }
+
+    @Test
     fun fastPbrShaderIsRestrictedToSoftwareGameplayAndNeverHomePreview() {
         assertTrue(SoftwareRendererPolicy.useFastPbrShader("Google SwiftShader", homePreview = false))
         assertTrue(SoftwareRendererPolicy.useFastPbrShader("llvmpipe", homePreview = false))
