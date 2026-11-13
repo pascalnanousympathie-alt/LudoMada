@@ -903,18 +903,31 @@ add(supremeStrip,62,0,4)
         status.text="Tour: ${listOf("🔴","🟢","🟡","🔵").getOrElse(i){"?"}}  •  Dé: $d"
     }
 
-    private fun refreshState(){get("/api/games/$gameId/state"){j->
-        retryCount=0;state=j;version=j.optInt("stateVersion",0)
-        runOnUiThread{
+    private fun refreshState(){
+        val requestedGameId=gameId
+        if(requestedGameId.isBlank()) return
+        get("/api/games/$requestedGameId/state"){j->
+            val incomingVersion=j.optInt("stateVersion",-1)
+            val responseGameId=j.optString("gameId",requestedGameId)
+            if(!OnlineStateRevisionGuard.shouldApply(
+                currentGameId=gameId,
+                requestedGameId=requestedGameId,
+                responseGameId=responseGameId,
+                currentVersion=version,
+                incomingVersion=incomingVersion
+            )) return@get
+            retryCount=0
+            state=j
+            version=incomingVersion
             val serverStatus=j.optString("status")
             if(serverStatus=="PLAYING" && currentScreen!="board"){
                 showBoardEntry()
-                return@runOnUiThread
+                return@get
             }
             if(currentScreen=="board" && boardHost!=null) updateBoard(boardHost!!)
             else if(currentScreen=="board") board()
         }
-    }}
+    }
     private fun playerIndex():Int{val a=state?.optJSONArray("players")?:return -1;for(i in 0 until a.length())if(a.optJSONObject(i)?.optString("id")==userId)return i;return -1}
     private fun roll(){
         if(gameId.isBlank() || movePending || boardHost==null) return
