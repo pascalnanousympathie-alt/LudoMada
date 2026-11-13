@@ -45,6 +45,14 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun gpuFenceMeasurementIsReservedForHardwareGameplayRenderers() {
+        assertFalse(SoftwareRendererPolicy.shouldMeasureGpuFence("Google SwiftShader", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.shouldMeasureGpuFence("llvmpipe", homePreview = false))
+        assertFalse(SoftwareRendererPolicy.shouldMeasureGpuFence("Mali-G51", homePreview = true))
+        assertTrue(SoftwareRendererPolicy.shouldMeasureGpuFence("Mali-G51", homePreview = false))
+    }
+
+    @Test
     fun hardwareRendererKeepsFullResolutionAndConfiguredShadows() {
         val renderer = "Mali-G51"
         assertFalse(SoftwareRendererPolicy.isSoftwareRenderer(renderer))
