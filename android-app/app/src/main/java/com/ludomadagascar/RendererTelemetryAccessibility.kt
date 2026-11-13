@@ -42,6 +42,7 @@ internal object RendererTelemetryAccessibility {
             "GL_CPU_MS=" + pair(frame.glSubmitP50Ms, frame.glSubmitP95Ms),
             "SCENE_CPU_MS=" + pair(pipeline.sceneCpuP50Ms, pipeline.sceneCpuP95Ms),
             "BACKDROP_CPU_MS=" + pair(scene.backdropCpuP50Ms, scene.backdropCpuP95Ms),
+            "SHADER_END_CPU_MS=" + pair(scene.shaderEndCpuP50Ms, scene.shaderEndCpuP95Ms),
             "BACKDROP_CULL_QUERY_CPU_MS=" + pair(scene.backdropCullingQueryCpuP50Ms, scene.backdropCullingQueryCpuP95Ms),
             "BACKDROP_CULL_TRANSITION_CPU_MS=" + pair(scene.backdropCullingTransitionCpuP50Ms, scene.backdropCullingTransitionCpuP95Ms),
             "BACKDROP_CULL_RESTORE_CPU_MS=" + pair(scene.backdropCullingRestoreCpuP50Ms, scene.backdropCullingRestoreCpuP95Ms),
