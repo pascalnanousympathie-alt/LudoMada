@@ -37,6 +37,7 @@ internal object RendererTelemetryAccessibility {
             "ANIM_FPS=" + (frame.animationFrameFps?.takeIf { it.isFinite() && it > 0f }?.let(::number) ?: "INSUFFICIENT"),
             "ANIM_FRAME_MS=" + nullablePair(frame.animationFrameIntervalP50Ms, frame.animationFrameIntervalP95Ms),
             "ANIM_AFTER_CALLBACK_GAP_MS=" + nullablePair(frame.animationAfterCallbackGapP50Ms, frame.animationAfterCallbackGapP95Ms),
+            "ANIM_GL_THREAD_POST_CALLBACK_CPU_MS=" + nullablePair(frame.animationGlThreadPostCallbackCpuP50Ms, frame.animationGlThreadPostCallbackCpuP95Ms),
             "ANIM_FRAME_SAMPLES=${frame.animationFrameSampleCount}",
             "GL_CPU_MS=" + pair(frame.glSubmitP50Ms, frame.glSubmitP95Ms),
             "SCENE_CPU_MS=" + pair(pipeline.sceneCpuP50Ms, pipeline.sceneCpuP95Ms),
