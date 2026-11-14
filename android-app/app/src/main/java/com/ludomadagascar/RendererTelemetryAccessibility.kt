@@ -4,6 +4,8 @@ import java.util.Locale
 
 /** Compact machine-readable renderer telemetry embedded in the gameplay accessibility label. */
 internal object RendererTelemetryAccessibility {
+    fun shouldPublishPawnTapTargets(animationActive: Boolean): Boolean = !animationActive
+
     fun format(
         deviceDiagnostic: String,
         surfaceWidth: Int,
