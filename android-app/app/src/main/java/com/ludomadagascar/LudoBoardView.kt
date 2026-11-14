@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.opengl.EGL14
 import android.opengl.GLES20
 import android.opengl.GLES30
 import android.opengl.GLUtils
@@ -64,6 +65,9 @@ class LudoBoardView(
 
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
+    // Reused by the main-thread pawn animator to avoid allocating coordinate arrays every frame.
+    private val animationCoordinateScratchA = FloatArray(2)
+    private val animationCoordinateScratchB = FloatArray(2)
     private lateinit var renderer: GameplayRenderer
     private var gameAudio: SpatialGameAudio? = null
     private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
@@ -85,6 +89,7 @@ class LudoBoardView(
     private var appliedSoftwareSurfaceBufferWidth = 0
     private var appliedSoftwareSurfaceBufferHeight = 0
     @Volatile private var animatedRendering = false
+    @Volatile private var softwareAnimationFramePacing = false
     @Volatile private var uiAnimationVsyncDescription = ""
     private var animationRenderOwners = 0
     private val uiAnimationVsyncTelemetry = if (BuildConfig.DEBUG) AnimationVsyncTelemetry() else null
@@ -272,6 +277,10 @@ class LudoBoardView(
 
     internal fun publishPawnTapTargets() {
         if (!BuildConfig.DEBUG || homePreview) return
+        // The physical touch handler projects hitboxes directly. Updating this
+        // accessibility-only description for every interpolated pawn position
+        // needlessly invalidates the UI tree and competes with animation vsync.
+        if (!RendererTelemetryAccessibility.shouldPublishPawnTapTargets(animatedRendering)) return
         val readyMarker = rendererReadyDescription ?: return
         val telemetryMarker = rendererTelemetryDescription
         val uiVsyncMarker = uiAnimationVsyncDescription
@@ -371,6 +380,16 @@ class LudoBoardView(
         super.onPause()
     }
 
+    internal fun setSoftwareAnimationFramePacing(enabled: Boolean) {
+        softwareAnimationFramePacing = enabled && !homePreview
+        post {
+            if (animatedRendering) renderMode = RENDERMODE_CONTINUOUSLY
+        }
+    }
+
+    internal fun isSoftwareAnimationFramePacingActive(): Boolean =
+        softwareAnimationFramePacing && animatedRendering
+
     private fun beginAnimationRendering() {
         check(Looper.myLooper() == Looper.getMainLooper()) {
             "Animation render ownership must be changed on the main thread"
@@ -431,7 +450,9 @@ class LudoBoardView(
         pulseHaptic(24L, 180)
         diceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 720L
-            addUpdateListener { renderer.diceAnim = it.animatedValue as Float }
+            addUpdateListener {
+                renderer.diceAnim = it.animatedValue as Float
+            }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
                     if (diceAnimator === animation) diceAnimator = null
@@ -518,16 +539,28 @@ class LudoBoardView(
                         val u = f * span
                         val step = min(span - 1, floor(u).toInt())
                         val local = u - step
-                        val a = animationGrid(pi, from + step)
-                        val b = animationGrid(pi, from + step + 1)
-                        display[pi][ti][0] = a[0] + (b[0] - a[0]) * local
-                        display[pi][ti][1] = a[1] + (b[1] - a[1]) * local
+                        writeAnimationGrid(pi, from + step, animationCoordinateScratchA)
+                        writeAnimationGrid(pi, from + step + 1, animationCoordinateScratchB)
+                        display[pi][ti][0] = animationCoordinateScratchA[0] +
+                            (animationCoordinateScratchB[0] - animationCoordinateScratchA[0]) * local
+                        display[pi][ti][1] = animationCoordinateScratchA[1] +
+                            (animationCoordinateScratchB[1] - animationCoordinateScratchA[1]) * local
                         renderer.lift[pi][ti] = LudoMotionPhysics.ballisticArc(local, 0.18f)
                     } else {
-                        val start = if (from < 0) homeGrid(pi, ti) else animationGrid(pi, from)
+                        val startX: Float
+                        val startY: Float
+                        if (from < 0) {
+                            val start = homeGrid(pi, ti)
+                            startX = start[0]
+                            startY = start[1]
+                        } else {
+                            writeAnimationGrid(pi, from, animationCoordinateScratchA)
+                            startX = animationCoordinateScratchA[0]
+                            startY = animationCoordinateScratchA[1]
+                        }
                         val end = targets[pi][ti]
-                        display[pi][ti][0] = start[0] + (end[0] - start[0]) * f
-                        display[pi][ti][1] = start[1] + (end[1] - start[1]) * f
+                        display[pi][ti][0] = startX + (end[0] - startX) * f
+                        display[pi][ti][1] = startY + (end[1] - startY) * f
                         renderer.lift[pi][ti] = if (from < 0 && to >= 0)
                             LudoMotionPhysics.ballisticArc(f, 0.24f)
                         else if (from >= 0 && to < 0)
@@ -554,18 +587,21 @@ class LudoBoardView(
         }
     }
 
-    private fun homeGrid(pi: Int, ti: Int): FloatArray {
-        val c=2.5833335f
-        val d=0.43f
+    // Home pawn coordinates are immutable and reused; rebuilding this 16-array table
+    // inside the animator was creating avoidable main-thread allocation and GC pressure.
+    private val cachedHomeGrid: Array<FloatArray> = run {
+        val c = 2.5833335f
+        val d = 0.43f
         // Player index order follows the authored board zones: Red, Green, Gold, Blue.
-        val xy = arrayOf(
+        arrayOf(
             floatArrayOf(-c-d,c-d), floatArrayOf(-c+d,c-d), floatArrayOf(-c-d,c+d), floatArrayOf(-c+d,c+d),
             floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
             floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d),
             floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d)
         )
-        return xy[pi * 4 + ti].clone()
     }
+
+    private fun homeGrid(pi: Int, ti: Int): FloatArray = cachedHomeGrid[pi * 4 + ti]
 
     private fun tokenGrid(pi: Int, ti: Int): FloatArray {
         val pos = state?.optJSONArray("players")?.optJSONObject(pi)
@@ -580,14 +616,27 @@ class LudoBoardView(
         }
     }
 
-    private fun animationGrid(pi: Int, pos: Int): FloatArray {
-        return if (pos in 0..51) {
-            val q = visualPath()[(pi * 13 + pos) % 52]
-            floatArrayOf((q.second - 7.0f) * 0.50f, (q.first - 7.0f) * 0.50f)
-        } else if (pos in 52..57) {
-            finishGrid(pi, pos - 52)
-        } else {
-            homeGrid(pi, 0)
+    private fun writeAnimationGrid(pi: Int, pos: Int, target: FloatArray) {
+        when (pos) {
+            in 0..51 -> {
+                val q = visualPath()[(pi * 13 + pos) % 52]
+                target[0] = (q.second - 7.0f) * 0.50f
+                target[1] = (q.first - 7.0f) * 0.50f
+            }
+            in 52..57 -> {
+                val d = 0.41666667f * (pos - 52)
+                when (pi) {
+                    0 -> { target[0] = -1.1666667f + d; target[1] = 0f }
+                    1 -> { target[0] = 0f; target[1] = -0.9166667f + d }
+                    2 -> { target[0] = 1.1666667f - d; target[1] = 0f }
+                    else -> { target[0] = 0f; target[1] = 1.1666667f - d }
+                }
+            }
+            else -> {
+                val home = homeGrid(pi, 0)
+                target[0] = home[0]
+                target[1] = home[1]
+            }
         }
     }
 
@@ -1588,6 +1637,13 @@ class LudoBoardView(
         private var lastBackdropCullingTransitionCpuNanos = 0L
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
+        private var softwareFramePacingEnabled = false
+        private var eglSwapInterval0Status = "NOT_APPLIED"
+        private val softwareAnimationFramePacer = SoftwareAnimationFramePacer(
+            SoftwareRendererPolicy.SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS
+        )
+        private var eglSwapSurfaceWidth = 0
+        private var eglSwapSurfaceHeight = 0
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
         private var gpuFenceTelemetry: GlesGpuFenceTelemetry? = null
         internal var softwareRendererActive = false
@@ -1703,6 +1759,18 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
+            softwareFramePacingEnabled = SoftwareRendererPolicy.shouldUseGlThreadAnimationPacing(
+                glRenderer,
+                host.homePreview,
+                BuildConfig.DEBUG
+            )
+            softwareAnimationFramePacer.reset()
+            host.setSoftwareAnimationFramePacing(softwareFramePacingEnabled)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "SOFTWARE_FRAME_PACING enabled=" + softwareFramePacingEnabled +
+                    " targetFps=30 eglSwapInterval0=APPLY_ON_SURFACE_CHANGED"
+            )
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
             softwareRendererActive = SoftwareRendererPolicy.useFastPbrShader(glRenderer, host.homePreview)
@@ -1851,12 +1919,52 @@ class LudoBoardView(
             )
         }
 
+        private fun requestSoftwareSwapIntervalZero(rendererIdentity: String): String {
+            if (!SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+                    rendererIdentity,
+                    host.homePreview,
+                    BuildConfig.DEBUG
+                )
+            ) return "NOT_REQUESTED"
+
+            return runCatching {
+                val display = EGL14.eglGetCurrentDisplay()
+                if (display == EGL14.EGL_NO_DISPLAY) return@runCatching "NO_CURRENT_DISPLAY"
+                val drawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
+                if (drawSurface == EGL14.EGL_NO_SURFACE) return@runCatching "NO_CURRENT_DRAW_SURFACE"
+                val dimension = IntArray(1)
+                eglSwapSurfaceWidth = if (
+                    EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_WIDTH, dimension, 0)
+                ) dimension[0] else 0
+                eglSwapSurfaceHeight = if (
+                    EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_HEIGHT, dimension, 0)
+                ) dimension[0] else 0
+                if (EGL14.eglSwapInterval(display, 0)) {
+                    "REQUEST_ACCEPTED"
+                } else {
+                    "REQUEST_REJECTED_0x" + EGL14.eglGetError().toString(16)
+                }
+            }.getOrElse { error ->
+                "REQUEST_ERROR_" + error.javaClass.simpleName
+            }
+        }
+
         override fun onSurfaceChanged(gl:javax.microedition.khronos.opengles.GL10?,w:Int,h:Int){
             runCatching {
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
+            eglSwapInterval0Status = requestSoftwareSwapIntervalZero(glDeviceDiagnostic)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "SOFTWARE_FRAME_PACING_APPLIED callbackSurface=" + sceneWidth + "x" + sceneHeight +
+                    " eglSurface=" + (if (eglSwapSurfaceWidth > 0 && eglSwapSurfaceHeight > 0) {
+                        eglSwapSurfaceWidth.toString() + "x" + eglSwapSurfaceHeight
+                    } else "UNAVAILABLE") +
+                    " enabled=" + softwareFramePacingEnabled +
+                    " eglSwapInterval0=" + eglSwapInterval0Status
+            )
             renderScale = SoftwareRendererPolicy.renderScale(
                 glDeviceDiagnostic,
                 host.homePreview,
@@ -1876,6 +1984,11 @@ class LudoBoardView(
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
+            if (softwareFramePacingEnabled && host.isSoftwareAnimationFramePacingActive()) {
+                softwareAnimationFramePacer.awaitNextFrame()
+            } else {
+                softwareAnimationFramePacer.reset()
+            }
             if (BuildConfig.DEBUG && !firstDrawMarkerPersisted) {
                 val markerSaved = runCatching {
                     host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
@@ -2058,7 +2171,11 @@ class LudoBoardView(
                     scene = latestSceneBreakdownSnapshot,
                     preparedStaticMeshCount = preparedGles3StaticMeshCount,
                     gpu = gpuTimerQuery?.snapshot(),
-                    gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime())
+                    gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime()),
+                    softwareFramePacingEnabled = softwareFramePacingEnabled,
+                    eglSwapInterval0Status = eglSwapInterval0Status,
+                    eglSwapSurfaceWidth = eglSwapSurfaceWidth,
+                    eglSwapSurfaceHeight = eglSwapSurfaceHeight
                 )?.let(host::publishRendererTelemetry)
             }
             // Includes the whole GL callback, but deliberately excludes the following

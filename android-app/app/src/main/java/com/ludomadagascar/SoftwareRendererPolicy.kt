@@ -12,6 +12,7 @@ internal object SoftwareRendererPolicy {
     const val SOFTWARE_RENDER_SCALE = 0.25f
     const val SOFTWARE_SURFACE_SCALE = 0.125f
     const val SOFTWARE_SHADOW_MAP_MAX = 128
+    const val SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS = 33_333_333L
 
     fun isSoftwareRenderer(rendererIdentity: String): Boolean =
         listOf("swiftshader", "llvmpipe", "softpipe", "lavapipe")
@@ -26,6 +27,28 @@ internal object SoftwareRendererPolicy {
 
     fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
+
+    /**
+     * Run debug software-renderer gameplay on a 30 FPS GL-thread loop with an
+     * uncapped EGL swap. Hardware and Home retain their native render cadence.
+     */
+    fun shouldUseFramePacedSoftwareRendering(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = debugBuild && !homePreview && isSoftwareRenderer(rendererIdentity)
+
+    fun shouldUseGlThreadAnimationPacing(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
+
+    fun shouldRequestUncappedSwapInterval(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
 
     /** Software rasterizers skip per-frame dynamic depth rendering during gameplay. */
     fun shouldRenderDynamicShadows(rendererIdentity: String, homePreview: Boolean): Boolean =
