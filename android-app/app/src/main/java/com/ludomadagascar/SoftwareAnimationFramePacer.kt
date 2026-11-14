@@ -11,7 +11,7 @@ import java.util.concurrent.locks.LockSupport
  */
 internal class SoftwareAnimationFramePacer(
     private val frameIntervalNanos: Long = 33_333_333L,
-    private val nanoTimeNanos: () -> Long = System::nanoTime,
+    private val nanoTimeNanos: () -> Long = { System.nanoTime() },
     private val parkNanos: (Long) -> Unit = { remaining -> LockSupport.parkNanos(remaining) }
 ) {
     init {
