@@ -78,7 +78,7 @@ class RendererTelemetryAccessibilityTest {
             scene = scene,
             preparedStaticMeshCount = 24,
             softwareFramePacingEnabled = true,
-            eglSwapInterval1Status = "REQUEST_ACCEPTED",
+            eglSwapInterval0Status = "REQUEST_ACCEPTED",
             eglSwapSurfaceWidth = 177,
             eglSwapSurfaceHeight = 53,
             gpu = GpuTimerSnapshot(
