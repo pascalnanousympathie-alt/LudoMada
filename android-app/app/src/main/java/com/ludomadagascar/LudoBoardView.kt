@@ -1638,7 +1638,7 @@ class LudoBoardView(
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
         private var softwareFramePacingEnabled = false
-        private var eglSwapInterval0Status = "NOT_APPLIED"
+        private var eglSwapInterval1Status = "NOT_APPLIED"
         private val softwareAnimationFramePacer = SoftwareAnimationFramePacer(
             SoftwareRendererPolicy.SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS
         )
@@ -1769,7 +1769,7 @@ class LudoBoardView(
             android.util.Log.i(
                 "LudoMadaRender",
                 "SOFTWARE_FRAME_PACING enabled=" + softwareFramePacingEnabled +
-                    " targetFps=30 eglSwapInterval0=APPLY_ON_SURFACE_CHANGED"
+                    " targetFps=30 eglSwapInterval1=APPLY_ON_SURFACE_CHANGED"
             )
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
@@ -1919,8 +1919,8 @@ class LudoBoardView(
             )
         }
 
-        private fun requestSoftwareSwapIntervalZero(rendererIdentity: String): String {
-            if (!SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+        private fun requestSoftwareSwapIntervalOne(rendererIdentity: String): String {
+            if (!SoftwareRendererPolicy.shouldRequestVsyncSwapInterval(
                     rendererIdentity,
                     host.homePreview,
                     BuildConfig.DEBUG
@@ -1939,7 +1939,7 @@ class LudoBoardView(
                 eglSwapSurfaceHeight = if (
                     EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_HEIGHT, dimension, 0)
                 ) dimension[0] else 0
-                if (EGL14.eglSwapInterval(display, 0)) {
+                if (EGL14.eglSwapInterval(display, SoftwareRendererPolicy.SOFTWARE_EGL_SWAP_INTERVAL)) {
                     "REQUEST_ACCEPTED"
                 } else {
                     "REQUEST_REJECTED_0x" + EGL14.eglGetError().toString(16)
@@ -1955,7 +1955,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
-            eglSwapInterval0Status = requestSoftwareSwapIntervalZero(glDeviceDiagnostic)
+            eglSwapInterval1Status = requestSoftwareSwapIntervalOne(glDeviceDiagnostic)
             android.util.Log.i(
                 "LudoMadaRender",
                 "SOFTWARE_FRAME_PACING_APPLIED callbackSurface=" + sceneWidth + "x" + sceneHeight +
@@ -1963,7 +1963,7 @@ class LudoBoardView(
                         eglSwapSurfaceWidth.toString() + "x" + eglSwapSurfaceHeight
                     } else "UNAVAILABLE") +
                     " enabled=" + softwareFramePacingEnabled +
-                    " eglSwapInterval0=" + eglSwapInterval0Status
+                    " eglSwapInterval1=" + eglSwapInterval1Status
             )
             renderScale = SoftwareRendererPolicy.renderScale(
                 glDeviceDiagnostic,
@@ -2173,7 +2173,7 @@ class LudoBoardView(
                     gpu = gpuTimerQuery?.snapshot(),
                     gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime()),
                     softwareFramePacingEnabled = softwareFramePacingEnabled,
-                    eglSwapInterval0Status = eglSwapInterval0Status,
+                    eglSwapInterval1Status = eglSwapInterval1Status,
                     eglSwapSurfaceWidth = eglSwapSurfaceWidth,
                     eglSwapSurfaceHeight = eglSwapSurfaceHeight
                 )?.let(host::publishRendererTelemetry)
