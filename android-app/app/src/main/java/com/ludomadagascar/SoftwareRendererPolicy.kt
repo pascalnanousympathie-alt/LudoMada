@@ -27,6 +27,28 @@ internal object SoftwareRendererPolicy {
     fun shouldUseReducedSurfaceBuffer(rendererIdentity: String, homePreview: Boolean): Boolean =
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
+    /**
+     * Pair Choreographer-paced requests with an uncapped EGL swap only for
+     * debug software-renderer gameplay. Hardware and Home retain normal cadence.
+     */
+    fun shouldUseFramePacedSoftwareRendering(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = debugBuild && !homePreview && isSoftwareRenderer(rendererIdentity)
+
+    fun shouldUseVsyncDrivenRendering(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
+
+    fun shouldRequestUncappedSwapInterval(
+        rendererIdentity: String,
+        homePreview: Boolean,
+        debugBuild: Boolean
+    ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
+
     /** Software rasterizers skip per-frame dynamic depth rendering during gameplay. */
     fun shouldRenderDynamicShadows(rendererIdentity: String, homePreview: Boolean): Boolean =
         homePreview || !isSoftwareRenderer(rendererIdentity)
