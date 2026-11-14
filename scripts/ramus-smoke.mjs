@@ -168,7 +168,7 @@ function parseRendererAccessibilityTelemetry(label) {
   const pipelineSamples = integer(field("PIPELINE_SAMPLES"));
   const staticMeshVaoCount = integer(field("STATIC_MESH_VAO_COUNT"));
   const softwareFramePacing = field("SOFTWARE_FRAME_PACING");
-  const eglSwapInterval0Status = field("EGL_SWAP_INTERVAL0");
+  const eglSwapInterval1Status = field("EGL_SWAP_INTERVAL1");
   const eglSwapSurfaceField = field("EGL_SWAP_SURFACE");
   const eglSwapSurfaceMatch = eglSwapSurfaceField?.match(/^(\d+)x(\d+)$/);
   const eglSwapSurface = eglSwapSurfaceMatch
@@ -226,7 +226,7 @@ function parseRendererAccessibilityTelemetry(label) {
       frameSamples === null || glSamples === null || sceneSamples === null || pipelineSamples === null ||
       staticMeshVaoCount === null || staticMeshVaoCount <= 0 ||
       !["ON", "OFF"].includes(softwareFramePacing) ||
-      typeof eglSwapInterval0Status !== "string" || eglSwapInterval0Status.length === 0 ||
+      typeof eglSwapInterval1Status !== "string" || eglSwapInterval1Status.length === 0 ||
       (eglSwapSurfaceField !== "UNAVAILABLE" && eglSwapSurface === null) ||
       backdropBatchCount === null || backdropBatchCount < 0 || backdropBatchCount > 7 ||
       backdropBatchCpuP95Ms === null || backdropBatchCpuP95Ms.length !== backdropBatchCount ||
@@ -273,7 +273,7 @@ function parseRendererAccessibilityTelemetry(label) {
     shadowCpuMs, postCpuMs, pawnTargetsCpuMs,
     frameSamples, glSamples, sceneSamples, pipelineSamples, staticMeshVaoCount,
     softwareFramePacing: softwareFramePacing === "ON",
-    eglSwapInterval0Status, eglSwapSurface,
+    eglSwapInterval1Status, eglSwapSurface,
     backdropBatchCount, backdropBatchCpuP95Ms, backdropBatchVertexCounts, backdropBatchIndexCounts,
     gpuTime, gpuFrameMs, gpuTimerSamples, gpuTimerDisjoints, gpuTimerSkippedFrames,
     uiVsyncSamples, uiVsyncFps, uiVsyncFrameMs, displayRefreshHz,
@@ -411,7 +411,7 @@ function selfTestFramebufferReadback() {
   const invalidEnvironmentBatchLabel = "LudoMada 3D Ludo board | ENV_DRAW_SOURCE_PARTS=13 | ENV_PBR_BATCHES=13";
   const dicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=6 | DICE_PIP_DRAW_CALLS_PER_DIE=1";
   const invalidDicePipBatchLabel = "LudoMada 3D Ludo board | DICE_PIP_FACE_MESHES=5 | DICE_PIP_DRAW_CALLS_PER_DIE=6";
-  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | SOFTWARE_FRAME_PACING=ON | EGL_SWAP_INTERVAL0=REQUEST_ACCEPTED | EGL_SWAP_SURFACE=177x53 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_GL_THREAD_POST_CALLBACK_CPU_MS=4.50/19.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | SHADER_END_CPU_MS=9.00/27.00 | BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40 | BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10 | BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08 | BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60 | BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=MEASURED | GPU_FRAME_MS=8.50/15.20 | GPU_TIMER_SAMPLES=60 | GPU_TIMER_DISJOINTS=0 | GPU_TIMER_SKIPPED_FRAMES=2 | UI_VSYNC_SAMPLES=60 | UI_VSYNC_FPS=60.00 | UI_VSYNC_FRAME_MS=16.60/16.80 | DISPLAY_REFRESH_HZ=60.00 | GPU_FENCE_STATUS=MEASURED | GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00 | GPU_FENCE_SAMPLES=60 | GPU_FENCE_PENDING=1 | GPU_FENCE_OLDEST_MS=16.00 | GPU_FENCE_TIMEOUTS=3 | GPU_FENCE_FAILURES=0 | GPU_FENCE_SKIPS=1";
+  const accessibilityTelemetryLabel = "LudoMada 3D Ludo board | RENDER_TELEMETRY=1 | GPU_VENDOR=Google | GPU_RENDERER=SwiftShader | GLES=OpenGL ES 3.0 | SURFACE=1419x424 | SOFTWARE_FRAME_PACING=ON | EGL_SWAP_INTERVAL1=REQUEST_ACCEPTED | EGL_SWAP_SURFACE=177x53 | STATIC_MESH_VAO_COUNT=24 | FPS=5.14 | FRAME_MS=194.55/218.20 | AFTER_CALLBACK_GAP_MS=170.00/187.00 | ANIM_FPS=58.00 | ANIM_FRAME_MS=16.67/33.33 | ANIM_AFTER_CALLBACK_GAP_MS=3.50/18.00 | ANIM_GL_THREAD_POST_CALLBACK_CPU_MS=4.50/19.00 | ANIM_FRAME_SAMPLES=42 | GL_CPU_MS=18.25/28.50 | SCENE_CPU_MS=21.10/79.85 | BACKDROP_CPU_MS=12.30/16.50 | SHADER_END_CPU_MS=9.00/27.00 | BACKDROP_CULL_QUERY_CPU_MS=0.20/1.40 | BACKDROP_CULL_TRANSITION_CPU_MS=0.01/0.10 | BACKDROP_CULL_RESTORE_CPU_MS=0.01/0.08 | BACKDROP_BATCH_TOTAL_CPU_MS=0.30/0.60 | BACKDROP_UNATTRIBUTED_CPU_MS=11.78/14.32 | BACKDROP_BATCH_COUNT=2 | BACKDROP_BATCH_CPU_P95_MS=1.25,8.50 | BACKDROP_BATCH_VERTEX_COUNTS=1200,9000 | BACKDROP_BATCH_INDEX_COUNTS=3600,27000 | BOARD_CPU_MS=1.10/1.60 | PAWNS_CPU_MS=4.20/7.00 | DICE_CPU_MS=0.90/1.40 | PARTICLES_CPU_MS=0.36/0.90 | PARTICLE_UPLOAD_CPU_MS=0.23/1.67 | SHADOW_CPU_MS=2.10/5.40 | POST_CPU_MS=0.06/0.17 | PAWN_TARGETS_CPU_MS=0.15/0.50 | FRAME_SAMPLES=18 | GL_SAMPLES=60 | SCENE_SAMPLES=60 | PIPELINE_SAMPLES=60 | GPU_TIME=MEASURED | GPU_FRAME_MS=8.50/15.20 | GPU_TIMER_SAMPLES=60 | GPU_TIMER_DISJOINTS=0 | GPU_TIMER_SKIPPED_FRAMES=2 | UI_VSYNC_SAMPLES=60 | UI_VSYNC_FPS=60.00 | UI_VSYNC_FRAME_MS=16.60/16.80 | DISPLAY_REFRESH_HZ=60.00 | GPU_FENCE_STATUS=MEASURED | GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00 | GPU_FENCE_SAMPLES=60 | GPU_FENCE_PENDING=1 | GPU_FENCE_OLDEST_MS=16.00 | GPU_FENCE_TIMEOUTS=3 | GPU_FENCE_FAILURES=0 | GPU_FENCE_SKIPS=1";
   const insufficientAccessibilityTelemetry = accessibilityTelemetryLabel
     .replace("FPS=5.14", "FPS=INSUFFICIENT")
     .replace("FRAME_MS=194.55/218.20", "FRAME_MS=NA/NA")
@@ -464,8 +464,8 @@ function selfTestFramebufferReadback() {
     ["accessibility renderer telemetry exposes shader teardown CPU timing", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.shaderEndCpuMs?.[1] === 27],
     ["accessibility renderer telemetry rejects malformed GL-thread CPU samples", parseRendererAccessibilityTelemetry(invalidGlThreadCpuTelemetry) === null],
     ["accessibility renderer telemetry requires eagerly prepared static VAOs", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.staticMeshVaoCount === 24],
-    ["accessibility renderer telemetry proves uncapped EGL swap interval was applied to the resized software surface", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.softwareFramePacing === true && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.eglSwapInterval0Status === "REQUEST_ACCEPTED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.eglSwapSurface === "177x53"],
-    ["accessibility renderer telemetry rejects a missing uncapped EGL swap interval result", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("EGL_SWAP_INTERVAL0=REQUEST_ACCEPTED", "EGL_SWAP_INTERVAL0=")) === null],
+    ["accessibility renderer telemetry proves vsync EGL swap interval 1 was applied to the resized software surface", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.softwareFramePacing === true && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.eglSwapInterval1Status === "REQUEST_ACCEPTED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.eglSwapSurface === "177x53"],
+    ["accessibility renderer telemetry rejects a missing vsync EGL swap interval 1 result", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("EGL_SWAP_INTERVAL1=REQUEST_ACCEPTED", "EGL_SWAP_INTERVAL1=")) === null],
     ["accessibility renderer telemetry exposes non-blocking GPU timer measurements", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuTime === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFrameMs?.[1] === 15.2 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuTimerSamples === 60],
     ["accessibility renderer telemetry exposes main-thread vsync cadence and display refresh", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFps === 60 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFrameMs?.[1] === 16.8 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.displayRefreshHz === 60],
     ["accessibility renderer telemetry rejects missing main-thread vsync cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("UI_VSYNC_FPS=60.00", "UI_VSYNC_FPS=NA")) === null],
@@ -1745,16 +1745,16 @@ try {
   }
   if (accessibilityTelemetry.renderer.toLowerCase().includes("swiftshader") &&
       (!accessibilityTelemetry.softwareFramePacing ||
-       accessibilityTelemetry.eglSwapInterval0Status !== "REQUEST_ACCEPTED" ||
+       accessibilityTelemetry.eglSwapInterval1Status !== "REQUEST_ACCEPTED" ||
        accessibilityTelemetry.eglSwapSurface !== "177x53")) {
-    throw new Error("SwiftShader uncapped EGL swap interval was not confirmed on the resized 177x53 surface: " +
+    throw new Error("SwiftShader vsync EGL swap interval 1 was not confirmed on the resized 177x53 surface: " +
       JSON.stringify({
         softwareFramePacing: accessibilityTelemetry.softwareFramePacing,
-        eglSwapInterval0Status: accessibilityTelemetry.eglSwapInterval0Status,
+        eglSwapInterval1Status: accessibilityTelemetry.eglSwapInterval1Status,
         eglSwapSurface: accessibilityTelemetry.eglSwapSurface
       }));
   }
-  console.log("RAMUS_EGL_SWAP_INTERVAL0=" + accessibilityTelemetry.eglSwapInterval0Status +
+  console.log("RAMUS_EGL_SWAP_INTERVAL1=" + accessibilityTelemetry.eglSwapInterval1Status +
     " surface=" + (accessibilityTelemetry.eglSwapSurface || "UNAVAILABLE") +
     " softwareFramePacing=" + accessibilityTelemetry.softwareFramePacing);
   console.log("RAMUS_MAIN_THREAD_VSYNC_FPS=" + (accessibilityTelemetry.uiVsyncFps ?? "NA") +
