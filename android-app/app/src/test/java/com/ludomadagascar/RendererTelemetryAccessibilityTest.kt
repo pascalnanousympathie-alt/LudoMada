@@ -78,7 +78,7 @@ class RendererTelemetryAccessibilityTest {
             scene = scene,
             preparedStaticMeshCount = 24,
             softwareFramePacingEnabled = true,
-            eglSwapInterval0Status = "REQUEST_ACCEPTED",
+            eglSwapInterval1Status = "REQUEST_ACCEPTED",
             eglSwapSurfaceWidth = 177,
             eglSwapSurfaceHeight = 53,
             gpu = GpuTimerSnapshot(
@@ -111,7 +111,7 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("GLES=OpenGL ES 3.0"))
         assertTrue(label.contains("SURFACE=1419x424"))
         assertTrue(label.contains("SOFTWARE_FRAME_PACING=ON"))
-        assertTrue(label.contains("EGL_SWAP_INTERVAL0=REQUEST_ACCEPTED"))
+        assertTrue(label.contains("EGL_SWAP_INTERVAL1=REQUEST_ACCEPTED"))
         assertTrue(label.contains("EGL_SWAP_SURFACE=177x53"))
         assertTrue(label.contains("STATIC_MESH_VAO_COUNT=24"))
         assertTrue(label.contains("FPS=5.14"))
