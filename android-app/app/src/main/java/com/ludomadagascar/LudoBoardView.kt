@@ -1759,7 +1759,7 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
-            softwareFramePacingEnabled = SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+            softwareFramePacingEnabled = SoftwareRendererPolicy.shouldUseGlThreadAnimationPacing(
                 glRenderer,
                 host.homePreview,
                 BuildConfig.DEBUG
