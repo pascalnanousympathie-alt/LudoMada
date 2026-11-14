@@ -17,7 +17,7 @@ internal object RendererTelemetryAccessibility {
         gpu: GpuTimerSnapshot? = null,
         gpuFence: GpuFenceSnapshot? = null,
         softwareFramePacingEnabled: Boolean = false,
-        eglSwapInterval1Status: String = "NOT_REQUESTED",
+        eglSwapInterval0Status: String = "NOT_REQUESTED",
         eglSwapSurfaceWidth: Int = 0,
         eglSwapSurfaceHeight: Int = 0
     ): String? {
@@ -37,7 +37,7 @@ internal object RendererTelemetryAccessibility {
             "GLES=" + compact(gles),
             "SURFACE=${surfaceWidth.coerceAtLeast(1)}x${surfaceHeight.coerceAtLeast(1)}",
             "SOFTWARE_FRAME_PACING=" + (if (softwareFramePacingEnabled) "ON" else "OFF"),
-            "EGL_SWAP_INTERVAL1=" + compact(eglSwapInterval1Status),
+            "EGL_SWAP_INTERVAL1=" + compact(eglSwapInterval0Status),
             "EGL_SWAP_SURFACE=" + if (eglSwapSurfaceWidth > 0 && eglSwapSurfaceHeight > 0) {
                 "${eglSwapSurfaceWidth}x${eglSwapSurfaceHeight}"
             } else "UNAVAILABLE",
