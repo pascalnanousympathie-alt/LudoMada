@@ -71,6 +71,10 @@ class RendererTelemetryAccessibilityTest {
             pipeline = pipeline,
             scene = scene,
             preparedStaticMeshCount = 24,
+            softwareFramePacingEnabled = true,
+            eglSwapInterval0Status = "REQUEST_ACCEPTED",
+            eglSwapSurfaceWidth = 177,
+            eglSwapSurfaceHeight = 53,
             gpu = GpuTimerSnapshot(
                 status = "MEASURED",
                 sampleCount = 60,
@@ -100,6 +104,9 @@ class RendererTelemetryAccessibilityTest {
         assertTrue(label.contains("GPU_RENDERER=SwiftShader"))
         assertTrue(label.contains("GLES=OpenGL ES 3.0"))
         assertTrue(label.contains("SURFACE=1419x424"))
+        assertTrue(label.contains("SOFTWARE_FRAME_PACING=ON"))
+        assertTrue(label.contains("EGL_SWAP_INTERVAL0=REQUEST_ACCEPTED"))
+        assertTrue(label.contains("EGL_SWAP_SURFACE=177x53"))
         assertTrue(label.contains("STATIC_MESH_VAO_COUNT=24"))
         assertTrue(label.contains("FPS=5.14"))
         assertTrue(label.contains("FRAME_MS=194.55/218.20"))
@@ -245,3 +252,4 @@ class RendererTelemetryAccessibilityTest {
         assertNull(RendererTelemetryAccessibility.format("unknown", 100, 100, frame, pipeline, scene, 24))
     }
 }
+
