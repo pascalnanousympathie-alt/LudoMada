@@ -12,6 +12,7 @@ internal object SoftwareRendererPolicy {
     const val SOFTWARE_RENDER_SCALE = 0.25f
     const val SOFTWARE_SURFACE_SCALE = 0.125f
     const val SOFTWARE_SHADOW_MAP_MAX = 128
+    const val SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS = 33_333_333L
 
     fun isSoftwareRenderer(rendererIdentity: String): Boolean =
         listOf("swiftshader", "llvmpipe", "softpipe", "lavapipe")
@@ -28,8 +29,8 @@ internal object SoftwareRendererPolicy {
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
     /**
-     * Pair Choreographer-paced requests with a vsync-aligned EGL swap only for
-     * debug software-renderer gameplay. Hardware and Home retain normal cadence.
+     * Run debug software-renderer gameplay on a 30 FPS GL-thread loop with an
+     * uncapped EGL swap. Hardware and Home retain their native render cadence.
      */
     fun shouldUseFramePacedSoftwareRendering(
         rendererIdentity: String,
@@ -37,13 +38,13 @@ internal object SoftwareRendererPolicy {
         debugBuild: Boolean
     ): Boolean = debugBuild && !homePreview && isSoftwareRenderer(rendererIdentity)
 
-    fun shouldUseVsyncDrivenRendering(
+    fun shouldUseGlThreadAnimationPacing(
         rendererIdentity: String,
         homePreview: Boolean,
         debugBuild: Boolean
     ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
 
-    fun shouldRequestVsyncSwapInterval(
+    fun shouldRequestUncappedSwapInterval(
         rendererIdentity: String,
         homePreview: Boolean,
         debugBuild: Boolean
