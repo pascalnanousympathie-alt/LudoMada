@@ -40,6 +40,40 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
+    fun softwareFramePacingAndUncappedSwapAreEnabledTogetherOnlyForDebugGameplay() {
+        for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
+            assertTrue(
+                renderer,
+                SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+                    renderer, homePreview = false, debugBuild = true
+                )
+            )
+            assertTrue(
+                renderer,
+                SoftwareRendererPolicy.shouldUseVsyncDrivenRendering(
+                    renderer, homePreview = false, debugBuild = true
+                )
+            )
+            assertTrue(
+                renderer,
+                SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+                    renderer, homePreview = false, debugBuild = true
+                )
+            )
+        }
+
+        assertFalse(SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+            "Google SwiftShader", homePreview = false, debugBuild = false
+        ))
+        assertFalse(SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+            "Google SwiftShader", homePreview = true, debugBuild = true
+        ))
+        assertFalse(SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+            "Mali-G51", homePreview = false, debugBuild = true
+        ))
+    }
+
+    @Test
     fun reducedSurfaceBufferAvoidsApplyingTheSceneScaleTwice() {
         assertEquals(0.25f, SoftwareRendererPolicy.renderScale("Google SwiftShader", homePreview = false))
         assertEquals(
