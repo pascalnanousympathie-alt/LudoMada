@@ -89,7 +89,7 @@ class LudoBoardView(
     private var appliedSoftwareSurfaceBufferWidth = 0
     private var appliedSoftwareSurfaceBufferHeight = 0
     @Volatile private var animatedRendering = false
-    @Volatile private var softwareVsyncDrivenRendering = false
+    @Volatile private var softwareAnimationFramePacing = false
     @Volatile private var uiAnimationVsyncDescription = ""
     private var animationRenderOwners = 0
     private val uiAnimationVsyncTelemetry = if (BuildConfig.DEBUG) AnimationVsyncTelemetry() else null
@@ -380,15 +380,15 @@ class LudoBoardView(
         super.onPause()
     }
 
-    internal fun setSoftwareVsyncDrivenRendering(enabled: Boolean) {
-        softwareVsyncDrivenRendering = enabled && !homePreview
+    internal fun setSoftwareAnimationFramePacing(enabled: Boolean) {
+        softwareAnimationFramePacing = enabled && !homePreview
         post {
-            if (!animatedRendering) return@post
-            renderMode = if (softwareVsyncDrivenRendering) RENDERMODE_WHEN_DIRTY
-                else RENDERMODE_CONTINUOUSLY
-            if (softwareVsyncDrivenRendering) requestRender()
+            if (animatedRendering) renderMode = RENDERMODE_CONTINUOUSLY
         }
     }
+
+    internal fun isSoftwareAnimationFramePacingActive(): Boolean =
+        softwareAnimationFramePacing && animatedRendering
 
     private fun beginAnimationRendering() {
         check(Looper.myLooper() == Looper.getMainLooper()) {
@@ -406,8 +406,7 @@ class LudoBoardView(
         } else {
             animatedRendering = true
         }
-        renderMode = if (softwareVsyncDrivenRendering) RENDERMODE_WHEN_DIRTY
-            else RENDERMODE_CONTINUOUSLY
+        renderMode = RENDERMODE_CONTINUOUSLY
     }
 
     private fun endAnimationRendering() {
@@ -453,7 +452,6 @@ class LudoBoardView(
             duration = 720L
             addUpdateListener {
                 renderer.diceAnim = it.animatedValue as Float
-                if (softwareVsyncDrivenRendering) requestRender()
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -570,7 +568,6 @@ class LudoBoardView(
                         else 0f
                     }
                 }
-                if (softwareVsyncDrivenRendering) requestRender()
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -1641,7 +1638,10 @@ class LudoBoardView(
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
         private var softwareFramePacingEnabled = false
-        private var eglSwapInterval1Status = "NOT_APPLIED"
+        private var eglSwapInterval0Status = "NOT_APPLIED"
+        private val softwareAnimationFramePacer = SoftwareAnimationFramePacer(
+            SoftwareRendererPolicy.SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS
+        )
         private var eglSwapSurfaceWidth = 0
         private var eglSwapSurfaceHeight = 0
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
@@ -1764,11 +1764,12 @@ class LudoBoardView(
                 host.homePreview,
                 BuildConfig.DEBUG
             )
-            host.setSoftwareVsyncDrivenRendering(softwareFramePacingEnabled)
+            softwareAnimationFramePacer.reset()
+            host.setSoftwareAnimationFramePacing(softwareFramePacingEnabled)
             android.util.Log.i(
                 "LudoMadaRender",
                 "SOFTWARE_FRAME_PACING enabled=" + softwareFramePacingEnabled +
-                    " eglSwapInterval1=APPLY_ON_SURFACE_CHANGED"
+                    " targetFps=30 eglSwapInterval0=APPLY_ON_SURFACE_CHANGED"
             )
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
@@ -1918,8 +1919,8 @@ class LudoBoardView(
             )
         }
 
-        private fun requestSoftwareSwapIntervalOne(rendererIdentity: String): String {
-            if (!SoftwareRendererPolicy.shouldRequestVsyncSwapInterval(
+        private fun requestSoftwareSwapIntervalZero(rendererIdentity: String): String {
+            if (!SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
                     rendererIdentity,
                     host.homePreview,
                     BuildConfig.DEBUG
@@ -1938,7 +1939,7 @@ class LudoBoardView(
                 eglSwapSurfaceHeight = if (
                     EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_HEIGHT, dimension, 0)
                 ) dimension[0] else 0
-                if (EGL14.eglSwapInterval(display, 1)) {
+                if (EGL14.eglSwapInterval(display, 0)) {
                     "REQUEST_ACCEPTED"
                 } else {
                     "REQUEST_REJECTED_0x" + EGL14.eglGetError().toString(16)
@@ -1954,7 +1955,7 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
-            eglSwapInterval1Status = requestSoftwareSwapIntervalOne(glDeviceDiagnostic)
+            eglSwapInterval0Status = requestSoftwareSwapIntervalZero(glDeviceDiagnostic)
             android.util.Log.i(
                 "LudoMadaRender",
                 "SOFTWARE_FRAME_PACING_APPLIED callbackSurface=" + sceneWidth + "x" + sceneHeight +
@@ -1962,7 +1963,7 @@ class LudoBoardView(
                         eglSwapSurfaceWidth.toString() + "x" + eglSwapSurfaceHeight
                     } else "UNAVAILABLE") +
                     " enabled=" + softwareFramePacingEnabled +
-                    " eglSwapInterval1=" + eglSwapInterval1Status
+                    " eglSwapInterval0=" + eglSwapInterval0Status
             )
             renderScale = SoftwareRendererPolicy.renderScale(
                 glDeviceDiagnostic,
@@ -1983,6 +1984,11 @@ class LudoBoardView(
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
+            if (softwareFramePacingEnabled && host.isSoftwareAnimationFramePacingActive()) {
+                softwareAnimationFramePacer.awaitNextFrame()
+            } else {
+                softwareAnimationFramePacer.reset()
+            }
             if (BuildConfig.DEBUG && !firstDrawMarkerPersisted) {
                 val markerSaved = runCatching {
                     host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
@@ -2167,7 +2173,7 @@ class LudoBoardView(
                     gpu = gpuTimerQuery?.snapshot(),
                     gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime()),
                     softwareFramePacingEnabled = softwareFramePacingEnabled,
-                    eglSwapInterval1Status = eglSwapInterval1Status,
+                    eglSwapInterval0Status = eglSwapInterval0Status,
                     eglSwapSurfaceWidth = eglSwapSurfaceWidth,
                     eglSwapSurfaceHeight = eglSwapSurfaceHeight
                 )?.let(host::publishRendererTelemetry)
