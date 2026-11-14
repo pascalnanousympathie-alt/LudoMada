@@ -65,6 +65,9 @@ class LudoBoardView(
 
     private val display = Array(4) { Array(4) { FloatArray(2) { Float.NaN } } }
     private val lastPos = Array(4) { IntArray(4) { Int.MIN_VALUE } }
+    // Reused by the main-thread pawn animator to avoid allocating coordinate arrays every frame.
+    private val animationCoordinateScratchA = FloatArray(2)
+    private val animationCoordinateScratchB = FloatArray(2)
     private lateinit var renderer: GameplayRenderer
     private var gameAudio: SpatialGameAudio? = null
     private fun audio(): SpatialGameAudio = gameAudio ?: SpatialGameAudio().also { gameAudio = it }
@@ -538,16 +541,28 @@ class LudoBoardView(
                         val u = f * span
                         val step = min(span - 1, floor(u).toInt())
                         val local = u - step
-                        val a = animationGrid(pi, from + step)
-                        val b = animationGrid(pi, from + step + 1)
-                        display[pi][ti][0] = a[0] + (b[0] - a[0]) * local
-                        display[pi][ti][1] = a[1] + (b[1] - a[1]) * local
+                        writeAnimationGrid(pi, from + step, animationCoordinateScratchA)
+                        writeAnimationGrid(pi, from + step + 1, animationCoordinateScratchB)
+                        display[pi][ti][0] = animationCoordinateScratchA[0] +
+                            (animationCoordinateScratchB[0] - animationCoordinateScratchA[0]) * local
+                        display[pi][ti][1] = animationCoordinateScratchA[1] +
+                            (animationCoordinateScratchB[1] - animationCoordinateScratchA[1]) * local
                         renderer.lift[pi][ti] = LudoMotionPhysics.ballisticArc(local, 0.18f)
                     } else {
-                        val start = if (from < 0) homeGrid(pi, ti) else animationGrid(pi, from)
+                        val startX: Float
+                        val startY: Float
+                        if (from < 0) {
+                            val start = homeGrid(pi, ti)
+                            startX = start[0]
+                            startY = start[1]
+                        } else {
+                            writeAnimationGrid(pi, from, animationCoordinateScratchA)
+                            startX = animationCoordinateScratchA[0]
+                            startY = animationCoordinateScratchA[1]
+                        }
                         val end = targets[pi][ti]
-                        display[pi][ti][0] = start[0] + (end[0] - start[0]) * f
-                        display[pi][ti][1] = start[1] + (end[1] - start[1]) * f
+                        display[pi][ti][0] = startX + (end[0] - startX) * f
+                        display[pi][ti][1] = startY + (end[1] - startY) * f
                         renderer.lift[pi][ti] = if (from < 0 && to >= 0)
                             LudoMotionPhysics.ballisticArc(f, 0.24f)
                         else if (from >= 0 && to < 0)
@@ -575,18 +590,21 @@ class LudoBoardView(
         }
     }
 
-    private fun homeGrid(pi: Int, ti: Int): FloatArray {
-        val c=2.5833335f
-        val d=0.43f
+    // Home pawn coordinates are immutable and reused; rebuilding this 16-array table
+    // inside the animator was creating avoidable main-thread allocation and GC pressure.
+    private val cachedHomeGrid: Array<FloatArray> = run {
+        val c = 2.5833335f
+        val d = 0.43f
         // Player index order follows the authored board zones: Red, Green, Gold, Blue.
-        val xy = arrayOf(
+        arrayOf(
             floatArrayOf(-c-d,c-d), floatArrayOf(-c+d,c-d), floatArrayOf(-c-d,c+d), floatArrayOf(-c+d,c+d),
             floatArrayOf(-c-d,-c-d), floatArrayOf(-c+d,-c-d), floatArrayOf(-c-d,-c+d), floatArrayOf(-c+d,-c+d),
             floatArrayOf(c-d,-c-d), floatArrayOf(c+d,-c-d), floatArrayOf(c-d,-c+d), floatArrayOf(c+d,-c+d),
             floatArrayOf(c-d,c-d), floatArrayOf(c+d,c-d), floatArrayOf(c-d,c+d), floatArrayOf(c+d,c+d)
         )
-        return xy[pi * 4 + ti].clone()
     }
+
+    private fun homeGrid(pi: Int, ti: Int): FloatArray = cachedHomeGrid[pi * 4 + ti]
 
     private fun tokenGrid(pi: Int, ti: Int): FloatArray {
         val pos = state?.optJSONArray("players")?.optJSONObject(pi)
@@ -601,14 +619,27 @@ class LudoBoardView(
         }
     }
 
-    private fun animationGrid(pi: Int, pos: Int): FloatArray {
-        return if (pos in 0..51) {
-            val q = visualPath()[(pi * 13 + pos) % 52]
-            floatArrayOf((q.second - 7.0f) * 0.50f, (q.first - 7.0f) * 0.50f)
-        } else if (pos in 52..57) {
-            finishGrid(pi, pos - 52)
-        } else {
-            homeGrid(pi, 0)
+    private fun writeAnimationGrid(pi: Int, pos: Int, target: FloatArray) {
+        when (pos) {
+            in 0..51 -> {
+                val q = visualPath()[(pi * 13 + pos) % 52]
+                target[0] = (q.second - 7.0f) * 0.50f
+                target[1] = (q.first - 7.0f) * 0.50f
+            }
+            in 52..57 -> {
+                val d = 0.41666667f * (pos - 52)
+                when (pi) {
+                    0 -> { target[0] = -1.1666667f + d; target[1] = 0f }
+                    1 -> { target[0] = 0f; target[1] = -0.9166667f + d }
+                    2 -> { target[0] = 1.1666667f - d; target[1] = 0f }
+                    else -> { target[0] = 0f; target[1] = 1.1666667f - d }
+                }
+            }
+            else -> {
+                val home = homeGrid(pi, 0)
+                target[0] = home[0]
+                target[1] = home[1]
+            }
         }
     }
 
