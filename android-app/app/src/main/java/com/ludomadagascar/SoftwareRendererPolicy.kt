@@ -28,7 +28,7 @@ internal object SoftwareRendererPolicy {
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
     /**
-     * Pair Choreographer-paced requests with an uncapped EGL swap only for
+     * Pair Choreographer-paced requests with an vsync-aligned EGL swap only for
      * debug software-renderer gameplay. Hardware and Home retain normal cadence.
      */
     fun shouldUseFramePacedSoftwareRendering(
@@ -43,7 +43,7 @@ internal object SoftwareRendererPolicy {
         debugBuild: Boolean
     ): Boolean = shouldUseFramePacedSoftwareRendering(rendererIdentity, homePreview, debugBuild)
 
-    fun shouldRequestUncappedSwapInterval(
+    fun shouldRequestVsyncSwapInterval(
         rendererIdentity: String,
         homePreview: Boolean,
         debugBuild: Boolean
