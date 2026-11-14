@@ -7,6 +7,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RendererTelemetryAccessibilityTest {
+    @Test
+    fun defersAccessibilityPawnTargetUpdatesUntilAnimationEnds() {
+        assertFalse(RendererTelemetryAccessibility.shouldPublishPawnTapTargets(animationActive = true))
+        assertTrue(RendererTelemetryAccessibility.shouldPublishPawnTapTargets(animationActive = false))
+    }
+
     private val frame = RenderFramePerfSnapshot(
         activeFrameSampleCount = 18,
         activeFrameFps = 5.14f,
