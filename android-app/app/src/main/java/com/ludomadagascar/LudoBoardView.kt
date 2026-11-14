@@ -1605,6 +1605,10 @@ class LudoBoardView(
         private var lastBackdropCullingTransitionCpuNanos = 0L
         private var lastBackdropCullingRestoreCpuNanos = 0L
         private var glDeviceDiagnostic = "unavailable"
+        private var softwareFramePacingEnabled = false
+        private var eglSwapInterval0Status = "NOT_APPLIED"
+        private var eglSwapSurfaceWidth = 0
+        private var eglSwapSurfaceHeight = 0
         private val gpuTimerQuery = if (BuildConfig.DEBUG && !host.homePreview) GlesGpuTimerQuery() else null
         private var gpuFenceTelemetry: GlesGpuFenceTelemetry? = null
         internal var softwareRendererActive = false
@@ -1720,17 +1724,16 @@ class LudoBoardView(
             val glRenderer = GLES30.glGetString(GLES30.GL_RENDERER) ?: "unknown"
             val glVersion = GLES30.glGetString(GLES30.GL_VERSION) ?: "unknown"
             glDeviceDiagnostic = "vendor=" + glVendor + " renderer=" + glRenderer + " version=" + glVersion
-            val framePacedSoftware = SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
+            softwareFramePacingEnabled = SoftwareRendererPolicy.shouldUseFramePacedSoftwareRendering(
                 glRenderer,
                 host.homePreview,
                 BuildConfig.DEBUG
             )
-            host.setSoftwareVsyncDrivenRendering(framePacedSoftware)
-            val swapIntervalStatus = requestSoftwareSwapIntervalZero(glRenderer)
+            host.setSoftwareVsyncDrivenRendering(softwareFramePacingEnabled)
             android.util.Log.i(
                 "LudoMadaRender",
-                "SOFTWARE_FRAME_PACING enabled=" + framePacedSoftware +
-                    " eglSwapInterval0=" + swapIntervalStatus
+                "SOFTWARE_FRAME_PACING enabled=" + softwareFramePacingEnabled +
+                    " eglSwapInterval0=APPLY_ON_SURFACE_CHANGED"
             )
             val glExtensions = GLES30.glGetString(GLES30.GL_EXTENSIONS) ?: ""
             gpuTimerQuery?.initialize(glExtensions)
@@ -1893,6 +1896,13 @@ class LudoBoardView(
                 if (display == EGL14.EGL_NO_DISPLAY) return@runCatching "NO_CURRENT_DISPLAY"
                 val drawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
                 if (drawSurface == EGL14.EGL_NO_SURFACE) return@runCatching "NO_CURRENT_DRAW_SURFACE"
+                val dimension = IntArray(1)
+                eglSwapSurfaceWidth = if (
+                    EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_WIDTH, dimension, 0)
+                ) dimension[0] else 0
+                eglSwapSurfaceHeight = if (
+                    EGL14.eglQuerySurface(display, drawSurface, EGL14.EGL_HEIGHT, dimension, 0)
+                ) dimension[0] else 0
                 if (EGL14.eglSwapInterval(display, 0)) {
                     "REQUEST_ACCEPTED"
                 } else {
@@ -1909,6 +1919,16 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
+            eglSwapInterval0Status = requestSoftwareSwapIntervalZero(glDeviceDiagnostic)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "SOFTWARE_FRAME_PACING_APPLIED callbackSurface=" + sceneWidth + "x" + sceneHeight +
+                    " eglSurface=" + (if (eglSwapSurfaceWidth > 0 && eglSwapSurfaceHeight > 0) {
+                        eglSwapSurfaceWidth.toString() + "x" + eglSwapSurfaceHeight
+                    } else "UNAVAILABLE") +
+                    " enabled=" + softwareFramePacingEnabled +
+                    " eglSwapInterval0=" + eglSwapInterval0Status
+            )
             renderScale = SoftwareRendererPolicy.renderScale(
                 glDeviceDiagnostic,
                 host.homePreview,
@@ -2110,7 +2130,11 @@ class LudoBoardView(
                     scene = latestSceneBreakdownSnapshot,
                     preparedStaticMeshCount = preparedGles3StaticMeshCount,
                     gpu = gpuTimerQuery?.snapshot(),
-                    gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime())
+                    gpuFence = gpuFenceTelemetry?.snapshot(System.nanoTime()),
+                    softwareFramePacingEnabled = softwareFramePacingEnabled,
+                    eglSwapInterval0Status = eglSwapInterval0Status,
+                    eglSwapSurfaceWidth = eglSwapSurfaceWidth,
+                    eglSwapSurfaceHeight = eglSwapSurfaceHeight
                 )?.let(host::publishRendererTelemetry)
             }
             // Includes the whole GL callback, but deliberately excludes the following
