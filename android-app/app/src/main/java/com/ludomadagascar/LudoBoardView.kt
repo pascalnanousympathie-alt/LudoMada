@@ -274,6 +274,10 @@ class LudoBoardView(
 
     internal fun publishPawnTapTargets() {
         if (!BuildConfig.DEBUG || homePreview) return
+        // The physical touch handler projects hitboxes directly. Updating this
+        // accessibility-only description for every interpolated pawn position
+        // needlessly invalidates the UI tree and competes with animation vsync.
+        if (!RendererTelemetryAccessibility.shouldPublishPawnTapTargets(animatedRendering)) return
         val readyMarker = rendererReadyDescription ?: return
         val telemetryMarker = rendererTelemetryDescription
         val uiVsyncMarker = uiAnimationVsyncDescription
