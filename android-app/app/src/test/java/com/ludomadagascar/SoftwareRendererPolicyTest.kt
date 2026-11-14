@@ -40,8 +40,9 @@ class SoftwareRendererPolicyTest {
     }
 
     @Test
-    fun softwareFramePacingAndUncappedSwapAreEnabledTogetherOnlyForDebugGameplay() {
+    fun softwareFramePacingAndVsyncSwapAreEnabledTogetherOnlyForDebugGameplay() {
         assertEquals(33_333_333L, SoftwareRendererPolicy.SOFTWARE_ANIMATION_FRAME_INTERVAL_NANOS)
+        assertEquals(1, SoftwareRendererPolicy.SOFTWARE_EGL_SWAP_INTERVAL)
         for (renderer in listOf("Google SwiftShader", "llvmpipe", "softpipe", "lavapipe")) {
             assertTrue(
                 renderer,
@@ -57,7 +58,7 @@ class SoftwareRendererPolicyTest {
             )
             assertTrue(
                 renderer,
-                SoftwareRendererPolicy.shouldRequestUncappedSwapInterval(
+                SoftwareRendererPolicy.shouldRequestVsyncSwapInterval(
                     renderer, homePreview = false, debugBuild = true
                 )
             )
