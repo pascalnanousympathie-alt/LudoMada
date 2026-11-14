@@ -170,7 +170,7 @@ function parseRendererAccessibilityTelemetry(label) {
   const softwareFramePacing = field("SOFTWARE_FRAME_PACING");
   const eglSwapInterval0Status = field("EGL_SWAP_INTERVAL0");
   const eglSwapSurfaceField = field("EGL_SWAP_SURFACE");
-  const eglSwapSurfaceMatch = eglSwapSurfaceField?.match(/^(\\d+)x(\\d+)$/);
+  const eglSwapSurfaceMatch = eglSwapSurfaceField?.match(/^(\d+)x(\d+)$/);
   const eglSwapSurface = eglSwapSurfaceMatch
     ? `${Number(eglSwapSurfaceMatch[1])}x${Number(eglSwapSurfaceMatch[2])}`
     : null;
