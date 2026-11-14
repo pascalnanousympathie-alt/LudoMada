@@ -95,7 +95,6 @@ class LudoBoardView(
         override fun doFrame(frameTimeNanos: Long) {
             if (!animatedRendering) return
             uiAnimationVsyncTelemetry?.record(frameTimeNanos)
-            if (softwareVsyncDrivenRendering) requestRender()
             animationChoreographer.postFrameCallback(this)
         }
     }
