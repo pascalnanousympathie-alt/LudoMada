@@ -28,7 +28,7 @@ internal object SoftwareRendererPolicy {
         !homePreview && isSoftwareRenderer(rendererIdentity)
 
     /**
-     * Pair Choreographer-paced requests with an vsync-aligned EGL swap only for
+     * Pair Choreographer-paced requests with a vsync-aligned EGL swap only for
      * debug software-renderer gameplay. Hardware and Home retain normal cadence.
      */
     fun shouldUseFramePacedSoftwareRendering(
