@@ -1,6 +1,7 @@
 package com.ludomadagascar
 
 import android.app.*
+import android.os.Build
 import android.os.Bundle
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
