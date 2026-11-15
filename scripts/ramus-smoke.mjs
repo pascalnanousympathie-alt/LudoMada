@@ -1893,6 +1893,21 @@ try {
     " gpuFenceTimeouts=" + accessibilityTelemetry.gpuFenceTimeouts +
     " gpuFenceFailures=" + accessibilityTelemetry.gpuFenceFailures +
     " gpuFenceSkips=" + accessibilityTelemetry.gpuFenceSkips);
+  const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
+  const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
+    " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
+    " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
+    " animationFps=" + (fpsAcceptance.animationFps ?? "NA") +
+    " animationFrameP95Ms=" + (fpsAcceptance.animationFrameP95Ms ?? "NA") +
+    " reason=" + fpsAcceptance.reason;
+  if (fpsAcceptance.status === "BLOCKED") {
+    console.log("RAMUS_FPS_ACCEPTANCE_BLOCKED " + fpsAcceptanceSummary);
+  } else if (fpsAcceptance.status === "PASS") {
+    console.log("RAMUS_FPS_ACCEPTANCE_PASS " + fpsAcceptanceSummary);
+  } else {
+    console.error("RAMUS_FPS_ACCEPTANCE_FAIL " + fpsAcceptanceSummary);
+    throw new Error("120 FPS acceptance failed: " + fpsAcceptanceSummary);
+  }
   const minimumAnimationSamples = 20;
   const minimumAnimationFps = 24;
   const maximumAnimationFrameP95Ms = 50;
@@ -1912,21 +1927,6 @@ try {
         afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
         fullRendererTelemetry: accessibilityTelemetry
       }));
-  }
-  const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
-  const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
-    " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
-    " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
-    " animationFps=" + (fpsAcceptance.animationFps ?? "NA") +
-    " animationFrameP95Ms=" + (fpsAcceptance.animationFrameP95Ms ?? "NA") +
-    " reason=" + fpsAcceptance.reason;
-  if (fpsAcceptance.status === "BLOCKED") {
-    console.log("RAMUS_FPS_ACCEPTANCE_BLOCKED " + fpsAcceptanceSummary);
-  } else if (fpsAcceptance.status === "PASS") {
-    console.log("RAMUS_FPS_ACCEPTANCE_PASS " + fpsAcceptanceSummary);
-  } else {
-    console.error("RAMUS_FPS_ACCEPTANCE_FAIL " + fpsAcceptanceSummary);
-    throw new Error("120 FPS acceptance failed: " + fpsAcceptanceSummary);
   }
   console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
   console.log("RAMUS_ACCESSIBILITY_FPS=" + accessibilityTelemetry.fps +
