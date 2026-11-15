@@ -440,6 +440,20 @@ function selfTestFramebufferReadback() {
   );
   const displayProbeFixture = "RAMUS_DISPLAY_MODES_HZ=60.00,120.00 | DISPLAY_INITIAL_HZ=60.00 | DISPLAY_AFTER_REQUEST_HZ=120.00 | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=REQUESTED | SCREEN=offline-4";
   const invalidDisplayProbeFixture = displayProbeFixture.replace("DISPLAY_AFTER_REQUEST_HZ=120.00", "DISPLAY_AFTER_REQUEST_HZ=fast");
+  const displayProbe60HzFixture = parseRamusDisplayProbe(displayProbeFixture.replace(
+    "RAMUS_DISPLAY_MODES_HZ=60.00,120.00",
+    "RAMUS_DISPLAY_MODES_HZ=60.00"
+  ));
+  const passing120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33]
+  };
+  const failing120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 90,
+    animationFrameMs: [11.11, 16.67]
+  };
   const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
     .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
@@ -474,6 +488,9 @@ function selfTestFramebufferReadback() {
     ["accessibility renderer telemetry rejects malformed display refresh rate", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("DISPLAY_REFRESH_HZ=60.00", "DISPLAY_REFRESH_HZ=fast")) === null],
     ["Ramus display probe parses supported refresh modes and post-request rate", parseRamusDisplayProbe(displayProbeFixture)?.supportedModesHz.join(",") === "60,120" && parseRamusDisplayProbe(displayProbeFixture)?.afterRequestHz === 120],
     ["Ramus display probe rejects malformed post-request refresh rate", parseRamusDisplayProbe(invalidDisplayProbeFixture) === null],
+    ["120fps acceptance is BLOCKED when Ramus has only a 60Hz display mode", evaluate120FpsAcceptance(displayProbe60HzFixture, passing120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance PASS requires a 120Hz display and 8.34ms P95 budget", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), passing120TelemetryFixture).status === "PASS"],
+    ["120fps acceptance FAIL rejects insufficient animation FPS", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), failing120TelemetryFixture).status === "FAIL"],
     ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
     ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
     ["accessibility renderer telemetry accepts insufficient fence samples without inventing a duration", parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceStatus === "INSUFFICIENT" && parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceMs === null],
@@ -705,6 +722,63 @@ function parseRamusDisplayProbe(label) {
     requestedHz,
     surfaceSetFrameRate: surfaceField[1],
     screen: screenField[1].trim()
+  };
+}
+
+function evaluate120FpsAcceptance(displayProbe, telemetry) {
+  const targetFps = 120;
+  const minimumSupportedModeHz = 119.5;
+  const minimumMeasuredFps = 119.5;
+  const maximumFrameP95Ms = 8.34;
+  const maximumSupportedModeHz = displayProbe?.supportedModesHz?.length
+    ? Math.max(...displayProbe.supportedModesHz)
+    : 0;
+  const actualDisplayHz = telemetry?.displayRefreshHz ?? null;
+  const animationFps = telemetry?.animationFps ?? null;
+  const animationFrameP95Ms = telemetry?.animationFrameMs?.[1] ?? null;
+
+  if (maximumSupportedModeHz < minimumSupportedModeHz) {
+    return {
+      status: "BLOCKED",
+      reason: "display_has_no_120hz_mode",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  if (actualDisplayHz === null || actualDisplayHz < minimumSupportedModeHz) {
+    return {
+      status: "FAIL",
+      reason: "120hz_display_mode_was_not_selected",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  if (animationFps === null || animationFps < minimumMeasuredFps ||
+      animationFrameP95Ms === null || animationFrameP95Ms > maximumFrameP95Ms) {
+    return {
+      status: "FAIL",
+      reason: "gameplay_animation_did_not_hold_120fps_frame_budget",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  return {
+    status: "PASS",
+    reason: "120fps_and_frame_budget_verified",
+    targetFps,
+    maximumSupportedModeHz,
+    actualDisplayHz,
+    animationFps,
+    animationFrameP95Ms
   };
 }
 
@@ -1827,7 +1901,7 @@ try {
       accessibilityTelemetry.animationFps < minimumAnimationFps ||
       !accessibilityTelemetry.animationFrameMs ||
       accessibilityTelemetry.animationFrameMs[1] > maximumAnimationFrameP95Ms) {
-    throw new Error("Gameplay animation frame cadence is not stable: " +
+    throw new Error("Gameplay animation smoke baseline is not stable: " +
       JSON.stringify({
         minSamples: minimumAnimationSamples,
         minFps: minimumAnimationFps,
@@ -1838,6 +1912,21 @@ try {
         afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
         fullRendererTelemetry: accessibilityTelemetry
       }));
+  }
+  const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
+  const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
+    " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
+    " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
+    " animationFps=" + (fpsAcceptance.animationFps ?? "NA") +
+    " animationFrameP95Ms=" + (fpsAcceptance.animationFrameP95Ms ?? "NA") +
+    " reason=" + fpsAcceptance.reason;
+  if (fpsAcceptance.status === "BLOCKED") {
+    console.log("RAMUS_FPS_ACCEPTANCE_BLOCKED " + fpsAcceptanceSummary);
+  } else if (fpsAcceptance.status === "PASS") {
+    console.log("RAMUS_FPS_ACCEPTANCE_PASS " + fpsAcceptanceSummary);
+  } else {
+    console.error("RAMUS_FPS_ACCEPTANCE_FAIL " + fpsAcceptanceSummary);
+    throw new Error("120 FPS acceptance failed: " + fpsAcceptanceSummary);
   }
   console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
   console.log("RAMUS_ACCESSIBILITY_FPS=" + accessibilityTelemetry.fps +
@@ -1911,7 +2000,7 @@ try {
   }
 
   success = true;
-  console.log("RAMUS_SMOKE_PASS");
+  console.log("RAMUS_GAMEPLAY_SMOKE_PASS");
 } finally {
   if (session && !success && !failureLogcatCaptured) {
     captureFailureLogcat();
