@@ -60,28 +60,32 @@ class MainActivity : Activity() {
     }
 
     private fun request120HzForGameplaySurface(host: LudoBoardView, screen: String, probe: TextView?) {
-        if (!BuildConfig.DEBUG || Build.VERSION.SDK_INT < Build.VERSION_CODES.R || probe == null) return
+        // Android 11+ supports a frame-rate hint on the actual gameplay Surface.
+        // The hint is safe on 60 Hz displays: Android keeps the current supported mode.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
 
+        val diagnosticsEnabled = BuildConfig.DEBUG && probe != null
         val initialDisplay = host.display ?: windowManager.defaultDisplay
-        val supportedRates = runCatching {
+        val supportedRates = if (diagnosticsEnabled) runCatching {
             initialDisplay.supportedModes.map { it.refreshRate }.distinct().sorted()
-        }.getOrDefault(emptyList())
+        }.getOrDefault(emptyList()) else emptyList()
         val supportedText = supportedRates.joinToString(",") { String.format(Locale.US, "%.2f", it) }
-        val currentModeHz = initialDisplay.refreshRate
+        val currentModeHz = if (diagnosticsEnabled) initialDisplay.refreshRate else 0f
+        var requestAppliedToCurrentSurface = false
 
         fun applyFrameRateRequest(holder: SurfaceHolder) {
-            val surfaceResult = if (holder.surface.isValid) {
-                runCatching {
-                    holder.surface.setFrameRate(120f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
-                    "REQUESTED"
-                }.getOrElse { "FAILED_${it.javaClass.simpleName}" }
-            } else {
-                "SURFACE_INVALID"
-            }
+            if (!holder.surface.isValid || requestAppliedToCurrentSurface) return
+            requestAppliedToCurrentSurface = true
+            val surfaceResult = runCatching {
+                holder.surface.setFrameRate(120f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                "REQUESTED"
+            }.getOrElse { "FAILED_${it.javaClass.simpleName}" }
+
+            if (!diagnosticsEnabled) return
             val liveDisplay = host.display ?: windowManager.defaultDisplay
             val actualHz = liveDisplay.refreshRate
             val detail = "RAMUS_DISPLAY_MODES_HZ=$supportedText | DISPLAY_INITIAL_HZ=${String.format(Locale.US, "%.2f", currentModeHz)} | DISPLAY_AFTER_REQUEST_HZ=${String.format(Locale.US, "%.2f", actualHz)} | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=$surfaceResult | SCREEN=$screen"
-            probe.post {
+            probe?.post {
                 probe.text = "Hz:${String.format(Locale.US, "%.0f", actualHz)} [$supportedText]"
                 probe.contentDescription = detail
             }
@@ -95,7 +99,9 @@ class MainActivity : Activity() {
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                 applyFrameRateRequest(holder)
             }
-            override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                requestAppliedToCurrentSurface = false
+            }
         }
         host.holder.addCallback(callback)
         host.post {
@@ -131,7 +137,11 @@ class MainActivity : Activity() {
     }
     private fun page(name:String, title:String): LinearLayout {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
-        if (BuildConfig.DEBUG && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        // Before Surface.setFrameRate() was added in API 30, use the window
+        // preference as a compatibility hint when a device supports high refresh.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        ) {
             val attributes = window.attributes
             val requestedRefreshRate = if (name == "board" || name == "offline") 120f else 0f
             if (attributes.preferredRefreshRate != requestedRefreshRate) {
