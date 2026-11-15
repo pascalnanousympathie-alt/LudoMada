@@ -673,6 +673,37 @@ function treeLabels(tree) {
   );
 }
 
+function parseRamusDisplayProbe(label) {
+  if (typeof label !== "string") return null;
+  const modesField = label.match(/RAMUS_DISPLAY_MODES_HZ=([^|]*)/);
+  const initialField = label.match(/DISPLAY_INITIAL_HZ=([0-9]+(?:\\.[0-9]+)?)/);
+  const afterField = label.match(/DISPLAY_AFTER_REQUEST_HZ=([0-9]+(?:\\.[0-9]+)?)/);
+  const requestedField = label.match(/REQUESTED_HZ=([0-9]+(?:\\.[0-9]+)?)/);
+  const surfaceField = label.match(/SURFACE_SET_FRAME_RATE=([A-Z0-9_]+)/);
+  const screenField = label.match(/SCREEN=([^|]*)/);
+  if (!modesField || !initialField || !afterField || !requestedField || !surfaceField || !screenField) {
+    return null;
+  }
+  const supportedModesHz = modesField[1].trim() === ""
+    ? []
+    : modesField[1].split(",").map(value => Number(value.trim()));
+  const initialHz = Number(initialField[1]);
+  const afterRequestHz = Number(afterField[1]);
+  const requestedHz = Number(requestedField[1]);
+  if (!supportedModesHz.every(value => Number.isFinite(value) && value > 0) ||
+      ![initialHz, afterRequestHz, requestedHz].every(value => Number.isFinite(value) && value > 0)) {
+    return null;
+  }
+  return {
+    supportedModesHz,
+    initialHz,
+    afterRequestHz,
+    requestedHz,
+    surfaceSetFrameRate: surfaceField[1],
+    screen: screenField[1].trim()
+  };
+}
+
 function isAndroidImmersivePrompt(tree) {
   const labels = treeLabels(tree);
   return labels.some(label => label.includes("Viewing full screen")) &&
@@ -1732,7 +1763,22 @@ try {
   // Accessibility is the primary telemetry channel: Ramus trial mode may hide
   // Android app-tag logcat rows, but it still exposes the renderer contentDescription.
   const telemetryTree = readTree();
-  const telemetryLabel = treeLabels(telemetryTree).find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const telemetryLabels = treeLabels(telemetryTree);
+  const telemetryLabel = telemetryLabels.find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const displayProbeLabel = telemetryLabels.find(label =>
+    label.includes("RAMUS_DISPLAY_MODES_HZ=") && label.includes("SURFACE_SET_FRAME_RATE=")
+  ) || "";
+  const displayProbe = parseRamusDisplayProbe(displayProbeLabel);
+  if (!displayProbe) {
+    throw new Error("Ramus did not expose the 120 Hz Surface/display-mode probe in its accessibility tree: " +
+      JSON.stringify({ labels: telemetryLabels.filter(label => label.includes("RAMUS_DISPLAY_PROBE") || label.includes("DISPLAY_")).slice(0, 8) }));
+  }
+  console.log("RAMUS_DISPLAY_PROBE modesHz=" + (displayProbe.supportedModesHz.join(",") || "NONE") +
+    " initialHz=" + displayProbe.initialHz +
+    " afterRequestHz=" + displayProbe.afterRequestHz +
+    " requestedHz=" + displayProbe.requestedHz +
+    " surfaceCall=" + displayProbe.surfaceSetFrameRate +
+    " screen=" + displayProbe.screen);
   const accessibilityTelemetry = parseRendererAccessibilityTelemetry(telemetryLabel);
   if (!accessibilityTelemetry) {
     throw new Error("Renderer performance telemetry was not captured in the accessibility readiness label: " +
