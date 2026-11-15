@@ -676,9 +676,9 @@ function treeLabels(tree) {
 function parseRamusDisplayProbe(label) {
   if (typeof label !== "string") return null;
   const modesField = label.match(/RAMUS_DISPLAY_MODES_HZ=([^|]*)/);
-  const initialField = label.match(/DISPLAY_INITIAL_HZ=([0-9]+(?:\\.[0-9]+)?)/);
-  const afterField = label.match(/DISPLAY_AFTER_REQUEST_HZ=([0-9]+(?:\\.[0-9]+)?)/);
-  const requestedField = label.match(/REQUESTED_HZ=([0-9]+(?:\\.[0-9]+)?)/);
+  const initialField = label.match(/DISPLAY_INITIAL_HZ=([0-9]+(?:\.[0-9]+)?)/);
+  const afterField = label.match(/DISPLAY_AFTER_REQUEST_HZ=([0-9]+(?:\.[0-9]+)?)/);
+  const requestedField = label.match(/REQUESTED_HZ=([0-9]+(?:\.[0-9]+)?)/);
   const surfaceField = label.match(/SURFACE_SET_FRAME_RATE=([A-Z0-9_]+)/);
   const screenField = label.match(/SCREEN=([^|]*)/);
   if (!modesField || !initialField || !afterField || !requestedField || !surfaceField || !screenField) {
