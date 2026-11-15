@@ -81,7 +81,7 @@ class MainActivity : Activity() {
             val actualHz = liveDisplay.refreshRate
             val detail = "RAMUS_DISPLAY_MODES_HZ=$supportedText | DISPLAY_INITIAL_HZ=${String.format(Locale.US, "%.2f", currentModeHz)} | DISPLAY_AFTER_REQUEST_HZ=${String.format(Locale.US, "%.2f", actualHz)} | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=$surfaceResult | SCREEN=$screen"
             probe.post {
-                probe.text = "Hz:${String.format(Locale.US, "%.0f", actualHz)}"
+                probe.text = "Hz:${String.format(Locale.US, "%.0f", actualHz)} [$supportedText]"
                 probe.contentDescription = detail
             }
             android.util.Log.i("LudoMadaDisplay", detail)
