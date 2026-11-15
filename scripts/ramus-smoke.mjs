@@ -438,6 +438,8 @@ function selfTestFramebufferReadback() {
     "GPU_FENCE_STATUS=MEASURED",
     "GPU_FENCE_STATUS=UNKNOWN"
   );
+  const displayProbeFixture = "RAMUS_DISPLAY_MODES_HZ=60.00,120.00 | DISPLAY_INITIAL_HZ=60.00 | DISPLAY_AFTER_REQUEST_HZ=120.00 | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=REQUESTED | SCREEN=offline-4";
+  const invalidDisplayProbeFixture = displayProbeFixture.replace("DISPLAY_AFTER_REQUEST_HZ=120.00", "DISPLAY_AFTER_REQUEST_HZ=fast");
   const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
     .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
@@ -470,6 +472,8 @@ function selfTestFramebufferReadback() {
     ["accessibility renderer telemetry exposes main-thread vsync cadence and display refresh", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFps === 60 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFrameMs?.[1] === 16.8 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.displayRefreshHz === 60],
     ["accessibility renderer telemetry rejects missing main-thread vsync cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("UI_VSYNC_FPS=60.00", "UI_VSYNC_FPS=NA")) === null],
     ["accessibility renderer telemetry rejects malformed display refresh rate", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("DISPLAY_REFRESH_HZ=60.00", "DISPLAY_REFRESH_HZ=fast")) === null],
+    ["Ramus display probe parses supported refresh modes and post-request rate", parseRamusDisplayProbe(displayProbeFixture)?.supportedModesHz.join(",") === "60,120" && parseRamusDisplayProbe(displayProbeFixture)?.afterRequestHz === 120],
+    ["Ramus display probe rejects malformed post-request refresh rate", parseRamusDisplayProbe(invalidDisplayProbeFixture) === null],
     ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
     ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
     ["accessibility renderer telemetry accepts insufficient fence samples without inventing a duration", parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceStatus === "INSUFFICIENT" && parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceMs === null],
@@ -679,7 +683,7 @@ function parseRamusDisplayProbe(label) {
   const initialField = label.match(/DISPLAY_INITIAL_HZ=([0-9]+(?:\.[0-9]+)?)/);
   const afterField = label.match(/DISPLAY_AFTER_REQUEST_HZ=([0-9]+(?:\.[0-9]+)?)/);
   const requestedField = label.match(/REQUESTED_HZ=([0-9]+(?:\.[0-9]+)?)/);
-  const surfaceField = label.match(/SURFACE_SET_FRAME_RATE=([A-Z0-9_]+)/);
+  const surfaceField = label.match(/SURFACE_SET_FRAME_RATE=([A-Za-z0-9_]+)/);
   const screenField = label.match(/SCREEN=([^|]*)/);
   if (!modesField || !initialField || !afterField || !requestedField || !surfaceField || !screenField) {
     return null;
