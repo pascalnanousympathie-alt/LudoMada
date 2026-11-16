@@ -421,7 +421,7 @@ function captureFailureLogcat() {
   // Preserve the filtered tag response as independent evidence; some cloud guest
   // sessions expose only system-stream rows through the unfiltered endpoint.
   const filtered = runAllowError(
-    "logcat", "--limit", "250", "--filter", "com.ludomadagascar", "--session", session
+    "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
   );
   const filteredEntries = normalizeLogcatRows(filtered);
   const combinedEntries = [...entries, ...filteredEntries];
@@ -462,16 +462,16 @@ function captureFailureLogcat() {
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
 
-function readRendererLogLines({ forcePackageFilter = false } = {}) {
-  // Ramus --filter selects an application/package stream, not message text.
-  // Query this app's package and then select renderer markers locally.
+function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
+  // Ramus --filter follows Android logcat tag filtering. Query the known renderer tag,
+  // then select startup, framebuffer and frame-pacing messages locally.
   const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
 
   // A snapshot can contain recent framebuffer markers while older startup/GLB
-  // markers are already outside the broad tail. Query this package's log stream.
+  // markers are already outside the broad tail. Query the renderer log tag.
   const startupIncomplete =
     !broadLines.some((line) => line.includes("Renderer=GLES3_PBR")) ||
     !broadLines.some((line) => line.includes("PBR_SURFACE_CREATED")) ||
@@ -480,9 +480,9 @@ function readRendererLogLines({ forcePackageFilter = false } = {}) {
     !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
   let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-  if (startupIncomplete || forcePackageFilter) {
+  if (startupIncomplete || forceRendererTagFilter) {
     filtered = runAllowError(
-      "logcat", "--limit", "500", "--filter", "com.ludomadagascar", "--session", session
+      "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
     );
     filteredEntries = normalizeLogcatRows(filtered);
   }
@@ -498,7 +498,7 @@ function readRendererLogLines({ forcePackageFilter = false } = {}) {
     filteredLines: filteredEntries.length,
     filteredError: filtered.ok
       ? null
-      : String(filtered.value?.error || "package_logcat_unavailable").slice(0, 120),
+      : String(filtered.value?.error || "renderer_tag_filter_unavailable").slice(0, 120),
     error: broad.ok || filtered.ok
       ? null
       : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
@@ -618,7 +618,7 @@ try {
   const capturePbrRendererTelemetry = (stage) => {
     waitStable(300);
     const filtered = runAllowError(
-      "logcat", "--limit", "250", "--filter", "com.ludomadagascar", "--session", session
+      "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
     );
     const entries = normalizeLogcatRows(filtered);
     const lines = entries.map((entry) => entry.line)
@@ -798,7 +798,7 @@ try {
   success = true;
   // Query renderer message prefixes explicitly at the end. The broad guest tail
   // may retain startup markers while later system traffic rotates out frame samples.
-  const finalRendererSnapshot = readRendererLogLines({ forcePackageFilter: true });
+  const finalRendererSnapshot = readRendererLogLines({ forceRendererTagFilter: true });
   rendererTelemetry.observe(finalRendererSnapshot);
   const finalFramePacingLines = rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines;
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
