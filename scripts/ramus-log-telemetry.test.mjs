@@ -122,6 +122,28 @@ test("rejects unknown framebuffer labels without constructing a dynamic regular 
   });
 });
 
+test("preserves the Ramus display refresh-rate marker even without a complete frame window", () => {
+  const telemetry = completeTelemetry();
+  telemetry.observe({
+    lines: ["I/LudoMadaRender: PBR_DISPLAY_REFRESH_HZ=60.0"]
+  });
+  const result = telemetry.snapshot(parseReadback);
+  assert.deepEqual(result.evidence.displayRefreshLines, ["PBR_DISPLAY_REFRESH_HZ=60.0"]);
+  assert.deepEqual(result.evidence.framePacingLines, []);
+});
+
+test("preserves renderer frame-pacing summaries for the Ramus smoke report", () => {
+  const telemetry = completeTelemetry();
+  telemetry.observe({
+    lines: [
+      "I/LudoMadaRender: PBR_FRAME_PACING samples=60 spanMs=500.00 refreshHz=120.00 avgFps=120.00 p50FrameMs=8.33 p95FrameMs=8.33 p99FrameMs=8.34 maxFrameMs=8.34 glWorkP95Ms=3.20 over120Budget=2/60 over60Budget=0/60"
+    ]
+  });
+  const result = telemetry.snapshot(parseReadback);
+  assert.equal(result.evidence.framePacingLines.length, 1);
+  assert.match(result.evidence.framePacingLines[0], /avgFps=120.00/);
+});
+
 test("uses the latest framebuffer readback, so a later bad sample cannot inherit an earlier pass", () => {
   const telemetry = completeTelemetry();
   telemetry.observe({ lines: [scene] });

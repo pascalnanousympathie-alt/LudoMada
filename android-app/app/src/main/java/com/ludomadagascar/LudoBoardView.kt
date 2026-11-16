@@ -58,6 +58,14 @@ class LudoBoardView(
         }
         android.util.Log.i("LudoMadaSmoke", "BOARD_MARKER=" + value)
     }
+
+    internal fun displayRefreshRateHz():Float {
+        return runCatching {
+            @Suppress("DEPRECATION")
+            val display=(context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager)?.defaultDisplay
+            display?.refreshRate ?: 0f
+        }.getOrDefault(0f)
+    }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
 
@@ -1046,6 +1054,8 @@ class LudoBoardView(
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
         private var lastFrameNanos=0L
+        private var firstDrawMarkerPersisted=false
+        private val framePacingTelemetry=FramePacingTelemetry()
         private val dustLife=FloatArray(128)
         private val dustMaxLife=FloatArray(128)
         private val dustPos=FloatArray(128*3)
@@ -1061,6 +1071,9 @@ class LudoBoardView(
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
+            if(BuildConfig.DEBUG) {
+                android.util.Log.i("LudoMadaRender","PBR_DISPLAY_REFRESH_HZ="+host.displayRefreshRateHz())
+            }
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
                 " fill=" + premiumLighting.fillIntensity +
                 " rim=" + premiumLighting.rimIntensity +
@@ -1160,11 +1173,17 @@ class LudoBoardView(
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
-            runCatching {
-                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
-                    .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+            // Persist the first-draw marker once. Writing SharedPreferences on every
+            // GL frame adds avoidable allocation and disk-queue work to the render thread.
+            if(BuildConfig.DEBUG && !firstDrawMarkerPersisted){
+                firstDrawMarkerPersisted=true
+                runCatching {
+                    host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                        .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+                }
             }
-            val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
+            val frameStartNanos=System.nanoTime()
+            val now=frameStartNanos;val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
@@ -1178,6 +1197,12 @@ class LudoBoardView(
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
+            if(BuildConfig.DEBUG && !host.homePreview){
+                framePacingTelemetry.record(frameStartNanos,System.nanoTime())?.let { report ->
+                    val refreshRate=host.displayRefreshRateHz()
+                    host.post { android.util.Log.i("LudoMadaRender",report.toLogLine(refreshRate)) }
+                }
+            }
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int){
             val safeW=max(1,w);val safeH=max(1,h)

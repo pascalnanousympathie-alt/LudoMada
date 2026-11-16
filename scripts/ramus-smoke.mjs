@@ -414,8 +414,8 @@ function captureFailureLogcat() {
   if (!session || failureLogcatCaptured) return;
   failureLogcatCaptured = true;
 
-  // Read the unfiltered guest tail once. Ramus applies --filter to text/stream;
-  // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
+  // Read the unfiltered guest tail once; package-filtered rows are collected separately.
+  // Keeping the raw tail distinguishes "no guest logs" from an unavailable package stream.
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const entries = normalizeLogcatRows(broad);
   // Preserve the filtered tag response as independent evidence; some cloud guest
@@ -462,17 +462,16 @@ function captureFailureLogcat() {
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
 
-function readRendererLogLines() {
-  // Prefer the full guest tail. Some cloud sessions expose only system rows
-  // there, so fall back to the proven LudoMadaRender tag filter when needed.
-  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
+  // Ramus --filter follows Android logcat tag filtering. Query the known renderer tag,
+  // then select startup, framebuffer and frame-pacing messages locally.
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
 
   // A snapshot can contain recent framebuffer markers while older startup/GLB
-  // markers are already outside the broad tail. Query the app tag whenever any
-  // startup marker is missing, not only when the broad result is completely empty.
+  // markers are already outside the broad tail. Query the renderer log tag.
   const startupIncomplete =
     !broadLines.some((line) => line.includes("Renderer=GLES3_PBR")) ||
     !broadLines.some((line) => line.includes("PBR_SURFACE_CREATED")) ||
@@ -481,7 +480,7 @@ function readRendererLogLines() {
     !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
   let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-  if (startupIncomplete) {
+  if (startupIncomplete || forceRendererTagFilter) {
     filtered = runAllowError(
       "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
     );
@@ -492,8 +491,14 @@ function readRendererLogLines() {
   const lines = [...new Set([...broadLines, ...filteredLines])];
   return {
     ok: broad.ok || filtered.ok,
+    broadOk: broad.ok,
+    filteredRequested: startupIncomplete || forceRendererTagFilter,
+    filteredOk: filtered.ok,
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
+    filteredError: filtered.ok
+      ? null
+      : String(filtered.value?.error || "renderer_tag_filter_unavailable").slice(0, 120),
     error: broad.ok || filtered.ok
       ? null
       : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
@@ -610,6 +615,30 @@ try {
   console.log("RENDERER TELEMETRY INITIAL SNAPSHOT=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence
   ));
+  const capturePbrRendererTelemetry = (stage) => {
+    waitStable(300);
+    const filtered = runAllowError(
+      "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
+    );
+    const entries = normalizeLogcatRows(filtered);
+    const lines = entries.map((entry) => entry.line)
+      .filter((line) => line.includes("PBR_FRAME_PACING ") || line.includes("PBR_DISPLAY_REFRESH_HZ="));
+    rendererTelemetry.observe({
+      totalLines: 0,
+      filteredLines: entries.length,
+      lines
+    });
+    const evidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
+    const captured = evidence.framePacingLines.length > 0;
+    console.log("RAMUS_FRAME_PACING_CAPTURE_" + stage + "=" + JSON.stringify({
+      status: captured ? "PASS" : "MISSING",
+      filteredOk: filtered.ok,
+      filteredLineCount: entries.length,
+      framePacingMarkers: evidence.framePacingLines,
+      displayRefreshMarkers: evidence.displayRefreshLines
+    }));
+    return captured;
+  };
 
   // Preserve an early capture even if renderer validation fails, but keep it
   // separate: GLSurfaceView may still be loading assets at this point.
@@ -706,6 +735,7 @@ try {
   }
   if (!gotSix) throw new Error("No six within 48 cloud-emulator rolls; last status: " + pendingDiceValue().status);
   console.log("DICE SIX PASS");
+  capturePbrRendererTelemetry("AFTER_DICE");
 
   // A pending die must be immutable until the player chooses a pawn.
   runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
@@ -725,6 +755,7 @@ try {
   run("tap", target.ref, "--gen", String(target.gen),
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
+  capturePbrRendererTelemetry("AFTER_PAWN_REPLAY");
 
   // Exercise the real Home -> JOUER canvas hitbox rather than only the
   // login-screen offline shortcut. The universal deferred handler prevents
@@ -765,6 +796,27 @@ try {
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
   success = true;
+  // Query renderer message prefixes explicitly at the end. The broad guest tail
+  // may retain startup markers while later system traffic rotates out frame samples.
+  const finalRendererSnapshot = readRendererLogLines({ forceRendererTagFilter: true });
+  rendererTelemetry.observe(finalRendererSnapshot);
+  const finalFramePacingLines = rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines;
+  console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
+  console.log("RAMUS_FRAME_PACING_CAPTURE=" + (finalFramePacingLines.length > 0 ? "PASS" : "MISSING"));
+  console.log("RAMUS_RENDERER_FINAL_CAPTURE=" + JSON.stringify({
+    broadOk: finalRendererSnapshot.broadOk,
+    filteredRequested: finalRendererSnapshot.filteredRequested,
+    filteredOk: finalRendererSnapshot.filteredOk,
+    totalLines: finalRendererSnapshot.totalLines,
+    filteredLines: finalRendererSnapshot.filteredLines,
+    filteredError: finalRendererSnapshot.filteredError,
+    rendererLines: finalRendererSnapshot.lines.length,
+    framePacingMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_FRAME_PACING ")),
+    refreshRateMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_DISPLAY_REFRESH_HZ="))
+  }));
+  console.log("RAMUS_DISPLAY_REFRESH_RATE=" + JSON.stringify(
+    rendererTelemetry.snapshot(parseFramebufferReadback).evidence.displayRefreshLines
+  ));
   console.log("RAMUS_SMOKE_PASS");
 } finally {
   if (session && !success && !failureLogcatCaptured) {
