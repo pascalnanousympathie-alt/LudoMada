@@ -414,14 +414,14 @@ function captureFailureLogcat() {
   if (!session || failureLogcatCaptured) return;
   failureLogcatCaptured = true;
 
-  // Read the unfiltered guest tail once. Ramus applies --filter to text/stream;
-  // keeping the raw tail lets us distinguish "no guest logs" from a filter mismatch.
+  // Read the unfiltered guest tail once; package-filtered rows are collected separately.
+  // Keeping the raw tail distinguishes "no guest logs" from an unavailable package stream.
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const entries = normalizeLogcatRows(broad);
   // Preserve the filtered tag response as independent evidence; some cloud guest
   // sessions expose only system-stream rows through the unfiltered endpoint.
   const filtered = runAllowError(
-    "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
+    "logcat", "--limit", "250", "--filter", "com.ludomadagascar", "--session", session
   );
   const filteredEntries = normalizeLogcatRows(filtered);
   const combinedEntries = [...entries, ...filteredEntries];
@@ -492,7 +492,7 @@ function readRendererLogLines({ forcePackageFilter = false } = {}) {
   return {
     ok: broad.ok || filtered.ok,
     broadOk: broad.ok,
-    filteredRequested: startupIncomplete || forcePbrLogFilter,
+    filteredRequested: startupIncomplete || forcePackageFilter,
     filteredOk: filtered.ok,
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
