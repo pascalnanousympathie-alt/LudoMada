@@ -465,7 +465,7 @@ function captureFailureLogcat() {
 function readRendererLogLines() {
   // Prefer the full guest tail. Some cloud sessions expose only system rows
   // there, so fall back to the proven LudoMadaRender tag filter when needed.
-  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -765,6 +765,11 @@ try {
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
   success = true;
+  const finalRendererSnapshot = readRendererLogLines();
+  rendererTelemetry.observe(finalRendererSnapshot);
+  console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(
+    rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines
+  ));
   console.log("RAMUS_SMOKE_PASS");
 } finally {
   if (session && !success && !failureLogcatCaptured) {

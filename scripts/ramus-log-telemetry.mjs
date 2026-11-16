@@ -27,6 +27,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
   let snapshotCount = 0;
   let totalLinesRead = 0;
   let filteredLinesRead = 0;
+  const framePacingLines = new Set();
 
   function observe(snapshot) {
     snapshotCount += 1;
@@ -36,6 +37,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
     for (const value of Array.isArray(snapshot?.lines) ? snapshot.lines : []) {
       if (typeof value !== "string" || value.length === 0) continue;
       evidenceLines.add(value);
+      if (value.includes("PBR_FRAME_PACING ")) framePacingLines.add(value.slice(value.indexOf("PBR_FRAME_PACING ")));
 
       if (value.includes("Renderer=GLES3_PBR")) gles3Pbr = true;
       if (value.includes("PBR_SURFACE_CREATED")) pbrSurfaceCreated = true;
@@ -88,7 +90,8 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
         filteredLinesRead,
         distinctRendererLines: evidenceLines.size,
         heroLoadFailureSeen,
-        boardLoadFailureSeen
+        boardLoadFailureSeen,
+        framePacingLines: [...framePacingLines]
       }
     };
   }
