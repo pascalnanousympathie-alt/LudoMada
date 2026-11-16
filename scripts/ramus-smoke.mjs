@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createRendererTelemetryAccumulator, REQUIRED_HERO_PARTS } from "./ramus-log-telemetry.mjs";
 
 function parseFramebufferReadback(line, expectedLabel) {
   if (typeof line !== "string") {
@@ -467,18 +468,28 @@ function readRendererLogLines() {
   const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
-  let lines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+
+  // A snapshot can contain recent framebuffer markers while older startup/GLB
+  // markers are already outside the broad tail. Query the app tag whenever any
+  // startup marker is missing, not only when the broad result is completely empty.
+  const startupIncomplete =
+    !broadLines.some((line) => line.includes("Renderer=GLES3_PBR")) ||
+    !broadLines.some((line) => line.includes("PBR_SURFACE_CREATED")) ||
+    !broadLines.some((line) => line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
+      !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")) ||
+    !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
   let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-
-  if (lines.length === 0) {
+  if (startupIncomplete) {
     filtered = runAllowError(
       "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
     );
     filteredEntries = normalizeLogcatRows(filtered);
-    lines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
   }
 
+  const filteredLines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
+  const lines = [...new Set([...broadLines, ...filteredLines])];
   return {
     ok: broad.ok || filtered.ok,
     totalLines: broadEntries.length,
@@ -490,51 +501,15 @@ function readRendererLogLines() {
   };
 }
 
-function assertRuntimeGlbLoaded(timeoutMs = 16000) {
+function assertRuntimeGlbLoaded(timeoutMs = 16000, telemetry = createRendererTelemetryAccumulator()) {
   const deadline = Date.now() + timeoutMs;
-  const requiredHeroParts = [
-    "LM_Pawn_Base_Weighted",
-    "LM_Pawn_Collar",
-    "LM_Pawn_Spherical_Head",
-    "LM_Pawn_Tapered_Body",
-    "LM_Pawn_Underside_Insert",
-    "LM_Die_HydroChrome_Body"
-  ];
-  let lastLogcat = { ok: false, totalLines: 0, error: "not_read" };
-  let checks = {
-    gles3Pbr: false,
-    pbrSurfaceCreated: false,
-    heroParts: [],
-    missingHeroParts: requiredHeroParts,
-    boardParts: 0,
-    sceneReadback: false,
-    surfaceReadback: false,
-    firstFrameComplete: false
-  };
+  let lastLogcat = { ok: false, totalLines: 0, filteredLines: 0, error: "not_read", lines: [] };
+  let result = telemetry.snapshot(parseFramebufferReadback);
   while (Date.now() < deadline) {
     lastLogcat = readRendererLogLines();
-    const lines = lastLogcat.lines;
-    const heroLine = lines.find((line) =>
-      line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
-      !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")
-    );
-    const heroText = heroLine?.split("GLB_RUNTIME_LOAD_OK parts=")[1] || "";
-    const heroParts = heroText.split(",").map((part) => part.trim()).filter(Boolean);
-    const boardLine = lines.find((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
-    const boardText = boardLine?.split("BOARD_GLB_RUNTIME_LOAD_OK parts=")[1] || "";
-    const boardCount = Number.parseInt(boardText, 10);
-    const sceneReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=scene_fbo"));
-    const surfaceReadbackLine = lines.find((line) => line.includes("PBR_READBACK label=surface_backbuffer"));
-    checks = {
-      gles3Pbr: lines.some((line) => line.includes("Renderer=GLES3_PBR")),
-      pbrSurfaceCreated: lines.some((line) => line.includes("PBR_SURFACE_CREATED")),
-      heroParts,
-      missingHeroParts: requiredHeroParts.filter((part) => !heroParts.includes(part)),
-      boardParts: Number.isFinite(boardCount) ? boardCount : 0,
-      sceneReadback: parseFramebufferReadback(sceneReadbackLine, "scene_fbo"),
-      surfaceReadback: parseFramebufferReadback(surfaceReadbackLine, "surface_backbuffer"),
-      firstFrameComplete: lines.some((line) => line.includes("PBR_FIRST_FRAME_COMPLETE"))
-    };
+    telemetry.observe(lastLogcat);
+    result = telemetry.snapshot(parseFramebufferReadback);
+    const checks = result.checks;
     if (checks.gles3Pbr && checks.pbrSurfaceCreated &&
         checks.missingHeroParts.length === 0 && checks.boardParts > 0 &&
         checks.sceneReadback.ok && checks.surfaceReadback.ok && checks.firstFrameComplete) {
@@ -544,14 +519,16 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
       console.log("PBR SCENE FBO READBACK PASS=" + JSON.stringify(checks.sceneReadback));
       console.log("PBR SURFACE READBACK PASS=" + JSON.stringify(checks.surfaceReadback));
       console.log("PBR FIRST FRAME COMPLETE");
+      console.log("RENDERER TELEMETRY ACCUMULATED=" + JSON.stringify(result.evidence));
       return;
     }
     waitStable(Math.min(1800, Math.max(0, deadline - Date.now())));
   }
   throw new Error("Runtime GLB/frame verification failed: " +
-    JSON.stringify({ checks, logcat: {
+    JSON.stringify({ checks: result.checks, telemetry: result.evidence, logcat: {
       ok: lastLogcat.ok,
       totalLines: lastLogcat.totalLines,
+      filteredLines: lastLogcat.filteredLines,
       rendererLines: lastLogcat.lines.length,
       error: lastLogcat.error
     } }));
@@ -625,6 +602,15 @@ try {
     throw new Error("3D board accessibility surface missing after 8s: " + JSON.stringify(treeLabels(boardSurface)).slice(0, 5000));
   }
   console.log("3D BOARD SURFACE PASS");
+  // Capture renderer startup and GLB markers immediately after the gameplay
+  // surface appears, before screenshot I/O can push them out of logcat's tail.
+  const rendererTelemetry = createRendererTelemetryAccumulator(REQUIRED_HERO_PARTS);
+  const initialRendererSnapshot = readRendererLogLines();
+  rendererTelemetry.observe(initialRendererSnapshot);
+  console.log("RENDERER TELEMETRY INITIAL SNAPSHOT=" + JSON.stringify(
+    rendererTelemetry.snapshot(parseFramebufferReadback).evidence
+  ));
+
   // Preserve an early capture even if renderer validation fails, but keep it
   // separate: GLSurfaceView may still be loading assets at this point.
   const preBoardShot = runAllowError(
@@ -635,7 +621,7 @@ try {
 
   let rendererFailure = null;
   try {
-    assertRuntimeGlbLoaded();
+    assertRuntimeGlbLoaded(16000, rendererTelemetry);
     console.log("3D BOARD RENDERER ASSERTIONS PASS");
   } catch (error) {
     rendererFailure = error;
