@@ -158,7 +158,17 @@ class MainActivity : Activity() {
             Build.VERSION.SDK_INT < Build.VERSION_CODES.R
         ) {
             val attributes = window.attributes
-            val requestedRefreshRate = if (name == "board" || name == "offline") 120f else 0f
+            val requestedRefreshRate = if (name == "board" || name == "offline") {
+                runCatching {
+                    windowManager.defaultDisplay.supportedModes
+                        .asSequence()
+                        .map { it.refreshRate }
+                        .filter { it.isFinite() && it >= 119.5f }
+                        .minByOrNull { kotlin.math.abs(it - 120f) }
+                }.getOrNull() ?: 0f
+            } else {
+                0f
+            }
             if (attributes.preferredRefreshRate != requestedRefreshRate) {
                 attributes.preferredRefreshRate = requestedRefreshRate
                 window.attributes = attributes
