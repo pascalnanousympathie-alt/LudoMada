@@ -1196,7 +1196,8 @@ class LudoBoardView(
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if(BuildConfig.DEBUG && !host.homePreview){
                 framePacingTelemetry.record(frameStartNanos,System.nanoTime())?.let { report ->
-                    android.util.Log.i("LudoMadaRender",report.toLogLine(host.displayRefreshRateHz()))
+                    val refreshRate=host.displayRefreshRateHz()
+                    host.post { android.util.Log.i("LudoMadaRender",report.toLogLine(refreshRate)) }
                 }
             }
         }

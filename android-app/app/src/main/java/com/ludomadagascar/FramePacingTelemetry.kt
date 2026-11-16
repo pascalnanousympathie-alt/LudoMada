@@ -16,6 +16,8 @@ internal class FramePacingTelemetry(
 ) {
     private val intervalsNanos=LongArray(capacity)
     private val renderWorkNanos=LongArray(capacity)
+    private val sortedIntervalsScratch=LongArray(capacity)
+    private val sortedRenderWorkScratch=LongArray(capacity)
     private var sampleCount=0
     private var burstStartNanos=0L
     private var lastFrameStartNanos=0L
@@ -59,9 +61,12 @@ internal class FramePacingTelemetry(
     }
 
     private fun createReport(spanNanos:Long):FramePacingReport {
-        val sortedIntervals=intervalsNanos.copyOf(sampleCount).apply { sort() }
-        val sortedWork=renderWorkNanos.copyOf(sampleCount).apply { sort() }
-        val totalIntervalNanos=intervalsNanos.take(sampleCount).sum()
+        System.arraycopy(intervalsNanos,0,sortedIntervalsScratch,0,sampleCount)
+        System.arraycopy(renderWorkNanos,0,sortedRenderWorkScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedIntervalsScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedRenderWorkScratch,0,sampleCount)
+        var totalIntervalNanos=0L
+        for(index in 0 until sampleCount)totalIntervalNanos+=intervalsNanos[index]
         val safeSpan=spanNanos.coerceAtLeast(1L)
         val averageFps=sampleCount.toDouble()*1_000_000_000.0/safeSpan.toDouble()
         val averageFrameMs=totalIntervalNanos.toDouble()/sampleCount/1_000_000.0
@@ -72,19 +77,19 @@ internal class FramePacingTelemetry(
             spanMs=safeSpan.toDouble()/1_000_000.0,
             averageFps=averageFps,
             averageFrameMs=averageFrameMs,
-            p50FrameMs=percentile(sortedIntervals,0.50),
-            p95FrameMs=percentile(sortedIntervals,0.95),
-            p99FrameMs=percentile(sortedIntervals,0.99),
-            maxFrameMs=sortedIntervals.last().toDouble()/1_000_000.0,
-            p95GlWorkMs=percentile(sortedWork,0.95),
+            p50FrameMs=percentile(sortedIntervalsScratch,sampleCount,0.50),
+            p95FrameMs=percentile(sortedIntervalsScratch,sampleCount,0.95),
+            p99FrameMs=percentile(sortedIntervalsScratch,sampleCount,0.99),
+            maxFrameMs=sortedIntervalsScratch[sampleCount-1].toDouble()/1_000_000.0,
+            p95GlWorkMs=percentile(sortedRenderWorkScratch,sampleCount,0.95),
             over120BudgetFrames=over120Budget,
             over60BudgetFrames=overRefreshBudget
         )
     }
 
-    private fun percentile(sorted:LongArray,quantile:Double):Double {
-        if(sorted.isEmpty())return 0.0
-        val index=(ceil(quantile*sorted.size).toInt()-1).coerceIn(0,sorted.lastIndex)
+    private fun percentile(sorted:LongArray,count:Int,quantile:Double):Double {
+        if(count<=0)return 0.0
+        val index=(ceil(quantile*count).toInt()-1).coerceIn(0,count-1)
         return sorted[index].toDouble()/1_000_000.0
     }
 
