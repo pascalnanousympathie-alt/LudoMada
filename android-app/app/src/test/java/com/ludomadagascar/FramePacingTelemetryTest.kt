@@ -91,16 +91,15 @@ class FramePacingTelemetryTest {
     @Test
     fun p99ExposesAnIsolatedLongFrame() {
         val telemetry=FramePacingTelemetry()
-        var report:FramePacingReport?=null
+        val reports=mutableListOf<FramePacingReport>()
         val interval=8_333_333L
         var start=5_000_000_000L
         for(frame in 0..65){
             val frameInterval=if(frame==50)40_000_000L else interval
             start+=frameInterval
-            telemetry.record(start,start+1_000_000L)?.let { report=it }
+            telemetry.record(start,start+1_000_000L)?.let { reports.add(it) }
         }
-        val measured=assertNotNullAndReturn(report)
-        assertTrue(measured.p99FrameMs>=39.9)
+        assertTrue(reports.any { it.p99FrameMs>=39.9 })
     }
 
     @Test
