@@ -61,7 +61,7 @@ class FramePacingTelemetryTest {
     fun fewerThanMinimumSamplesDoesNotEmitReport() {
         val telemetry=FramePacingTelemetry()
         val interval=33_333_333L
-        for(frame in 0..5){
+        for(frame in 0..2){
             val start=4_500_000_000L+frame*interval
             assertNull(telemetry.record(start,start+1_000_000L))
         }
@@ -72,19 +72,19 @@ class FramePacingTelemetryTest {
         val telemetry=FramePacingTelemetry()
         val interval=33_333_333L
         // A short first burst stays below the diagnostic minimum.
-        for(frame in 0..5){
+        for(frame in 0..1){
             val start=3_000_000_000L+frame*interval
             assertNull(telemetry.record(start,start+1_000_000L))
         }
-        // A gap greater than 500 ms resets the partial window before the next burst.
+        // A gap greater than 1 s resets the partial window before the next burst.
         val afterIdle=4_500_000_000L
         var report:FramePacingReport?=null
-        for(frame in 0..12){
+        for(frame in 0..6){
             val start=afterIdle+frame*interval
             telemetry.record(start,start+1_000_000L)?.let { report=it }
         }
         val measured=assertNotNullAndReturn(report)
-        assertTrue(measured.samples>=8)
+        assertTrue(measured.samples>=3)
         assertTrue(measured.averageFps in 29.0..31.0)
     }
 
@@ -108,10 +108,28 @@ class FramePacingTelemetryTest {
         val telemetry=FramePacingTelemetry()
         assertNull(telemetry.record(0L,1L))
         assertNull(telemetry.record(1_000L,900L))
-        for(frame in 0..20){
+        for(frame in 0..2){
             val start=10_000_000L+frame*8_333_333L
             assertNull(telemetry.record(start,start+500_000L))
         }
+    }
+
+
+    @Test
+    fun slowActiveBurstRetainsLongFrameIntervalsInsteadOfResettingAsIdle() {
+        val telemetry=FramePacingTelemetry()
+        val intervals=longArrayOf(80_000_000L,600_000_000L,80_000_000L,80_000_000L)
+        var start=6_000_000_000L
+        var report:FramePacingReport?=null
+        for(interval in intervals){
+            start+=interval
+            telemetry.record(start,start+2_000_000L)?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertTrue(measured.samples>=3)
+        assertTrue(measured.maxFrameMs>=599.0)
+        assertTrue(measured.averageFps<10.0)
     }
 
     private fun assertNotNullAndReturn(report:FramePacingReport?):FramePacingReport {
