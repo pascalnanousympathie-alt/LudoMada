@@ -462,16 +462,16 @@ function captureFailureLogcat() {
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
 
-function readRendererLogLines({ forcePbrLogFilter = false } = {}) {
-  // Prefer the full guest tail. Ramus --filter searches message text/stream,
-  // not Android tag metadata, so query message prefixes emitted by the renderer.
+function readRendererLogLines({ forcePackageFilter = false } = {}) {
+  // Ramus --filter selects an application/package stream, not message text.
+  // Query this app's package and then select renderer markers locally.
   const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
 
   // A snapshot can contain recent framebuffer markers while older startup/GLB
-  // markers are already outside the broad tail. Query message text, not the Android tag.
+  // markers are already outside the broad tail. Query this package's log stream.
   const startupIncomplete =
     !broadLines.some((line) => line.includes("Renderer=GLES3_PBR")) ||
     !broadLines.some((line) => line.includes("PBR_SURFACE_CREATED")) ||
@@ -480,16 +480,11 @@ function readRendererLogLines({ forcePbrLogFilter = false } = {}) {
     !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
   let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-  if (startupIncomplete || forcePbrLogFilter) {
-    const filterTerms = ["PBR_", "Renderer=GLES3_PBR", "GLB_RUNTIME_LOAD_OK"];
-    const filteredResults = filterTerms.map((term) => runAllowError(
-      "logcat", "--limit", "500", "--filter", term, "--session", session
-    ));
-    filtered = {
-      ok: filteredResults.some((result) => result.ok),
-      value: { error: filteredResults.every((result) => !result.ok) ? "renderer_message_filters_failed" : null }
-    };
-    filteredEntries = filteredResults.flatMap((result) => normalizeLogcatRows(result));
+  if (startupIncomplete || forcePackageFilter) {
+    filtered = runAllowError(
+      "logcat", "--limit", "500", "--filter", "com.ludomadagascar", "--session", session
+    );
+    filteredEntries = normalizeLogcatRows(filtered);
   }
 
   const filteredLines = filteredEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -503,7 +498,7 @@ function readRendererLogLines({ forcePbrLogFilter = false } = {}) {
     filteredLines: filteredEntries.length,
     filteredError: filtered.ok
       ? null
-      : String(filtered.value?.error || "renderer_message_filters_failed").slice(0, 120),
+      : String(filtered.value?.error || "package_logcat_unavailable").slice(0, 120),
     error: broad.ok || filtered.ok
       ? null
       : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
@@ -623,7 +618,7 @@ try {
   const capturePbrRendererTelemetry = (stage) => {
     waitStable(300);
     const filtered = runAllowError(
-      "logcat", "--limit", "250", "--filter", "PBR_", "--session", session
+      "logcat", "--limit", "250", "--filter", "com.ludomadagascar", "--session", session
     );
     const entries = normalizeLogcatRows(filtered);
     const lines = entries.map((entry) => entry.line)
@@ -803,7 +798,7 @@ try {
   success = true;
   // Query renderer message prefixes explicitly at the end. The broad guest tail
   // may retain startup markers while later system traffic rotates out frame samples.
-  const finalRendererSnapshot = readRendererLogLines({ forcePbrLogFilter: true });
+  const finalRendererSnapshot = readRendererLogLines({ forcePackageFilter: true });
   rendererTelemetry.observe(finalRendererSnapshot);
   const finalFramePacingLines = rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines;
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
