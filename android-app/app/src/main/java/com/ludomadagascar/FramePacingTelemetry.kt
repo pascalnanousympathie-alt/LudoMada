@@ -9,8 +9,8 @@ import kotlin.math.ceil
  * is not misreported as a rendering stall.
  */
 internal class FramePacingTelemetry(
-    private val minimumSamples:Int = 30,
-    private val minimumWindowNanos:Long = 500_000_000L,
+    private val minimumSamples:Int = 8,
+    private val minimumWindowNanos:Long = 200_000_000L,
     private val maximumBurstGapNanos:Long = 500_000_000L,
     private val capacity:Int = 240
 ) {

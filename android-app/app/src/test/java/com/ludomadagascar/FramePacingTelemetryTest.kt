@@ -41,6 +41,33 @@ class FramePacingTelemetryTest {
     }
 
     @Test
+    fun shortThirtyHzAnimationBurstProducesReport() {
+        val telemetry=FramePacingTelemetry()
+        var report:FramePacingReport?=null
+        val interval=33_333_333L
+        for(frame in 0..12){
+            val start=4_000_000_000L+frame*interval
+            telemetry.record(start,start+2_000_000L)?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertTrue(measured.averageFps in 29.0..31.0)
+        assertTrue(measured.p95FrameMs in 33.2..33.5)
+        assertEquals(measured.samples,measured.over120BudgetFrames)
+        assertEquals(measured.samples,measured.over60BudgetFrames)
+    }
+
+    @Test
+    fun fewerThanMinimumSamplesDoesNotEmitReport() {
+        val telemetry=FramePacingTelemetry()
+        val interval=33_333_333L
+        for(frame in 0..5){
+            val start=4_500_000_000L+frame*interval
+            assertNull(telemetry.record(start,start+1_000_000L))
+        }
+    }
+
+    @Test
     fun idleGapStartsANewAnimationBurst() {
         val telemetry=FramePacingTelemetry()
         val interval=8_333_333L
