@@ -122,6 +122,16 @@ test("rejects unknown framebuffer labels without constructing a dynamic regular 
   });
 });
 
+test("preserves the Ramus display refresh-rate marker even without a complete frame window", () => {
+  const telemetry = completeTelemetry();
+  telemetry.observe({
+    lines: ["I/LudoMadaRender: PBR_DISPLAY_REFRESH_HZ=60.0"]
+  });
+  const result = telemetry.snapshot(parseReadback);
+  assert.deepEqual(result.evidence.displayRefreshLines, ["PBR_DISPLAY_REFRESH_HZ=60.0"]);
+  assert.deepEqual(result.evidence.framePacingLines, []);
+});
+
 test("preserves renderer frame-pacing summaries for the Ramus smoke report", () => {
   const telemetry = completeTelemetry();
   telemetry.observe({

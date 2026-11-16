@@ -1071,6 +1071,9 @@ class LudoBoardView(
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
+            if(BuildConfig.DEBUG) {
+                android.util.Log.i("LudoMadaRender","PBR_DISPLAY_REFRESH_HZ="+host.displayRefreshRateHz())
+            }
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
                 " fill=" + premiumLighting.fillIntensity +
                 " rim=" + premiumLighting.rimIntensity +
