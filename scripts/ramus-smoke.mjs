@@ -492,7 +492,7 @@ function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
   return {
     ok: broad.ok || filtered.ok,
     broadOk: broad.ok,
-    filteredRequested: startupIncomplete || forcePackageFilter,
+    filteredRequested: startupIncomplete || forceRendererTagFilter,
     filteredOk: filtered.ok,
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
