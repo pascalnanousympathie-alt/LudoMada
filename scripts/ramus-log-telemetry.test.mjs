@@ -9,8 +9,8 @@ const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/65
 const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
 
 const READBACK_PATTERNS = Object.freeze({
-  scene_fbo: /PBR_READBACK label=scene_fbo\\s+size=\\d+x\\d+\\s+brightPixels=\\d+\\/\\d+\\s+maxChannel=\\d+/,
-  surface_backbuffer: /PBR_READBACK label=surface_backbuffer\\s+size=\\d+x\\d+\\s+brightPixels=\\d+\\/\\d+\\s+maxChannel=\\d+/
+  scene_fbo: /PBR_READBACK label=scene_fbo\s+size=\d+x\d+\s+brightPixels=\d+\/\d+\s+maxChannel=\d+/,
+  surface_backbuffer: /PBR_READBACK label=surface_backbuffer\s+size=\d+x\d+\s+brightPixels=\d+\/\d+\s+maxChannel=\d+/
 });
 
 function parseReadback(line, label) {
