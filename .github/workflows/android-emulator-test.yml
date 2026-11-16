@@ -8,6 +8,8 @@ on:
     paths:
       - 'android-app/**'
       - 'scripts/ramus-smoke.mjs'
+      - 'scripts/ramus-log-telemetry.mjs'
+      - 'scripts/ramus-log-telemetry.test.mjs'
       - '.github/workflows/android-emulator-test.yml'
 
 permissions:
