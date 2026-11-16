@@ -497,7 +497,7 @@ function readRendererLogLines({ forcePbrLogFilter = false } = {}) {
   return {
     ok: broad.ok || filtered.ok,
     broadOk: broad.ok,
-    filteredRequested: startupIncomplete || forceTagFilter,
+    filteredRequested: startupIncomplete || forcePbrLogFilter,
     filteredOk: filtered.ok,
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
