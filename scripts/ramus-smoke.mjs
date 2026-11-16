@@ -462,7 +462,7 @@ function captureFailureLogcat() {
   console.error("RAMUS_LOGCAT_FAILURE_DIAGNOSTICS_END");
 }
 
-function readRendererLogLines() {
+function readRendererLogLines({ forceTagFilter = false } = {}) {
   // Prefer the full guest tail. Some cloud sessions expose only system rows
   // there, so fall back to the proven LudoMadaRender tag filter when needed.
   const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ/i;
@@ -481,7 +481,7 @@ function readRendererLogLines() {
     !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
   let filtered = { ok: false, value: { error: "not_needed" } };
   let filteredEntries = [];
-  if (startupIncomplete) {
+  if (startupIncomplete || forceTagFilter) {
     filtered = runAllowError(
       "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
     );
@@ -765,7 +765,10 @@ try {
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
   success = true;
-  const finalRendererSnapshot = readRendererLogLines();
+  // Query the app renderer tag explicitly at the end. The broad 500-line
+  // guest tail may retain startup markers while newer system traffic has
+  // already pushed PBR_FRAME_PACING out of that tail.
+  const finalRendererSnapshot = readRendererLogLines({ forceTagFilter: true });
   rendererTelemetry.observe(finalRendererSnapshot);
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines
