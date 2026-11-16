@@ -70,20 +70,22 @@ class FramePacingTelemetryTest {
     @Test
     fun idleGapStartsANewAnimationBurst() {
         val telemetry=FramePacingTelemetry()
-        val interval=8_333_333L
-        var report:FramePacingReport?=null
-        for(frame in 0..30){
+        val interval=33_333_333L
+        // A short first burst stays below the diagnostic minimum.
+        for(frame in 0..5){
             val start=3_000_000_000L+frame*interval
-            telemetry.record(start,start+1_000_000L)?.let { report=it }
+            assertNull(telemetry.record(start,start+1_000_000L))
         }
-        assertNull(report)
+        // A gap greater than 500 ms resets the partial window before the next burst.
         val afterIdle=4_500_000_000L
-        for(frame in 0..65){
+        var report:FramePacingReport?=null
+        for(frame in 0..12){
             val start=afterIdle+frame*interval
             telemetry.record(start,start+1_000_000L)?.let { report=it }
         }
         val measured=assertNotNullAndReturn(report)
-        assertTrue(measured.samples>=60)
+        assertTrue(measured.samples>=8)
+        assertTrue(measured.averageFps in 29.0..31.0)
     }
 
     @Test
