@@ -8,9 +8,14 @@ import {
 const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
 const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
 
+const READBACK_PATTERNS = Object.freeze({
+  scene_fbo: /PBR_READBACK label=scene_fbo\\s+size=\\d+x\\d+\\s+brightPixels=\\d+\\/\\d+\\s+maxChannel=\\d+/,
+  surface_backbuffer: /PBR_READBACK label=surface_backbuffer\\s+size=\\d+x\\d+\\s+brightPixels=\\d+\\/\\d+\\s+maxChannel=\\d+/
+});
+
 function parseReadback(line, label) {
-  const validReadback = typeof line === "string" &&
-    new RegExp("PBR_READBACK label=" + label + "\\s+size=\\d+x\\d+\\s+brightPixels=\\d+/\\d+\\s+maxChannel=\\d+").test(line);
+  const pattern = READBACK_PATTERNS[label];
+  const validReadback = typeof line === "string" && pattern instanceof RegExp && pattern.test(line);
   return validReadback
     ? { ok: true, label }
     : { ok: false, reason: "missing_or_malformed_readback" };
@@ -108,6 +113,13 @@ test("does not infer successful GLB loading from failure markers", () => {
   assert.equal(result.evidence.boardLoadFailureSeen, true);
   assert.equal(result.checks.heroParts.length, 0);
   assert.equal(result.checks.boardParts, 0);
+});
+
+test("rejects unknown framebuffer labels without constructing a dynamic regular expression", () => {
+  assert.deepEqual(parseReadback(scene, "unexpected_label"), {
+    ok: false,
+    reason: "missing_or_malformed_readback"
+  });
 });
 
 test("uses the latest framebuffer readback, so a later bad sample cannot inherit an earlier pass", () => {
