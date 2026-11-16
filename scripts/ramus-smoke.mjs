@@ -492,8 +492,14 @@ function readRendererLogLines({ forceTagFilter = false } = {}) {
   const lines = [...new Set([...broadLines, ...filteredLines])];
   return {
     ok: broad.ok || filtered.ok,
+    broadOk: broad.ok,
+    filteredRequested: startupIncomplete || forceTagFilter,
+    filteredOk: filtered.ok,
     totalLines: broadEntries.length,
     filteredLines: filteredEntries.length,
+    filteredError: filtered.ok
+      ? null
+      : String(filtered.value?.error || "filtered_logcat_empty_or_unavailable").slice(0, 120),
     error: broad.ok || filtered.ok
       ? null
       : String(filtered.value?.error || broad.value?.error || "logcat_error").slice(0, 80),
@@ -773,6 +779,17 @@ try {
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines
   ));
+  console.log("RAMUS_RENDERER_FINAL_CAPTURE=" + JSON.stringify({
+    broadOk: finalRendererSnapshot.broadOk,
+    filteredRequested: finalRendererSnapshot.filteredRequested,
+    filteredOk: finalRendererSnapshot.filteredOk,
+    totalLines: finalRendererSnapshot.totalLines,
+    filteredLines: finalRendererSnapshot.filteredLines,
+    filteredError: finalRendererSnapshot.filteredError,
+    rendererLines: finalRendererSnapshot.lines.length,
+    framePacingMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_FRAME_PACING ")),
+    refreshRateMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_DISPLAY_REFRESH_HZ="))
+  }));
   console.log("RAMUS_DISPLAY_REFRESH_RATE=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence.displayRefreshLines
   ));
