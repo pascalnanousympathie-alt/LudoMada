@@ -465,6 +465,20 @@ function selfTestFramebufferReadback() {
     renderer: "Google SwiftShader",
     softwareFramePacing: true
   };
+  const missingRenderer120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33],
+    renderer: "",
+    softwareFramePacing: false
+  };
+  const pacedRenderer120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33],
+    renderer: "Mali-G51",
+    softwareFramePacing: true
+  };
   const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
     .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
@@ -502,6 +516,8 @@ function selfTestFramebufferReadback() {
     ["120fps acceptance is BLOCKED when Ramus has only a 60Hz display mode", evaluate120FpsAcceptance(displayProbe60HzFixture, passing120TelemetryFixture).status === "BLOCKED"],
     ["120fps acceptance PASS requires a 120Hz display, hardware renderer and 8.34ms P95 budget", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), passing120TelemetryFixture).status === "PASS"],
     ["120fps acceptance BLOCKED refuses SwiftShader even if the display supports 120Hz", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), software120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance BLOCKED refuses a missing renderer identity", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), missingRenderer120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance BLOCKED refuses any software-paced renderer", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), pacedRenderer120TelemetryFixture).status === "BLOCKED"],
     ["120fps acceptance FAIL rejects insufficient FPS on a hardware renderer", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), failing120TelemetryFixture).status === "FAIL"],
     ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
     ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
@@ -772,9 +788,20 @@ function evaluate120FpsAcceptance(displayProbe, telemetry) {
     };
   }
   const rendererIdentity = String(telemetry?.renderer ?? "").toLowerCase();
+  if (!rendererIdentity) {
+    return {
+      status: "BLOCKED",
+      reason: "renderer_identity_unavailable",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
   const softwareRenderer = ["swiftshader", "llvmpipe", "softpipe", "lavapipe"]
     .some(identity => rendererIdentity.includes(identity));
-  if (softwareRenderer) {
+  if (softwareRenderer || telemetry?.softwareFramePacing === true) {
     return {
       status: "BLOCKED",
       reason: "software_renderer_cannot_validate_production_gpu_fps",
