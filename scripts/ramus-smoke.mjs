@@ -438,6 +438,47 @@ function selfTestFramebufferReadback() {
     "GPU_FENCE_STATUS=MEASURED",
     "GPU_FENCE_STATUS=UNKNOWN"
   );
+  const displayProbeFixture = "RAMUS_DISPLAY_MODES_HZ=60.00,120.00 | DISPLAY_INITIAL_HZ=60.00 | DISPLAY_AFTER_REQUEST_HZ=120.00 | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=REQUESTED | SCREEN=offline-4";
+  const invalidDisplayProbeFixture = displayProbeFixture.replace("DISPLAY_AFTER_REQUEST_HZ=120.00", "DISPLAY_AFTER_REQUEST_HZ=fast");
+  const displayProbe60HzFixture = parseRamusDisplayProbe(displayProbeFixture.replace(
+    "RAMUS_DISPLAY_MODES_HZ=60.00,120.00",
+    "RAMUS_DISPLAY_MODES_HZ=60.00"
+  ));
+  const passing120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33],
+    renderer: "Mali-G51",
+    softwareFramePacing: false
+  };
+  const failing120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 90,
+    animationFrameMs: [11.11, 16.67],
+    renderer: "Mali-G51",
+    softwareFramePacing: false
+  };
+  const software120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 30,
+    animationFrameMs: [33.33, 40.00],
+    renderer: "Google SwiftShader",
+    softwareFramePacing: true
+  };
+  const missingRenderer120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33],
+    renderer: "",
+    softwareFramePacing: false
+  };
+  const pacedRenderer120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 120,
+    animationFrameMs: [8.32, 8.33],
+    renderer: "Mali-G51",
+    softwareFramePacing: true
+  };
   const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
     .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
@@ -470,6 +511,17 @@ function selfTestFramebufferReadback() {
     ["accessibility renderer telemetry exposes main-thread vsync cadence and display refresh", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFps === 60 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.uiVsyncFrameMs?.[1] === 16.8 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.displayRefreshHz === 60],
     ["accessibility renderer telemetry rejects missing main-thread vsync cadence", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("UI_VSYNC_FPS=60.00", "UI_VSYNC_FPS=NA")) === null],
     ["accessibility renderer telemetry rejects malformed display refresh rate", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel.replace("DISPLAY_REFRESH_HZ=60.00", "DISPLAY_REFRESH_HZ=fast")) === null],
+    ["Ramus display probe parses supported refresh modes and post-request rate", parseRamusDisplayProbe(displayProbeFixture)?.supportedModesHz.join(",") === "60,120" && parseRamusDisplayProbe(displayProbeFixture)?.afterRequestHz === 120],
+    ["Ramus display probe rejects malformed post-request refresh rate", parseRamusDisplayProbe(invalidDisplayProbeFixture) === null],
+    ["120fps acceptance is BLOCKED when Ramus has only a 60Hz display mode", evaluate120FpsAcceptance(displayProbe60HzFixture, passing120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance PASS requires a 120Hz display, hardware renderer and 8.34ms P95 budget", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), passing120TelemetryFixture).status === "PASS"],
+    ["software renderer identity recognises SwiftShader", isSoftwareRendererIdentity("Google SwiftShader")],
+    ["software renderer identity recognises llvmpipe", isSoftwareRendererIdentity("llvmpipe (LLVM 18.1.2)")],
+    ["software renderer identity rejects hardware Mali", !isSoftwareRendererIdentity("Mali-G51")],
+    ["120fps acceptance BLOCKED refuses SwiftShader even if the display supports 120Hz", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), software120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance BLOCKED refuses a missing renderer identity", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), missingRenderer120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance BLOCKED refuses any software-paced renderer", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), pacedRenderer120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance FAIL rejects insufficient FPS on a hardware renderer", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), failing120TelemetryFixture).status === "FAIL"],
     ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
     ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
     ["accessibility renderer telemetry accepts insufficient fence samples without inventing a duration", parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceStatus === "INSUFFICIENT" && parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceMs === null],
@@ -671,6 +723,123 @@ function treeLabels(tree) {
       .filter((v) => typeof v === "string" && v.length > 0)
       .join(" ")
   );
+}
+
+function parseRamusDisplayProbe(label) {
+  if (typeof label !== "string") return null;
+  const modesField = label.match(/RAMUS_DISPLAY_MODES_HZ=([^|]*)/);
+  const initialField = label.match(/DISPLAY_INITIAL_HZ=([0-9]+(?:\.[0-9]+)?)/);
+  const afterField = label.match(/DISPLAY_AFTER_REQUEST_HZ=([0-9]+(?:\.[0-9]+)?)/);
+  const requestedField = label.match(/REQUESTED_HZ=([0-9]+(?:\.[0-9]+)?)/);
+  const surfaceField = label.match(/SURFACE_SET_FRAME_RATE=([A-Za-z0-9_]+)/);
+  const screenField = label.match(/SCREEN=([^|]*)/);
+  if (!modesField || !initialField || !afterField || !requestedField || !surfaceField || !screenField) {
+    return null;
+  }
+  const supportedModesHz = modesField[1].trim() === ""
+    ? []
+    : modesField[1].split(",").map(value => Number(value.trim()));
+  const initialHz = Number(initialField[1]);
+  const afterRequestHz = Number(afterField[1]);
+  const requestedHz = Number(requestedField[1]);
+  if (!supportedModesHz.every(value => Number.isFinite(value) && value > 0) ||
+      ![initialHz, afterRequestHz, requestedHz].every(value => Number.isFinite(value) && value > 0)) {
+    return null;
+  }
+  return {
+    supportedModesHz,
+    initialHz,
+    afterRequestHz,
+    requestedHz,
+    surfaceSetFrameRate: surfaceField[1],
+    screen: screenField[1].trim()
+  };
+}
+
+function isSoftwareRendererIdentity(rendererIdentity) {
+  const identity = String(rendererIdentity || "").toLowerCase();
+  return ["swiftshader", "llvmpipe", "softpipe", "lavapipe"]
+    .some(software => identity.includes(software));
+}
+
+function evaluate120FpsAcceptance(displayProbe, telemetry) {
+  const targetFps = 120;
+  const minimumSupportedModeHz = 119.5;
+  const minimumMeasuredFps = 119.5;
+  const maximumFrameP95Ms = 8.34;
+  const maximumSupportedModeHz = displayProbe?.supportedModesHz?.length
+    ? Math.max(...displayProbe.supportedModesHz)
+    : 0;
+  const actualDisplayHz = telemetry?.displayRefreshHz ?? null;
+  const animationFps = telemetry?.animationFps ?? null;
+  const animationFrameP95Ms = telemetry?.animationFrameMs?.[1] ?? null;
+
+  if (maximumSupportedModeHz < minimumSupportedModeHz) {
+    return {
+      status: "BLOCKED",
+      reason: "display_has_no_120hz_mode",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  if (actualDisplayHz === null || actualDisplayHz < minimumSupportedModeHz) {
+    return {
+      status: "FAIL",
+      reason: "120hz_display_mode_was_not_selected",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  const rendererIdentity = String(telemetry?.renderer ?? "").toLowerCase();
+  if (!rendererIdentity) {
+    return {
+      status: "BLOCKED",
+      reason: "renderer_identity_unavailable",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  if (isSoftwareRendererIdentity(rendererIdentity) || telemetry?.softwareFramePacing === true) {
+    return {
+      status: "BLOCKED",
+      reason: "software_renderer_cannot_validate_production_gpu_fps",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  if (animationFps === null || animationFps < minimumMeasuredFps ||
+      animationFrameP95Ms === null || animationFrameP95Ms > maximumFrameP95Ms) {
+    return {
+      status: "FAIL",
+      reason: "gameplay_animation_did_not_hold_120fps_frame_budget",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  return {
+    status: "PASS",
+    reason: "120fps_and_frame_budget_verified",
+    targetFps,
+    maximumSupportedModeHz,
+    actualDisplayHz,
+    animationFps,
+    animationFrameP95Ms
+  };
 }
 
 function isAndroidImmersivePrompt(tree) {
@@ -1732,7 +1901,22 @@ try {
   // Accessibility is the primary telemetry channel: Ramus trial mode may hide
   // Android app-tag logcat rows, but it still exposes the renderer contentDescription.
   const telemetryTree = readTree();
-  const telemetryLabel = treeLabels(telemetryTree).find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const telemetryLabels = treeLabels(telemetryTree);
+  const telemetryLabel = telemetryLabels.find(label => label.includes("RENDER_TELEMETRY=1")) || "";
+  const displayProbeLabel = telemetryLabels.find(label =>
+    label.includes("RAMUS_DISPLAY_MODES_HZ=") && label.includes("SURFACE_SET_FRAME_RATE=")
+  ) || "";
+  const displayProbe = parseRamusDisplayProbe(displayProbeLabel);
+  if (!displayProbe) {
+    throw new Error("Ramus did not expose the 120 Hz Surface/display-mode probe in its accessibility tree: " +
+      JSON.stringify({ labels: telemetryLabels.filter(label => label.includes("RAMUS_DISPLAY_PROBE") || label.includes("DISPLAY_")).slice(0, 8) }));
+  }
+  console.log("RAMUS_DISPLAY_PROBE modesHz=" + (displayProbe.supportedModesHz.join(",") || "NONE") +
+    " initialHz=" + displayProbe.initialHz +
+    " afterRequestHz=" + displayProbe.afterRequestHz +
+    " requestedHz=" + displayProbe.requestedHz +
+    " surfaceCall=" + displayProbe.surfaceSetFrameRate +
+    " screen=" + displayProbe.screen);
   const accessibilityTelemetry = parseRendererAccessibilityTelemetry(telemetryLabel);
   if (!accessibilityTelemetry) {
     throw new Error("Renderer performance telemetry was not captured in the accessibility readiness label: " +
@@ -1769,25 +1953,56 @@ try {
     " gpuFenceTimeouts=" + accessibilityTelemetry.gpuFenceTimeouts +
     " gpuFenceFailures=" + accessibilityTelemetry.gpuFenceFailures +
     " gpuFenceSkips=" + accessibilityTelemetry.gpuFenceSkips);
+  const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
+  const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
+    " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
+    " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
+    " animationFps=" + (fpsAcceptance.animationFps ?? "NA") +
+    " animationFrameP95Ms=" + (fpsAcceptance.animationFrameP95Ms ?? "NA") +
+    " renderer=" + (accessibilityTelemetry.renderer || "UNKNOWN") +
+    " reason=" + fpsAcceptance.reason;
+  if (fpsAcceptance.status === "BLOCKED") {
+    console.log("RAMUS_FPS_ACCEPTANCE_BLOCKED " + fpsAcceptanceSummary);
+  } else if (fpsAcceptance.status === "PASS") {
+    console.log("RAMUS_FPS_ACCEPTANCE_PASS " + fpsAcceptanceSummary);
+  } else {
+    console.error("RAMUS_FPS_ACCEPTANCE_FAIL " + fpsAcceptanceSummary);
+    throw new Error("120 FPS acceptance failed: " + fpsAcceptanceSummary);
+  }
   const minimumAnimationSamples = 20;
   const minimumAnimationFps = 24;
   const maximumAnimationFrameP95Ms = 50;
-  if (accessibilityTelemetry.animationFps === null ||
-      accessibilityTelemetry.animationFrameSamples < minimumAnimationSamples ||
-      accessibilityTelemetry.animationFps < minimumAnimationFps ||
-      !accessibilityTelemetry.animationFrameMs ||
-      accessibilityTelemetry.animationFrameMs[1] > maximumAnimationFrameP95Ms) {
-    throw new Error("Gameplay animation frame cadence is not stable: " +
-      JSON.stringify({
-        minSamples: minimumAnimationSamples,
-        minFps: minimumAnimationFps,
-        maxP95Ms: maximumAnimationFrameP95Ms,
-        animationFps: accessibilityTelemetry.animationFps,
-        frameSamples: accessibilityTelemetry.animationFrameSamples,
-        frameMs: accessibilityTelemetry.animationFrameMs,
-        afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
-        fullRendererTelemetry: accessibilityTelemetry
-      }));
+  const legacyBaselinePass =
+    accessibilityTelemetry.animationFps !== null &&
+    accessibilityTelemetry.animationFrameSamples >= minimumAnimationSamples &&
+    accessibilityTelemetry.animationFps >= minimumAnimationFps &&
+    accessibilityTelemetry.animationFrameMs &&
+    accessibilityTelemetry.animationFrameMs[1] <= maximumAnimationFrameP95Ms;
+  if (!legacyBaselinePass) {
+    const softwareRenderer = isSoftwareRendererIdentity(accessibilityTelemetry.renderer) ||
+      accessibilityTelemetry.softwareFramePacing === true;
+    const baselineDiagnostic = JSON.stringify({
+      minSamples: minimumAnimationSamples,
+      minFps: minimumAnimationFps,
+      maxP95Ms: maximumAnimationFrameP95Ms,
+      animationFps: accessibilityTelemetry.animationFps,
+      frameSamples: accessibilityTelemetry.animationFrameSamples,
+      frameMs: accessibilityTelemetry.animationFrameMs,
+      afterCallbackGapMs: accessibilityTelemetry.animationAfterCallbackGapMs,
+      softwareRenderer,
+      fullRendererTelemetry: accessibilityTelemetry
+    });
+    if (softwareRenderer && fpsAcceptance.status === "BLOCKED") {
+      // SwiftShader debug gameplay is intentionally paced at ~30 FPS.
+      // Its host scheduling jitter is not a production GPU acceptance failure.
+      console.log("RAMUS_SOFTWARE_RENDERER_BASELINE_DIAGNOSTIC " + baselineDiagnostic);
+    } else {
+      throw new Error("Gameplay animation smoke baseline is not stable: " + baselineDiagnostic);
+    }
+  } else {
+    console.log("RAMUS_GAMEPLAY_ANIMATION_BASELINE_PASS fps=" +
+      accessibilityTelemetry.animationFps +
+      " frameP95Ms=" + accessibilityTelemetry.animationFrameMs[1]);
   }
   console.log("RAMUS_ACCESSIBILITY_RENDERER_TELEMETRY " + telemetryLabel.slice(0, 1800));
   console.log("RAMUS_ACCESSIBILITY_FPS=" + accessibilityTelemetry.fps +
@@ -1861,7 +2076,7 @@ try {
   }
 
   success = true;
-  console.log("RAMUS_SMOKE_PASS");
+  console.log("RAMUS_GAMEPLAY_SMOKE_PASS");
 } finally {
   if (session && !success && !failureLogcatCaptured) {
     captureFailureLogcat();

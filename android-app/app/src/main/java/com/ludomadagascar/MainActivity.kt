@@ -1,6 +1,7 @@
 package com.ludomadagascar
 
 import android.app.*
+import android.os.Build
 import android.os.Bundle
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
@@ -49,6 +50,79 @@ class MainActivity : Activity() {
 
     private fun dp(v:Int) = (v * resources.displayMetrics.density).toInt()
     private fun dp(v:Float) = (v * resources.displayMetrics.density).toInt()
+
+    private fun createGameplayRefreshProbe(): TextView? {
+        if (!BuildConfig.DEBUG) return null
+        return label("Hz:?", 8f, false, Color.rgb(112, 121, 137)).apply {
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            contentDescription = "RAMUS_DISPLAY_PROBE=WAITING"
+        }
+    }
+
+    private fun request120HzForGameplaySurface(host: LudoBoardView, screen: String, probe: TextView?) {
+        // Android 11+ supports a frame-rate hint on the actual gameplay Surface.
+        // The hint is safe on 60 Hz displays: Android keeps the current supported mode.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+
+        val diagnosticsEnabled = BuildConfig.DEBUG && probe != null
+        val initialDisplay = host.display ?: windowManager.defaultDisplay
+        val supportedRates = if (diagnosticsEnabled) runCatching {
+            initialDisplay.supportedModes.map { it.refreshRate }.distinct().sorted()
+        }.getOrDefault(emptyList()) else emptyList()
+        val supportedText = supportedRates.joinToString(",") { String.format(Locale.US, "%.2f", it) }
+        val currentModeHz = if (diagnosticsEnabled) initialDisplay.refreshRate else 0f
+        var requestAppliedToCurrentSurface = false
+
+        fun applyFrameRateRequest(holder: SurfaceHolder) {
+            if (!holder.surface.isValid || requestAppliedToCurrentSurface) return
+            requestAppliedToCurrentSurface = true
+            val surfaceResult = runCatching {
+                holder.surface.setFrameRate(120f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                "REQUESTED"
+            }.getOrElse { "FAILED_${it.javaClass.simpleName}" }
+
+            if (!diagnosticsEnabled) return
+
+            // Display mode switching is asynchronous. Sample after the request and
+            // retry briefly so the diagnostic captures the selected mode, not the
+            // immediately-read pre-switch refresh rate.
+            var remainingSamples = 6
+            val sampleDisplayRate = object : Runnable {
+                override fun run() {
+                    if (!holder.surface.isValid) return
+                    val liveDisplay = host.display ?: windowManager.defaultDisplay
+                    val actualHz = liveDisplay.refreshRate
+                    val detail = "RAMUS_DISPLAY_MODES_HZ=$supportedText | DISPLAY_INITIAL_HZ=${String.format(Locale.US, "%.2f", currentModeHz)} | DISPLAY_AFTER_REQUEST_HZ=${String.format(Locale.US, "%.2f", actualHz)} | REQUESTED_HZ=120 | SURFACE_SET_FRAME_RATE=$surfaceResult | SCREEN=$screen"
+                    probe?.post {
+                        probe.text = "Hz:${String.format(Locale.US, "%.0f", actualHz)} [$supportedText]"
+                        probe.contentDescription = detail
+                    }
+                    android.util.Log.i("LudoMadaDisplay", detail)
+                    remainingSamples -= 1
+                    if (actualHz < 119.5f && remainingSamples > 0) {
+                        host.postDelayed(this, 500L)
+                    }
+                }
+            }
+            host.postDelayed(sampleDisplayRate, 250L)
+        }
+
+        val callback = object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                applyFrameRateRequest(holder)
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                applyFrameRateRequest(holder)
+            }
+            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                requestAppliedToCurrentSurface = false
+            }
+        }
+        host.holder.addCallback(callback)
+        host.post {
+            if (host.holder.surface.isValid) applyFrameRateRequest(host.holder)
+        }
+    }
     private fun shape(color:Int, radius:Float=20f, stroke:Int?=null) = GradientDrawable().apply {
         setColor(color); cornerRadius = dp(radius.toInt()).toFloat()
         if (stroke != null) setStroke(dp(1), stroke)
@@ -78,6 +152,28 @@ class MainActivity : Activity() {
     }
     private fun page(name:String, title:String): LinearLayout {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_VISIBLE
+        // Before Surface.setFrameRate() was added in API 30, use the window
+        // preference as a compatibility hint when a device supports high refresh.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.R
+        ) {
+            val attributes = window.attributes
+            val requestedRefreshRate = if (name == "board" || name == "offline") {
+                runCatching {
+                    windowManager.defaultDisplay.supportedModes
+                        .asSequence()
+                        .map { it.refreshRate }
+                        .filter { it.isFinite() && it >= 119.5f }
+                        .minByOrNull { kotlin.math.abs(it - 120f) }
+                }.getOrNull() ?: 0f
+            } else {
+                0f
+            }
+            if (attributes.preferredRefreshRate != requestedRefreshRate) {
+                attributes.preferredRefreshRate = requestedRefreshRate
+                window.attributes = attributes
+            }
+        }
         if(currentScreen!=name) pauseBoardViews()
         if(name!="board") stopGameEventStream()
         currentScreen=name
@@ -746,6 +842,8 @@ class MainActivity : Activity() {
             Color.rgb(37,93,196)
         )
         info.addView(status,LinearLayout.LayoutParams(0,-2,1f))
+        val refreshProbe = createGameplayRefreshProbe()
+        refreshProbe?.let { info.addView(it, LinearLayout.LayoutParams(-2, -2)) }
         info.addView(label("HORS-LIGNE",if (compactLandscape) 11f else 13f,true,Color.rgb(130,85,180)))
         if (compactLandscape) add(info,30,0,3) else add(info,34,0,5)
 
@@ -753,6 +851,7 @@ class MainActivity : Activity() {
         root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{
             setMargins(0,if (compactLandscape) dp(2) else dp(4),0,if (compactLandscape) dp(4) else dp(8))
         })
+        request120HzForGameplaySurface(host, "offline-$players", refreshProbe)
         host.animateState()
 
         if (compactLandscape) {
@@ -877,7 +976,10 @@ class MainActivity : Activity() {
     }
     private fun board(){page("board","Lalao")
         val info=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL}
-        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)));add(info,32,0,3)
+        val st=label("",13f,true,Color.rgb(37,93,196));info.addView(st,LinearLayout.LayoutParams(0,-2,1f));info.addView(label("$entryFee Ar",15f,true,Color.rgb(235,170,25)))
+        val refreshProbe = createGameplayRefreshProbe()
+        refreshProbe?.let { info.addView(it, LinearLayout.LayoutParams(-2, -2)) }
+        add(info,32,0,3)
 supremeOnlineUiState.value = SupremeOnlineStateAdapter.fromServer(state,userId,username)
 val supremeStrip=ComposeView(this).apply{
     setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
@@ -886,6 +988,7 @@ val supremeStrip=ComposeView(this).apply{
 }
 add(supremeStrip,62,0,4)
         val host=LudoBoardView(this, onRollTap = { if(currentScreen=="board") roll() }, onPawnTap = { tokenIndex -> if(currentScreen=="board") move(tokenIndex) }); boardHost=host; root.addView(host,LinearLayout.LayoutParams(-1,0,1f).apply{setMargins(0,dp(4),0,dp(8))})
+        request120HzForGameplaySurface(host, "online", refreshProbe)
         status=st
         add(button("🎲 Lancer le dé",Color.rgb(235,170,25)){roll()},54)
         add(button("↻ Synchroniser",Color.rgb(37,93,196)){refreshState()},52)
