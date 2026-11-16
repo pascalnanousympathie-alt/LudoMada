@@ -66,8 +66,11 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/release/app-release-unsigned.apk
 
-      - name: Verify 3D model is packaged in the debug APK
-        run: node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify 3D assets are packaged in debug and release APKs
+        run: |
+          set -eu
+          node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/debug/app-debug.apk
+          node ../scripts/check-apk-3d-asset.mjs app/build/outputs/apk/release/app-release-unsigned.apk
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
