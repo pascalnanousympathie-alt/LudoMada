@@ -447,12 +447,23 @@ function selfTestFramebufferReadback() {
   const passing120TelemetryFixture = {
     displayRefreshHz: 120,
     animationFps: 120,
-    animationFrameMs: [8.32, 8.33]
+    animationFrameMs: [8.32, 8.33],
+    renderer: "Mali-G51",
+    softwareFramePacing: false
   };
   const failing120TelemetryFixture = {
     displayRefreshHz: 120,
     animationFps: 90,
-    animationFrameMs: [11.11, 16.67]
+    animationFrameMs: [11.11, 16.67],
+    renderer: "Mali-G51",
+    softwareFramePacing: false
+  };
+  const software120TelemetryFixture = {
+    displayRefreshHz: 120,
+    animationFps: 30,
+    animationFrameMs: [33.33, 40.00],
+    renderer: "Google SwiftShader",
+    softwareFramePacing: true
   };
   const insufficientGpuFenceTelemetry = accessibilityTelemetryLabel
     .replace("GPU_FENCE_STATUS=MEASURED", "GPU_FENCE_STATUS=INSUFFICIENT")
@@ -489,8 +500,9 @@ function selfTestFramebufferReadback() {
     ["Ramus display probe parses supported refresh modes and post-request rate", parseRamusDisplayProbe(displayProbeFixture)?.supportedModesHz.join(",") === "60,120" && parseRamusDisplayProbe(displayProbeFixture)?.afterRequestHz === 120],
     ["Ramus display probe rejects malformed post-request refresh rate", parseRamusDisplayProbe(invalidDisplayProbeFixture) === null],
     ["120fps acceptance is BLOCKED when Ramus has only a 60Hz display mode", evaluate120FpsAcceptance(displayProbe60HzFixture, passing120TelemetryFixture).status === "BLOCKED"],
-    ["120fps acceptance PASS requires a 120Hz display and 8.34ms P95 budget", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), passing120TelemetryFixture).status === "PASS"],
-    ["120fps acceptance FAIL rejects insufficient animation FPS", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), failing120TelemetryFixture).status === "FAIL"],
+    ["120fps acceptance PASS requires a 120Hz display, hardware renderer and 8.34ms P95 budget", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), passing120TelemetryFixture).status === "PASS"],
+    ["120fps acceptance BLOCKED refuses SwiftShader even if the display supports 120Hz", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), software120TelemetryFixture).status === "BLOCKED"],
+    ["120fps acceptance FAIL rejects insufficient FPS on a hardware renderer", evaluate120FpsAcceptance(parseRamusDisplayProbe(displayProbeFixture), failing120TelemetryFixture).status === "FAIL"],
     ["accessibility renderer telemetry exposes non-blocking GLES fence completion delay", parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceStatus === "MEASURED" && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFenceMs?.[1] === 84 && parseRendererAccessibilityTelemetry(accessibilityTelemetryLabel)?.gpuFencePending === 1],
     ["accessibility renderer telemetry rejects invalid GLES fence status", parseRendererAccessibilityTelemetry(invalidGpuFenceTelemetry) === null],
     ["accessibility renderer telemetry accepts insufficient fence samples without inventing a duration", parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceStatus === "INSUFFICIENT" && parseRendererAccessibilityTelemetry(insufficientGpuFenceTelemetry)?.gpuFenceMs === null],
@@ -752,6 +764,20 @@ function evaluate120FpsAcceptance(displayProbe, telemetry) {
     return {
       status: "FAIL",
       reason: "120hz_display_mode_was_not_selected",
+      targetFps,
+      maximumSupportedModeHz,
+      actualDisplayHz,
+      animationFps,
+      animationFrameP95Ms
+    };
+  }
+  const rendererIdentity = String(telemetry?.renderer ?? "").toLowerCase();
+  const softwareRenderer = ["swiftshader", "llvmpipe", "softpipe", "lavapipe"]
+    .some(identity => rendererIdentity.includes(identity));
+  if (softwareRenderer) {
+    return {
+      status: "BLOCKED",
+      reason: "software_renderer_cannot_validate_production_gpu_fps",
       targetFps,
       maximumSupportedModeHz,
       actualDisplayHz,
@@ -1899,6 +1925,7 @@ try {
     " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
     " animationFps=" + (fpsAcceptance.animationFps ?? "NA") +
     " animationFrameP95Ms=" + (fpsAcceptance.animationFrameP95Ms ?? "NA") +
+    " renderer=" + (accessibilityTelemetry.renderer || "UNKNOWN") +
     " reason=" + fpsAcceptance.reason;
   if (fpsAcceptance.status === "BLOCKED") {
     console.log("RAMUS_FPS_ACCEPTANCE_BLOCKED " + fpsAcceptanceSummary);
