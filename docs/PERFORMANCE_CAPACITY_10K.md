@@ -128,3 +128,29 @@ Release Gate run `41274004862` on head `28092a3ad0b6a270f55f46553c058c55716bdae3
 The next capacity run emits one API-process telemetry sample every five seconds, only when both the strict disposable-CI capacity guard and `LUDOMADA_CAPACITY_RUNTIME_TELEMETRY=true` are active. It records API process CPU time, event-loop delay percentiles, memory, state-read concurrency/outcomes, PostgreSQL pool counters and cache counters. It adds no public metrics endpoint and no per-request hot-path logging. The new guard has explicit tests for normal, local-CI and external-database environments.
 
 **Status remains NOT CERTIFIED.** This instrumentation is diagnostic, not a capacity fix. The next run must correlate API CPU/event-loop samples with Artillery's TCP timings; production certification still requires a separate load generator and approved staging topology.
+
+
+## Seventh measured benchmark — 2026-11-01 (cache warm; strict gate; failed)
+
+Release Gate run `41286589821` on PR #162 head `b50d82c4d5ac7044d599b1edff10b611cbec6743` ran the authenticated participant-authorized state-read profile at a configured 10,000 arrivals/sec. The strict Artillery conditions and independent SLO validator rejected the result:
+
+- 300,334 virtual users created; 203,054 completed HTTP 200 responses; 97,280 virtual users failed (**32.39%**).
+- Aggregate observed request throughput: **2,686 RPS**.
+- HTTP response p95 **528.6 ms**, p99 **2,186.8 ms**; end-to-end `http.total` p95 **1,200.1 ms**, p99 **11,274.1 ms**.
+- TCP connect p95 **7,260.8 ms**, p99 **11,274.1 ms**.
+- Client errors: **95,075 `ERR_SOCKET_TIMEOUT`**, **2,205 `ECONNRESET`**.
+- All strict throughput, error-rate, p95 and p99 conditions failed.
+
+The read-only SQL plan sampled before the load phase used indexes for `Game`, `AuthoritativeGameState` and `GameParticipant`; it recorded 18 shared-buffer hits, zero shared-buffer reads, zero temporary blocks, planning **0.656 ms** and execution **0.269 ms**. This is only a warm pre-load query-plan sample, not proof of unbounded PostgreSQL capacity.
+
+The previous runtime telemetry from this shared four-vCPU runner showed API CPU median **91.8%** and maximum **114.7% of one core**; event-loop delay p95/p99 reached **523/607 ms**. Artillery, API and PostgreSQL were co-located on that runner. The high client TCP latency and socket timeout totals, together with event-loop saturation, mean the benchmark still cannot isolate the API from generator/host contention.
+
+### Multi-worker safety boundary
+
+The current `src/realtime/gameEventHub.ts` stores subscribers in process-local `Map` instances. The optional game-state read cache introduced on this branch is also process-local. A request routed to one worker cannot rely on another worker's in-memory SSE subscribers or cache invalidation. Do not enable multiple API workers/replicas with this topology: implement and test shared event fan-out/pub-sub and cross-worker cache invalidation first. Keep authorization, game row locking, idempotency and public rate limits intact.
+
+### Follow-on hot-path patch
+
+PR #230 separately makes per-request state timing logs and the one-second pool status logger opt-in. Its exact-head backend tests (40/40), Security Audit and 80 RPS health smoke passed; the Android build job is tracked on that PR. This removes avoidable logging work but does **not** establish 10k RPS.
+
+**Status remains NOT CERTIFIED.** The next defensible benchmark needs an independent load generator and an explicitly isolated API/database topology. The 10k authenticated game-state read gate remains failed; roll/move write and mixed-traffic capacity have not been certified. No production deployment or capacity claim is made from this CI run.
