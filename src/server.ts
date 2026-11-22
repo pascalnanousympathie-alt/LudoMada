@@ -1879,7 +1879,7 @@ try{
       const beforeResponseMs = Number(process.hrtime.bigint() - routeStart) / 1e6;
       const totalMs = Number(process.hrtime.bigint() - totalStart) / 1e6;
       console.log("STATE_DETAILED_TIMING",{
-        routeBeforeQueryMs:Number((queryStart-routeStart)/1_000_000n),
+        routeBeforeQueryMs:Number((Number(queryStart-routeStart)/1e6).toFixed(2)),
         queryMs:Number(queryMs.toFixed(2)),
         beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
         totalMs:Number(totalMs.toFixed(2)),
