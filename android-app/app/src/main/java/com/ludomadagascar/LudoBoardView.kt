@@ -39,7 +39,7 @@ import kotlin.math.sign
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private fun portraitAwareVerticalFov(
+internal fun portraitAwareVerticalFov(
     aspect:Float,
     targetHorizontalFov:Float,
     landscapeVerticalFov:Float
@@ -49,6 +49,28 @@ private fun portraitAwareVerticalFov(
     val halfHorizontal = Math.toRadians(targetHorizontalFov.toDouble() * 0.5)
     val vertical = 2.0 * Math.atan(Math.tan(halfHorizontal) / safeAspect)
     return Math.toDegrees(vertical).toFloat().coerceIn(34f, 104f)
+}
+
+/**
+ * Shared gameplay camera framing for GLES2 and GLES3.
+ *
+ * Wide landscape gameplay is constrained by viewport height, not width. Keep
+ * a 38-degree vertical FOV there so the near and far Home zones and their
+ * corner dice trays remain inside the surface. Portrait keeps a fixed
+ * horizontal FOV so all four board corners remain visible on narrow displays.
+ */
+internal fun gameplayBoardVerticalFov(aspect:Float, homePreview:Boolean):Float {
+    val gameplayHorizontalFov = if (aspect < 0.80f) 42f else 45f
+    val landscapeVerticalFov = when {
+        homePreview -> 38f
+        aspect > 1.35f -> 38f
+        else -> 34f
+    }
+    return portraitAwareVerticalFov(
+        aspect,
+        if (homePreview) 48f else gameplayHorizontalFov,
+        landscapeVerticalFov
+    )
 }
 
 class LudoBoardView(
@@ -1024,12 +1046,7 @@ class LudoBoardView(
             // Closer oblique tabletop framing: the board must fill the landscape playfield.
             val cameraY = if (homePreview) 8.4f else 13.2f
             val cameraZ = if (homePreview) 9.4f else 4.2f
-            val gameplayHorizontalFov = if (aspect < 0.80f) 42f else 45f
-            val fov = portraitAwareVerticalFov(
-                aspect,
-                if (homePreview) 48f else gameplayHorizontalFov,
-                if (homePreview) 34f else 38f
-            )
+            val fov = gameplayBoardVerticalFov(aspect, homePreview)
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f)
             Matrix.setLookAtM(
                 view,0,0f,cameraY,cameraZ,
@@ -2011,12 +2028,7 @@ class LudoBoardView(
             val shakeX=sin(now/6_000_000.0).toFloat()*rollEnergy*0.055f
             val shakeZ=cos(now/7_000_000.0).toFloat()*rollEnergy*0.040f
             val camZ=baseCamZ+shakeZ
-            val gameplayHorizontalFov=if(aspect<0.80f)42f else 45f
-            val fov=portraitAwareVerticalFov(
-                aspect,
-                if (host.homePreview) 48f else gameplayHorizontalFov,
-                if (host.homePreview) 38f else if(land)31f else 34f
-            )
+            val fov=gameplayBoardVerticalFov(aspect, host.homePreview)
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
             val updateCpuNanos = System.nanoTime() - updateStartedNanos
             gpuFenceTelemetry?.beginFrame(System.nanoTime())
