@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
+import { isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled } from "./diagnostics";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -47,8 +48,8 @@ const pool = new pg.Pool({
 const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({ adapter });
-const PERF_DIAGNOSTICS_ENABLED = process.env.LUDOMADA_PERF_DIAGNOSTICS === "true";
-const PG_POOL_DIAGNOSTICS_ENABLED = process.env.LUDOMADA_PG_POOL_DIAGNOSTICS === "true";
+const PERF_DIAGNOSTICS_ENABLED = isPerformanceDiagnosticsEnabled();
+const PG_POOL_DIAGNOSTICS_ENABLED = isPoolDiagnosticsEnabled();
 
 let pgPrewarmDone = false;
 
