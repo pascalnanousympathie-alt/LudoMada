@@ -154,3 +154,8 @@ The current `src/realtime/gameEventHub.ts` stores subscribers in process-local `
 PR #230 separately makes per-request state timing logs and the one-second pool status logger opt-in. Its exact-head backend tests (40/40), Security Audit and 80 RPS health smoke passed; the Android build job is tracked on that PR. This removes avoidable logging work but does **not** establish 10k RPS.
 
 **Status remains NOT CERTIFIED.** The next defensible benchmark needs an independent load generator and an explicitly isolated API/database topology. The 10k authenticated game-state read gate remains failed; roll/move write and mixed-traffic capacity have not been certified. No production deployment or capacity claim is made from this CI run.
+
+
+## Follow-on hot-path diagnostic patch — PR #230 (updated 2026-11-22)
+
+PR #230's exact-head checks are now complete: backend CI **40/40 tests PASS**, Security Audit PASS, Release Gate backend-staging PASS (including the limited 80 RPS `GET /health` smoke), and Android-final PASS (debug, release and instrumentation builds). The configured CI signing secrets were present; the release APK was signed and verified by `apksigner` (v2) and uploaded as GitHub Actions artifact `14766515963` only. No store upload or deployment occurred. This backend diagnostics change has no Ramus GPU/FPS acceptance evidence and does not fix/certify the 10k RPS gate.
