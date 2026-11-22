@@ -2,6 +2,12 @@ name: LudoMada Release Gate
 
 on:
   workflow_dispatch:
+    inputs:
+      run_capacity_test:
+        description: "Run isolated authenticated game-state capacity test up to 10k RPS"
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
   pull_request:
@@ -12,6 +18,8 @@ on:
       - "prisma/**"
       - "android-app/**"
       - "loadtests/**"
+      - "docs/PERFORMANCE_CAPACITY_10K.md"
+      - "scripts/**"
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/release-gate.yml"
@@ -74,10 +82,29 @@ jobs:
       - name: Build backend
         run: npm run build
 
+      - name: Test capacity diagnostics and report validator
+        run: |
+          node --check scripts/profile-capacity-state-query.mjs
+          node --test scripts/validate-capacity-report.test.mjs
+
       - name: Start staging API and verify readiness
+        env:
+          LUDOMADA_LOAD_TEST_MODE: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+          LUDOMADA_PG_POOL_DIAGNOSTICS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
+          LUDOMADA_GAME_STATE_CACHE: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
+          LUDOMADA_CAPACITY_RUNTIME_TELEMETRY: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
+          CAPACITY_CPU_PROFILE_ENABLED: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && 'true' || 'false' }}
+          PG_POOL_MAX: ${{ ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) && '60' || '5' }}
         run: |
           set -eu
-          nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
+          if [ "$CAPACITY_CPU_PROFILE_ENABLED" = "true" ]; then
+            mkdir -p "$RUNNER_TEMP/ludomada-cpu-profile"
+            nohup node --cpu-prof --cpu-prof-dir="$RUNNER_TEMP/ludomada-cpu-profile" dist/server.js > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
+          else
+            nohup npm run start:prod > "$RUNNER_TEMP/ludomada-api.log" 2>&1 &
+          fi
+          api_pid=$!
+          printf '%s\n' "$api_pid" > "$RUNNER_TEMP/ludomada-api.pid"
           ready=0
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:3101/ready; then
@@ -95,6 +122,132 @@ jobs:
 
       - name: Run staging load smoke
         run: npm exec -- artillery run loadtests/artillery/loadtest-health-80rps.yml
+
+      - name: Seed disposable authenticated game-state capacity fixtures
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        env:
+          LUDOMADA_LOAD_TEST_MODE: "true"
+        run: node scripts/seed-capacity-test-fixtures.mjs
+
+      - name: Capture authenticated game-state SQL plan on disposable database
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        env:
+          LUDOMADA_LOAD_TEST_MODE: "true"
+        run: node scripts/profile-capacity-state-query.mjs loadtests/artillery/capacity-fixtures.csv "$RUNNER_TEMP"
+
+      - name: Warm up participant-authorized game-state read cache
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        run: npm exec -- artillery run loadtests/artillery/loadtest-game-state-warmup.yml
+
+      - name: Run authenticated game-state capacity profile (up to 10k RPS)
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        run: |
+          printf "RUNNER_NPROC="; getconf _NPROCESSORS_ONLN
+          printf "RUNNER_ULIMIT_SOFT="; ulimit -Sn
+          printf "RUNNER_ULIMIT_HARD="; ulimit -Hn
+          printf "RUNNER_EPHEMERAL_PORT_RANGE="; cat /proc/sys/net/ipv4/ip_local_port_range
+          printf "RUNNER_FILE_MAX="; cat /proc/sys/fs/file-max
+          printf "RUNNER_LOADAVG="; cat /proc/loadavg
+          free -h
+          soft_limit=$(ulimit -Sn)
+          hard_limit=$(ulimit -Hn)
+          desired_limit=16384
+          if [ "$hard_limit" != "unlimited" ] && [ "$hard_limit" -lt "$desired_limit" ]; then desired_limit="$hard_limit"; fi
+          if [ "$soft_limit" != "unlimited" ] && [ "$soft_limit" -lt "$desired_limit" ]; then ulimit -n "$desired_limit"; fi
+          printf "ARTILLERY_ULIMIT_EFFECTIVE="; ulimit -Sn
+          process_usage_file="$RUNNER_TEMP/ludomada-process-usage.log"
+          api_pid="$(cat "$RUNNER_TEMP/ludomada-api.pid")"
+          (
+            sample=0
+            while [ "$sample" -lt 120 ] && kill -0 "$api_pid" 2>/dev/null; do
+              {
+                printf 'PROCESS_USAGE_SAMPLE=%s\n' "$(date -u +%H:%M:%S)"
+                ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm=,args= | awk '
+                  $6 == "node" && /dist\/server.js/ {
+                    printf "API pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\n", $1,$2,$3,$4,$5
+                  }
+                  $6 == "node" && /artillery/ {
+                    printf "ARTILLERY pid=%s ppid=%s cpu_pct=%s mem_pct=%s rss_kb=%s\n", $1,$2,$3,$4,$5
+                  }
+                '
+                printf 'TOP_PROCESSES\n'
+                ps -eo pid=,ppid=,pcpu=,pmem=,rss=,comm= --sort=-pcpu | awk 'NR <= 8'
+              } >> "$process_usage_file"
+              sample=$((sample + 1))
+              sleep 1
+            done
+          ) &
+          monitor_pid=$!
+          printf 'PROCESS_MONITOR_PID=%s\n' "$monitor_pid"
+          set +e
+          npm exec -- artillery run --output "$RUNNER_TEMP/ludomada-game-state-capacity.json" loadtests/artillery/loadtest-game-state-10krps.yml
+          artillery_exit=$?
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          printf "RUNNER_SOCKET_SUMMARY_AFTER_TEST\\n"
+          ss -s || true
+          exit "$artillery_exit"
+
+      - name: Stop capacity API gracefully and finalize CPU profile
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
+        run: |
+          set -eu
+          if [ -s "$RUNNER_TEMP/ludomada-api.pid" ]; then
+            api_pid="$(cat "$RUNNER_TEMP/ludomada-api.pid")"
+            kill -TERM "$api_pid" 2>/dev/null || true
+            stopped=0
+            for _ in $(seq 1 20); do
+              if ! kill -0 "$api_pid" 2>/dev/null; then
+                stopped=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$stopped" -ne 1 ]; then
+              echo "Capacity API did not finish graceful shutdown within 20 seconds"
+              exit 1
+            fi
+          fi
+          profile_count="$(find "$RUNNER_TEMP/ludomada-cpu-profile" -maxdepth 1 -type f -name '*.cpuprofile' -size +0c 2>/dev/null | wc -l | tr -d ' ')"
+          printf 'CAPACITY_CPU_PROFILE_COUNT=%s\n' "$profile_count"
+          test "$profile_count" -ge 1
+
+      - name: Independently validate measured capacity and SLOs
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031') }}
+        run: node scripts/validate-capacity-report.mjs "$RUNNER_TEMP/ludomada-game-state-capacity.json"
+
+      - name: Upload game-state capacity report
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ludomada-game-state-capacity-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ludomada-game-state-capacity.json
+            ${{ runner.temp }}/ludomada-query-plan.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Remove temporary capacity fixtures and JWT
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
+        run: rm -f loadtests/artillery/capacity-fixtures.csv
+
+      - name: Upload guarded Node CPU profile
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ludomada-node-cpu-profile-${{ github.run_id }}
+          path: ${{ runner.temp }}/ludomada-cpu-profile/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Upload API and generator process utilization
+        if: ${{ always() && ((github.event_name == 'workflow_dispatch' && inputs.run_capacity_test) || (github.event_name == 'pull_request' && github.head_ref == 'perf/game-state-10k-capacity-gate-20261031')) }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ludomada-process-utilization-${{ github.run_id }}
+          path: ${{ runner.temp }}/ludomada-process-usage.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload API log
         if: always()

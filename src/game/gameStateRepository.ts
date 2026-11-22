@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { GameState } from "./ludoEngine";
+import { invalidateGameStateReadCache } from "./gameStateReadCache";
 
 export class GameStateRepository {
   constructor(private prisma: PrismaClient) {}
@@ -26,7 +27,7 @@ export class GameStateRepository {
 
     for(let attempt=1; attempt<=maxRetries; attempt++){
       try{
-        return await this.prisma.$transaction(async(tx)=>{
+        const result = await this.prisma.$transaction(async(tx)=>{
           const rows:any[]=await tx.$queryRawUnsafe(
             `SELECT "gameId","stateVersion","state"::text AS "state" FROM "AuthoritativeGameState" WHERE "gameId" = $1 FOR UPDATE`,
             gameId
@@ -47,6 +48,10 @@ export class GameStateRepository {
 
           return out;
         },{isolationLevel:"ReadCommitted"});
+
+        // Invalidate only after the PostgreSQL transaction commits successfully.
+        invalidateGameStateReadCache(gameId);
+        return result;
       }catch(e:any){
         const errorText = String(e?.message ?? "");
 

@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto, { type KeyObject } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
@@ -14,7 +14,7 @@ export function requestId(req:Request){
 export function issueAccessToken(userId:string, role:Role, secret:string){
   return jwt.sign({sub:userId,role,jti:crypto.randomUUID()},secret,{expiresIn:"15m"});
 }
-export function verifyAccessToken(token:string,secret:string):Claims{
+export function verifyAccessToken(token:string,secret:string | KeyObject):Claims{
   const decoded = jwt.verify(token, secret, {
     algorithms: ["HS256"]
   });

@@ -1,0 +1,59 @@
+type Environment = Record<string, string | undefined>;
+
+export function isPerformanceDiagnosticsEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_PERF_DIAGNOSTICS === "true";
+}
+
+export function isPoolDiagnosticsEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_PG_POOL_DIAGNOSTICS === "true";
+}
+
+/**
+ * The high-volume mode is permitted only in a GitHub Actions job connected to
+ * its disposable local PostgreSQL service. It cannot disable API limits on
+ * Render, Supabase, production, or any network-reachable database.
+ */
+export function isCapacityLoadTestEnabled(env: Environment = process.env): boolean {
+  if (
+    env.LUDOMADA_LOAD_TEST_MODE !== "true" ||
+    env.CI !== "true" ||
+    env.NODE_ENV !== "staging"
+  ) return false;
+
+  try {
+    const database = new URL(env.DATABASE_URL ?? "");
+    return (
+      ["127.0.0.1", "localhost"].includes(database.hostname) &&
+      database.port === "5432" &&
+      database.pathname === "/ludomada_ci"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Permit a larger connection pool only in the explicit disposable CI load-test
+ * mode. Staging and production retain the conservative 20-connection ceiling.
+ */
+export function maximumPgPoolSize(env: Environment = process.env): number {
+  return isCapacityLoadTestEnabled(env) ? 60 : 20;
+}
+
+/**
+ * The process-local read cache is an explicit single-instance optimization.
+ * Do not enable it on horizontally scaled deployments until shared invalidation
+ * is configured and verified.
+ */
+export function isGameStateReadCacheEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_GAME_STATE_CACHE === "true" && isCapacityLoadTestEnabled(env);
+}
+
+
+/**
+ * Runtime telemetry is available only in the guarded disposable CI capacity mode.
+ * This prevents accidental enablement on Render, Supabase, or production.
+ */
+export function isCapacityRuntimeTelemetryEnabled(env: Environment = process.env): boolean {
+  return env.LUDOMADA_CAPACITY_RUNTIME_TELEMETRY === "true" && isCapacityLoadTestEnabled(env);
+}
