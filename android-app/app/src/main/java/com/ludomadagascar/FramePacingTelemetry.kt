@@ -6,11 +6,12 @@ import kotlin.math.ceil
 /**
  * Bounded frame-pacing sampler for the GLES render thread.
  * Long idle periods split samples into separate animation bursts so idle time
- * is not misreported as a rendering stall.
+ * is not misreported as a rendering stall. Each report requires 120 frame intervals
+ * so p95/p99 are based on a useful sample rather than a handful of frames.
  */
 internal class FramePacingTelemetry(
-    private val minimumSamples:Int = 3,
-    private val minimumWindowNanos:Long = 75_000_000L,
+    private val minimumSamples:Int = 120,
+    private val minimumWindowNanos:Long = 1_000_000_000L,
     private val maximumBurstGapNanos:Long = 1_000_000_000L,
     private val capacity:Int = 240
 ) {
