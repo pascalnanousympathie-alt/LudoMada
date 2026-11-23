@@ -113,6 +113,22 @@ class StartupUiTest {
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
+        // Capture the rendered 3D board as soon as it is visible. The CI
+        // watcher must pull this app-private file before Gradle uninstalls the
+        // target APK; taking it after the dice/pawn assertions left too little
+        // time on slower Android 8.1 emulator runs.
+        Thread.sleep(500)
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotFile = File(context.filesDir, screenshotName)
+        if (screenshotFile.exists()) {
+            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
+        }
+        device.takeScreenshot(screenshotFile)
+        assertTrue(
+            "Startup screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
 
         var gotSix = false
         for (attempt in 0 until 24) {
@@ -132,19 +148,5 @@ class StartupUiTest {
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep the screenshot app-private. The host CI helper retrieves it with
-        // adb exec-out run-as, avoiding API-specific shared-storage permissions
-        // and Android 8.1 emulator restrictions on public Pictures directories.
-        val apiLevel = android.os.Build.VERSION.SDK_INT
-        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val screenshotFile = File(context.filesDir, screenshotName)
-        if (screenshotFile.exists()) {
-            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
-        }
-        device.takeScreenshot(screenshotFile)
-        assertTrue(
-            "Startup screenshot missing or too small",
-            screenshotFile.exists() && screenshotFile.length() > 1000
-        )
     }
 }
