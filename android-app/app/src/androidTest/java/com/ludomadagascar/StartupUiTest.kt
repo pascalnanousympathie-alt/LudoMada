@@ -127,6 +127,22 @@ class StartupUiTest {
             debugPrefs.getBoolean("pbr_first_frame_complete", false)
         )
         Thread.sleep(250)
+        // Capture visual evidence only after the renderer has completed its first
+        // PBR frame and backbuffer readback. The CI watcher pulls this app-private
+        // file with adb run-as before Gradle uninstalls the target APK.
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotFile = File(context.filesDir, screenshotName)
+        if (screenshotFile.exists()) {
+            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
+        }
+        device.takeScreenshot(screenshotFile)
+        assertTrue(
+            "Startup screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
+        android.util.Log.i("LudoMadaTest", "ANDROID_SURFACE_SCREENSHOT_WRITTEN bytes=${screenshotFile.length()} name=$screenshotName")
+
         var gotSix = false
         for (attempt in 0 until 24) {
             assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
