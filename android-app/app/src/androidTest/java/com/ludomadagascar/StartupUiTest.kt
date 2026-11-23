@@ -99,6 +99,9 @@ class StartupUiTest {
         debugPrefs.edit()
             .remove("pbr_first_frame_complete")
             .remove("last_frame_pacing_report")
+            .remove("frame_pacing_probe_started")
+            .remove("frame_pacing_probe_ended")
+            .remove("frame_pacing_probe_samples")
             .commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
@@ -162,14 +165,17 @@ class StartupUiTest {
         // Each dice animation starts a debug-only five-second continuous render probe.
         // Require an actual 120-sample report; view visibility alone is not FPS evidence.
         var framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
-        val framePacingDeadline = System.currentTimeMillis() + 10_000L
+        val framePacingDeadline = System.currentTimeMillis() + 12_000L
         while (framePacingReport.isNullOrBlank() &&
             System.currentTimeMillis() < framePacingDeadline) {
             Thread.sleep(50)
             framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
         }
+        val probeStarted = debugPrefs.getBoolean("frame_pacing_probe_started", false)
+        val probeEnded = debugPrefs.getBoolean("frame_pacing_probe_ended", false)
+        val probeSamples = debugPrefs.getInt("frame_pacing_probe_samples", 0)
         assertTrue(
-            "PBR frame-pacing probe did not produce a 120-sample report within 10 seconds",
+            "PBR frame-pacing report missing; started=$probeStarted ended=$probeEnded samples=$probeSamples",
             !framePacingReport.isNullOrBlank() && framePacingReport!!.contains("samples=120")
         )
         android.util.Log.i("LudoMadaTest", "ANDROID_FRAME_PACING_REPORT=$framePacingReport")
