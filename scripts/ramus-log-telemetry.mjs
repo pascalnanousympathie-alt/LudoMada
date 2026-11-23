@@ -2,7 +2,7 @@ export function hasCompleteFramePacingReport(lines, minimumSamples = 120) {
   if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) return false;
   return (Array.isArray(lines) ? lines : []).some((line) => {
     if (typeof line !== "string") return false;
-    const match = line.match(/PBR_FRAME_PACING\\s+samples=(\\d+)\\b/);
+    const match = line.match(/PBR_FRAME_PACING\s+samples=(\d+)\b/);
     if (!match) return false;
     const samples = Number.parseInt(match[1], 10);
     return Number.isSafeInteger(samples) && samples >= minimumSamples;
