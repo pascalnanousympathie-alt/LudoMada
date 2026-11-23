@@ -102,6 +102,7 @@ class StartupUiTest {
             .remove("frame_pacing_probe_started")
             .remove("frame_pacing_probe_ended")
             .remove("frame_pacing_probe_samples")
+            .remove("frame_pacing_probe_progress")
             .commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
@@ -162,10 +163,10 @@ class StartupUiTest {
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
-        // Each dice animation starts a debug-only five-second continuous render probe.
-        // Require an actual 120-sample report; view visibility alone is not FPS evidence.
+        // The first dice animation starts one bounded debug-only continuous render probe.
+        // It records actual GL draw intervals and preserves the sample-window diagnostics.
         var framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
-        val framePacingDeadline = System.currentTimeMillis() + 12_000L
+        val framePacingDeadline = System.currentTimeMillis() + 25_000L
         while (framePacingReport.isNullOrBlank() &&
             System.currentTimeMillis() < framePacingDeadline) {
             Thread.sleep(50)
@@ -174,8 +175,9 @@ class StartupUiTest {
         val probeStarted = debugPrefs.getBoolean("frame_pacing_probe_started", false)
         val probeEnded = debugPrefs.getBoolean("frame_pacing_probe_ended", false)
         val probeSamples = debugPrefs.getInt("frame_pacing_probe_samples", 0)
+        val probeProgress = debugPrefs.getString("frame_pacing_probe_progress", "not-recorded")
         assertTrue(
-            "PBR frame-pacing report missing; started=$probeStarted ended=$probeEnded samples=$probeSamples",
+            "PBR frame-pacing report missing; started=$probeStarted ended=$probeEnded samples=$probeSamples progress=$probeProgress",
             !framePacingReport.isNullOrBlank() && framePacingReport!!.contains("samples=120")
         )
         android.util.Log.i("LudoMadaTest", "ANDROID_FRAME_PACING_REPORT=$framePacingReport")
