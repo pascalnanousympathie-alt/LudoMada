@@ -1,3 +1,14 @@
+export function hasCompleteFramePacingReport(lines, minimumSamples = 120) {
+  if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) return false;
+  return (Array.isArray(lines) ? lines : []).some((line) => {
+    if (typeof line !== "string") return false;
+    const match = line.match(/PBR_FRAME_PACING\\s+samples=(\\d+)\\b/);
+    if (!match) return false;
+    const samples = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(samples) && samples >= minimumSamples;
+  });
+}
+
 export const REQUIRED_HERO_PARTS = Object.freeze([
   "LM_Pawn_Base_Weighted",
   "LM_Pawn_Collar",
@@ -28,6 +39,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
   let totalLinesRead = 0;
   let filteredLinesRead = 0;
   const framePacingLines = new Set();
+  const framePacingProgressLines = new Set();
   const displayRefreshLines = new Set();
 
   function observe(snapshot) {
@@ -39,6 +51,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
       if (typeof value !== "string" || value.length === 0) continue;
       evidenceLines.add(value);
       if (value.includes("PBR_FRAME_PACING ")) framePacingLines.add(value.slice(value.indexOf("PBR_FRAME_PACING ")));
+      if (value.includes("PBR_FRAME_PACING_PROGRESS ")) framePacingProgressLines.add(value.slice(value.indexOf("PBR_FRAME_PACING_PROGRESS ")));
       if (value.includes("PBR_DISPLAY_REFRESH_HZ=")) displayRefreshLines.add(value.slice(value.indexOf("PBR_DISPLAY_REFRESH_HZ=")));
 
       if (value.includes("Renderer=GLES3_PBR")) gles3Pbr = true;
@@ -94,6 +107,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
         heroLoadFailureSeen,
         boardLoadFailureSeen,
         framePacingLines: [...framePacingLines],
+        framePacingProgressLines: [...framePacingProgressLines],
         displayRefreshLines: [...displayRefreshLines]
       }
     };
