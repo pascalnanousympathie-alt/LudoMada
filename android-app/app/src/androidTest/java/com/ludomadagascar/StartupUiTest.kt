@@ -95,6 +95,8 @@ class StartupUiTest {
         val context = instrumentation.targetContext
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
         context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        val debugPrefs = context.getSharedPreferences("ludomada_debug", android.content.Context.MODE_PRIVATE)
+        debugPrefs.edit().remove("pbr_first_frame_complete").commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -113,23 +115,18 @@ class StartupUiTest {
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
-        // Capture the rendered 3D board as soon as it is visible. The CI
-        // watcher must pull this app-private file before Gradle uninstalls the
-        // target APK; taking it after the dice/pawn assertions left too little
-        // time on slower Android 8.1 emulator runs.
-        Thread.sleep(500)
-        val apiLevel = android.os.Build.VERSION.SDK_INT
-        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val screenshotFile = File(context.filesDir, screenshotName)
-        if (screenshotFile.exists()) {
-            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
+        // A visible GLSurfaceView only proves layout. Wait for PBR scene rendering,
+        // post-processing and backbuffer readback before capturing visual evidence.
+        val firstFrameDeadline = System.currentTimeMillis() + 30_000
+        while (!debugPrefs.getBoolean("pbr_first_frame_complete", false) &&
+            System.currentTimeMillis() < firstFrameDeadline) {
+            Thread.sleep(50)
         }
-        device.takeScreenshot(screenshotFile)
         assertTrue(
-            "Startup screenshot missing or too small",
-            screenshotFile.exists() && screenshotFile.length() > 1000
+            "PBR first frame did not complete scene rendering and backbuffer readback within 30 seconds",
+            debugPrefs.getBoolean("pbr_first_frame_complete", false)
         )
-
+        Thread.sleep(250)
         var gotSix = false
         for (attempt in 0 until 24) {
             assertTrue("Dice button must remain reachable", device.hasObject(By.textContains("Lancer le dé")))
