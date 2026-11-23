@@ -5,9 +5,9 @@ import kotlin.math.ceil
 
 /**
  * Bounded frame-pacing sampler for the GLES render thread.
- * Long idle periods split samples into separate animation bursts so idle time
- * is not misreported as a rendering stall. Each report requires 120 frame intervals
- * so p95/p99 are based on a useful sample rather than a handful of frames.
+ * Long idle gaps split animation bursts but preserve valid active-frame samples;
+ * the idle gap itself is never included in FPS or frame-time calculations.
+ * Each report requires 120 frame intervals so p95/p99 are based on a useful sample.
  */
 internal class FramePacingTelemetry(
     private val minimumSamples:Int = 120,
@@ -20,7 +20,7 @@ internal class FramePacingTelemetry(
     private val sortedIntervalsScratch=LongArray(capacity)
     private val sortedRenderWorkScratch=LongArray(capacity)
     private var sampleCount=0
-    private var burstStartNanos=0L
+    private var activeSpanNanos=0L
     private var lastFrameStartNanos=0L
 
     init {
@@ -35,16 +35,17 @@ internal class FramePacingTelemetry(
 
         if(lastFrameStartNanos!=0L){
             val gap=frameStartNanos-lastFrameStartNanos
-            if(gap<=0L || gap>maximumBurstGapNanos)resetWindow()
+            when {
+                gap<=0L -> resetWindow()
+                gap>maximumBurstGapNanos -> lastFrameStartNanos=0L
+            }
         }
         if(lastFrameStartNanos==0L){
-            burstStartNanos=frameStartNanos
             lastFrameStartNanos=frameStartNanos
             return null
         }
         if(sampleCount>=capacity)resetWindow()
         if(lastFrameStartNanos==0L){
-            burstStartNanos=frameStartNanos
             lastFrameStartNanos=frameStartNanos
             return null
         }
@@ -53,12 +54,12 @@ internal class FramePacingTelemetry(
         intervalsNanos[sampleCount]=interval
         renderWorkNanos[sampleCount]=(frameEndNanos-frameStartNanos).coerceAtLeast(0L)
         sampleCount+=1
+        activeSpanNanos+=interval
         lastFrameStartNanos=frameStartNanos
 
-        val span=frameStartNanos-burstStartNanos
-        if(sampleCount<minimumSamples || span<minimumWindowNanos)return null
+        if(sampleCount<minimumSamples || activeSpanNanos<minimumWindowNanos)return null
 
-        return createReport(span).also { resetWindow() }
+        return createReport(activeSpanNanos).also { resetWindow() }
     }
 
     private fun createReport(spanNanos:Long):FramePacingReport {
@@ -96,7 +97,7 @@ internal class FramePacingTelemetry(
 
     private fun resetWindow() {
         sampleCount=0
-        burstStartNanos=0L
+        activeSpanNanos=0L
         lastFrameStartNanos=0L
     }
 }
