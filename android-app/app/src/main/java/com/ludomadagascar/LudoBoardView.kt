@@ -1071,6 +1071,17 @@ class LudoBoardView(
         private var envCube=0
         private var glbParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private var boardParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
+        private data class BoardPartDrawEntry(
+            val mesh:Mesh,
+            val model:FloatArray,
+            val color:FloatArray,
+            val roughness:Float,
+            val metallic:Float,
+            val emission:Float,
+            val albedoTexture:Int,
+            val normalTexture:Int
+        )
+        private var boardPartDrawEntries:List<BoardPartDrawEntry> = emptyList()
         private var envParts:Map<String,GlbRuntimeLoader.Part> = emptyMap()
         private val boardScaleXZ=1.6666667f
         private var envBarkTex=0
@@ -1173,6 +1184,7 @@ class LudoBoardView(
                 runCatching{host.context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE).edit().putString("last_marker","BOARD_GLB_RUNTIME_LOAD_FAILED:"+it.javaClass.simpleName).apply()}
                 emptyMap()
             }
+            prepareBoardPartDrawEntries()
             if (host.homePreview) {
                 envParts=runCatching{
                     GlbRuntimeLoader(host.context).loadEnvironmentParts().also{
@@ -1485,30 +1497,49 @@ class LudoBoardView(
             else->floatArrayOf(0.82f,0.78f,0.70f,1f)
         }
 
-        private fun drawAuthoredBoard(shadowPass:Boolean){
+        private fun prepareBoardPartDrawEntries(){
             val root=authoredBoardRoot()
-            for(part in boardParts.values.sortedWith(compareBy({it.materialName},{it.name}))){
-                val m=FloatArray(16)
-                Matrix.multiplyMM(m,0,root,0,part.transform,0)
-                if(shadowPass){drawShadowMesh(part.mesh,m);continue}
-                val mn=part.materialName
-                val color=boardMaterialColor(mn)
-                val rough=when{
-                    mn=="LM_Gold_Frame"->0.20f
-                    mn=="LM_Table_Lacquer"->0.28f
-                    mn=="LM_Path_Red"||mn=="LM_Path_Green"||mn=="LM_Path_Gold"||mn=="LM_Path_Blue"->0.30f
-                    mn=="LM_Path_Ivory"->0.46f
-                    mn=="LM_Board_Felt"->0.55f
-                    else->0.34f
+            boardPartDrawEntries=boardParts.values
+                .sortedWith(compareBy({it.materialName},{it.name}))
+                .map{part->
+                    val model=FloatArray(16)
+                    Matrix.multiplyMM(model,0,root,0,part.transform,0)
+                    val mn=part.materialName
+                    val rough=when{
+                        mn=="LM_Gold_Frame"->0.20f
+                        mn=="LM_Table_Lacquer"->0.28f
+                        mn=="LM_Path_Red"||mn=="LM_Path_Green"||mn=="LM_Path_Gold"||mn=="LM_Path_Blue"->0.30f
+                        mn=="LM_Path_Ivory"->0.46f
+                        mn=="LM_Board_Felt"->0.55f
+                        else->0.34f
+                    }
+                    val albedo=when{
+                        mn=="LM_Table_Lacquer"->woodTex
+                        mn=="LM_Path_Ivory"->boardTex
+                        else->0
+                    }
+                    BoardPartDrawEntry(
+                        mesh=part.mesh,
+                        model=model,
+                        color=boardMaterialColor(mn),
+                        roughness=rough,
+                        metallic=if(mn=="LM_Gold_Frame")0.88f else 0.06f,
+                        emission=if(mn=="LM_Gold_Frame")0.015f else 0f,
+                        albedoTexture=albedo,
+                        normalTexture=if(mn=="LM_Table_Lacquer")normalTex else 0
+                    )
                 }
-                val metallic=if(mn=="LM_Gold_Frame")0.88f else 0.06f
-                val albedo=when{
-                    mn=="LM_Table_Lacquer"->woodTex
-                    mn=="LM_Path_Ivory"->boardTex
-                    else->0
+            android.util.Log.i("LudoMadaRender","PBR_BOARD_DRAW_CACHE_READY entries="+boardPartDrawEntries.size)
+        }
+
+        private fun drawAuthoredBoard(shadowPass:Boolean){
+            for(entry in boardPartDrawEntries){
+                if(shadowPass){
+                    drawShadowMesh(entry.mesh,entry.model)
+                }else{
+                    drawMesh(entry.mesh,entry.model,entry.color,entry.roughness,entry.metallic,
+                        1f,entry.emission,5,false,entry.albedoTexture,entry.normalTexture,0)
                 }
-                val ntex=if(mn=="LM_Table_Lacquer")normalTex else 0
-                drawMesh(part.mesh,m,color,rough,metallic,1f,if(mn=="LM_Gold_Frame")0.015f else 0f,5,false,albedo,ntex,0)
             }
         }
 
