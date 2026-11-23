@@ -1190,12 +1190,17 @@ class LudoBoardView(
             sceneWidth=max(1,w);sceneHeight=max(1,h)
             GLES30.glViewport(0,0,sceneWidth,sceneHeight)
             createSceneTargets(sceneWidth,sceneHeight)
+            // createSceneTargets unbinds its FBO; explicitly bind the scene target so
+            // this status reports the off-screen scene framebuffer, not the default surface.
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, sceneFbo)
             val framebufferStatus = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+            val framebufferGlError = GLES30.glGetError()
             android.util.Log.i(
                 "LudoMadaRender",
                 "PBR_SCENE_TARGET_DIMENSIONS size=" + sceneWidth + "x" + sceneHeight +
                     " framebufferStatus=0x" + framebufferStatus.toString(16) +
-                    " glError=0x" + GLES30.glGetError().toString(16)
+                    " glError=0x" + framebufferGlError.toString(16)
             )
             host.requestRender()
         }
