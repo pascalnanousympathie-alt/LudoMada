@@ -90,7 +90,7 @@ class LudoBoardView(
         requestRender()
         android.util.Log.i(
             "LudoMadaRender",
-            "PBR_FRAME_PACING_PROBE_STARTED durationMs=20000 refreshHz=" + displayRefreshRateHz()
+            "PBR_FRAME_PACING_PROBE_STARTED durationMs=40000 refreshHz=" + displayRefreshRateHz()
         )
         postDelayed({
             if (generation == debugPacingProbeGeneration) {
@@ -99,7 +99,7 @@ class LudoBoardView(
                 prefs.edit().putBoolean("frame_pacing_probe_ended", true).apply()
                 android.util.Log.i("LudoMadaRender", "PBR_FRAME_PACING_PROBE_ENDED")
             }
-        }, 20_000L)
+        }, 40_000L)
     }
 
     private fun deviceSupportsGles3(): Boolean {
