@@ -69,33 +69,37 @@ class LudoBoardView(
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
     private var debugPacingProbeGeneration = 0
+    private var debugPacingProbeActive = false
 
     /**
      * Keep the debug renderer continuously active for one bounded sample window after
      * a dice roll. Release builds and Home preview retain their normal render modes.
      */
     private fun startDebugFramePacingProbe() {
-        if (!BuildConfig.DEBUG || homePreview) return
+        if (!BuildConfig.DEBUG || homePreview || debugPacingProbeActive) return
+        debugPacingProbeActive = true
         val generation = ++debugPacingProbeGeneration
         val prefs = context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
         prefs.edit()
             .putBoolean("frame_pacing_probe_started", true)
             .putInt("frame_pacing_probe_samples", 0)
+            .remove("frame_pacing_probe_progress")
             .remove("last_frame_pacing_report")
             .apply()
         renderMode = RENDERMODE_CONTINUOUSLY
         requestRender()
         android.util.Log.i(
             "LudoMadaRender",
-            "PBR_FRAME_PACING_PROBE_STARTED durationMs=8000 refreshHz=" + displayRefreshRateHz()
+            "PBR_FRAME_PACING_PROBE_STARTED durationMs=20000 refreshHz=" + displayRefreshRateHz()
         )
         postDelayed({
             if (generation == debugPacingProbeGeneration) {
                 renderMode = RENDERMODE_WHEN_DIRTY
+                debugPacingProbeActive = false
                 prefs.edit().putBoolean("frame_pacing_probe_ended", true).apply()
                 android.util.Log.i("LudoMadaRender", "PBR_FRAME_PACING_PROBE_ENDED")
             }
-        }, 8_000L)
+        }, 20_000L)
     }
 
     private fun deviceSupportsGles3(): Boolean {
@@ -1269,9 +1273,13 @@ class LudoBoardView(
                     host.post { android.util.Log.i("LudoMadaRender",reportLine) }
                 }else if(framePacingTelemetry.sampleCountForDebug>0 &&
                     framePacingTelemetry.sampleCountForDebug%30==0){
+                    val progressLine=framePacingTelemetry.debugProgressLogLine()
                     host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
-                        .edit().putInt("frame_pacing_probe_samples",framePacingTelemetry.sampleCountForDebug).apply()
-                    android.util.Log.i("LudoMadaRender",framePacingTelemetry.debugProgressLogLine())
+                        .edit()
+                        .putInt("frame_pacing_probe_samples",framePacingTelemetry.sampleCountForDebug)
+                        .putString("frame_pacing_probe_progress",progressLine)
+                        .apply()
+                    android.util.Log.i("LudoMadaRender",progressLine)
                 }
             }
         }
