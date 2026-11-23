@@ -1313,8 +1313,15 @@ class LudoBoardView(
             renderPostProcess()
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
                 logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
-                android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
                 firstFrameDiagnosticsCaptured=true
+                android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
+                // Expose a one-shot completion signal to debug instrumentation only.
+                // It is written after scene + post-process rendering and backbuffer readback,
+                // so UI tests cannot mistake a created GLSurfaceView for a rendered frame.
+                runCatching {
+                    host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                        .edit().putBoolean("pbr_first_frame_complete", true).apply()
+                }
             }
         }
         override fun projectedTokens(pi:Int):Array<FloatArray>{
