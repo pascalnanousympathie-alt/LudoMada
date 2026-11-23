@@ -1167,9 +1167,36 @@ class LudoBoardView(
                 host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
+            // Capture Android View geometry beside the EGL surface geometry. This distinguishes
+            // a layout measurement problem from a Ramus/EGL buffer-size constraint.
+            val maxTextureSize = IntArray(1)
+            GLES30.glGetIntegerv(GLES30.GL_MAX_TEXTURE_SIZE, maxTextureSize, 0)
+            val metrics = host.resources.displayMetrics
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_SURFACE_DIMENSIONS egl=" + w + "x" + h +
+                    " view=" + host.width + "x" + host.height +
+                    " measured=" + host.measuredWidth + "x" + host.measuredHeight +
+                    " displayPx=" + metrics.widthPixels + "x" + metrics.heightPixels +
+                    " density=" + metrics.density
+            )
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_GL_DEVICE vendor=" + GLES30.glGetString(GLES30.GL_VENDOR) +
+                    " renderer=" + GLES30.glGetString(GLES30.GL_RENDERER) +
+                    " version=" + GLES30.glGetString(GLES30.GL_VERSION) +
+                    " maxTexture=" + maxTextureSize[0]
+            )
             sceneWidth=max(1,w);sceneHeight=max(1,h)
             GLES30.glViewport(0,0,sceneWidth,sceneHeight)
             createSceneTargets(sceneWidth,sceneHeight)
+            val framebufferStatus = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_SCENE_TARGET_DIMENSIONS size=" + sceneWidth + "x" + sceneHeight +
+                    " framebufferStatus=0x" + framebufferStatus.toString(16) +
+                    " glError=0x" + GLES30.glGetError().toString(16)
+            )
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
