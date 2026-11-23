@@ -77,17 +77,25 @@ class LudoBoardView(
     private fun startDebugFramePacingProbe() {
         if (!BuildConfig.DEBUG || homePreview) return
         val generation = ++debugPacingProbeGeneration
+        val prefs = context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putBoolean("frame_pacing_probe_started", true)
+            .putInt("frame_pacing_probe_samples", 0)
+            .remove("last_frame_pacing_report")
+            .apply()
         renderMode = RENDERMODE_CONTINUOUSLY
+        requestRender()
         android.util.Log.i(
             "LudoMadaRender",
-            "PBR_FRAME_PACING_PROBE_STARTED durationMs=5000 refreshHz=" + displayRefreshRateHz()
+            "PBR_FRAME_PACING_PROBE_STARTED durationMs=8000 refreshHz=" + displayRefreshRateHz()
         )
         postDelayed({
             if (generation == debugPacingProbeGeneration) {
                 renderMode = RENDERMODE_WHEN_DIRTY
+                prefs.edit().putBoolean("frame_pacing_probe_ended", true).apply()
                 android.util.Log.i("LudoMadaRender", "PBR_FRAME_PACING_PROBE_ENDED")
             }
-        }, 5_000L)
+        }, 8_000L)
     }
 
     private fun deviceSupportsGles3(): Boolean {
@@ -1261,6 +1269,8 @@ class LudoBoardView(
                     host.post { android.util.Log.i("LudoMadaRender",reportLine) }
                 }else if(framePacingTelemetry.sampleCountForDebug>0 &&
                     framePacingTelemetry.sampleCountForDebug%30==0){
+                    host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                        .edit().putInt("frame_pacing_probe_samples",framePacingTelemetry.sampleCountForDebug).apply()
                     android.util.Log.i("LudoMadaRender",framePacingTelemetry.debugProgressLogLine())
                 }
             }
