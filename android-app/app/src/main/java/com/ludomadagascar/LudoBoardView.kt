@@ -68,6 +68,27 @@ class LudoBoardView(
     }
     private var stateAnimator: ValueAnimator? = null
     private var diceRolling = false
+    private var debugPacingProbeGeneration = 0
+
+    /**
+     * Keep the debug renderer continuously active for one bounded sample window after
+     * a dice roll. Release builds and Home preview retain their normal render modes.
+     */
+    private fun startDebugFramePacingProbe() {
+        if (!BuildConfig.DEBUG || homePreview) return
+        val generation = ++debugPacingProbeGeneration
+        renderMode = RENDERMODE_CONTINUOUSLY
+        android.util.Log.i(
+            "LudoMadaRender",
+            "PBR_FRAME_PACING_PROBE_STARTED durationMs=5000 refreshHz=" + displayRefreshRateHz()
+        )
+        postDelayed({
+            if (generation == debugPacingProbeGeneration) {
+                renderMode = RENDERMODE_WHEN_DIRTY
+                android.util.Log.i("LudoMadaRender", "PBR_FRAME_PACING_PROBE_ENDED")
+            }
+        }, 5_000L)
+    }
 
     private fun deviceSupportsGles3(): Boolean {
         val info = (context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)?.deviceConfigurationInfo
@@ -149,6 +170,7 @@ class LudoBoardView(
     fun startDiceAnimation() {
         if (diceRolling) return
         diceRolling = true
+        startDebugFramePacingProbe()
         audio().play(0f, 0.85f, 760.0)
         pulseHaptic(24L, 180)
         ValueAnimator.ofFloat(0f, 1f).apply {
@@ -1230,9 +1252,16 @@ class LudoBoardView(
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if(BuildConfig.DEBUG && !host.homePreview){
-                framePacingTelemetry.record(frameStartNanos,System.nanoTime())?.let { report ->
+                val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime())
+                if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
-                    host.post { android.util.Log.i("LudoMadaRender",report.toLogLine(refreshRate)) }
+                    val reportLine=report.toLogLine(refreshRate)
+                    host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
+                        .edit().putString("last_frame_pacing_report",reportLine).apply()
+                    host.post { android.util.Log.i("LudoMadaRender",reportLine) }
+                }else if(framePacingTelemetry.sampleCountForDebug>0 &&
+                    framePacingTelemetry.sampleCountForDebug%30==0){
+                    android.util.Log.i("LudoMadaRender",framePacingTelemetry.debugProgressLogLine())
                 }
             }
         }
