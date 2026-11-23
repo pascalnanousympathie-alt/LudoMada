@@ -96,7 +96,10 @@ class StartupUiTest {
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
         context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE).edit().clear().commit()
         val debugPrefs = context.getSharedPreferences("ludomada_debug", android.content.Context.MODE_PRIVATE)
-        debugPrefs.edit().remove("pbr_first_frame_complete").commit()
+        debugPrefs.edit()
+            .remove("pbr_first_frame_complete")
+            .remove("last_frame_pacing_report")
+            .commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -155,6 +158,21 @@ class StartupUiTest {
             Thread.sleep(250)
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
+
+        // Each dice animation starts a debug-only five-second continuous render probe.
+        // Require an actual 120-sample report; view visibility alone is not FPS evidence.
+        var framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
+        val framePacingDeadline = System.currentTimeMillis() + 10_000L
+        while (framePacingReport.isNullOrBlank() &&
+            System.currentTimeMillis() < framePacingDeadline) {
+            Thread.sleep(50)
+            framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
+        }
+        assertTrue(
+            "PBR frame-pacing probe did not produce a 120-sample report within 10 seconds",
+            !framePacingReport.isNullOrBlank() && framePacingReport!!.contains("samples=120")
+        )
+        android.util.Log.i("LudoMadaTest", "ANDROID_FRAME_PACING_REPORT=$framePacingReport")
 
         assertTrue(device.hasObject(By.text("Pion 1")))
         device.findObject(By.text("Pion 1")).click()
