@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createRendererTelemetryAccumulator, REQUIRED_HERO_PARTS } from "./ramus-log-telemetry.mjs";
+import { createRendererTelemetryAccumulator, hasCompleteFramePacingReport, REQUIRED_HERO_PARTS } from "./ramus-log-telemetry.mjs";
 
 function parseFramebufferReadback(line, expectedLabel) {
   if (typeof line !== "string") {
@@ -615,26 +615,58 @@ try {
   console.log("RENDERER TELEMETRY INITIAL SNAPSHOT=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence
   ));
-  const capturePbrRendererTelemetry = (stage) => {
-    waitStable(300);
-    const filtered = runAllowError(
-      "logcat", "--limit", "250", "--filter", "LudoMadaRender", "--session", session
-    );
-    const entries = normalizeLogcatRows(filtered);
-    const lines = entries.map((entry) => entry.line)
-      .filter((line) => line.includes("PBR_FRAME_PACING ") || line.includes("PBR_DISPLAY_REFRESH_HZ="));
-    rendererTelemetry.observe({
-      totalLines: 0,
-      filteredLines: entries.length,
-      lines
-    });
-    const evidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
-    const captured = evidence.framePacingLines.length > 0;
+  const capturePbrRendererTelemetry = (stage, { waitForReportMs = 0 } = {}) => {
+    const startedAt = Date.now();
+    const deadline = startedAt + Math.max(0, Math.min(waitForReportMs, 90_000));
+    let attempts = 0;
+    let filteredOk = false;
+    let filteredLineCount = 0;
+    let filteredError = null;
+    let evidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
+
+    do {
+      // The debug probe is bounded (80s) and needs at least 120 GL frame
+      // intervals. A one-shot logcat read immediately after a dice tap is too
+      // early on SwiftShader; poll the renderer tag until the full report exists.
+      const filtered = runAllowError(
+        "logcat", "--limit", "500", "--filter", "LudoMadaRender", "--session", session
+      );
+      attempts += 1;
+      filteredOk = filtered.ok;
+      filteredError = filtered.ok
+        ? null
+        : String(filtered.value?.error || "logcat_error").slice(0, 120);
+      const entries = normalizeLogcatRows(filtered);
+      filteredLineCount = entries.length;
+      const lines = entries.map((entry) => entry.line)
+        .filter((line) => line.includes("PBR_FRAME_PACING ") ||
+          line.includes("PBR_FRAME_PACING_PROGRESS ") ||
+          line.includes("PBR_DISPLAY_REFRESH_HZ="));
+      rendererTelemetry.observe({
+        totalLines: 0,
+        filteredLines: entries.length,
+        lines
+      });
+      evidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
+
+      if (hasCompleteFramePacingReport(evidence.framePacingLines, 120)) break;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      waitStable(Math.min(1500, remaining));
+    } while (Date.now() < deadline);
+
+    const captured = hasCompleteFramePacingReport(evidence.framePacingLines, 120);
     console.log("RAMUS_FRAME_PACING_CAPTURE_" + stage + "=" + JSON.stringify({
       status: captured ? "PASS" : "MISSING",
-      filteredOk: filtered.ok,
-      filteredLineCount: entries.length,
+      requiredSamples: 120,
+      waitBudgetMs: Math.max(0, Math.min(waitForReportMs, 90_000)),
+      elapsedMs: Date.now() - startedAt,
+      pollAttempts: attempts,
+      filteredOk,
+      filteredError,
+      filteredLineCount,
       framePacingMarkers: evidence.framePacingLines,
+      progressMarkers: evidence.framePacingProgressLines,
       displayRefreshMarkers: evidence.displayRefreshLines
     }));
     return captured;
@@ -735,7 +767,7 @@ try {
   }
   if (!gotSix) throw new Error("No six within 48 cloud-emulator rolls; last status: " + pendingDiceValue().status);
   console.log("DICE SIX PASS");
-  capturePbrRendererTelemetry("AFTER_DICE");
+  capturePbrRendererTelemetry("AFTER_DICE", { waitForReportMs: 90_000 });
 
   // A pending die must be immutable until the player chooses a pawn.
   runAllowError("wait", "--stable", "--timeout", "1800", "--session", session);
@@ -795,14 +827,21 @@ try {
   console.log("JOUER→OFFLINE MENU PASS");
 
   if (!returnToHome()) throw new Error("Could not return from offline mode menu to Premium Home");
-  success = true;
   // Query renderer message prefixes explicitly at the end. The broad guest tail
   // may retain startup markers while later system traffic rotates out frame samples.
   const finalRendererSnapshot = readRendererLogLines({ forceRendererTagFilter: true });
   rendererTelemetry.observe(finalRendererSnapshot);
-  const finalFramePacingLines = rendererTelemetry.snapshot(parseFramebufferReadback).evidence.framePacingLines;
+  const finalEvidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
+  const finalFramePacingLines = finalEvidence.framePacingLines;
+  const framePacingComplete = hasCompleteFramePacingReport(finalFramePacingLines, 120);
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
-  console.log("RAMUS_FRAME_PACING_CAPTURE=" + (finalFramePacingLines.length > 0 ? "PASS" : "MISSING"));
+  console.log("RAMUS_FRAME_PACING_PROGRESS=" + JSON.stringify(finalEvidence.framePacingProgressLines));
+  console.log("RAMUS_FRAME_PACING_CAPTURE=" + (framePacingComplete ? "PASS" : "MISSING"));
+  if (!framePacingComplete) {
+    throw new Error("Frame-pacing telemetry report missing or incomplete after bounded 90s capture; progress=" +
+      JSON.stringify(finalEvidence.framePacingProgressLines).slice(0, 2400));
+  }
+  success = true;
   console.log("RAMUS_RENDERER_FINAL_CAPTURE=" + JSON.stringify({
     broadOk: finalRendererSnapshot.broadOk,
     filteredRequested: finalRendererSnapshot.filteredRequested,
