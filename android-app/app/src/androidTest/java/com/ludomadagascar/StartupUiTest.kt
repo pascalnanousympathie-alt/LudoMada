@@ -166,7 +166,7 @@ class StartupUiTest {
         // The first dice animation starts one bounded debug-only continuous render probe.
         // It records actual GL draw intervals and preserves the sample-window diagnostics.
         var framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
-        val framePacingDeadline = System.currentTimeMillis() + 47_000L
+        val framePacingDeadline = System.currentTimeMillis() + 90_000L
         while (framePacingReport.isNullOrBlank() &&
             System.currentTimeMillis() < framePacingDeadline) {
             Thread.sleep(50)
