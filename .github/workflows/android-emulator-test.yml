@@ -8,6 +8,8 @@ on:
     paths:
       - 'android-app/**'
       - 'scripts/ramus-smoke.mjs'
+      - 'scripts/ramus-log-telemetry.mjs'
+      - 'scripts/ramus-log-telemetry.test.mjs'
       - '.github/workflows/android-emulator-test.yml'
 
 permissions:
@@ -64,14 +66,16 @@ jobs:
         run: |
           set -eu
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          ./gradlew testDebugUnitTest assembleDebug --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
 
       - name: Verify 3D model is packaged in the debug APK
         run: node scripts/check-apk-3d-asset.mjs android-app/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Validate framebuffer readback acceptance checks
-        run: node scripts/ramus-smoke.mjs --test-framebuffer-readback
+      - name: Validate framebuffer and renderer telemetry contracts
+        run: |
+          node scripts/ramus-smoke.mjs --test-framebuffer-readback
+          node --test scripts/ramus-log-telemetry.test.mjs
 
       - name: Install Ramus CLI
         run: |
