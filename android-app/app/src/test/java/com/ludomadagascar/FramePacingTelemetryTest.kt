@@ -105,6 +105,35 @@ class FramePacingTelemetryTest {
     }
 
     @Test
+    fun activeBurstSamplesAccumulateWithoutCountingLongIdleGaps() {
+        val telemetry=FramePacingTelemetry()
+        var report:FramePacingReport?=null
+        val interval=16_666_667L
+        val firstBurstStart=7_000_000_000L
+
+        // First animation burst contributes 60 valid frame intervals.
+        for(frame in 0..60){
+            val start=firstBurstStart+frame*interval
+            telemetry.record(start,start+1_000_000L)?.let { report=it }
+        }
+        assertNull(report)
+
+        // Five seconds of idle time separates the next burst and must not be
+        // counted as a long frame or force the 60 earlier samples to be discarded.
+        val secondBurstStart=firstBurstStart+60*interval+5_000_000_000L
+        for(frame in 0..60){
+            val start=secondBurstStart+frame*interval
+            telemetry.record(start,start+1_000_000L)?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertEquals(120,measured.samples)
+        assertTrue(measured.averageFps in 59.0..61.0)
+        assertTrue(measured.spanMs in 1_999.0..2_001.0)
+        assertTrue(measured.maxFrameMs<17.0)
+    }
+
+    @Test
     fun p99ExposesARepeatedLongFrameHitch() {
         val telemetry=FramePacingTelemetry()
         val reports=mutableListOf<FramePacingReport>()
