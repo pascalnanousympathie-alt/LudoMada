@@ -23,6 +23,14 @@ internal class FramePacingTelemetry(
     private var activeSpanNanos=0L
     private var lastFrameStartNanos=0L
 
+    internal val sampleCountForDebug:Int
+        get()=sampleCount
+
+    internal fun debugProgressLogLine():String {
+        val spanMs=String.format(Locale.US,"%.2f",activeSpanNanos.toDouble()/1_000_000.0)
+        return "PBR_FRAME_PACING_PROGRESS samples=$sampleCount activeSpanMs=$spanMs"
+    }
+
     init {
         require(minimumSamples>0)
         require(minimumWindowNanos>0L)
