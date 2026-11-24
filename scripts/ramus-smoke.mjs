@@ -1944,6 +1944,35 @@ try {
   const displayProbeLabel = telemetryLabels.find(label =>
     label.includes("RAMUS_DISPLAY_MODES_HZ=") && label.includes("SURFACE_SET_FRAME_RATE=")
   ) || "";
+  // Save the raw telemetry before assertions. Later stages enrich this artifact
+  // so a failed FPS/readback assertion still leaves the measurements collected.
+  const telemetryEvidence = {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    source: "ramus_accessibility_tree",
+    rawAccessibilityLabel: telemetryLabel,
+    displayProbe: null,
+    fpsAcceptance: null,
+    metrics: null,
+    supplementalLogcat: {
+      available: null,
+      rendererRows: null,
+      perfFrameStatsRows: null,
+      pipelinePhaseRows: null,
+      sceneBreakdownRows: null,
+      glesDeviceInfoRows: null,
+      sceneReadbackRows: null
+    },
+    captureStage: "raw_accessibility"
+  };
+  function persistTelemetryEvidence() {
+    const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\n";
+    writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
+    console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
+      " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
+      " stage=" + telemetryEvidence.captureStage);
+  }
+  persistTelemetryEvidence();
   const displayProbe = parseRamusDisplayProbe(displayProbeLabel);
   if (!displayProbe) {
     throw new Error("Ramus did not expose the 120 Hz Surface/display-mode probe in its accessibility tree: " +
@@ -1956,6 +1985,10 @@ try {
     " surfaceCall=" + displayProbe.surfaceSetFrameRate +
     " screen=" + displayProbe.screen);
   const accessibilityTelemetry = parseRendererAccessibilityTelemetry(telemetryLabel);
+  telemetryEvidence.displayProbe = displayProbe;
+  telemetryEvidence.metrics = accessibilityTelemetry;
+  telemetryEvidence.captureStage = "parsed_accessibility";
+  persistTelemetryEvidence();
   if (!accessibilityTelemetry) {
     throw new Error("Renderer performance telemetry was not captured in the accessibility readiness label: " +
       JSON.stringify({ labels: treeLabels(telemetryTree).filter(label => label.includes("RENDER_PASS=")).slice(0, 3) }));
@@ -1992,6 +2025,9 @@ try {
     " gpuFenceFailures=" + accessibilityTelemetry.gpuFenceFailures +
     " gpuFenceSkips=" + accessibilityTelemetry.gpuFenceSkips);
   const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
+  telemetryEvidence.fpsAcceptance = fpsAcceptance;
+  telemetryEvidence.captureStage = "fps_assessed";
+  persistTelemetryEvidence();
   const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
     " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
     " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
@@ -2063,6 +2099,17 @@ try {
   const sceneBreakdownLines = rendererLines.filter(line => line.includes("PERF_SCENE_BREAKDOWN"));
   const glDeviceLines = rendererLines.filter(line => line.includes("GLES_DEVICE_INFO"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
+  telemetryEvidence.supplementalLogcat = {
+    available: rendererLines.length > 0,
+    rendererRows: rendererLines.length,
+    perfFrameStatsRows: perfLines.length,
+    pipelinePhaseRows: phaseLines.length,
+    sceneBreakdownRows: sceneBreakdownLines.length,
+    glesDeviceInfoRows: glDeviceLines.length,
+    sceneReadbackRows: sceneReadbacks.length
+  };
+  telemetryEvidence.captureStage = "supplemental_logcat_checked";
+  persistTelemetryEvidence();
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
     const match = lastReadback.match(/size=(\d+)x(\d+).*glError=0x([0-9a-f]+)/i);
@@ -2113,29 +2160,8 @@ try {
     console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
   }
 
-  const telemetryEvidence = {
-    schemaVersion: 1,
-    capturedAt: new Date().toISOString(),
-    source: "ramus_accessibility_tree",
-    rawAccessibilityLabel: telemetryLabel,
-    displayProbe,
-    fpsAcceptance,
-    metrics: accessibilityTelemetry,
-    supplementalLogcat: {
-      available: rendererLines.length > 0,
-      rendererRows: rendererLines.length,
-      perfFrameStatsRows: perfLines.length,
-      pipelinePhaseRows: phaseLines.length,
-      sceneBreakdownRows: sceneBreakdownLines.length,
-      glesDeviceInfoRows: glDeviceLines.length,
-      sceneReadbackRows: sceneReadbacks.length
-    }
-  };
-  const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\n";
-  writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
-  console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
-    " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
-    " source=accessibility rawLogcatRows=" + rendererLines.length);
+  telemetryEvidence.captureStage = "complete";
+  persistTelemetryEvidence();
 
   success = true;
   console.log("RAMUS_GAMEPLAY_SMOKE_PASS");
