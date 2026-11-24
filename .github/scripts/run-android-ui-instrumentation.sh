@@ -16,6 +16,8 @@ fi
 screenshot_name="ludomada-startup-offline.png"
 screenshot_remote="files/$screenshot_name"
 home_screenshot_remote="files/ludomada-home-preview.png"
+board_surface_name="ludomada-board-surface-api-$api_level.png"
+board_surface_remote="files/$board_surface_name"
 
 "$ADB" start-server >/dev/null 2>&1 || true
 ready=0
@@ -70,7 +72,9 @@ screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 screenshot_tmp="$evidence_dir/.ludomada-startup-offline.png.tmp"
 home_screenshot_local="$evidence_dir/ludomada-home-preview.png"
 home_screenshot_tmp="$evidence_dir/.ludomada-home-preview.png.tmp"
-rm -f "$screenshot_local" "$screenshot_tmp" "$home_screenshot_local" "$home_screenshot_tmp"
+board_surface_local="$evidence_dir/$board_surface_name"
+board_surface_tmp="$evidence_dir/.$board_surface_name.tmp"
+rm -f "$screenshot_local" "$screenshot_tmp" "$home_screenshot_local" "$home_screenshot_tmp" "$board_surface_local" "$board_surface_tmp"
 
 validate_png() {
   python3 - "$1" <<'PY'
@@ -144,6 +148,8 @@ capture_app_private_screenshot "$screenshot_remote" "$screenshot_local" "$screen
 screenshot_watcher_pid=$!
 capture_app_private_screenshot "$home_screenshot_remote" "$home_screenshot_local" "$home_screenshot_tmp" "HOME_3D" &
 home_screenshot_watcher_pid=$!
+capture_app_private_screenshot "$board_surface_remote" "$board_surface_local" "$board_surface_tmp" "BOARD_SURFACE" &
+board_surface_watcher_pid=$!
 
 cd android-app
 set +e
@@ -155,10 +161,11 @@ test_status=$?
 set -e
 
 if [[ "$test_status" -ne 0 ]]; then
-  kill "$screenshot_watcher_pid" "$home_screenshot_watcher_pid" 2>/dev/null || true
+  kill "$screenshot_watcher_pid" "$home_screenshot_watcher_pid" "$board_surface_watcher_pid" 2>/dev/null || true
   wait "$screenshot_watcher_pid" 2>/dev/null || true
   wait "$home_screenshot_watcher_pid" 2>/dev/null || true
-  rm -f "$screenshot_tmp" "$home_screenshot_tmp"
+  wait "$board_surface_watcher_pid" 2>/dev/null || true
+  rm -f "$screenshot_tmp" "$home_screenshot_tmp" "$board_surface_tmp"
   echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: Gradle exit code $test_status"
   "$ADB" devices -l || true
   timeout 8s "$ADB" -s "$DEVICE" shell getprop sys.boot_completed || true
@@ -172,6 +179,27 @@ fi
 # the target APK. The Home screenshot is taken only after its renderer resumes on return.
 wait "$screenshot_watcher_pid" 2>/dev/null || true
 wait "$home_screenshot_watcher_pid" 2>/dev/null || true
+wait "$board_surface_watcher_pid" 2>/dev/null || true
+
+board_surface_source_kind=""
+if [[ -s "$board_surface_local" ]] && validate_png "$board_surface_local"; then
+  board_surface_source_kind="app-private-run-as-before-teardown"
+else
+  rm -f "$board_surface_local" "$board_surface_tmp"
+  echo "ANDROID_BOARD_SURFACE_SCREENSHOT_RUN_AS_WATCH_FAILED: checking UTP output fallback"
+  board_surface_source=""
+  if [[ -d "$additional_output_root" ]]; then
+    board_surface_source="$(find "$additional_output_root" -type f -name "$board_surface_name" -size +1k -print -quit)"
+  fi
+  if [[ -n "$board_surface_source" ]]; then
+    cp -- "$board_surface_source" "$board_surface_local"
+    if validate_png "$board_surface_local"; then
+      board_surface_source_kind="utp"
+    else
+      rm -f "$board_surface_local"
+    fi
+  fi
+fi
 
 screenshot_source_kind=""
 if [[ -s "$screenshot_local" ]] && validate_png "$screenshot_local"; then
@@ -221,6 +249,11 @@ if [[ -z "$home_screenshot_source_kind" ]]; then
   echo "ANDROID_HOME_SCREENSHOT_PULL_FAILED: Home 3D screenshot is required evidence"
   exit 1
 fi
+if [[ -z "$board_surface_source_kind" ]]; then
+  echo "ANDROID_BOARD_SURFACE_SCREENSHOT_PULL_FAILED: PixelCopy board evidence missing"
+  exit 1
+fi
+echo "ANDROID_BOARD_SURFACE_SCREENSHOT_SOURCE=$board_surface_source_kind"
 echo "ANDROID_GAMEPLAY_SCREENSHOT_SOURCE=$screenshot_source_kind"
 echo "ANDROID_HOME_SCREENSHOT_SOURCE=$home_screenshot_source_kind"
 echo "API_LEVEL=$api_level"

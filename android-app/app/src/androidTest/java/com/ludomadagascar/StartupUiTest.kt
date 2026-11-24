@@ -2,6 +2,14 @@ package com.ludomadagascar
 
 import android.content.Intent
 import android.graphics.BitmapFactory
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
+import android.view.PixelCopy
+import android.view.SurfaceView
+import android.view.View
+import android.view.ViewGroup
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -11,14 +19,107 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.FileOutputStream
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @RunWith(AndroidJUnit4::class)
 class StartupUiTest {
+    private fun findBoardSurface(view: View): SurfaceView? {
+        if (view is SurfaceView &&
+            view.contentDescription?.toString()?.contains("LudoMada 3D Ludo board") == true) {
+            return view
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findBoardSurface(view.getChildAt(index))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Capture the actual GLES SurfaceView separately from UiDevice's whole-screen
+     * screenshot. This prevents a compositor omission on older Android versions
+     * from being misreported as a renderer failure.
+     */
+    private fun captureBoardSurface(
+        instrumentation: android.app.Instrumentation,
+        context: android.content.Context,
+        apiLevel: Int
+    ) {
+        var boardSurface: SurfaceView? = null
+        instrumentation.runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance()
+                .getActivitiesInStage(Stage.RESUMED)
+                .filterIsInstance<MainActivity>()
+                .firstOrNull()
+            assertNotNull("MainActivity must be resumed for PixelCopy", activity)
+            boardSurface = findBoardSurface(activity!!.window.decorView)
+        }
+        val source = boardSurface
+        assertNotNull("3D GLSurfaceView was not found in the resumed Activity", source)
+        val surfaceView = source!!
+        assertTrue("3D SurfaceView must have a valid surface", surfaceView.holder.surface.isValid)
+        assertTrue(
+            "3D SurfaceView has invalid dimensions ${surfaceView.width}x${surfaceView.height}",
+            surfaceView.width > 0 && surfaceView.height > 0
+        )
+
+        val bitmap = Bitmap.createBitmap(surfaceView.width, surfaceView.height, Bitmap.Config.ARGB_8888)
+        val completed = CountDownLatch(1)
+        var copyResult = PixelCopy.ERROR_UNKNOWN
+        PixelCopy.request(surfaceView, bitmap, { result ->
+            copyResult = result
+            completed.countDown()
+        }, Handler(Looper.getMainLooper()))
+        assertTrue("PixelCopy did not complete within 10 seconds", completed.await(10, TimeUnit.SECONDS))
+        assertEquals("PixelCopy failed for the PBR board surface", PixelCopy.SUCCESS, copyResult)
+
+        val sampleStep = maxOf(1, minOf(bitmap.width, bitmap.height) / 128)
+        val colorBuckets = HashSet<Int>()
+        var sampledPixels = 0
+        var chromaticPixels = 0
+        for (y in 0 until bitmap.height step sampleStep) {
+            for (x in 0 until bitmap.width step sampleStep) {
+                val pixel = bitmap.getPixel(x, y)
+                val red = Color.red(pixel)
+                val green = Color.green(pixel)
+                val blue = Color.blue(pixel)
+                colorBuckets.add(((red shr 4) shl 8) or ((green shr 4) shl 4) or (blue shr 4))
+                if (maxOf(red, green, blue) - minOf(red, green, blue) > 18) chromaticPixels++
+                sampledPixels++
+            }
+        }
+        assertTrue("PixelCopy board surface appears blank/flat: colorBuckets=${colorBuckets.size}",
+            colorBuckets.size >= 24)
+        assertTrue(
+            "PixelCopy board surface has insufficient rendered color detail: $chromaticPixels/$sampledPixels",
+            chromaticPixels > sampledPixels / 25
+        )
+
+        val file = File(context.filesDir, "ludomada-board-surface-api-$apiLevel.png")
+        if (file.exists()) assertTrue("Previous board surface capture could not be removed", file.delete())
+        FileOutputStream(file).use { output ->
+            assertTrue("Could not encode board surface PixelCopy PNG",
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output))
+            output.flush()
+        }
+        assertTrue("Board surface PixelCopy PNG missing or too small", file.exists() && file.length() > 1000)
+        android.util.Log.i(
+            "LudoMadaTest",
+            "ANDROID_BOARD_SURFACE_PIXCOPY_WRITTEN api=$apiLevel size=${bitmap.width}x${bitmap.height} " +
+                "colorBuckets=${colorBuckets.size} chromaticPixels=$chromaticPixels/$sampledPixels bytes=${file.length()}"
+        )
+        bitmap.recycle()
+    }
+
     private fun scrollToVisibleText(device: UiDevice, text: String): Boolean {
         val scrollable = UiScrollable(UiSelector().scrollable(true)).apply {
             setAsVerticalList()
@@ -504,6 +605,7 @@ class StartupUiTest {
         // adb exec-out run-as, avoiding API-specific shared-storage permissions
         // and Android 8.1 emulator restrictions on public Pictures directories.
         val apiLevel = android.os.Build.VERSION.SDK_INT
+        captureBoardSurface(instrumentation, context, apiLevel)
         val screenshotName = "ludomada-startup-offline.png"
         val screenshotFile = File(context.filesDir, screenshotName)
         if (screenshotFile.exists()) {
