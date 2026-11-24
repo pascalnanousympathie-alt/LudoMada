@@ -54,7 +54,7 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
       if (value.includes("PBR_FRAME_PACING ")) framePacingLines.add(value.slice(value.indexOf("PBR_FRAME_PACING ")));
       if (value.includes("PBR_FRAME_PACING_PROGRESS ")) framePacingProgressLines.add(value.slice(value.indexOf("PBR_FRAME_PACING_PROGRESS ")));
       if (value.includes("PBR_DISPLAY_REFRESH_HZ=")) displayRefreshLines.add(value.slice(value.indexOf("PBR_DISPLAY_REFRESH_HZ=")));
-      if (value.includes("PBR_UI_VSYNC ")) uiVsyncLines.add(value.slice(value.indexOf("PBR_UI_VSYNC ")));
+      if (value.includes("PBR_UI_VSYNC")) uiVsyncLines.add(value.slice(value.indexOf("PBR_UI_VSYNC")));
 
       if (value.includes("Renderer=GLES3_PBR")) gles3Pbr = true;
       if (value.includes("PBR_SURFACE_CREATED")) pbrSurfaceCreated = true;
