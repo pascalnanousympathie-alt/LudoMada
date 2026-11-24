@@ -72,22 +72,46 @@ class LudoBoardView(
     private var debugPacingProbeActive = false
     private var debugUiVsyncProbeCallback: android.view.Choreographer.FrameCallback? = null
     private var debugUiVsyncProbeLastFrameNanos = 0L
+    private var debugUiVsyncProbeStartNanos = 0L
+    private var debugUiVsyncProbeCallbackCount = 0
     private var debugUiVsyncProbeSampleCount = 0
     private val debugUiVsyncProbeIntervalsNanos = LongArray(120)
 
     private fun startDebugUiVsyncProbe(generation:Int) {
         if (!BuildConfig.DEBUG || homePreview) return
-        debugUiVsyncProbeLastFrameNanos=0L
-        debugUiVsyncProbeSampleCount=0
-        val callback=object : android.view.Choreographer.FrameCallback {
-            override fun doFrame(frameTimeNanos:Long) {
-                if(!debugPacingProbeActive || generation!=debugPacingProbeGeneration)return
-                val previous=debugUiVsyncProbeLastFrameNanos
-                if(previous>0L && debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
-                    val interval=frameTimeNanos-previous
-                    if(interval>0L){
-                        debugUiVsyncProbeIntervalsNanos[debugUiVsyncProbeSampleCount]=interval
-                        debugUiVsyncProbeSampleCount+=1
+        val startProbe = Runnable {
+            if(!debugPacingProbeActive || generation!=debugPacingProbeGeneration)return@Runnable
+            debugUiVsyncProbeLastFrameNanos=0L
+            debugUiVsyncProbeStartNanos=System.nanoTime()
+            debugUiVsyncProbeCallbackCount=0
+            debugUiVsyncProbeSampleCount=0
+            android.util.Log.i(
+                "LudoMadaRender",
+                "PBR_UI_VSYNC_PROBE_STARTED thread="+Thread.currentThread().name+
+                    " main="+(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())+
+                    " refreshHz="+displayRefreshRateHz()
+            )
+            val callback=object : android.view.Choreographer.FrameCallback {
+                override fun doFrame(frameTimeNanos:Long) {
+                    if(!debugPacingProbeActive || generation!=debugPacingProbeGeneration)return
+                    debugUiVsyncProbeCallbackCount+=1
+                    val previous=debugUiVsyncProbeLastFrameNanos
+                    if(previous>0L && debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
+                        val interval=frameTimeNanos-previous
+                        if(interval>0L){
+                            debugUiVsyncProbeIntervalsNanos[debugUiVsyncProbeSampleCount]=interval
+                            debugUiVsyncProbeSampleCount+=1
+                        }
+                    }
+                    if(debugUiVsyncProbeSampleCount>0 &&
+                        debugUiVsyncProbeSampleCount%30==0){
+                        val elapsedMs=(System.nanoTime()-debugUiVsyncProbeStartNanos).coerceAtLeast(0L)/1_000_000L
+                        android.util.Log.i(
+                            "LudoMadaRender",
+                            "PBR_UI_VSYNC_PROGRESS intervals="+debugUiVsyncProbeSampleCount+
+                                " callbacks="+debugUiVsyncProbeCallbackCount+
+                                " elapsedMs="+elapsedMs
+                        )
                     }
                     if(debugUiVsyncProbeSampleCount==debugUiVsyncProbeIntervalsNanos.size){
                         val samples=debugUiVsyncProbeIntervalsNanos.copyOf(debugUiVsyncProbeSampleCount)
@@ -109,23 +133,45 @@ class LudoBoardView(
                             .edit().putString("last_ui_vsync_report",line).apply()
                         android.util.Log.i("LudoMadaRender",line)
                     }
-                }
-                debugUiVsyncProbeLastFrameNanos=frameTimeNanos
-                if(debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
-                    android.view.Choreographer.getInstance().postFrameCallback(this)
+                    debugUiVsyncProbeLastFrameNanos=frameTimeNanos
+                    if(debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
+                        android.view.Choreographer.getInstance().postFrameCallback(this)
+                    }
                 }
             }
+            debugUiVsyncProbeCallback=callback
+            android.view.Choreographer.getInstance().postFrameCallback(callback)
         }
-        debugUiVsyncProbeCallback=callback
-        android.view.Choreographer.getInstance().postFrameCallback(callback)
+        if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper()){
+            startProbe.run()
+        }else if(!post(startProbe)){
+            android.util.Log.w("LudoMadaRender","PBR_UI_VSYNC_PROBE_POST_FAILED")
+        }
     }
 
     private fun stopDebugUiVsyncProbe() {
-        debugUiVsyncProbeCallback?.let {
-            android.view.Choreographer.getInstance().removeFrameCallback(it)
+        val callback=debugUiVsyncProbeCallback
+        if(callback!=null){
+            if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper()){
+                android.view.Choreographer.getInstance().removeFrameCallback(callback)
+            }else{
+                post { android.view.Choreographer.getInstance().removeFrameCallback(callback) }
+            }
         }
+        val elapsedMs=if(debugUiVsyncProbeStartNanos>0L)
+            (System.nanoTime()-debugUiVsyncProbeStartNanos).coerceAtLeast(0L)/1_000_000L else 0L
+        val complete=debugUiVsyncProbeSampleCount>=debugUiVsyncProbeIntervalsNanos.size
+        val status=if(complete)"COMPLETE" else "INCOMPLETE"
+        val line="PBR_UI_VSYNC_PROBE_ENDED status=$status"+
+            " intervals="+debugUiVsyncProbeSampleCount+
+            " callbacks="+debugUiVsyncProbeCallbackCount+
+            " elapsedMs="+elapsedMs
+        context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE)
+            .edit().putString("last_ui_vsync_probe_end",line).apply()
+        android.util.Log.i("LudoMadaRender",line)
         debugUiVsyncProbeCallback=null
         debugUiVsyncProbeLastFrameNanos=0L
+        debugUiVsyncProbeStartNanos=0L
     }
 
     /**
