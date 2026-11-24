@@ -117,7 +117,7 @@ internal class FramePacingTelemetry(
         particlesNanos[sampleCount]=pendingParticlesNanos
         sampleCount+=1
         activeSpanNanos+=interval
-        beginBurst(frameStartNanos,currentRenderWork,shadowNanos,sceneNanos,postNanos)
+        beginBurst(frameStartNanos,currentRenderWork,shadowNanos,sceneNanos,postNanos,backdropStageNanos,boardStageNanos,actorsStageNanos,diceStageNanos,particlesStageNanos)
 
         if(sampleCount<minimumSamples || activeSpanNanos<minimumWindowNanos)return null
         return createReport(activeSpanNanos).also { resetWindow() }
