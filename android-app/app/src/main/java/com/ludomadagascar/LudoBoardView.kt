@@ -1056,6 +1056,13 @@ class LudoBoardView(
         private var sceneFbo=0
         private var sceneColorTex=0
         private var sceneDepthTex=0
+        private var lastShadowPassNanos=0L
+        private var lastScenePassNanos=0L
+        private var lastPostProcessNanos=0L
+        private var debugStageFrameCount=0
+        private var debugShadowPassTotalNanos=0L
+        private var debugScenePassTotalNanos=0L
+        private var debugPostProcessTotalNanos=0L
         private var fallbackShadowTex=0
         internal val premiumLighting = PremiumMaterialLighting.lighting
         internal val premiumPost = PremiumMaterialLighting.post
@@ -1276,10 +1283,24 @@ class LudoBoardView(
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if(BuildConfig.DEBUG && !host.homePreview){
+                debugStageFrameCount+=1
+                debugShadowPassTotalNanos+=lastShadowPassNanos
+                debugScenePassTotalNanos+=lastScenePassNanos
+                debugPostProcessTotalNanos+=lastPostProcessNanos
                 val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime())
                 if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
-                    val reportLine=report.toLogLine(refreshRate)
+                    val stageFrames=debugStageFrameCount.coerceAtLeast(1)
+                    fun stageMs(totalNanos:Long)=String.format(Locale.US,"%.2f",totalNanos.toDouble()/stageFrames/1_000_000.0)
+                    val reportLine=report.toLogLine(refreshRate)+
+                        " stageFrames=$stageFrames"+
+                        " shadowAvgMs=${stageMs(debugShadowPassTotalNanos)}"+
+                        " sceneAvgMs=${stageMs(debugScenePassTotalNanos)}"+
+                        " postAvgMs=${stageMs(debugPostProcessTotalNanos)}"
+                    debugStageFrameCount=0
+                    debugShadowPassTotalNanos=0L
+                    debugScenePassTotalNanos=0L
+                    debugPostProcessTotalNanos=0L
                     host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                         .edit().putString("last_frame_pacing_report",reportLine).apply()
                     host.post { android.util.Log.i("LudoMadaRender",reportLine) }
@@ -1367,9 +1388,15 @@ class LudoBoardView(
                 return
             }
             if(sceneFbo==0) createSceneTargets(sceneWidth,sceneHeight)
+            val shadowStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             renderShadowMap()
+            if(BuildConfig.DEBUG)lastShadowPassNanos=System.nanoTime()-shadowStart
+            val sceneStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             renderScene()
+            if(BuildConfig.DEBUG)lastScenePassNanos=System.nanoTime()-sceneStart
+            val postStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             renderPostProcess()
+            if(BuildConfig.DEBUG)lastPostProcessNanos=System.nanoTime()-postStart
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
                 logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
                 firstFrameDiagnosticsCaptured=true
