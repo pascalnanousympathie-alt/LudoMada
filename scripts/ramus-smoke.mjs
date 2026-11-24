@@ -1,5 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function parseRendererReadiness(label) {
   if (typeof label !== "string") return null;
@@ -392,6 +394,28 @@ function serializeTelemetryEvidence(evidence) {
   return serialized;
 }
 
+function persistTelemetryEvidenceFile(filePath, evidence) {
+  const serialized = serializeTelemetryEvidence(evidence);
+  // Keep the temporary file beside the destination so rename stays on one
+  // filesystem. The previous complete artifact remains intact until promotion.
+  const temporaryPath = `${filePath}.tmp-${process.pid}`;
+  try {
+    writeFileSync(temporaryPath, serialized, { encoding: "utf8", flag: "w" });
+    const staged = readFileSync(temporaryPath, "utf8");
+    const parsed = JSON.parse(staged);
+    if (staged !== serialized || !parsed ||
+        parsed.schemaVersion !== evidence.schemaVersion ||
+        parsed.rawAccessibilityLabel !== evidence.rawAccessibilityLabel) {
+      throw new Error("Ramus telemetry temporary file failed read-back validation");
+    }
+    renameSync(temporaryPath, filePath);
+    return serialized;
+  } catch (error) {
+    try { rmSync(temporaryPath, { force: true }); } catch {}
+    throw error;
+  }
+}
+
 function selfTestFramebufferReadback() {
   const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
   const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
@@ -511,8 +535,28 @@ function selfTestFramebufferReadback() {
     telemetryRoundTripPassed = false;
   }
 
+  let telemetryAtomicPersistencePassed = false;
+  let telemetryTestDirectory = null;
+  try {
+    telemetryTestDirectory = mkdtempSync(join(tmpdir(), "ludomada-telemetry-"));
+    const telemetryTestFile = join(telemetryTestDirectory, "ramus-telemetry.json");
+    const telemetryJson = persistTelemetryEvidenceFile(telemetryTestFile, telemetryRoundTripEvidence);
+    const persisted = readFileSync(telemetryTestFile, "utf8");
+    telemetryAtomicPersistencePassed = persisted === telemetryJson &&
+      JSON.parse(persisted).rawAccessibilityLabel === telemetryRoundTripLabel &&
+      persisted.endsWith("\n") &&
+      !existsSync(`${telemetryTestFile}.tmp-${process.pid}`);
+  } catch {
+    telemetryAtomicPersistencePassed = false;
+  } finally {
+    if (telemetryTestDirectory) {
+      try { rmSync(telemetryTestDirectory, { recursive: true, force: true }); } catch {}
+    }
+  }
+
   const cases = [
     ["Ramus telemetry JSON round-trips an untruncated 2,200-character label with a valid newline", telemetryRoundTripPassed],
+    ["Ramus telemetry file is read-back validated before atomic rename", telemetryAtomicPersistencePassed],
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
     ["GLES3 PBR readiness rejects a missing gameplay environment", !rendererReadinessPassed(pbrWithoutEnvironment)],
     ["missing PBR environment reports a specific reason", rendererReadinessFailureReason(pbrWithoutEnvironment) === "gameplay_environment_missing"],
@@ -1994,8 +2038,7 @@ try {
     captureStage: "raw_accessibility"
   };
   function persistTelemetryEvidence() {
-    const telemetryJson = serializeTelemetryEvidence(telemetryEvidence);
-    writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
+    const telemetryJson = persistTelemetryEvidenceFile("ramus-telemetry.json", telemetryEvidence);
     console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
       " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
       " stage=" + telemetryEvidence.captureStage);
