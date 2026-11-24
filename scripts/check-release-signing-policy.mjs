@@ -14,6 +14,8 @@ const jobEnvironment = androidJob.slice(0, stepsIndex).join("\n");
 assert.doesNotMatch(jobEnvironment, /ANDROID_KEYSTORE_(?:BASE64|PASSWORD)|ANDROID_KEY_ALIAS|ANDROID_KEY_PASSWORD/,
   "Android signing secrets must never be job-scoped");
 
+assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:\s*\n\s+inputs:\s*\n\s+sign_release:/m,
+  "the explicit signing input must be attached to the workflow_dispatch event");
 assert.match(workflow, /sign_release:[\s\S]*?default: false[\s\S]*?type: boolean/,
   "manual signing input must default to false");
 const approvalGate = /github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main' && inputs\.sign_release/;
