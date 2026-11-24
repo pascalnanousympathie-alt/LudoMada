@@ -1287,7 +1287,7 @@ class LudoBoardView(
                 debugShadowPassTotalNanos+=lastShadowPassNanos
                 debugScenePassTotalNanos+=lastScenePassNanos
                 debugPostProcessTotalNanos+=lastPostProcessNanos
-                val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime())
+                val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime(),lastShadowPassNanos,lastScenePassNanos,lastPostProcessNanos)
                 if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
                     val stageFrames=debugStageFrameCount.coerceAtLeast(1)
