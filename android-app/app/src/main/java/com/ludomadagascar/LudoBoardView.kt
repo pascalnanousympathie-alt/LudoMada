@@ -70,6 +70,63 @@ class LudoBoardView(
     private var diceRolling = false
     private var debugPacingProbeGeneration = 0
     private var debugPacingProbeActive = false
+    private var debugUiVsyncProbeCallback: android.view.Choreographer.FrameCallback? = null
+    private var debugUiVsyncProbeLastFrameNanos = 0L
+    private var debugUiVsyncProbeSampleCount = 0
+    private val debugUiVsyncProbeIntervalsNanos = LongArray(120)
+
+    private fun startDebugUiVsyncProbe(generation:Int) {
+        if (!BuildConfig.DEBUG || homePreview) return
+        debugUiVsyncProbeLastFrameNanos=0L
+        debugUiVsyncProbeSampleCount=0
+        val callback=object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos:Long) {
+                if(!debugPacingProbeActive || generation!=debugPacingProbeGeneration)return
+                val previous=debugUiVsyncProbeLastFrameNanos
+                if(previous>0L && debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
+                    val interval=frameTimeNanos-previous
+                    if(interval>0L){
+                        debugUiVsyncProbeIntervalsNanos[debugUiVsyncProbeSampleCount]=interval
+                        debugUiVsyncProbeSampleCount+=1
+                    }
+                    if(debugUiVsyncProbeSampleCount==debugUiVsyncProbeIntervalsNanos.size){
+                        val samples=debugUiVsyncProbeIntervalsNanos.copyOf(debugUiVsyncProbeSampleCount)
+                        java.util.Arrays.sort(samples)
+                        var totalNanos=0L
+                        for(value in samples)totalNanos+=value
+                        val count=samples.size
+                        val averageFrameMs=totalNanos.toDouble()/count/1_000_000.0
+                        val averageFps=count.toDouble()*1_000_000_000.0/totalNanos.coerceAtLeast(1L).toDouble()
+                        val p95Index=((count*95+99)/100-1).coerceIn(0,count-1)
+                        fun ms(value:Long)=String.format(java.util.Locale.US,"%.2f",value.toDouble()/1_000_000.0)
+                        val line="PBR_UI_VSYNC samples=$count"+
+                            " refreshHz="+String.format(java.util.Locale.US,"%.2f",displayRefreshRateHz().toDouble())+
+                            " avgFps="+String.format(java.util.Locale.US,"%.2f",averageFps)+
+                            " avgFrameMs="+String.format(java.util.Locale.US,"%.2f",averageFrameMs)+
+                            " p95FrameMs="+ms(samples[p95Index])+
+                            " maxFrameMs="+ms(samples[count-1])
+                        context.getSharedPreferences("ludomada_debug",Context.MODE_PRIVATE)
+                            .edit().putString("last_ui_vsync_report",line).apply()
+                        android.util.Log.i("LudoMadaRender",line)
+                    }
+                }
+                debugUiVsyncProbeLastFrameNanos=frameTimeNanos
+                if(debugUiVsyncProbeSampleCount<debugUiVsyncProbeIntervalsNanos.size){
+                    android.view.Choreographer.getInstance().postFrameCallback(this)
+                }
+            }
+        }
+        debugUiVsyncProbeCallback=callback
+        android.view.Choreographer.getInstance().postFrameCallback(callback)
+    }
+
+    private fun stopDebugUiVsyncProbe() {
+        debugUiVsyncProbeCallback?.let {
+            android.view.Choreographer.getInstance().removeFrameCallback(it)
+        }
+        debugUiVsyncProbeCallback=null
+        debugUiVsyncProbeLastFrameNanos=0L
+    }
 
     /**
      * Keep the debug renderer continuously active for one bounded sample window after
@@ -85,7 +142,9 @@ class LudoBoardView(
             .putInt("frame_pacing_probe_samples", 0)
             .remove("frame_pacing_probe_progress")
             .remove("last_frame_pacing_report")
+            .remove("last_ui_vsync_report")
             .apply()
+        startDebugUiVsyncProbe(generation)
         renderMode = RENDERMODE_CONTINUOUSLY
         requestRender()
         android.util.Log.i(
@@ -94,6 +153,7 @@ class LudoBoardView(
         )
         postDelayed({
             if (generation == debugPacingProbeGeneration) {
+                stopDebugUiVsyncProbe()
                 renderMode = RENDERMODE_WHEN_DIRTY
                 debugPacingProbeActive = false
                 prefs.edit().putBoolean("frame_pacing_probe_ended", true).apply()
