@@ -167,6 +167,22 @@ test("preserves UI Choreographer VSync diagnostics separately from GL frame paci
   assert.deepEqual(result.evidence.framePacingLines, []);
 });
 
+test("retains UI VSync probe started progress and incomplete markers", () => {
+  const telemetry = completeTelemetry();
+  telemetry.observe({
+    lines: [
+      "I/LudoMadaRender: PBR_UI_VSYNC_PROBE_STARTED thread=main main=true refreshHz=60.0",
+      "I/LudoMadaRender: PBR_UI_VSYNC_PROGRESS intervals=30 callbacks=31 elapsedMs=500",
+      "I/LudoMadaRender: PBR_UI_VSYNC_PROBE_ENDED status=INCOMPLETE intervals=30 callbacks=31 elapsedMs=80000"
+    ]
+  });
+  const result = telemetry.snapshot(parseReadback);
+  assert.equal(result.evidence.uiVsyncLines.length, 3);
+  assert.match(result.evidence.uiVsyncLines[0], /PROBE_STARTED/);
+  assert.match(result.evidence.uiVsyncLines[1], /intervals=30/);
+  assert.match(result.evidence.uiVsyncLines[2], /status=INCOMPLETE/);
+});
+
 test("requires at least 120 real frame intervals before reporting a complete capture", () => {
   assert.equal(hasCompleteFramePacingReport([
     "I/LudoMadaRender: PBR_FRAME_PACING samples=90 spanMs=21000.00 avgFps=4.28"
