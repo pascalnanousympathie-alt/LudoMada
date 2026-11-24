@@ -382,6 +382,16 @@ function parseFramebufferReadback(line, expectedLabel) {
   };
 }
 
+function serializeTelemetryEvidence(evidence) {
+  const serialized = JSON.stringify(evidence, null, 2) + "\n";
+  const parsed = JSON.parse(serialized);
+  if (!parsed || parsed.schemaVersion !== evidence.schemaVersion ||
+      parsed.rawAccessibilityLabel !== evidence.rawAccessibilityLabel) {
+    throw new Error("Ramus telemetry JSON failed round-trip validation");
+  }
+  return serialized;
+}
+
 function selfTestFramebufferReadback() {
   const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
   const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
@@ -484,7 +494,25 @@ function selfTestFramebufferReadback() {
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
     .replace("GPU_FENCE_SAMPLES=60", "GPU_FENCE_SAMPLES=4");
 
+  const telemetryRoundTripLabel = "RENDER_TELEMETRY=1 | " + "x".repeat(2200);
+  const telemetryRoundTripEvidence = {
+    schemaVersion: 1,
+    source: "ramus_accessibility_tree",
+    rawAccessibilityLabel: telemetryRoundTripLabel,
+    captureStage: "complete"
+  };
+  let telemetryRoundTripPassed = false;
+  try {
+    const telemetryJson = serializeTelemetryEvidence(telemetryRoundTripEvidence);
+    const telemetryParsed = JSON.parse(telemetryJson);
+    telemetryRoundTripPassed = telemetryParsed.rawAccessibilityLabel === telemetryRoundTripLabel &&
+      telemetryJson.endsWith("\n");
+  } catch {
+    telemetryRoundTripPassed = false;
+  }
+
   const cases = [
+    ["Ramus telemetry JSON round-trips an untruncated 2,200-character label with a valid newline", telemetryRoundTripPassed],
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
     ["GLES3 PBR readiness rejects a missing gameplay environment", !rendererReadinessPassed(pbrWithoutEnvironment)],
     ["missing PBR environment reports a specific reason", rendererReadinessFailureReason(pbrWithoutEnvironment) === "gameplay_environment_missing"],
@@ -1966,7 +1994,7 @@ try {
     captureStage: "raw_accessibility"
   };
   function persistTelemetryEvidence() {
-    const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\n";
+    const telemetryJson = serializeTelemetryEvidence(telemetryEvidence);
     writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
     console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
       " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
