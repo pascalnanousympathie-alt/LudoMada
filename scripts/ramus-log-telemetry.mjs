@@ -127,3 +127,32 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
 
   return { observe, snapshot };
 }
+
+/**
+ * Build the final smoke summary from accumulated telemetry, not only the last
+ * rolling logcat snapshot. The final snapshot may be empty after system traffic
+ * rotates older renderer markers out of logcat.
+ */
+export function buildRendererFinalCapture(evidence, lastSnapshot) {
+  const accumulated = evidence && typeof evidence === "object" ? evidence : {};
+  const latest = lastSnapshot && typeof lastSnapshot === "object" ? lastSnapshot : {};
+  const latestLines = Array.isArray(latest.lines) ? latest.lines : [];
+  const markers = (value) => Array.isArray(value) ? value : [];
+
+  return {
+    broadOk: latest.broadOk === true,
+    filteredRequested: latest.filteredRequested === true,
+    filteredOk: latest.filteredOk === true,
+    totalLines: Number.isFinite(latest.totalLines) ? latest.totalLines : 0,
+    filteredLines: Number.isFinite(latest.filteredLines) ? latest.filteredLines : 0,
+    filteredError: typeof latest.filteredError === "string" ? latest.filteredError : null,
+    rendererLines: Number.isSafeInteger(accumulated.distinctRendererLines)
+      ? accumulated.distinctRendererLines
+      : 0,
+    finalSnapshotRendererLines: latestLines.length,
+    framePacingMarkers: markers(accumulated.framePacingLines),
+    refreshRateMarkers: markers(accumulated.displayRefreshLines),
+    uiVsyncMarkers: markers(accumulated.uiVsyncLines)
+  };
+}
+
