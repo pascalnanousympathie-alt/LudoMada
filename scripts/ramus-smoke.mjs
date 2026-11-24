@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 function parseRendererReadiness(label) {
@@ -2112,6 +2112,30 @@ try {
   } else {
     console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
   }
+
+  const telemetryEvidence = {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    source: "ramus_accessibility_tree",
+    rawAccessibilityLabel: telemetryLabel,
+    displayProbe,
+    fpsAcceptance,
+    metrics: accessibilityTelemetry,
+    supplementalLogcat: {
+      available: rendererLines.length > 0,
+      rendererRows: rendererLines.length,
+      perfFrameStatsRows: perfLines.length,
+      pipelinePhaseRows: phaseLines.length,
+      sceneBreakdownRows: sceneBreakdownLines.length,
+      glesDeviceInfoRows: glDeviceLines.length,
+      sceneReadbackRows: sceneReadbacks.length
+    }
+  };
+  const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\\n";
+  writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
+  console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
+    " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
+    " source=accessibility rawLogcatRows=" + rendererLines.length);
 
   success = true;
   console.log("RAMUS_GAMEPLAY_SMOKE_PASS");
