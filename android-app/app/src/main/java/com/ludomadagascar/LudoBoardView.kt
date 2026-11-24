@@ -1165,6 +1165,11 @@ class LudoBoardView(
         private var lastShadowPassNanos=0L
         private var lastScenePassNanos=0L
         private var lastPostProcessNanos=0L
+        private var lastSceneBackdropNanos=0L
+        private var lastSceneBoardNanos=0L
+        private var lastSceneActorsNanos=0L
+        private var lastSceneDiceNanos=0L
+        private var lastSceneParticlesNanos=0L
         private var fallbackShadowTex=0
         internal val premiumLighting = PremiumMaterialLighting.lighting
         internal val premiumPost = PremiumMaterialLighting.post
@@ -1385,7 +1390,7 @@ class LudoBoardView(
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if(BuildConfig.DEBUG && !host.homePreview){
-                val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime(),lastShadowPassNanos,lastScenePassNanos,lastPostProcessNanos)
+                val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime(),lastShadowPassNanos,lastScenePassNanos,lastPostProcessNanos,lastSceneBackdropNanos,lastSceneBoardNanos,lastSceneActorsNanos,lastSceneDiceNanos,lastSceneParticlesNanos)
                 if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
                     val reportLine=report.toLogLine(refreshRate)
@@ -1455,7 +1460,7 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();val particleStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L;drawParticles();if(BuildConfig.DEBUG)lastSceneParticlesNanos=System.nanoTime()-particleStart
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",sceneWidth,sceneHeight)
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
@@ -1560,11 +1565,14 @@ class LudoBoardView(
                 }
                 return
             }
+            val backdropStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             if (homePreview) {
                 drawHomeEnvironment()
             } else {
                 drawGameplayBackdrop()
             }
+            if(BuildConfig.DEBUG)lastSceneBackdropNanos=System.nanoTime()-backdropStart
+            val boardStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             if(!homePreview && boardParts.isNotEmpty()){
                 drawAuthoredBoard(false)
                 drawHomePawnSlots(false)
@@ -1585,8 +1593,13 @@ class LudoBoardView(
                         drawMesh(disk,identityAt(hc[0]+sx,boardTop+0.30f,hc[1]+sz,0.27f,0.025f,0.27f),colorFromInt(zoneColorInt(i),0.56f),0.20f,0.18f,1f,0f,3,false)
                 }
             }
+            if(BuildConfig.DEBUG)lastSceneBoardNanos=System.nanoTime()-boardStart
+            val actorsStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             for(pi in 0..3)for(ti in 0..3){val xz=host.display[pi][ti];if(xz[0].isNaN())continue;drawMesh(disk,identityAt(xz[0],boardTop+0.012f,xz[1],0.25f,1f,0.25f),floatArrayOf(0.015f,0.018f,0.023f,0.30f),0.90f,0f,1f,0f,0,true);drawPawn(xz[0],boardTop+0.10f+lift[pi][ti],xz[1],pawnColors[pi],pi==player,pi,ti)}
+            if(BuildConfig.DEBUG)lastSceneActorsNanos=System.nanoTime()-actorsStart
+            val diceStart=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             if (homePreview) drawDie(0) else for(pi in 0..3) drawDie(pi)
+            if(BuildConfig.DEBUG)lastSceneDiceNanos=System.nanoTime()-diceStart
         }
         private fun drawGameplayBackdrop(){
             drawMesh(cube,identityAt(0f,-1.02f,0f,13f,0.08f,13f),floatArrayOf(0.025f,0.095f,0.24f,1f),0.72f,0.04f,1f,0f,0,false)
