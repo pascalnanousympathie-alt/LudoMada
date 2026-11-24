@@ -2131,7 +2131,7 @@ try {
       sceneReadbackRows: sceneReadbacks.length
     }
   };
-  const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\\n";
+  const telemetryJson = JSON.stringify(telemetryEvidence, null, 2) + "\n";
   writeFileSync("ramus-telemetry.json", telemetryJson, { encoding: "utf8", flag: "w" });
   console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
     " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
