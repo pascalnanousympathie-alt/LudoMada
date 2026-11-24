@@ -597,6 +597,16 @@ const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
 if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`);
 
+// Bound the whole cloud smoke run, not only individual Ramus RPCs. Some test
+// loops intentionally try several random dice rolls and player turns; without
+// a total budget, transient RPC latency can consume the entire workflow slot.
+// Leave eight minutes inside the workflow's 30-minute job timeout for failure
+// logcat collection, session teardown and artifact upload.
+const RAMUS_SMOKE_TOTAL_BUDGET_MS = 22 * 60 * 1000;
+const ramusSmokeDeadline = Date.now() + RAMUS_SMOKE_TOTAL_BUDGET_MS;
+const ramusCleanupCommands = new Set(["logcat"]);
+console.log("RAMUS_SMOKE_TOTAL_BUDGET_MS=" + RAMUS_SMOKE_TOTAL_BUDGET_MS);
+
 function run(...args) {
   const result = runCli(...args);
   if (!result.ok) throw new Error(JSON.stringify(result.value ?? { error: "unknown" }));
@@ -614,7 +624,7 @@ function runCli(...args) {
   // Cloud session allocation includes device provisioning and can exceed the old 45s cap.
   // A recorded Ramus run timed out here before the app smoke test could start.
   // Give session start up to 120s; keep stop/other RPCs independently bounded.
-  const timeout = command === "session" && args[1] === "start"
+  const commandTimeout = command === "session" && args[1] === "start"
     ? 120000
     : command === "session"
       ? 45000
@@ -625,6 +635,29 @@ function runCli(...args) {
         : command === "wait"
           ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
           : 12000;
+  const isSessionTeardown = command === "session" && args[1] === "end";
+  const isCleanupRead = ramusCleanupCommands.has(command);
+  const remainingBudgetMs = ramusSmokeDeadline - Date.now();
+  // Keep cleanup RPCs available after the test budget expires so diagnostics
+  // can still be collected and the remote Ramus session can be ended.
+  if (!isSessionTeardown && !isCleanupRead && remainingBudgetMs <= 0) {
+    return {
+      ok: false,
+      value: {
+        error: "smoke_total_deadline_exceeded",
+        budgetMs: RAMUS_SMOKE_TOTAL_BUDGET_MS,
+        command
+      }
+    };
+  }
+  const timeout = isSessionTeardown || isCleanupRead
+    ? commandTimeout
+    : Math.min(commandTimeout, Math.max(1000, remainingBudgetMs));
+  const callStartedAt = Date.now();
+  if (command !== "logcat" && !isSessionTeardown) {
+    console.log("RAMUS_CLI_BEGIN command=" + command + " timeoutMs=" + timeout +
+      " budgetRemainingMs=" + Math.max(0, ramusSmokeDeadline - callStartedAt));
+  }
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -633,6 +666,11 @@ function runCli(...args) {
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
+  if (command !== "logcat" && !isSessionTeardown) {
+    console.log("RAMUS_CLI_END command=" + command +
+      " elapsedMs=" + (Date.now() - callStartedAt) +
+      " exitStatus=" + (r.status === null ? "null" : r.status));
+  }
   if (r.error) {
     return {
       ok: false,
