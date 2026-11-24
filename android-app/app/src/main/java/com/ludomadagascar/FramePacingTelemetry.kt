@@ -46,6 +46,11 @@ internal class FramePacingTelemetry(
         require(capacity>=minimumSamples)
     }
 
+    private var pendingRenderWorkNanos=0L
+    private var pendingShadowNanos=0L
+    private var pendingSceneNanos=0L
+    private var pendingPostNanos=0L
+
     fun record(
         frameStartNanos:Long,
         frameEndNanos:Long,
@@ -54,39 +59,55 @@ internal class FramePacingTelemetry(
         postNanos:Long=0L
     ):FramePacingReport? {
         if(frameStartNanos<=0L || frameEndNanos<frameStartNanos)return null
+        val currentRenderWork=(frameEndNanos-frameStartNanos).coerceAtLeast(0L)
 
         if(lastFrameStartNanos!=0L){
             val gap=frameStartNanos-lastFrameStartNanos
             when {
                 gap<=0L -> resetWindow()
-                gap>maximumBurstGapNanos -> lastFrameStartNanos=0L
+                gap>maximumBurstGapNanos -> resetWindow()
             }
         }
         if(lastFrameStartNanos==0L){
-            lastFrameStartNanos=frameStartNanos
+            beginBurst(frameStartNanos,currentRenderWork,shadowNanos,sceneNanos,postNanos)
             return null
         }
-        if(sampleCount>=capacity)resetWindow()
-        if(lastFrameStartNanos==0L){
-            lastFrameStartNanos=frameStartNanos
+        if(sampleCount>=capacity){
+            resetWindow()
+            beginBurst(frameStartNanos,currentRenderWork,shadowNanos,sceneNanos,postNanos)
             return null
         }
 
+        // Pair the interval ending at this frame start with the render work and
+        // stage timings from the preceding frame. That work happened inside the
+        // interval being measured, not after the current frame start.
         val interval=frameStartNanos-lastFrameStartNanos
         intervalsNanos[sampleCount]=interval
-        val renderWork=(frameEndNanos-frameStartNanos).coerceAtLeast(0L)
-        renderWorkNanos[sampleCount]=renderWork
-        outsideRenderNanos[sampleCount]=(interval-renderWork).coerceAtLeast(0L)
-        shadowPassNanos[sampleCount]=shadowNanos.coerceAtLeast(0L)
-        scenePassNanos[sampleCount]=sceneNanos.coerceAtLeast(0L)
-        postProcessNanos[sampleCount]=postNanos.coerceAtLeast(0L)
+        renderWorkNanos[sampleCount]=pendingRenderWorkNanos
+        outsideRenderNanos[sampleCount]=(interval-pendingRenderWorkNanos).coerceAtLeast(0L)
+        shadowPassNanos[sampleCount]=pendingShadowNanos
+        scenePassNanos[sampleCount]=pendingSceneNanos
+        postProcessNanos[sampleCount]=pendingPostNanos
         sampleCount+=1
         activeSpanNanos+=interval
-        lastFrameStartNanos=frameStartNanos
+        beginBurst(frameStartNanos,currentRenderWork,shadowNanos,sceneNanos,postNanos)
 
         if(sampleCount<minimumSamples || activeSpanNanos<minimumWindowNanos)return null
-
         return createReport(activeSpanNanos).also { resetWindow() }
+    }
+
+    private fun beginBurst(
+        frameStartNanos:Long,
+        renderWorkNanos:Long,
+        shadowNanos:Long,
+        sceneNanos:Long,
+        postNanos:Long
+    ){
+        lastFrameStartNanos=frameStartNanos
+        pendingRenderWorkNanos=renderWorkNanos
+        pendingShadowNanos=shadowNanos.coerceAtLeast(0L)
+        pendingSceneNanos=sceneNanos.coerceAtLeast(0L)
+        pendingPostNanos=postNanos.coerceAtLeast(0L)
     }
 
     private fun createReport(spanNanos:Long):FramePacingReport {
@@ -141,6 +162,10 @@ internal class FramePacingTelemetry(
         sampleCount=0
         activeSpanNanos=0L
         lastFrameStartNanos=0L
+        pendingRenderWorkNanos=0L
+        pendingShadowNanos=0L
+        pendingSceneNanos=0L
+        pendingPostNanos=0L
     }
 }
 
