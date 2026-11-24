@@ -1059,10 +1059,6 @@ class LudoBoardView(
         private var lastShadowPassNanos=0L
         private var lastScenePassNanos=0L
         private var lastPostProcessNanos=0L
-        private var debugStageFrameCount=0
-        private var debugShadowPassTotalNanos=0L
-        private var debugScenePassTotalNanos=0L
-        private var debugPostProcessTotalNanos=0L
         private var fallbackShadowTex=0
         internal val premiumLighting = PremiumMaterialLighting.lighting
         internal val premiumPost = PremiumMaterialLighting.post
@@ -1283,24 +1279,10 @@ class LudoBoardView(
             renderDirectFrame()
             System.arraycopy(vp,0,projectionSnapshot,0,16)
             if(BuildConfig.DEBUG && !host.homePreview){
-                debugStageFrameCount+=1
-                debugShadowPassTotalNanos+=lastShadowPassNanos
-                debugScenePassTotalNanos+=lastScenePassNanos
-                debugPostProcessTotalNanos+=lastPostProcessNanos
                 val report=framePacingTelemetry.record(frameStartNanos,System.nanoTime(),lastShadowPassNanos,lastScenePassNanos,lastPostProcessNanos)
                 if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
-                    val stageFrames=debugStageFrameCount.coerceAtLeast(1)
-                    fun stageMs(totalNanos:Long)=String.format(java.util.Locale.US,"%.2f",totalNanos.toDouble()/stageFrames/1_000_000.0)
-                    val reportLine=report.toLogLine(refreshRate)+
-                        " stageFrames=$stageFrames"+
-                        " shadowAvgMs=${stageMs(debugShadowPassTotalNanos)}"+
-                        " sceneAvgMs=${stageMs(debugScenePassTotalNanos)}"+
-                        " postAvgMs=${stageMs(debugPostProcessTotalNanos)}"
-                    debugStageFrameCount=0
-                    debugShadowPassTotalNanos=0L
-                    debugScenePassTotalNanos=0L
-                    debugPostProcessTotalNanos=0L
+                    val reportLine=report.toLogLine(refreshRate)
                     host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
                         .edit().putString("last_frame_pacing_report",reportLine).apply()
                     host.post { android.util.Log.i("LudoMadaRender",reportLine) }
