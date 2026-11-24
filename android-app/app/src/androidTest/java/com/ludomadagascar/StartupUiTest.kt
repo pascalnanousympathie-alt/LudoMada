@@ -95,6 +95,15 @@ class StartupUiTest {
         val context = instrumentation.targetContext
         val info = context.packageManager.getApplicationInfo(context.packageName, 0)
         context.getSharedPreferences("ludomada_session", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        val debugPrefs = context.getSharedPreferences("ludomada_debug", android.content.Context.MODE_PRIVATE)
+        debugPrefs.edit()
+            .remove("pbr_first_frame_complete")
+            .remove("last_frame_pacing_report")
+            .remove("frame_pacing_probe_started")
+            .remove("frame_pacing_probe_ended")
+            .remove("frame_pacing_probe_samples")
+            .remove("frame_pacing_probe_progress")
+            .commit()
         assertTrue("Launcher icon resource must exist", info.icon != 0)
 
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -113,6 +122,33 @@ class StartupUiTest {
         assertTrue("3D board surface missing", device.wait(Until.hasObject(By.desc("LudoMada 3D Ludo board")), 5000))
         assertTrue(device.wait(Until.hasObject(By.textContains("Lancer le dé")), 5000))
         assertTrue(device.hasObject(By.textContains("Joueur 1/")))
+        // A visible GLSurfaceView only proves layout. Wait for PBR scene rendering,
+        // post-processing and backbuffer readback before capturing visual evidence.
+        val firstFrameDeadline = System.currentTimeMillis() + 30_000
+        while (!debugPrefs.getBoolean("pbr_first_frame_complete", false) &&
+            System.currentTimeMillis() < firstFrameDeadline) {
+            Thread.sleep(50)
+        }
+        assertTrue(
+            "PBR first frame did not complete scene rendering and backbuffer readback within 30 seconds",
+            debugPrefs.getBoolean("pbr_first_frame_complete", false)
+        )
+        Thread.sleep(250)
+        // Capture visual evidence only after the renderer has completed its first
+        // PBR frame and backbuffer readback. The CI watcher pulls this app-private
+        // file with adb run-as before Gradle uninstalls the target APK.
+        val apiLevel = android.os.Build.VERSION.SDK_INT
+        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
+        val screenshotFile = File(context.filesDir, screenshotName)
+        if (screenshotFile.exists()) {
+            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
+        }
+        device.takeScreenshot(screenshotFile)
+        assertTrue(
+            "Startup screenshot missing or too small",
+            screenshotFile.exists() && screenshotFile.length() > 1000
+        )
+        android.util.Log.i("LudoMadaTest", "ANDROID_SURFACE_SCREENSHOT_WRITTEN bytes=${screenshotFile.length()} name=$screenshotName")
 
         var gotSix = false
         for (attempt in 0 until 24) {
@@ -127,24 +163,29 @@ class StartupUiTest {
         }
         assertTrue("Dice should produce a reachable six within retries", gotSix)
 
+        // The first dice animation starts one bounded debug-only continuous render probe.
+        // It records actual GL draw intervals and preserves the sample-window diagnostics.
+        var framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
+        val framePacingDeadline = System.currentTimeMillis() + 90_000L
+        while (framePacingReport.isNullOrBlank() &&
+            System.currentTimeMillis() < framePacingDeadline) {
+            Thread.sleep(50)
+            framePacingReport = debugPrefs.getString("last_frame_pacing_report", null)
+        }
+        val probeStarted = debugPrefs.getBoolean("frame_pacing_probe_started", false)
+        val probeEnded = debugPrefs.getBoolean("frame_pacing_probe_ended", false)
+        val probeSamples = debugPrefs.getInt("frame_pacing_probe_samples", 0)
+        val probeProgress = debugPrefs.getString("frame_pacing_probe_progress", "not-recorded")
+        assertTrue(
+            "PBR frame-pacing report missing; started=$probeStarted ended=$probeEnded samples=$probeSamples progress=$probeProgress",
+            !framePacingReport.isNullOrBlank() && framePacingReport!!.contains("samples=120")
+        )
+        android.util.Log.i("LudoMadaTest", "ANDROID_FRAME_PACING_REPORT=$framePacingReport")
+
         assertTrue(device.hasObject(By.text("Pion 1")))
         device.findObject(By.text("Pion 1")).click()
         assertTrue("A six gives the player another turn after the pawn move",
             device.wait(Until.hasObject(By.textContains("Rejouez")), 1800))
 
-        // Keep the screenshot app-private. The host CI helper retrieves it with
-        // adb exec-out run-as, avoiding API-specific shared-storage permissions
-        // and Android 8.1 emulator restrictions on public Pictures directories.
-        val apiLevel = android.os.Build.VERSION.SDK_INT
-        val screenshotName = "ludomada-startup-offline-api-$apiLevel.png"
-        val screenshotFile = File(context.filesDir, screenshotName)
-        if (screenshotFile.exists()) {
-            assertTrue("Previous startup screenshot could not be removed", screenshotFile.delete())
-        }
-        device.takeScreenshot(screenshotFile)
-        assertTrue(
-            "Startup screenshot missing or too small",
-            screenshotFile.exists() && screenshotFile.length() > 1000
-        )
     }
 }

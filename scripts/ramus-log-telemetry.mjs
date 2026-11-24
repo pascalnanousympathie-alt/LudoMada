@@ -1,3 +1,14 @@
+export function hasCompleteFramePacingReport(lines, minimumSamples = 120) {
+  if (!Number.isSafeInteger(minimumSamples) || minimumSamples < 1) return false;
+  return (Array.isArray(lines) ? lines : []).some((line) => {
+    if (typeof line !== "string") return false;
+    const match = line.match(/PBR_FRAME_PACING\s+samples=(\d+)\b/);
+    if (!match) return false;
+    const samples = Number.parseInt(match[1], 10);
+    return Number.isSafeInteger(samples) && samples >= minimumSamples;
+  });
+}
+
 export const REQUIRED_HERO_PARTS = Object.freeze([
   "LM_Pawn_Base_Weighted",
   "LM_Pawn_Collar",
@@ -28,7 +39,12 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
   let totalLinesRead = 0;
   let filteredLinesRead = 0;
   const framePacingLines = new Set();
+  const framePacingProgressLines = new Set();
   const displayRefreshLines = new Set();
+  const uiVsyncLines = new Set();
+  const surfaceDimensionLines = new Set();
+  const glDeviceLines = new Set();
+  const sceneTargetDimensionLines = new Set();
 
   function observe(snapshot) {
     snapshotCount += 1;
@@ -39,7 +55,12 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
       if (typeof value !== "string" || value.length === 0) continue;
       evidenceLines.add(value);
       if (value.includes("PBR_FRAME_PACING ")) framePacingLines.add(value.slice(value.indexOf("PBR_FRAME_PACING ")));
+      if (value.includes("PBR_FRAME_PACING_PROGRESS ")) framePacingProgressLines.add(value.slice(value.indexOf("PBR_FRAME_PACING_PROGRESS ")));
       if (value.includes("PBR_DISPLAY_REFRESH_HZ=")) displayRefreshLines.add(value.slice(value.indexOf("PBR_DISPLAY_REFRESH_HZ=")));
+      if (value.includes("PBR_UI_VSYNC")) uiVsyncLines.add(value.slice(value.indexOf("PBR_UI_VSYNC")));
+      if (value.includes("PBR_SURFACE_DIMENSIONS egl=")) surfaceDimensionLines.add(value.slice(value.indexOf("PBR_SURFACE_DIMENSIONS egl=")));
+      if (value.includes("PBR_GL_DEVICE vendor=")) glDeviceLines.add(value.slice(value.indexOf("PBR_GL_DEVICE vendor=")));
+      if (value.includes("PBR_SCENE_TARGET_DIMENSIONS size=")) sceneTargetDimensionLines.add(value.slice(value.indexOf("PBR_SCENE_TARGET_DIMENSIONS size=")));
 
       if (value.includes("Renderer=GLES3_PBR")) gles3Pbr = true;
       if (value.includes("PBR_SURFACE_CREATED")) pbrSurfaceCreated = true;
@@ -94,7 +115,12 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
         heroLoadFailureSeen,
         boardLoadFailureSeen,
         framePacingLines: [...framePacingLines],
-        displayRefreshLines: [...displayRefreshLines]
+        framePacingProgressLines: [...framePacingProgressLines],
+        displayRefreshLines: [...displayRefreshLines],
+        uiVsyncLines: [...uiVsyncLines],
+        surfaceDimensionLines: [...surfaceDimensionLines],
+        glDeviceLines: [...glDeviceLines],
+        sceneTargetDimensionLines: [...sceneTargetDimensionLines]
       }
     };
   }

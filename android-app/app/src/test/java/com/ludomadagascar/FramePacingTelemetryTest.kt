@@ -105,6 +105,76 @@ class FramePacingTelemetryTest {
     }
 
     @Test
+    fun activeBurstSamplesAccumulateWithoutCountingLongIdleGaps() {
+        val telemetry=FramePacingTelemetry()
+        var report:FramePacingReport?=null
+        val interval=16_666_667L
+        val firstBurstStart=7_000_000_000L
+
+        // First animation burst contributes 60 valid frame intervals.
+        for(frame in 0..60){
+            val start=firstBurstStart+frame*interval
+            telemetry.record(start,start+1_000_000L)?.let { report=it }
+        }
+        assertNull(report)
+
+        // Five seconds of idle time separates the next burst and must not be
+        // counted as a long frame or force the 60 earlier samples to be discarded.
+        val secondBurstStart=firstBurstStart+60*interval+5_000_000_000L
+        for(frame in 0..60){
+            val start=secondBurstStart+frame*interval
+            telemetry.record(start,start+1_000_000L)?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertEquals(120,measured.samples)
+        assertTrue(measured.averageFps in 59.0..61.0)
+        assertTrue(measured.spanMs in 1_999.0..2_001.0)
+        assertTrue(measured.maxFrameMs<17.0)
+    }
+
+    @Test
+    fun reportsOutsideRenderGapAndPerStagePercentiles() {
+        val telemetry=FramePacingTelemetry()
+        val interval=16_666_667L
+        var report:FramePacingReport?=null
+        for(frame in 0..120){
+            val start=8_000_000_000L+frame*interval
+            val boardStageNanos=if(frame>=110)6_000_000L else 4_000_000L
+            val actorsStageNanos=if(frame>=110)3_500_000L else 3_000_000L
+            telemetry.record(
+                frameStartNanos=start,
+                frameEndNanos=start+12_000_000L,
+                shadowNanos=500_000L,
+                sceneNanos=10_000_000L,
+                postNanos=1_500_000L,
+                backdropStageNanos=1_000_000L,
+                boardStageNanos=boardStageNanos,
+                actorsStageNanos=actorsStageNanos,
+                diceStageNanos=1_000_000L,
+                particlesStageNanos=1_000_000L
+            )?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertEquals(120,measured.samples)
+        assertTrue(measured.p95GlWorkMs in 11.99..12.01)
+        assertTrue(measured.p95OutsideRenderMs in 4.65..4.68)
+        assertTrue(measured.p95ShadowPassMs in 0.49..0.51)
+        assertTrue(measured.p95ScenePassMs in 9.99..10.01)
+        assertTrue(measured.maxScenePassMs in 9.99..10.01)
+        assertTrue(measured.p95PostProcessMs in 1.49..1.51)
+        assertTrue(measured.p95BackdropMs in 0.99..1.01)
+        assertTrue(measured.maxBackdropMs in 0.99..1.01)
+        assertTrue(measured.p95BoardMs in 5.99..6.01)
+        assertTrue(measured.maxBoardMs in 5.99..6.01)
+        assertTrue(measured.p95ActorsMs in 3.49..3.51)
+        assertTrue(measured.maxActorsMs in 3.49..3.51)
+        assertTrue(measured.p95DiceMs in 0.99..1.01)
+        assertTrue(measured.p95ParticlesMs in 0.99..1.01)
+    }
+
+    @Test
     fun p99ExposesARepeatedLongFrameHitch() {
         val telemetry=FramePacingTelemetry()
         val reports=mutableListOf<FramePacingReport>()
