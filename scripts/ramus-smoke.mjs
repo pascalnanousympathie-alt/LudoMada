@@ -642,7 +642,7 @@ try {
         .filter((line) => line.includes("PBR_FRAME_PACING ") ||
           line.includes("PBR_FRAME_PACING_PROGRESS ") ||
           line.includes("PBR_DISPLAY_REFRESH_HZ=") ||
-          line.includes("PBR_UI_VSYNC "));
+          line.includes("PBR_UI_VSYNC"));
       rendererTelemetry.observe({
         totalLines: 0,
         filteredLines: entries.length,
@@ -839,7 +839,8 @@ try {
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
   console.log("RAMUS_FRAME_PACING_PROGRESS=" + JSON.stringify(finalEvidence.framePacingProgressLines));
   console.log("RAMUS_FRAME_PACING_CAPTURE=" + (framePacingComplete ? "PASS" : "MISSING"));
-  console.log("RAMUS_UI_VSYNC_METRICS=" + JSON.stringify(finalEvidence.uiVsyncLines));
+  console.log("RAMUS_UI_VSYNC_DIAGNOSTICS=" + JSON.stringify(finalEvidence.uiVsyncLines));
+  console.log("RAMUS_UI_VSYNC_METRICS=" + JSON.stringify(finalEvidence.uiVsyncLines.filter(line => line.includes("PBR_UI_VSYNC samples=")));
   if (!framePacingComplete) {
     throw new Error("Frame-pacing telemetry report missing or incomplete after bounded 90s capture; progress=" +
       JSON.stringify(finalEvidence.framePacingProgressLines).slice(0, 2400));
