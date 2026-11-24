@@ -124,7 +124,17 @@ internal class FramePacingTelemetry(
         java.util.Arrays.sort(sortedSceneScratch,0,sampleCount)
         java.util.Arrays.sort(sortedPostScratch,0,sampleCount)
         var totalIntervalNanos=0L
-        for(index in 0 until sampleCount)totalIntervalNanos+=intervalsNanos[index]
+        var totalOutsideNanos=0L
+        var totalShadowNanos=0L
+        var totalSceneNanos=0L
+        var totalPostNanos=0L
+        for(index in 0 until sampleCount){
+            totalIntervalNanos+=intervalsNanos[index]
+            totalOutsideNanos+=outsideRenderNanos[index]
+            totalShadowNanos+=shadowPassNanos[index]
+            totalSceneNanos+=scenePassNanos[index]
+            totalPostNanos+=postProcessNanos[index]
+        }
         val safeSpan=spanNanos.coerceAtLeast(1L)
         val averageFps=sampleCount.toDouble()*1_000_000_000.0/safeSpan.toDouble()
         val averageFrameMs=totalIntervalNanos.toDouble()/sampleCount/1_000_000.0
@@ -140,12 +150,16 @@ internal class FramePacingTelemetry(
             p99FrameMs=percentile(sortedIntervalsScratch,sampleCount,0.99),
             maxFrameMs=sortedIntervalsScratch[sampleCount-1].toDouble()/1_000_000.0,
             p95GlWorkMs=percentile(sortedRenderWorkScratch,sampleCount,0.95),
+            averageOutsideRenderMs=totalOutsideNanos.toDouble()/sampleCount/1_000_000.0,
             p95OutsideRenderMs=percentile(sortedOutsideRenderScratch,sampleCount,0.95),
+            averageShadowPassMs=totalShadowNanos.toDouble()/sampleCount/1_000_000.0,
             p95ShadowPassMs=percentile(sortedShadowScratch,sampleCount,0.95),
             maxShadowPassMs=percentile(sortedShadowScratch,sampleCount,1.0),
             p95ScenePassMs=percentile(sortedSceneScratch,sampleCount,0.95),
             maxScenePassMs=percentile(sortedSceneScratch,sampleCount,1.0),
+            averageScenePassMs=totalSceneNanos.toDouble()/sampleCount/1_000_000.0,
             p95PostProcessMs=percentile(sortedPostScratch,sampleCount,0.95),
+            averagePostProcessMs=totalPostNanos.toDouble()/sampleCount/1_000_000.0,
             maxPostProcessMs=percentile(sortedPostScratch,sampleCount,1.0),
             over120BudgetFrames=over120Budget,
             over60BudgetFrames=overRefreshBudget
@@ -179,12 +193,16 @@ internal data class FramePacingReport(
     val p99FrameMs:Double,
     val maxFrameMs:Double,
     val p95GlWorkMs:Double,
+    val averageOutsideRenderMs:Double,
     val p95OutsideRenderMs:Double,
+    val averageShadowPassMs:Double,
     val p95ShadowPassMs:Double,
     val maxShadowPassMs:Double,
     val p95ScenePassMs:Double,
     val maxScenePassMs:Double,
+    val averageScenePassMs:Double,
     val p95PostProcessMs:Double,
+    val averagePostProcessMs:Double,
     val maxPostProcessMs:Double,
     val over120BudgetFrames:Int,
     val over60BudgetFrames:Int
@@ -197,10 +215,10 @@ internal data class FramePacingReport(
             " p50FrameMs=${n(p50FrameMs)} p95FrameMs=${n(p95FrameMs)}" +
             " p99FrameMs=${n(p99FrameMs)} maxFrameMs=${n(maxFrameMs)}" +
             " glWorkP95Ms=${n(p95GlWorkMs)}" +
-            " outsideRenderP95Ms=${n(p95OutsideRenderMs)}" +
-            " shadowP95Ms=${n(p95ShadowPassMs)} shadowMaxMs=${n(maxShadowPassMs)}" +
-            " sceneP95Ms=${n(p95ScenePassMs)} sceneMaxMs=${n(maxScenePassMs)}" +
-            " postP95Ms=${n(p95PostProcessMs)} postMaxMs=${n(maxPostProcessMs)}" +
+            " outsideRenderAvgMs=${n(averageOutsideRenderMs)} outsideRenderP95Ms=${n(p95OutsideRenderMs)}" +
+            " shadowAvgMs=${n(averageShadowPassMs)} shadowP95Ms=${n(p95ShadowPassMs)} shadowMaxMs=${n(maxShadowPassMs)}" +
+            " sceneAvgMs=${n(averageScenePassMs)} sceneP95Ms=${n(p95ScenePassMs)} sceneMaxMs=${n(maxScenePassMs)}" +
+            " postAvgMs=${n(averagePostProcessMs)} postP95Ms=${n(p95PostProcessMs)} postMaxMs=${n(maxPostProcessMs)}" +
             " over120Budget=$over120BudgetFrames/$samples" +
             " over60Budget=$over60BudgetFrames/$samples"
     }
