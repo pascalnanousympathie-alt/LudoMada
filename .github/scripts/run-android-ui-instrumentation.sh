@@ -14,6 +14,8 @@ if [[ ! "$api_level" =~ ^[0-9]+$ ]]; then
 fi
 screenshot_name="ludomada-startup-offline-api-$api_level.png"
 screenshot_remote="files/$screenshot_name"
+board_surface_name="ludomada-board-surface-api-$api_level.png"
+board_surface_remote="files/$board_surface_name"
 
 "$ADB" start-server >/dev/null 2>&1 || true
 ready=0
@@ -66,7 +68,9 @@ additional_output_root="$GITHUB_WORKSPACE/android-app/app/build/outputs/connecte
 mkdir -p "$evidence_dir"
 screenshot_local="$evidence_dir/ludomada-startup-offline.png"
 screenshot_tmp="$evidence_dir/.ludomada-startup-offline.png.tmp"
-rm -f "$screenshot_local" "$screenshot_tmp"
+board_surface_local="$evidence_dir/$board_surface_name"
+board_surface_tmp="$evidence_dir/.$board_surface_name.tmp"
+rm -f "$screenshot_local" "$screenshot_tmp" "$board_surface_local" "$board_surface_tmp"
 
 validate_png() {
   python3 - "$1" <<'PY'
@@ -113,22 +117,34 @@ PY
 
 (
   for attempt in $(seq 1 600); do
-    if timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_tmp" 2>/dev/null; then
-      # adb may read app-private output before takeScreenshot() has finished.
-      # Accept only a complete PNG (>1 KB, valid chunk CRCs and terminal IEND).
+    if [[ ! -s "$screenshot_local" ]] && timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$screenshot_remote" > "$screenshot_tmp" 2>/dev/null; then
       if [[ -s "$screenshot_tmp" ]] && validate_png "$screenshot_tmp" >/dev/null 2>&1; then
         mv -- "$screenshot_tmp" "$screenshot_local"
-        echo "ANDROID_SURFACE_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
-        exit 0
+        echo "ANDROID_UI_SCREENSHOT_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
+      else
+        rm -f "$screenshot_tmp"
       fi
     fi
-    rm -f "$screenshot_tmp"
+
+    if [[ ! -s "$board_surface_local" ]] && timeout 4s "$ADB" -s "$DEVICE" exec-out run-as com.ludomadagascar cat "$board_surface_remote" > "$board_surface_tmp" 2>/dev/null; then
+      if [[ -s "$board_surface_tmp" ]] && validate_png "$board_surface_tmp" >/dev/null 2>&1; then
+        mv -- "$board_surface_tmp" "$board_surface_local"
+        echo "ANDROID_BOARD_SURFACE_PIXCOPY_CAPTURED_AND_VALIDATED_BEFORE_TEARDOWN"
+      else
+        rm -f "$board_surface_tmp"
+      fi
+    fi
+
+    if [[ -s "$screenshot_local" && -s "$board_surface_local" ]]; then
+      echo "ANDROID_UI_AND_BOARD_SURFACE_EVIDENCE_CAPTURED"
+      exit 0
+    fi
     if (( attempt % 30 == 0 )); then
-      echo "ANDROID_SURFACE_SCREENSHOT_WAITING_FOR_COMPLETE_PNG attempt=$attempt"
+      echo "ANDROID_EVIDENCE_WAITING_FOR_COMPLETE_PNGS attempt=$attempt ui=$([[ -s "$screenshot_local" ]] && echo yes || echo no) board_surface=$([[ -s "$board_surface_local" ]] && echo yes || echo no)"
     fi
     sleep 1
   done
-  echo "ANDROID_SURFACE_SCREENSHOT_WATCH_TIMEOUT"
+  echo "ANDROID_EVIDENCE_WATCH_TIMEOUT"
   exit 1
 ) &
 screenshot_watcher_pid=$!
@@ -145,7 +161,7 @@ set -e
 if [[ "$test_status" -ne 0 ]]; then
   kill "$screenshot_watcher_pid" 2>/dev/null || true
   wait "$screenshot_watcher_pid" 2>/dev/null || true
-  rm -f "$screenshot_tmp"
+  rm -f "$screenshot_tmp" "$board_surface_tmp"
   echo "CONNECTED_ANDROID_TEST_DIAGNOSTICS: Gradle exit code $test_status"
   "$ADB" devices -l || true
   timeout 8s "$ADB" -s "$DEVICE" shell getprop sys.boot_completed || true
@@ -158,12 +174,14 @@ fi
 # The watcher should have completed before Gradle's post-test uninstall.
 # Stop it immediately when there is no capture; UTP is the bounded fallback.
 screenshot_source_kind=""
-if [[ -s "$screenshot_local" ]]; then
+board_surface_source_kind=""
+if [[ -s "$screenshot_local" && -s "$board_surface_local" ]]; then
   wait "$screenshot_watcher_pid" 2>/dev/null || true
-  if validate_png "$screenshot_local"; then
+  if validate_png "$screenshot_local" && validate_png "$board_surface_local"; then
     screenshot_source_kind="app-private-run-as-before-teardown"
+    board_surface_source_kind="pixelcopy-app-private-run-as-before-teardown"
   else
-    rm -f "$screenshot_local"
+    rm -f "$screenshot_local" "$board_surface_local"
   fi
 else
   kill "$screenshot_watcher_pid" 2>/dev/null || true
@@ -191,6 +209,16 @@ if [[ -z "$screenshot_source_kind" ]]; then
   echo "ANDROID_SURFACE_SCREENSHOT_PULL_FAILED: pre-teardown run-as and UTP outputs unavailable"
   exit 1
 fi
-echo "ANDROID_SURFACE_SCREENSHOT_SOURCE=$screenshot_source_kind"
+if [[ -z "$board_surface_source_kind" ]]; then
+  if [[ -s "$board_surface_local" ]] && validate_png "$board_surface_local"; then
+    board_surface_source_kind="pixelcopy-app-private-run-as-before-teardown"
+  else
+    echo "ANDROID_BOARD_SURFACE_PIXCOPY_PULL_FAILED: renderer evidence is required separately from UiDevice screenshot"
+    exit 1
+  fi
+fi
+echo "ANDROID_UI_SCREENSHOT_SOURCE=$screenshot_source_kind"
+echo "ANDROID_BOARD_SURFACE_SCREENSHOT_SOURCE=$board_surface_source_kind"
 echo "API_LEVEL=$api_level"
-echo "ANDROID_SURFACE_SCREENSHOT_CAPTURE_PASS"
+echo "ANDROID_UI_SCREENSHOT_CAPTURE_PASS"
+echo "ANDROID_BOARD_SURFACE_PIXCOPY_CAPTURE_PASS"

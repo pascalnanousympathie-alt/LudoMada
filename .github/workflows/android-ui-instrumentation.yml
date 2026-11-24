@@ -103,11 +103,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_file="android-app/app/build/ramus-evidence/ludomada-startup-offline.png"
-          if [[ -s "$source_file" ]]; then
-            mkdir -p android-app/app/build/ramus-evidence/api30
-            cp -- "$source_file" android-app/app/build/ramus-evidence/api30/ludomada-startup-offline.png
-          fi
+          evidence_dir="android-app/app/build/ramus-evidence"
+          mkdir -p "$evidence_dir/api30"
+          [[ ! -s "$evidence_dir/ludomada-startup-offline.png" ]] || cp -- "$evidence_dir/ludomada-startup-offline.png" "$evidence_dir/api30/ludomada-startup-offline.png"
+          [[ ! -s "$evidence_dir/ludomada-board-surface-api-30.png" ]] || cp -- "$evidence_dir/ludomada-board-surface-api-30.png" "$evidence_dir/api30/ludomada-board-surface.png"
 
       - name: Run connected Android UI instrumentation tests (Android 8.1 / API 27)
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
@@ -131,11 +130,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source_file="android-app/app/build/ramus-evidence/ludomada-startup-offline.png"
-          if [[ -s "$source_file" ]]; then
-            mkdir -p android-app/app/build/ramus-evidence/api27
-            cp -- "$source_file" android-app/app/build/ramus-evidence/api27/ludomada-startup-offline.png
-          fi
+          evidence_dir="android-app/app/build/ramus-evidence"
+          mkdir -p "$evidence_dir/api27"
+          [[ ! -s "$evidence_dir/ludomada-startup-offline.png" ]] || cp -- "$evidence_dir/ludomada-startup-offline.png" "$evidence_dir/api27/ludomada-startup-offline.png"
+          [[ ! -s "$evidence_dir/ludomada-board-surface-api-27.png" ]] || cp -- "$evidence_dir/ludomada-board-surface-api-27.png" "$evidence_dir/api27/ludomada-board-surface.png"
 
       - name: Upload instrumentation reports
         if: always()
