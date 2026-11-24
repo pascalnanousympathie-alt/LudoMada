@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { paymentConfig } from "./payments/config";
 import { providerFor } from "./payments/providers";
 import { AirtelMoneyProvider } from "./payments/airtel";
+import { isPerformanceDiagnosticsEnabled, isPoolDiagnosticsEnabled } from "./diagnostics";
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
 if (!DATABASE_URL) {
@@ -47,6 +48,8 @@ const pool = new pg.Pool({
 const adapter = new PrismaPg(pool);
 
 const prisma = new PrismaClient({ adapter });
+const PERF_DIAGNOSTICS_ENABLED = isPerformanceDiagnosticsEnabled();
+const PG_POOL_DIAGNOSTICS_ENABLED = isPoolDiagnosticsEnabled();
 
 let pgPrewarmDone = false;
 
@@ -69,46 +72,50 @@ async function prewarmPgPool() {
   });
 }
 
-setInterval(() => {
-  console.log("PG_POOL_STATUS", {
-    total: pool.totalCount,
-    idle: pool.idleCount,
-    waiting: pool.waitingCount
-  });
-}, 1000).unref();
+if (PG_POOL_DIAGNOSTICS_ENABLED) {
+  setInterval(() => {
+    console.log("PG_POOL_STATUS", {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount
+    });
+  }, 1000).unref();
+}
 const authoritativeCommands = new AuthoritativeCommandService(prisma);
 const gameStateRepository = new GameStateRepository(prisma);
 
 const app=express();
 
 
-// REQUEST_E2E_TIMING_STATE_V3
-app.use((req:any,res:any,next:any)=>{
-  const isState =
-    req.path.startsWith("/api/games/") &&
-    req.path.endsWith("/state");
+// Request-level diagnostics are opt-in; avoid synchronous logging on the state-read hot path.
+if (PERF_DIAGNOSTICS_ENABLED) {
+  app.use((req:any,res:any,next:any)=>{
+    const isState =
+      req.path.startsWith("/api/games/") &&
+      req.path.endsWith("/state");
 
-  if(isState){
-    const start=process.hrtime.bigint();
+    if(isState){
+      const start=process.hrtime.bigint();
 
-    console.log("REQUEST_E2E_START",{
-      method:req.method,
-      path:req.path
-    });
-
-    res.on("finish",()=>{
-      const totalMs=
-        Number(process.hrtime.bigint()-start)/1e6;
-
-      console.log("REQUEST_E2E_TIMING",{
-        status:res.statusCode,
-        totalMs:Number(totalMs.toFixed(2))
+      console.log("REQUEST_E2E_START",{
+        method:req.method,
+        path:req.path
       });
-    });
-  }
 
-  next();
-});
+      res.on("finish",()=>{
+        const totalMs=
+          Number(process.hrtime.bigint()-start)/1e6;
+
+        console.log("REQUEST_E2E_TIMING",{
+          status:res.statusCode,
+          totalMs:Number(totalMs.toFixed(2))
+        });
+      });
+    }
+
+    next();
+  });
+}
 
 const JWT_SECRET: string = process.env.JWT_SECRET ?? "";
 if(JWT_SECRET.length < 32){
@@ -189,9 +196,13 @@ const authRateLimit = rateLimit({
   message: { error: "Too many authentication attempts" }
 });
 
-// AUTH_TIMING_V1
+// Authentication timing is opt-in and must not add hot-path work by default.
 function auth(req:any,res:any,next:any){
-  const authStart = process.hrtime.bigint();
+  const shouldMeasureAuth =
+    PERF_DIAGNOSTICS_ENABLED &&
+    req.path.startsWith("/api/games/") &&
+    req.path.endsWith("/state");
+  const authStart = shouldMeasureAuth ? process.hrtime.bigint() : 0n;
 
   try {
     const h=String(req.headers.authorization||"");
@@ -199,8 +210,8 @@ function auth(req:any,res:any,next:any){
     req.auth=verifyAccessToken(t,JWT_SECRET);
     req.userId=req.auth.sub;
 
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"OK"
@@ -209,8 +220,8 @@ function auth(req:any,res:any,next:any){
 
     next();
   } catch {
-    const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
-    if(req.path.startsWith("/api/games/") && req.path.endsWith("/state")){
+    if (shouldMeasureAuth) {
+      const authMs=Number(process.hrtime.bigint()-authStart)/1e6;
       console.log("AUTH_TIMING",{
         totalMs:Number(authMs.toFixed(3)),
         result:"FAIL"
@@ -1790,13 +1801,10 @@ app.get("/api/games/:gameId/ai-suggestion",auth,async(req:any,res:any)=>{
 });
 
 app.get("/api/games/:gameId/state",auth,async(req:any,res)=>{
-  const totalStart=process.hrtime.bigint();
-
-      const routeStart=process.hrtime.bigint();
+  const totalStart = PERF_DIAGNOSTICS_ENABLED ? process.hrtime.bigint() : 0n;
+  const routeStart = PERF_DIAGNOSTICS_ENABLED ? process.hrtime.bigint() : 0n;
 try{
-    const beforeQueryMs=Number(process.hrtime.bigint()-routeStart)/1e6;
-
-    const queryStart=process.hrtime.bigint();
+    const queryStart = PERF_DIAGNOSTICS_ENABLED ? process.hrtime.bigint() : 0n;
 
     const rows:any[]=await prisma.$queryRawUnsafe(`
       SELECT
@@ -1846,10 +1854,6 @@ try{
       LIMIT 1
     `,req.params.gameId,req.userId);
 
-    const queryMs=Number(
-      process.hrtime.bigint()-queryStart
-    )/1e6;
-
     if(!rows.length){
       const exists:any[]=await prisma.$queryRawUnsafe(`
         SELECT 1
@@ -1871,23 +1875,21 @@ try{
       return res.status(404).json({error:"Game state not found"});
     }
 
-    const beforeResponseMs=Number(
-      process.hrtime.bigint()-routeStart
-    )/1e6;
-
-    const totalMs=Number(
-      process.hrtime.bigint()-totalStart
-    )/1e6;
-
-    console.log("STATE_DETAILED_TIMING",{
-      routeBeforeQueryMs:Number(beforeQueryMs.toFixed(2)),
-      queryMs:Number(queryMs.toFixed(2)),
-      beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
-      totalMs:Number(totalMs.toFixed(2)),
-      participantsCount:Array.isArray(row.participants)
-        ? row.participants.length
-        : 0
-    });return res.json({
+    if (PERF_DIAGNOSTICS_ENABLED) {
+      const queryMs = Number(process.hrtime.bigint() - queryStart) / 1e6;
+      const beforeResponseMs = Number(process.hrtime.bigint() - routeStart) / 1e6;
+      const totalMs = Number(process.hrtime.bigint() - totalStart) / 1e6;
+      console.log("STATE_DETAILED_TIMING",{
+        routeBeforeQueryMs:Number((Number(queryStart-routeStart)/1e6).toFixed(2)),
+        queryMs:Number(queryMs.toFixed(2)),
+        beforeResponseMs:Number(beforeResponseMs.toFixed(2)),
+        totalMs:Number(totalMs.toFixed(2)),
+        participantsCount:Array.isArray(row.participants)
+          ? row.participants.length
+          : 0
+      });
+    }
+    return res.json({
       gameId:row.gameId,
       status:row.status,
       entryFee:row.entryFee ?? "0",

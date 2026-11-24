@@ -2,6 +2,12 @@ name: LudoMada Release Gate
 
 on:
   workflow_dispatch:
+    inputs:
+      sign_release:
+        description: "Sign and upload a release APK (manual workflow dispatch on main only)"
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [main]
   pull_request:
@@ -15,6 +21,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - ".github/workflows/release-gate.yml"
+      - "scripts/check-release-signing-policy.mjs"
 
 permissions:
   contents: read
@@ -112,15 +119,13 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 1
+
+      - name: Verify release signing secrets are not job-scoped
+        run: node scripts/check-release-signing-policy.mjs
 
       - name: Set up Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
@@ -140,54 +145,95 @@ jobs:
         working-directory: android-app
         run: printf "sdk.dir=%s\\n" "$ANDROID_HOME" > local.properties
 
-      - name: Prepare release signing (only when all secrets are configured)
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PASSWORD != '' && env.ANDROID_KEY_ALIAS != '' && env.ANDROID_KEY_PASSWORD != '' }}
+      - name: Prepare release signing (manual main-branch request only)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.sign_release }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -eu
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "RELEASE_SIGNING_SECRET_MISSING: manual signed-release request was made but not all Android signing secrets are configured"
+            exit 1
+          fi
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ludomada-release.jks"
           test -s "$RUNNER_TEMP/ludomada-release.jks"
 
-      - name: Build debug, release, instrumentation APKs and unit tests
+      - name: Build debug, instrumentation APKs and unit tests
         working-directory: android-app
         env:
-          LUDOMADA_SIGNING_STORE_FILE: ${{ runner.temp }}/ludomada-release.jks
-          LUDOMADA_SIGNING_STORE_PASSWORD: ${{ env.ANDROID_KEYSTORE_PASSWORD }}
-          LUDOMADA_SIGNING_KEY_ALIAS: ${{ env.ANDROID_KEY_ALIAS }}
-          LUDOMADA_SIGNING_KEY_PASSWORD: ${{ env.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
         run: |
           set -eu
           chmod +x gradlew
-          ./gradlew clean test assembleDebug assembleDebugAndroidTest assembleRelease --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          ./gradlew clean test assembleDebug assembleDebugAndroidTest --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
           test -s app/build/outputs/apk/debug/app-debug.apk
           test -s app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-          test -s app/build/outputs/apk/release/app-release-unsigned.apk || test -s app/build/outputs/apk/release/app-release.apk
 
-      - name: Verify release artifact and signing state
+      - name: Build unsigned release APK (standard CI)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/main' || !inputs.sign_release }}
+        working-directory: android-app
+        env:
+          ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+        run: |
+          set -eu
+          ./gradlew assembleRelease --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/release/app-release-unsigned.apk
+
+      - name: Build signed release APK (manual main-branch request only)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.sign_release }}
+        working-directory: android-app
+        env:
+          LUDOMADA_SIGNING_STORE_FILE: ${{ runner.temp }}/ludomada-release.jks
+          LUDOMADA_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          LUDOMADA_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          LUDOMADA_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_REOWN_PROJECT_ID: ${{ secrets.REOWN_PROJECT_ID }}
+        run: |
+          set -eu
+          test -s "$LUDOMADA_SIGNING_STORE_FILE"
+          ./gradlew assembleRelease --no-daemon --no-parallel -Dorg.gradle.workers.max=2 --console=plain --stacktrace
+          test -s app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify signed release APK
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.sign_release }}
         working-directory: android-app
         run: |
           set -eu
           release_apk="app/build/outputs/apk/release/app-release.apk"
-          unsigned_apk="app/build/outputs/apk/release/app-release-unsigned.apk"
           apksigner="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           test -x "$apksigner"
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
-            test -s "$release_apk"
-            "$apksigner" verify --verbose --print-certs "$release_apk"
-            sha256sum "$release_apk"
-            echo "RELEASE_SIGNED=true"
-          else
-            test -s "$unsigned_apk"
-            sha256sum "$unsigned_apk"
-            echo "RELEASE_SIGNED=false (configure GitHub signing secrets for a signed release)"
-          fi
+          test -s "$release_apk"
+          "$apksigner" verify --verbose --print-certs "$release_apk"
+          sha256sum "$release_apk"
+          echo "RELEASE_SIGNED=true"
 
-      - name: Upload verified Android APKs
+      - name: Upload Android debug and instrumentation APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: LudoMada-release-gate-${{ github.sha }}
+          name: LudoMada-ci-${{ github.sha }}
           path: |
             android-app/app/build/outputs/apk/debug/app-debug.apk
             android-app/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            android-app/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unsigned release APK (standard CI)
+        if: ${{ github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/main' || !inputs.sign_release }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LudoMada-unsigned-release-${{ github.sha }}
+          path: android-app/app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload signed release APK (manual main-branch request only)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.sign_release }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: LudoMada-signed-release-${{ github.sha }}
+          path: android-app/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
