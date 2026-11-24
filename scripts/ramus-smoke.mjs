@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function parseRendererReadiness(label) {
   if (typeof label !== "string") return null;
@@ -382,6 +384,38 @@ function parseFramebufferReadback(line, expectedLabel) {
   };
 }
 
+function serializeTelemetryEvidence(evidence) {
+  const serialized = JSON.stringify(evidence, null, 2) + "\n";
+  const parsed = JSON.parse(serialized);
+  if (!parsed || parsed.schemaVersion !== evidence.schemaVersion ||
+      parsed.rawAccessibilityLabel !== evidence.rawAccessibilityLabel) {
+    throw new Error("Ramus telemetry JSON failed round-trip validation");
+  }
+  return serialized;
+}
+
+function persistTelemetryEvidenceFile(filePath, evidence) {
+  const serialized = serializeTelemetryEvidence(evidence);
+  // Keep the temporary file beside the destination so rename stays on one
+  // filesystem. The previous complete artifact remains intact until promotion.
+  const temporaryPath = `${filePath}.tmp-${process.pid}`;
+  try {
+    writeFileSync(temporaryPath, serialized, { encoding: "utf8", flag: "w" });
+    const staged = readFileSync(temporaryPath, "utf8");
+    const parsed = JSON.parse(staged);
+    if (staged !== serialized || !parsed ||
+        parsed.schemaVersion !== evidence.schemaVersion ||
+        parsed.rawAccessibilityLabel !== evidence.rawAccessibilityLabel) {
+      throw new Error("Ramus telemetry temporary file failed read-back validation");
+    }
+    renameSync(temporaryPath, filePath);
+    return serialized;
+  } catch (error) {
+    try { rmSync(temporaryPath, { force: true }); } catch {}
+    throw error;
+  }
+}
+
 function selfTestFramebufferReadback() {
   const scene = "PBR_READBACK label=scene_fbo size=650x1011 brightPixels=369149/657150 maxChannel=255 meanRGB=30,28,28 centerRGB=37,31,11 glError=0x0";
   const surface = "PBR_READBACK label=surface_backbuffer size=650x1011 brightPixels=657149/657150 maxChannel=234 meanRGB=97,94,93 centerRGB=127,114,57 glError=0x0";
@@ -484,7 +518,45 @@ function selfTestFramebufferReadback() {
     .replace("GPU_FENCE_SIGNAL_DELAY_MS=12.00/84.00", "GPU_FENCE_SIGNAL_DELAY_MS=NA/NA")
     .replace("GPU_FENCE_SAMPLES=60", "GPU_FENCE_SAMPLES=4");
 
+  const telemetryRoundTripLabel = "RENDER_TELEMETRY=1 | " + "x".repeat(2200);
+  const telemetryRoundTripEvidence = {
+    schemaVersion: 1,
+    source: "ramus_accessibility_tree",
+    rawAccessibilityLabel: telemetryRoundTripLabel,
+    captureStage: "complete"
+  };
+  let telemetryRoundTripPassed = false;
+  try {
+    const telemetryJson = serializeTelemetryEvidence(telemetryRoundTripEvidence);
+    const telemetryParsed = JSON.parse(telemetryJson);
+    telemetryRoundTripPassed = telemetryParsed.rawAccessibilityLabel === telemetryRoundTripLabel &&
+      telemetryJson.endsWith("\n");
+  } catch {
+    telemetryRoundTripPassed = false;
+  }
+
+  let telemetryAtomicPersistencePassed = false;
+  let telemetryTestDirectory = null;
+  try {
+    telemetryTestDirectory = mkdtempSync(join(tmpdir(), "ludomada-telemetry-"));
+    const telemetryTestFile = join(telemetryTestDirectory, "ramus-telemetry.json");
+    const telemetryJson = persistTelemetryEvidenceFile(telemetryTestFile, telemetryRoundTripEvidence);
+    const persisted = readFileSync(telemetryTestFile, "utf8");
+    telemetryAtomicPersistencePassed = persisted === telemetryJson &&
+      JSON.parse(persisted).rawAccessibilityLabel === telemetryRoundTripLabel &&
+      persisted.endsWith("\n") &&
+      !existsSync(`${telemetryTestFile}.tmp-${process.pid}`);
+  } catch {
+    telemetryAtomicPersistencePassed = false;
+  } finally {
+    if (telemetryTestDirectory) {
+      try { rmSync(telemetryTestDirectory, { recursive: true, force: true }); } catch {}
+    }
+  }
+
   const cases = [
+    ["Ramus telemetry JSON round-trips an untruncated 2,200-character label with a valid newline", telemetryRoundTripPassed],
+    ["Ramus telemetry file is read-back validated before atomic rename", telemetryAtomicPersistencePassed],
     ["GLES3 PBR readiness accepts a prepared gameplay environment", rendererReadinessPassed(pbrReady)],
     ["GLES3 PBR readiness rejects a missing gameplay environment", !rendererReadinessPassed(pbrWithoutEnvironment)],
     ["missing PBR environment reports a specific reason", rendererReadinessFailureReason(pbrWithoutEnvironment) === "gameplay_environment_missing"],
@@ -597,6 +669,16 @@ const apk = process.env.RAMUS_APK;
 if (!cli || !apk) throw new Error("RAMUS_CLI and RAMUS_APK are required");
 if (!existsSync(apk)) throw new Error(`APK not found: ${apk}`);
 
+// Bound the whole cloud smoke run, not only individual Ramus RPCs. Some test
+// loops intentionally try several random dice rolls and player turns; without
+// a total budget, transient RPC latency can consume the entire workflow slot.
+// Leave eight minutes inside the workflow's 30-minute job timeout for failure
+// logcat collection, session teardown and artifact upload.
+const RAMUS_SMOKE_TOTAL_BUDGET_MS = 22 * 60 * 1000;
+const ramusSmokeDeadline = Date.now() + RAMUS_SMOKE_TOTAL_BUDGET_MS;
+const ramusCleanupCommands = new Set(["logcat"]);
+console.log("RAMUS_SMOKE_TOTAL_BUDGET_MS=" + RAMUS_SMOKE_TOTAL_BUDGET_MS);
+
 function run(...args) {
   const result = runCli(...args);
   if (!result.ok) throw new Error(JSON.stringify(result.value ?? { error: "unknown" }));
@@ -614,7 +696,7 @@ function runCli(...args) {
   // Cloud session allocation includes device provisioning and can exceed the old 45s cap.
   // A recorded Ramus run timed out here before the app smoke test could start.
   // Give session start up to 120s; keep stop/other RPCs independently bounded.
-  const timeout = command === "session" && args[1] === "start"
+  const commandTimeout = command === "session" && args[1] === "start"
     ? 120000
     : command === "session"
       ? 45000
@@ -625,6 +707,29 @@ function runCli(...args) {
         : command === "wait"
           ? Math.min(15000, Math.max(8000, (Number.isFinite(declaredWaitMs) ? declaredWaitMs : 0) + 5000))
           : 12000;
+  const isSessionTeardown = command === "session" && args[1] === "end";
+  const isCleanupRead = ramusCleanupCommands.has(command);
+  const remainingBudgetMs = ramusSmokeDeadline - Date.now();
+  // Keep cleanup RPCs available after the test budget expires so diagnostics
+  // can still be collected and the remote Ramus session can be ended.
+  if (!isSessionTeardown && !isCleanupRead && remainingBudgetMs <= 0) {
+    return {
+      ok: false,
+      value: {
+        error: "smoke_total_deadline_exceeded",
+        budgetMs: RAMUS_SMOKE_TOTAL_BUDGET_MS,
+        command
+      }
+    };
+  }
+  const timeout = isSessionTeardown || isCleanupRead
+    ? commandTimeout
+    : Math.min(commandTimeout, Math.max(1000, remainingBudgetMs));
+  const callStartedAt = Date.now();
+  if (command !== "logcat" && !isSessionTeardown) {
+    console.log("RAMUS_CLI_BEGIN command=" + command + " timeoutMs=" + timeout +
+      " budgetRemainingMs=" + Math.max(0, ramusSmokeDeadline - callStartedAt));
+  }
   const r = spawnSync(process.execPath, [cli, ...args], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -633,6 +738,11 @@ function runCli(...args) {
   });
   const out = (r.stdout || "").trim();
   const err = (r.stderr || "").trim();
+  if (command !== "logcat" && !isSessionTeardown) {
+    console.log("RAMUS_CLI_END command=" + command +
+      " elapsedMs=" + (Date.now() - callStartedAt) +
+      " exitStatus=" + (r.status === null ? "null" : r.status));
+  }
   if (r.error) {
     return {
       ok: false,
@@ -1906,6 +2016,34 @@ try {
   const displayProbeLabel = telemetryLabels.find(label =>
     label.includes("RAMUS_DISPLAY_MODES_HZ=") && label.includes("SURFACE_SET_FRAME_RATE=")
   ) || "";
+  // Save the raw telemetry before assertions. Later stages enrich this artifact
+  // so a failed FPS/readback assertion still leaves the measurements collected.
+  const telemetryEvidence = {
+    schemaVersion: 1,
+    capturedAt: new Date().toISOString(),
+    source: "ramus_accessibility_tree",
+    rawAccessibilityLabel: telemetryLabel,
+    displayProbe: null,
+    fpsAcceptance: null,
+    metrics: null,
+    supplementalLogcat: {
+      available: null,
+      rendererRows: null,
+      perfFrameStatsRows: null,
+      pipelinePhaseRows: null,
+      sceneBreakdownRows: null,
+      glesDeviceInfoRows: null,
+      sceneReadbackRows: null
+    },
+    captureStage: "raw_accessibility"
+  };
+  function persistTelemetryEvidence() {
+    const telemetryJson = persistTelemetryEvidenceFile("ramus-telemetry.json", telemetryEvidence);
+    console.log("RAMUS_TELEMETRY_JSON_CAPTURED file=ramus-telemetry.json" +
+      " bytes=" + Buffer.byteLength(telemetryJson, "utf8") +
+      " stage=" + telemetryEvidence.captureStage);
+  }
+  persistTelemetryEvidence();
   const displayProbe = parseRamusDisplayProbe(displayProbeLabel);
   if (!displayProbe) {
     throw new Error("Ramus did not expose the 120 Hz Surface/display-mode probe in its accessibility tree: " +
@@ -1918,6 +2056,10 @@ try {
     " surfaceCall=" + displayProbe.surfaceSetFrameRate +
     " screen=" + displayProbe.screen);
   const accessibilityTelemetry = parseRendererAccessibilityTelemetry(telemetryLabel);
+  telemetryEvidence.displayProbe = displayProbe;
+  telemetryEvidence.metrics = accessibilityTelemetry;
+  telemetryEvidence.captureStage = "parsed_accessibility";
+  persistTelemetryEvidence();
   if (!accessibilityTelemetry) {
     throw new Error("Renderer performance telemetry was not captured in the accessibility readiness label: " +
       JSON.stringify({ labels: treeLabels(telemetryTree).filter(label => label.includes("RENDER_PASS=")).slice(0, 3) }));
@@ -1954,6 +2096,9 @@ try {
     " gpuFenceFailures=" + accessibilityTelemetry.gpuFenceFailures +
     " gpuFenceSkips=" + accessibilityTelemetry.gpuFenceSkips);
   const fpsAcceptance = evaluate120FpsAcceptance(displayProbe, accessibilityTelemetry);
+  telemetryEvidence.fpsAcceptance = fpsAcceptance;
+  telemetryEvidence.captureStage = "fps_assessed";
+  persistTelemetryEvidence();
   const fpsAcceptanceSummary = "targetFps=" + fpsAcceptance.targetFps +
     " maxSupportedModeHz=" + fpsAcceptance.maximumSupportedModeHz +
     " actualDisplayHz=" + (fpsAcceptance.actualDisplayHz ?? "NA") +
@@ -2025,6 +2170,17 @@ try {
   const sceneBreakdownLines = rendererLines.filter(line => line.includes("PERF_SCENE_BREAKDOWN"));
   const glDeviceLines = rendererLines.filter(line => line.includes("GLES_DEVICE_INFO"));
   const sceneReadbacks = rendererLines.filter(line => line.includes("PBR_READBACK label=scene_fbo"));
+  telemetryEvidence.supplementalLogcat = {
+    available: rendererLines.length > 0,
+    rendererRows: rendererLines.length,
+    perfFrameStatsRows: perfLines.length,
+    pipelinePhaseRows: phaseLines.length,
+    sceneBreakdownRows: sceneBreakdownLines.length,
+    glesDeviceInfoRows: glDeviceLines.length,
+    sceneReadbackRows: sceneReadbacks.length
+  };
+  telemetryEvidence.captureStage = "supplemental_logcat_checked";
+  persistTelemetryEvidence();
   if (sceneReadbacks.length) {
     const lastReadback = sceneReadbacks[sceneReadbacks.length - 1];
     const match = lastReadback.match(/size=(\d+)x(\d+).*glError=0x([0-9a-f]+)/i);
@@ -2074,6 +2230,9 @@ try {
   } else {
     console.log("RAMUS_RENDER_SCENE_BREAKDOWN_UNAVAILABLE no PERF_SCENE_BREAKDOWN rows exposed by Ramus logcat");
   }
+
+  telemetryEvidence.captureStage = "complete";
+  persistTelemetryEvidence();
 
   success = true;
   console.log("RAMUS_GAMEPLAY_SMOKE_PASS");
