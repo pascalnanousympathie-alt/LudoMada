@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildRendererFinalCapture,
   createRendererTelemetryAccumulator,
   hasCompleteFramePacingReport,
   REQUIRED_HERO_PARTS
@@ -226,3 +227,38 @@ test("preserves EGL surface, GL device, and scene-target diagnostics across snap
   assert.deepEqual(evidence.glDeviceLines, [device.slice(device.indexOf("PBR_GL_DEVICE vendor="))]);
   assert.deepEqual(evidence.sceneTargetDimensionLines, [target.slice(target.indexOf("PBR_SCENE_TARGET_DIMENSIONS size="))]);
 });
+
+test("final capture reports accumulated renderer markers after the last logcat tail rotates empty", () => {
+  const telemetry = completeTelemetry();
+  const framePacing = "I/LudoMadaRender: PBR_FRAME_PACING samples=120 spanMs=28159.29 refreshHz=60.00 avgFps=4.26 p95FrameMs=234.74";
+  const refresh = "I/LudoMadaRender: PBR_DISPLAY_REFRESH_HZ=60.0";
+  const uiVsync = "I/LudoMadaRender: PBR_UI_VSYNC samples=120 refreshHz=60.00 avgFps=60.00 p95FrameMs=16.70";
+
+  telemetry.observe({
+    totalLines: 500,
+    filteredLines: 3,
+    lines: [framePacing, refresh, uiVsync]
+  });
+  const finalSnapshot = {
+    broadOk: true,
+    filteredRequested: true,
+    filteredOk: true,
+    totalLines: 500,
+    filteredLines: 0,
+    filteredError: null,
+    lines: []
+  };
+  telemetry.observe(finalSnapshot);
+
+  const evidence = telemetry.snapshot(parseReadback).evidence;
+  const result = buildRendererFinalCapture(evidence, finalSnapshot);
+
+  assert.equal(result.rendererLines, 3);
+  assert.equal(result.finalSnapshotRendererLines, 0);
+  assert.deepEqual(result.framePacingMarkers, [framePacing.slice(framePacing.indexOf("PBR_FRAME_PACING "))]);
+  assert.deepEqual(result.refreshRateMarkers, [refresh.slice(refresh.indexOf("PBR_DISPLAY_REFRESH_HZ="))]);
+  assert.deepEqual(result.uiVsyncMarkers, [uiVsync.slice(uiVsync.indexOf("PBR_UI_VSYNC "))]);
+  assert.equal(result.filteredLines, 0);
+  assert.equal(result.filteredError, null);
+});
+

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createRendererTelemetryAccumulator, hasCompleteFramePacingReport, REQUIRED_HERO_PARTS } from "./ramus-log-telemetry.mjs";
+import { buildRendererFinalCapture, createRendererTelemetryAccumulator, hasCompleteFramePacingReport, REQUIRED_HERO_PARTS } from "./ramus-log-telemetry.mjs";
 
 function parseFramebufferReadback(line, expectedLabel) {
   if (typeof line !== "string") {
@@ -857,18 +857,9 @@ try {
       JSON.stringify(finalEvidence.framePacingProgressLines).slice(0, 2400));
   }
   success = true;
-  console.log("RAMUS_RENDERER_FINAL_CAPTURE=" + JSON.stringify({
-    broadOk: finalRendererSnapshot.broadOk,
-    filteredRequested: finalRendererSnapshot.filteredRequested,
-    filteredOk: finalRendererSnapshot.filteredOk,
-    totalLines: finalRendererSnapshot.totalLines,
-    filteredLines: finalRendererSnapshot.filteredLines,
-    filteredError: finalRendererSnapshot.filteredError,
-    rendererLines: finalRendererSnapshot.lines.length,
-    framePacingMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_FRAME_PACING ")),
-    refreshRateMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_DISPLAY_REFRESH_HZ=")),
-    uiVsyncMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_UI_VSYNC "))
-  }));
+  console.log("RAMUS_RENDERER_FINAL_CAPTURE=" + JSON.stringify(
+    buildRendererFinalCapture(finalEvidence, finalRendererSnapshot)
+  ));
   console.log("RAMUS_DISPLAY_REFRESH_RATE=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence.displayRefreshLines
   ));
