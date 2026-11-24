@@ -17,8 +17,16 @@ internal class FramePacingTelemetry(
 ) {
     private val intervalsNanos=LongArray(capacity)
     private val renderWorkNanos=LongArray(capacity)
+    private val outsideRenderNanos=LongArray(capacity)
+    private val shadowPassNanos=LongArray(capacity)
+    private val scenePassNanos=LongArray(capacity)
+    private val postProcessNanos=LongArray(capacity)
     private val sortedIntervalsScratch=LongArray(capacity)
     private val sortedRenderWorkScratch=LongArray(capacity)
+    private val sortedOutsideRenderScratch=LongArray(capacity)
+    private val sortedShadowScratch=LongArray(capacity)
+    private val sortedSceneScratch=LongArray(capacity)
+    private val sortedPostScratch=LongArray(capacity)
     private var sampleCount=0
     private var activeSpanNanos=0L
     private var lastFrameStartNanos=0L
@@ -38,7 +46,13 @@ internal class FramePacingTelemetry(
         require(capacity>=minimumSamples)
     }
 
-    fun record(frameStartNanos:Long,frameEndNanos:Long):FramePacingReport? {
+    fun record(
+        frameStartNanos:Long,
+        frameEndNanos:Long,
+        shadowNanos:Long=0L,
+        sceneNanos:Long=0L,
+        postNanos:Long=0L
+    ):FramePacingReport? {
         if(frameStartNanos<=0L || frameEndNanos<frameStartNanos)return null
 
         if(lastFrameStartNanos!=0L){
@@ -60,7 +74,12 @@ internal class FramePacingTelemetry(
 
         val interval=frameStartNanos-lastFrameStartNanos
         intervalsNanos[sampleCount]=interval
-        renderWorkNanos[sampleCount]=(frameEndNanos-frameStartNanos).coerceAtLeast(0L)
+        val renderWork=(frameEndNanos-frameStartNanos).coerceAtLeast(0L)
+        renderWorkNanos[sampleCount]=renderWork
+        outsideRenderNanos[sampleCount]=(interval-renderWork).coerceAtLeast(0L)
+        shadowPassNanos[sampleCount]=shadowNanos.coerceAtLeast(0L)
+        scenePassNanos[sampleCount]=sceneNanos.coerceAtLeast(0L)
+        postProcessNanos[sampleCount]=postNanos.coerceAtLeast(0L)
         sampleCount+=1
         activeSpanNanos+=interval
         lastFrameStartNanos=frameStartNanos
@@ -73,8 +92,16 @@ internal class FramePacingTelemetry(
     private fun createReport(spanNanos:Long):FramePacingReport {
         System.arraycopy(intervalsNanos,0,sortedIntervalsScratch,0,sampleCount)
         System.arraycopy(renderWorkNanos,0,sortedRenderWorkScratch,0,sampleCount)
+        System.arraycopy(outsideRenderNanos,0,sortedOutsideRenderScratch,0,sampleCount)
+        System.arraycopy(shadowPassNanos,0,sortedShadowScratch,0,sampleCount)
+        System.arraycopy(scenePassNanos,0,sortedSceneScratch,0,sampleCount)
+        System.arraycopy(postProcessNanos,0,sortedPostScratch,0,sampleCount)
         java.util.Arrays.sort(sortedIntervalsScratch,0,sampleCount)
         java.util.Arrays.sort(sortedRenderWorkScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedOutsideRenderScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedShadowScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedSceneScratch,0,sampleCount)
+        java.util.Arrays.sort(sortedPostScratch,0,sampleCount)
         var totalIntervalNanos=0L
         for(index in 0 until sampleCount)totalIntervalNanos+=intervalsNanos[index]
         val safeSpan=spanNanos.coerceAtLeast(1L)
@@ -92,6 +119,13 @@ internal class FramePacingTelemetry(
             p99FrameMs=percentile(sortedIntervalsScratch,sampleCount,0.99),
             maxFrameMs=sortedIntervalsScratch[sampleCount-1].toDouble()/1_000_000.0,
             p95GlWorkMs=percentile(sortedRenderWorkScratch,sampleCount,0.95),
+            p95OutsideRenderMs=percentile(sortedOutsideRenderScratch,sampleCount,0.95),
+            p95ShadowPassMs=percentile(sortedShadowScratch,sampleCount,0.95),
+            maxShadowPassMs=percentile(sortedShadowScratch,sampleCount,1.0),
+            p95ScenePassMs=percentile(sortedSceneScratch,sampleCount,0.95),
+            maxScenePassMs=percentile(sortedSceneScratch,sampleCount,1.0),
+            p95PostProcessMs=percentile(sortedPostScratch,sampleCount,0.95),
+            maxPostProcessMs=percentile(sortedPostScratch,sampleCount,1.0),
             over120BudgetFrames=over120Budget,
             over60BudgetFrames=overRefreshBudget
         )
@@ -120,6 +154,13 @@ internal data class FramePacingReport(
     val p99FrameMs:Double,
     val maxFrameMs:Double,
     val p95GlWorkMs:Double,
+    val p95OutsideRenderMs:Double,
+    val p95ShadowPassMs:Double,
+    val maxShadowPassMs:Double,
+    val p95ScenePassMs:Double,
+    val maxScenePassMs:Double,
+    val p95PostProcessMs:Double,
+    val maxPostProcessMs:Double,
     val over120BudgetFrames:Int,
     val over60BudgetFrames:Int
 ) {
@@ -131,6 +172,10 @@ internal data class FramePacingReport(
             " p50FrameMs=${n(p50FrameMs)} p95FrameMs=${n(p95FrameMs)}" +
             " p99FrameMs=${n(p99FrameMs)} maxFrameMs=${n(maxFrameMs)}" +
             " glWorkP95Ms=${n(p95GlWorkMs)}" +
+            " outsideRenderP95Ms=${n(p95OutsideRenderMs)}" +
+            " shadowP95Ms=${n(p95ShadowPassMs)} shadowMaxMs=${n(maxShadowPassMs)}" +
+            " sceneP95Ms=${n(p95ScenePassMs)} sceneMaxMs=${n(maxScenePassMs)}" +
+            " postP95Ms=${n(p95PostProcessMs)} postMaxMs=${n(maxPostProcessMs)}" +
             " over120Budget=$over120BudgetFrames/$samples" +
             " over60Budget=$over60BudgetFrames/$samples"
     }
