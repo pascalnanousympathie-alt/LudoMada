@@ -65,7 +65,9 @@ internal class FramePacingTelemetry(
             val gap=frameStartNanos-lastFrameStartNanos
             when {
                 gap<=0L -> resetWindow()
-                gap>maximumBurstGapNanos -> resetWindow()
+                // Split bursts without discarding valid samples collected before
+                // the idle interval; the idle duration is excluded from activeSpan.
+                gap>maximumBurstGapNanos -> lastFrameStartNanos=0L
             }
         }
         if(lastFrameStartNanos==0L){
