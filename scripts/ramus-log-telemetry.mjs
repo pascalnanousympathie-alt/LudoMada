@@ -42,6 +42,9 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
   const framePacingProgressLines = new Set();
   const displayRefreshLines = new Set();
   const uiVsyncLines = new Set();
+  const surfaceDimensionLines = new Set();
+  const glDeviceLines = new Set();
+  const sceneTargetDimensionLines = new Set();
 
   function observe(snapshot) {
     snapshotCount += 1;
@@ -55,6 +58,9 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
       if (value.includes("PBR_FRAME_PACING_PROGRESS ")) framePacingProgressLines.add(value.slice(value.indexOf("PBR_FRAME_PACING_PROGRESS ")));
       if (value.includes("PBR_DISPLAY_REFRESH_HZ=")) displayRefreshLines.add(value.slice(value.indexOf("PBR_DISPLAY_REFRESH_HZ=")));
       if (value.includes("PBR_UI_VSYNC")) uiVsyncLines.add(value.slice(value.indexOf("PBR_UI_VSYNC")));
+      if (value.includes("PBR_SURFACE_DIMENSIONS egl=")) surfaceDimensionLines.add(value.slice(value.indexOf("PBR_SURFACE_DIMENSIONS egl=")));
+      if (value.includes("PBR_GL_DEVICE vendor=")) glDeviceLines.add(value.slice(value.indexOf("PBR_GL_DEVICE vendor=")));
+      if (value.includes("PBR_SCENE_TARGET_DIMENSIONS size=")) sceneTargetDimensionLines.add(value.slice(value.indexOf("PBR_SCENE_TARGET_DIMENSIONS size=")));
 
       if (value.includes("Renderer=GLES3_PBR")) gles3Pbr = true;
       if (value.includes("PBR_SURFACE_CREATED")) pbrSurfaceCreated = true;
@@ -111,7 +117,10 @@ export function createRendererTelemetryAccumulator(requiredHeroParts = REQUIRED_
         framePacingLines: [...framePacingLines],
         framePacingProgressLines: [...framePacingProgressLines],
         displayRefreshLines: [...displayRefreshLines],
-        uiVsyncLines: [...uiVsyncLines]
+        uiVsyncLines: [...uiVsyncLines],
+        surfaceDimensionLines: [...surfaceDimensionLines],
+        glDeviceLines: [...glDeviceLines],
+        sceneTargetDimensionLines: [...sceneTargetDimensionLines]
       }
     };
   }

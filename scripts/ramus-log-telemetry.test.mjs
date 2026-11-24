@@ -210,3 +210,19 @@ test("retains bounded progress checkpoints before the final frame-pacing report"
   assert.equal(result.evidence.framePacingProgressLines.length, 2);
   assert.match(result.evidence.framePacingProgressLines[1], /samples=60/);
 });
+
+
+test("preserves EGL surface, GL device, and scene-target diagnostics across snapshots", () => {
+  const telemetry = completeTelemetry();
+  const surface = "I/LudoMadaRender: PBR_SURFACE_DIMENSIONS egl=650x1011 view=720x1600 measured=720x1600 displayPx=720x1600 density=2.0";
+  const device = "I/LudoMadaRender: PBR_GL_DEVICE vendor=fixture renderer=fixture-gles version=fixture-gl maxTexture=4096";
+  const target = "I/LudoMadaRender: PBR_SCENE_TARGET_DIMENSIONS size=650x1011 framebufferStatus=0x8cd5 glError=0x0";
+
+  telemetry.observe({ lines: [surface] });
+  telemetry.observe({ lines: [device, target] });
+
+  const evidence = telemetry.snapshot(parseReadback).evidence;
+  assert.deepEqual(evidence.surfaceDimensionLines, [surface.slice(surface.indexOf("PBR_SURFACE_DIMENSIONS egl="))]);
+  assert.deepEqual(evidence.glDeviceLines, [device.slice(device.indexOf("PBR_GL_DEVICE vendor="))]);
+  assert.deepEqual(evidence.sceneTargetDimensionLines, [target.slice(target.indexOf("PBR_SCENE_TARGET_DIMENSIONS size="))]);
+});

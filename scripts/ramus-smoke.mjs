@@ -426,7 +426,7 @@ function captureFailureLogcat() {
   const filteredEntries = normalizeLogcatRows(filtered);
   const combinedEntries = [...entries, ...filteredEntries];
   const relevantPattern = /FATAL EXCEPTION|AndroidRuntime|Process: com\.ludomadagascar|com\.ludomadagascar|LudoMada|GLSurfaceView|Fatal signal|SIGSEGV|EGL|OpenGL|GLES|ActivityManager|ActivityTaskManager|lmkd|LowMemoryKiller|am_(?:crash|kill|proc_died|finish_activity|pause_activity|resume_activity)|Killing .*com\.ludomadagascar|Force finishing .*com\.ludomadagascar/i;
-  const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
+  const rendererPattern = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|PBR_SURFACE_DIMENSIONS|PBR_GL_DEVICE|PBR_SCENE_TARGET_DIMENSIONS|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE/i;
   console.error("RAMUS_LOGCAT_UNFILTERED_SUMMARY=" + JSON.stringify({
     ok: broad.ok,
     error: broad.ok ? null : String(broad.value?.error || "logcat_error").slice(0, 80),
@@ -465,7 +465,7 @@ function captureFailureLogcat() {
 function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
   // Ramus --filter follows Android logcat tag filtering. Query the known renderer tag,
   // then select startup, framebuffer and frame-pacing messages locally.
-  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ|PBR_UI_VSYNC/i;
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|PBR_SURFACE_DIMENSIONS|PBR_GL_DEVICE|PBR_SCENE_TARGET_DIMENSIONS|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ|PBR_UI_VSYNC/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -475,6 +475,9 @@ function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
   const startupIncomplete =
     !broadLines.some((line) => line.includes("Renderer=GLES3_PBR")) ||
     !broadLines.some((line) => line.includes("PBR_SURFACE_CREATED")) ||
+    !broadLines.some((line) => line.includes("PBR_SURFACE_DIMENSIONS egl=")) ||
+    !broadLines.some((line) => line.includes("PBR_GL_DEVICE vendor=")) ||
+    !broadLines.some((line) => line.includes("PBR_SCENE_TARGET_DIMENSIONS size=")) ||
     !broadLines.some((line) => line.includes("GLB_RUNTIME_LOAD_OK parts=") &&
       !line.includes("BOARD_GLB_RUNTIME_LOAD_OK")) ||
     !broadLines.some((line) => line.includes("BOARD_GLB_RUNTIME_LOAD_OK parts="));
@@ -642,7 +645,10 @@ try {
         .filter((line) => line.includes("PBR_FRAME_PACING ") ||
           line.includes("PBR_FRAME_PACING_PROGRESS ") ||
           line.includes("PBR_DISPLAY_REFRESH_HZ=") ||
-          line.includes("PBR_UI_VSYNC"));
+          line.includes("PBR_UI_VSYNC") ||
+          line.includes("PBR_SURFACE_DIMENSIONS egl=") ||
+          line.includes("PBR_GL_DEVICE vendor=") ||
+          line.includes("PBR_SCENE_TARGET_DIMENSIONS size="));
       rendererTelemetry.observe({
         totalLines: 0,
         filteredLines: entries.length,
@@ -836,6 +842,11 @@ try {
   const finalEvidence = rendererTelemetry.snapshot(parseFramebufferReadback).evidence;
   const finalFramePacingLines = finalEvidence.framePacingLines;
   const framePacingComplete = hasCompleteFramePacingReport(finalFramePacingLines, 120);
+  console.log("RAMUS_RENDERER_SURFACE_DIAGNOSTICS=" + JSON.stringify({
+    surfaceDimensionLines: finalEvidence.surfaceDimensionLines,
+    glDeviceLines: finalEvidence.glDeviceLines,
+    sceneTargetDimensionLines: finalEvidence.sceneTargetDimensionLines
+  }));
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
   console.log("RAMUS_FRAME_PACING_PROGRESS=" + JSON.stringify(finalEvidence.framePacingProgressLines));
   console.log("RAMUS_FRAME_PACING_CAPTURE=" + (framePacingComplete ? "PASS" : "MISSING"));
