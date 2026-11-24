@@ -140,24 +140,38 @@ class FramePacingTelemetryTest {
         var report:FramePacingReport?=null
         for(frame in 0..120){
             val start=8_000_000_000L+frame*interval
-            val sceneNanos=if(frame>=111)2_500_000L else 2_000_000L
+            val boardStageNanos=if(frame>=110)6_000_000L else 4_000_000L
+            val actorsStageNanos=if(frame>=110)3_500_000L else 3_000_000L
             telemetry.record(
                 frameStartNanos=start,
-                frameEndNanos=start+4_000_000L,
+                frameEndNanos=start+12_000_000L,
                 shadowNanos=500_000L,
-                sceneNanos=sceneNanos,
-                postNanos=250_000L
+                sceneNanos=10_000_000L,
+                postNanos=1_500_000L,
+                backdropStageNanos=1_000_000L,
+                boardStageNanos=boardStageNanos,
+                actorsStageNanos=actorsStageNanos,
+                diceStageNanos=1_000_000L,
+                particlesStageNanos=1_000_000L
             )?.let { report=it }
         }
 
         val measured=assertNotNullAndReturn(report)
         assertEquals(120,measured.samples)
-        assertTrue(measured.p95GlWorkMs in 3.99..4.01)
-        assertTrue(measured.p95OutsideRenderMs in 12.65..12.68)
+        assertTrue(measured.p95GlWorkMs in 11.99..12.01)
+        assertTrue(measured.p95OutsideRenderMs in 4.65..4.68)
         assertTrue(measured.p95ShadowPassMs in 0.49..0.51)
-        assertTrue(measured.p95ScenePassMs in 2.49..2.51)
-        assertTrue(measured.maxScenePassMs in 2.49..2.51)
-        assertTrue(measured.p95PostProcessMs in 0.24..0.26)
+        assertTrue(measured.p95ScenePassMs in 9.99..10.01)
+        assertTrue(measured.maxScenePassMs in 9.99..10.01)
+        assertTrue(measured.p95PostProcessMs in 1.49..1.51)
+        assertTrue(measured.p95BackdropMs in 0.99..1.01)
+        assertTrue(measured.maxBackdropMs in 0.99..1.01)
+        assertTrue(measured.p95BoardMs in 5.99..6.01)
+        assertTrue(measured.maxBoardMs in 5.99..6.01)
+        assertTrue(measured.p95ActorsMs in 3.49..3.51)
+        assertTrue(measured.maxActorsMs in 3.49..3.51)
+        assertTrue(measured.p95DiceMs in 0.99..1.01)
+        assertTrue(measured.p95ParticlesMs in 0.99..1.01)
     }
 
     @Test
