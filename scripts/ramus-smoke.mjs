@@ -465,7 +465,7 @@ function captureFailureLogcat() {
 function readRendererLogLines({ forceRendererTagFilter = false } = {}) {
   // Ramus --filter follows Android logcat tag filtering. Query the known renderer tag,
   // then select startup, framebuffer and frame-pacing messages locally.
-  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ/i;
+  const markers = /Renderer=GLES3_PBR|PBR_SURFACE_CREATED|GLB_RUNTIME_LOAD_OK|BOARD_GLB_RUNTIME_LOAD_OK|PBR_READBACK|PBR_FIRST_FRAME_COMPLETE|PBR_FRAME_PACING|PBR_DISPLAY_REFRESH_HZ|PBR_UI_VSYNC/i;
   const broad = runAllowError("logcat", "--limit", "500", "--session", session);
   const broadEntries = normalizeLogcatRows(broad);
   const broadLines = broadEntries.map((entry) => entry.line).filter((line) => markers.test(line));
@@ -641,7 +641,8 @@ try {
       const lines = entries.map((entry) => entry.line)
         .filter((line) => line.includes("PBR_FRAME_PACING ") ||
           line.includes("PBR_FRAME_PACING_PROGRESS ") ||
-          line.includes("PBR_DISPLAY_REFRESH_HZ="));
+          line.includes("PBR_DISPLAY_REFRESH_HZ=") ||
+          line.includes("PBR_UI_VSYNC "));
       rendererTelemetry.observe({
         totalLines: 0,
         filteredLines: entries.length,
@@ -667,7 +668,8 @@ try {
       filteredLineCount,
       framePacingMarkers: evidence.framePacingLines,
       progressMarkers: evidence.framePacingProgressLines,
-      displayRefreshMarkers: evidence.displayRefreshLines
+      displayRefreshMarkers: evidence.displayRefreshLines,
+      uiVsyncMarkers: evidence.uiVsyncLines
     }));
     return captured;
   };
@@ -837,6 +839,7 @@ try {
   console.log("RAMUS_FRAME_PACING_METRICS=" + JSON.stringify(finalFramePacingLines));
   console.log("RAMUS_FRAME_PACING_PROGRESS=" + JSON.stringify(finalEvidence.framePacingProgressLines));
   console.log("RAMUS_FRAME_PACING_CAPTURE=" + (framePacingComplete ? "PASS" : "MISSING"));
+  console.log("RAMUS_UI_VSYNC_METRICS=" + JSON.stringify(finalEvidence.uiVsyncLines));
   if (!framePacingComplete) {
     throw new Error("Frame-pacing telemetry report missing or incomplete after bounded 90s capture; progress=" +
       JSON.stringify(finalEvidence.framePacingProgressLines).slice(0, 2400));
@@ -851,7 +854,8 @@ try {
     filteredError: finalRendererSnapshot.filteredError,
     rendererLines: finalRendererSnapshot.lines.length,
     framePacingMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_FRAME_PACING ")),
-    refreshRateMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_DISPLAY_REFRESH_HZ="))
+    refreshRateMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_DISPLAY_REFRESH_HZ=")),
+    uiVsyncMarkers: finalRendererSnapshot.lines.filter(line => line.includes("PBR_UI_VSYNC "))
   }));
   console.log("RAMUS_DISPLAY_REFRESH_RATE=" + JSON.stringify(
     rendererTelemetry.snapshot(parseFramebufferReadback).evidence.displayRefreshLines
