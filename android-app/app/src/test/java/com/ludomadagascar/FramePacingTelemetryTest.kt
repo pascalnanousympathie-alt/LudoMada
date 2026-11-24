@@ -134,6 +134,33 @@ class FramePacingTelemetryTest {
     }
 
     @Test
+    fun reportsOutsideRenderGapAndPerStagePercentiles() {
+        val telemetry=FramePacingTelemetry()
+        val interval=16_666_667L
+        var report:FramePacingReport?=null
+        for(frame in 0..120){
+            val start=8_000_000_000L+frame*interval
+            val sceneNanos=if(frame>=111)2_500_000L else 2_000_000L
+            telemetry.record(
+                frameStartNanos=start,
+                frameEndNanos=start+4_000_000L,
+                shadowNanos=500_000L,
+                sceneNanos=sceneNanos,
+                postNanos=250_000L
+            )?.let { report=it }
+        }
+
+        val measured=assertNotNullAndReturn(report)
+        assertEquals(120,measured.samples)
+        assertTrue(measured.p95GlWorkMs in 3.99..4.01)
+        assertTrue(measured.p95OutsideRenderMs in 12.65..12.68)
+        assertTrue(measured.p95ShadowPassMs in 0.49..0.51)
+        assertTrue(measured.p95ScenePassMs in 2.49..2.51)
+        assertTrue(measured.maxScenePassMs in 2.49..2.51)
+        assertTrue(measured.p95PostProcessMs in 0.24..0.26)
+    }
+
+    @Test
     fun p99ExposesARepeatedLongFrameHitch() {
         val telemetry=FramePacingTelemetry()
         val reports=mutableListOf<FramePacingReport>()
