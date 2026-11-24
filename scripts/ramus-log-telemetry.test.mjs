@@ -154,6 +154,19 @@ test("uses the latest framebuffer readback, so a later bad sample cannot inherit
   assert.equal(result.checks.sceneReadback.ok, false);
 });
 
+test("preserves UI Choreographer VSync diagnostics separately from GL frame pacing", () => {
+  const telemetry = completeTelemetry();
+  telemetry.observe({
+    lines: [
+      "I/LudoMadaRender: PBR_UI_VSYNC samples=120 refreshHz=60.00 avgFps=60.00 avgFrameMs=16.67 p95FrameMs=16.70 maxFrameMs=20.00"
+    ]
+  });
+  const result = telemetry.snapshot(parseReadback);
+  assert.equal(result.evidence.uiVsyncLines.length, 1);
+  assert.match(result.evidence.uiVsyncLines[0], /avgFps=60.00/);
+  assert.deepEqual(result.evidence.framePacingLines, []);
+});
+
 test("requires at least 120 real frame intervals before reporting a complete capture", () => {
   assert.equal(hasCompleteFramePacingReport([
     "I/LudoMadaRender: PBR_FRAME_PACING samples=90 spanMs=21000.00 avgFps=4.28"
