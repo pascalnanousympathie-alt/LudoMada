@@ -1291,7 +1291,7 @@ class LudoBoardView(
                 if(report!=null){
                     val refreshRate=host.displayRefreshRateHz()
                     val stageFrames=debugStageFrameCount.coerceAtLeast(1)
-                    fun stageMs(totalNanos:Long)=String.format(Locale.US,"%.2f",totalNanos.toDouble()/stageFrames/1_000_000.0)
+                    fun stageMs(totalNanos:Long)=String.format(java.util.Locale.US,"%.2f",totalNanos.toDouble()/stageFrames/1_000_000.0)
                     val reportLine=report.toLogLine(refreshRate)+
                         " stageFrames=$stageFrames"+
                         " shadowAvgMs=${stageMs(debugShadowPassTotalNanos)}"+
