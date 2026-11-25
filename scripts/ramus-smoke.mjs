@@ -557,6 +557,89 @@ function assertRuntimeGlbLoaded(timeoutMs = 16000) {
     } }));
 }
 
+function captureFrameTelemetry(stage) {
+  if (!session) return;
+  const broad = runAllowError("logcat", "--limit", "500", "--session", session);
+  const broadEntries = normalizeLogcatRows(broad);
+  const filtered = runAllowError(
+    "logcat", "--limit", "500", "--filter", "LudoMadaPerf", "--session", session
+  );
+  const filteredEntries = normalizeLogcatRows(filtered);
+  const seen = new Set();
+  const lines = [];
+  for (const entry of [...broadEntries, ...filteredEntries]) {
+    const line = entry.line || "";
+    if (!/PBR_FRAME_TELEMETRY|PBR_RENDERER_DIAGNOSTIC|PBR_SOFTWARE_PROFILE|PBR_RENDER_SURFACE/i.test(line)) {
+      continue;
+    }
+    if (seen.has(line)) continue;
+    seen.add(line);
+    lines.push(line);
+  }
+
+  let accessibilityCapture = { ok: false, value: { error: "not_needed" } };
+  if (!lines.some((line) => /PBR_FRAME_TELEMETRY mode=gameplay/.test(line))) {
+    accessibilityCapture = runAllowError(
+      "snapshot", "--session", session, "--find", "PBR_FRAME_TELEMETRY"
+    );
+    for (const element of accessibilityCapture.value?.elements || []) {
+      const marker = [
+        element.text, element.contentDesc, element.contentDescription,
+        element.description, element.label
+      ].filter((value) => typeof value === "string" && value.includes("PBR_FRAME_TELEMETRY"));
+      for (const line of marker) {
+        if (!lines.includes(line)) lines.push(line);
+      }
+    }
+  }
+
+  const frameLines = lines.filter((line) => /PBR_FRAME_TELEMETRY mode=gameplay/.test(line));
+  const parseMetric = (line, key) => {
+    const match = line.match(new RegExp("(?:^|\\s)" + key + "=([0-9]+(?:\\.[0-9]+)?)"));
+    return match ? Number(match[1]) : null;
+  };
+  const passMetric = (line, key) => {
+    const match = line.match(new RegExp("(?:^|\\s)" + key + ":([0-9]+(?:\\.[0-9]+)?)"));
+    return match ? Number(match[1]) : null;
+  };
+  const reports = frameLines.slice(-6).map((line) => ({
+    fps: parseMetric(line, "fps"),
+    frameIntervalMsP50: parseMetric(line, "frameIntervalMsP50"),
+    frameIntervalMsP95: parseMetric(line, "frameIntervalMsP95"),
+    frameIntervalMsMax: parseMetric(line, "frameIntervalMsMax"),
+    cpuSubmitMsP95: parseMetric(line, "cpuSubmitMsP95"),
+    cpuSubmitMsMax: parseMetric(line, "cpuSubmitMsMax"),
+    worldCpuMs: passMetric(line, "world"),
+    particlesCpuMs: passMetric(line, "particles"),
+    simulationCpuMs: passMetric(line, "simulation"),
+    sceneCpuMs: passMetric(line, "scene"),
+    shadowCpuMs: passMetric(line, "shadow"),
+    postCpuMs: passMetric(line, "post"),
+    raw: redactLogLine(line)
+  }));
+
+  const rendererLines = lines
+    .filter((line) => /PBR_RENDERER_DIAGNOSTIC|PBR_SOFTWARE_PROFILE|PBR_RENDER_SURFACE/i.test(line))
+    .slice(-12)
+    .map(redactLogLine);
+  console.log("RAMUS_FRAME_TELEMETRY_CAPTURE=" + JSON.stringify({
+    stage,
+    status: reports.length ? "CAPTURED" : "MISSING",
+    broadLogcatOk: broad.ok,
+    broadLogcatLines: broadEntries.length,
+    filteredLogcatOk: filtered.ok,
+    filteredLogcatLines: filteredEntries.length,
+    accessibilityFallbackOk: accessibilityCapture.ok,
+    accessibilityFallbackElements: accessibilityCapture.value?.elements?.length ?? 0,
+    reportCount: frameLines.length,
+    reports,
+    rendererLines
+  }));
+  if (!reports.length) {
+    console.error("RAMUS_FRAME_TELEMETRY_CAPTURE_MISSING stage=" + stage);
+  }
+}
+
 function safeRamusMetadata(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { valueType: typeof value };
@@ -739,6 +822,8 @@ try {
   run("tap", target.ref, "--gen", String(target.gen),
       "--expect", "Rejouez", "--session", session);
   console.log("SIX→PAWN→REPLAY PASS");
+  // Capture the measured gameplay frame window before navigating away from the board.
+  captureFrameTelemetry("after-dice-pawn-replay");
 
   // Exercise the real Home -> JOUER canvas hitbox rather than only the
   // login-screen offline shortcut. The universal deferred handler prevents
