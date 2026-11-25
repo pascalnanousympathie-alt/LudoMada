@@ -19,6 +19,18 @@ internal data class FrameTelemetryReport(
     val cpuSubmitP50Ms: Float,
     val cpuSubmitP95Ms: Float,
     val cpuSubmitMaxMs: Float,
+    val shadowCpuP50Ms: Float,
+    val shadowCpuP95Ms: Float,
+    val sceneCpuP50Ms: Float,
+    val sceneCpuP95Ms: Float,
+    val worldCpuP50Ms: Float,
+    val worldCpuP95Ms: Float,
+    val particlesCpuP50Ms: Float,
+    val particlesCpuP95Ms: Float,
+    val simulationCpuP50Ms: Float,
+    val simulationCpuP95Ms: Float,
+    val postCpuP50Ms: Float,
+    val postCpuP95Ms: Float,
     val overBudgetFrames: Int,
     val missedVsyncFrames: Int
 ) {
@@ -28,7 +40,11 @@ internal data class FrameTelemetryReport(
             "frameIntervalMsP50=$intervalP50Ms frameIntervalMsP95=$intervalP95Ms " +
             "frameIntervalMsMax=$intervalMaxMs cpuSubmitMsP50=$cpuSubmitP50Ms " +
             "cpuSubmitMsP95=$cpuSubmitP95Ms cpuSubmitMsMax=$cpuSubmitMaxMs " +
-            "overBudgetFrames=$overBudgetFrames missedVsyncFrames=$missedVsyncFrames"
+            "overBudgetFrames=$overBudgetFrames missedVsyncFrames=$missedVsyncFrames " +
+            "passCpuP50Ms=shadow:$shadowCpuP50Ms scene:$sceneCpuP50Ms world:$worldCpuP50Ms " +
+            "particles:$particlesCpuP50Ms simulation:$simulationCpuP50Ms post:$postCpuP50Ms " +
+            "passCpuP95Ms=shadow:$shadowCpuP95Ms scene:$sceneCpuP95Ms world:$worldCpuP95Ms " +
+            "particles:$particlesCpuP95Ms simulation:$simulationCpuP95Ms post:$postCpuP95Ms"
 }
 
 internal class FrameTelemetry(
@@ -42,6 +58,12 @@ internal class FrameTelemetry(
     private val frameBudgetMs = 1_000f / targetRefreshHz
     private val intervalSamples = FloatArray(sampleCapacity)
     private val cpuSubmitSamples = FloatArray(sampleCapacity)
+    private val shadowCpuSamples = FloatArray(sampleCapacity)
+    private val sceneCpuSamples = FloatArray(sampleCapacity)
+    private val worldCpuSamples = FloatArray(sampleCapacity)
+    private val particlesCpuSamples = FloatArray(sampleCapacity)
+    private val simulationCpuSamples = FloatArray(sampleCapacity)
+    private val postCpuSamples = FloatArray(sampleCapacity)
 
     private var windowStartedNanos = 0L
     private var writeIndex = 0
@@ -83,7 +105,13 @@ internal class FrameTelemetry(
     fun record(
         frameIntervalNanos: Long,
         cpuSubmitNanos: Long,
-        nowNanos: Long
+        nowNanos: Long,
+        shadowCpuNanos: Long = 0L,
+        sceneCpuNanos: Long = 0L,
+        worldCpuNanos: Long = 0L,
+        particlesCpuNanos: Long = 0L,
+        simulationCpuNanos: Long = 0L,
+        postCpuNanos: Long = 0L
     ): FrameTelemetryReport? {
         if (frameIntervalNanos <= 0L) return null
         if (frameIntervalNanos > 1_000_000_000L) {
@@ -98,6 +126,12 @@ internal class FrameTelemetry(
 
         intervalSamples[writeIndex] = intervalMs
         cpuSubmitSamples[writeIndex] = cpuSubmitMs
+        shadowCpuSamples[writeIndex] = shadowCpuNanos.coerceAtLeast(0L) / 1_000_000f
+        sceneCpuSamples[writeIndex] = sceneCpuNanos.coerceAtLeast(0L) / 1_000_000f
+        worldCpuSamples[writeIndex] = worldCpuNanos.coerceAtLeast(0L) / 1_000_000f
+        particlesCpuSamples[writeIndex] = particlesCpuNanos.coerceAtLeast(0L) / 1_000_000f
+        simulationCpuSamples[writeIndex] = simulationCpuNanos.coerceAtLeast(0L) / 1_000_000f
+        postCpuSamples[writeIndex] = postCpuNanos.coerceAtLeast(0L) / 1_000_000f
         writeIndex = (writeIndex + 1) % sampleCapacity
         sampleCount = (sampleCount + 1).coerceAtMost(sampleCapacity)
 
@@ -114,6 +148,12 @@ internal class FrameTelemetry(
 
         val intervalCopy = orderedCopy(intervalSamples)
         val cpuCopy = orderedCopy(cpuSubmitSamples)
+        val shadowCpuCopy = orderedCopy(shadowCpuSamples)
+        val sceneCpuCopy = orderedCopy(sceneCpuSamples)
+        val worldCpuCopy = orderedCopy(worldCpuSamples)
+        val particlesCpuCopy = orderedCopy(particlesCpuSamples)
+        val simulationCpuCopy = orderedCopy(simulationCpuSamples)
+        val postCpuCopy = orderedCopy(postCpuSamples)
         val report = FrameTelemetryReport(
             periodMs = elapsed / 1_000_000L,
             frameCount = frameCount,
@@ -126,6 +166,18 @@ internal class FrameTelemetry(
             cpuSubmitP50Ms = percentile(cpuCopy, 0.50f),
             cpuSubmitP95Ms = percentile(cpuCopy, 0.95f),
             cpuSubmitMaxMs = cpuSubmitMaxMs,
+            shadowCpuP50Ms = percentile(shadowCpuCopy, 0.50f),
+            shadowCpuP95Ms = percentile(shadowCpuCopy, 0.95f),
+            sceneCpuP50Ms = percentile(sceneCpuCopy, 0.50f),
+            sceneCpuP95Ms = percentile(sceneCpuCopy, 0.95f),
+            worldCpuP50Ms = percentile(worldCpuCopy, 0.50f),
+            worldCpuP95Ms = percentile(worldCpuCopy, 0.95f),
+            particlesCpuP50Ms = percentile(particlesCpuCopy, 0.50f),
+            particlesCpuP95Ms = percentile(particlesCpuCopy, 0.95f),
+            simulationCpuP50Ms = percentile(simulationCpuCopy, 0.50f),
+            simulationCpuP95Ms = percentile(simulationCpuCopy, 0.95f),
+            postCpuP50Ms = percentile(postCpuCopy, 0.50f),
+            postCpuP95Ms = percentile(postCpuCopy, 0.95f),
             overBudgetFrames = overBudgetFrames,
             missedVsyncFrames = missedVsyncFrames
         )

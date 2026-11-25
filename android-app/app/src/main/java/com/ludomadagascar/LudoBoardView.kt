@@ -1262,7 +1262,15 @@ class LudoBoardView(
                     debugTelemetryRecordCount++
                     debugTelemetryLastIntervalMs=telemetryIntervalNanos/1_000_000f
                     debugTelemetryLastCpuMs=renderCpuNanos/1_000_000f
-                    val report=frameTelemetry.record(telemetryIntervalNanos,renderCpuNanos,completedNanos)
+                    val report=frameTelemetry.record(
+                        telemetryIntervalNanos,renderCpuNanos,completedNanos,
+                        shadowCpuNanos=(debugShadowCpuMs*1_000_000f).toLong(),
+                        sceneCpuNanos=(debugSceneCpuMs*1_000_000f).toLong(),
+                        worldCpuNanos=(debugWorldCpuMs*1_000_000f).toLong(),
+                        particlesCpuNanos=(debugParticlesCpuMs*1_000_000f).toLong(),
+                        simulationCpuNanos=(debugSimulationCpuMs*1_000_000f).toLong(),
+                        postCpuNanos=(debugPostCpuMs*1_000_000f).toLong()
+                    )
                     if(report!=null){
                         val mode=if(host.homePreview)"home" else "gameplay"
                         val reportLine=report.toLogLine(mode)

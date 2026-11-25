@@ -38,6 +38,46 @@ class FrameTelemetryTest {
     }
 
     @Test
+    fun reportsPassCpuPercentilesAcrossTheWholeWindow() {
+        val telemetry = FrameTelemetry(
+            refreshRateHz = 60f,
+            reportPeriodNanos = 1L,
+            sampleCapacity = 4,
+            minimumFrames = 4
+        )
+        var now = 1_000_000_000L
+        telemetry.reset(now)
+        var report: FrameTelemetryReport? = null
+        val world = longArrayOf(2_000_000L, 4_000_000L, 6_000_000L, 8_000_000L)
+        val particles = longArrayOf(100_000L, 200_000L, 300_000L, 400_000L)
+        repeat(4) { index ->
+            now += 16_000_000L
+            report = telemetry.record(
+                frameIntervalNanos = 16_000_000L,
+                cpuSubmitNanos = 10_000_000L,
+                nowNanos = now,
+                shadowCpuNanos = (index + 1) * 500_000L,
+                sceneCpuNanos = (index + 1) * 3_000_000L,
+                worldCpuNanos = world[index],
+                particlesCpuNanos = particles[index],
+                simulationCpuNanos = (index + 1) * 100_000L,
+                postCpuNanos = (index % 2) * 1_000_000L
+            )
+        }
+
+        val actual = assertNotNullAndReturn(report)
+        assertEquals(6f, actual.worldCpuP50Ms, 0.001f)
+        assertEquals(8f, actual.worldCpuP95Ms, 0.001f)
+        assertEquals(0.3f, actual.particlesCpuP50Ms, 0.001f)
+        assertEquals(0.4f, actual.particlesCpuP95Ms, 0.001f)
+        assertEquals(1.5f, actual.shadowCpuP50Ms, 0.001f)
+        assertEquals(2f, actual.shadowCpuP95Ms, 0.001f)
+        assertEquals(12f, actual.sceneCpuP95Ms, 0.001f)
+        assertEquals(0.4f, actual.simulationCpuP95Ms, 0.001f)
+        assertEquals(1f, actual.postCpuP95Ms, 0.001f)
+    }
+
+    @Test
     fun defaultWindowReportsAfterFiveSecondsAndRetainsFiveSecondsAt120Hz() {
         val telemetry = FrameTelemetry(refreshRateHz = 120f)
         var now = 3_000_000_000L

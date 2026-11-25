@@ -594,12 +594,19 @@ function captureFrameTelemetry(stage) {
   }
 
   const frameLines = lines.filter((line) => /PBR_FRAME_TELEMETRY mode=gameplay/.test(line));
+  const numericValue = "([+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?)";
   const parseMetric = (line, key) => {
-    const match = line.match(new RegExp("(?:^|\\s)" + key + "=([0-9]+(?:\\.[0-9]+)?)"));
+    const match = line.match(new RegExp("(?:^|\\s)" + key + "=" + numericValue));
     return match ? Number(match[1]) : null;
   };
-  const passMetric = (line, key) => {
-    const match = line.match(new RegExp("(?:^|\\s)" + key + ":([0-9]+(?:\\.[0-9]+)?)"));
+  const passMetric = (line, key, band = "passCpuMs") => {
+    const marker = band + "=";
+    const start = line.indexOf(marker);
+    if (start < 0) return null;
+    const valueStart = start + marker.length;
+    const nextBand = line.indexOf(" passCpu", valueStart);
+    const segment = line.slice(valueStart, nextBand < 0 ? line.length : nextBand);
+    const match = segment.match(new RegExp("(?:^|[=\\s])" + key + ":" + numericValue));
     return match ? Number(match[1]) : null;
   };
   const reports = frameLines.slice(-6).map((line) => ({
@@ -615,6 +622,18 @@ function captureFrameTelemetry(stage) {
     sceneCpuMs: passMetric(line, "scene"),
     shadowCpuMs: passMetric(line, "shadow"),
     postCpuMs: passMetric(line, "post"),
+    worldCpuP50Ms: passMetric(line, "world", "passCpuP50Ms"),
+    worldCpuP95Ms: passMetric(line, "world", "passCpuP95Ms"),
+    particlesCpuP50Ms: passMetric(line, "particles", "passCpuP50Ms"),
+    particlesCpuP95Ms: passMetric(line, "particles", "passCpuP95Ms"),
+    simulationCpuP50Ms: passMetric(line, "simulation", "passCpuP50Ms"),
+    simulationCpuP95Ms: passMetric(line, "simulation", "passCpuP95Ms"),
+    sceneCpuP50Ms: passMetric(line, "scene", "passCpuP50Ms"),
+    sceneCpuP95Ms: passMetric(line, "scene", "passCpuP95Ms"),
+    shadowCpuP50Ms: passMetric(line, "shadow", "passCpuP50Ms"),
+    shadowCpuP95Ms: passMetric(line, "shadow", "passCpuP95Ms"),
+    postCpuP50Ms: passMetric(line, "post", "passCpuP50Ms"),
+    postCpuP95Ms: passMetric(line, "post", "passCpuP95Ms"),
     raw: redactLogLine(line)
   }));
 
