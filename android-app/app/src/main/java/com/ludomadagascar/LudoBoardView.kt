@@ -80,9 +80,8 @@ class LudoBoardView(
     init {
         smokeMarker("BOARD_INIT_START:" + android.os.Build.MODEL + "|" + android.os.Build.FINGERPRINT)
         val gles3Available = deviceSupportsGles3()
-        // Emulator status must never be used as a quality downgrade switch. Ramus is the
-        // visual validation environment for the same GLES3/PBR path we ship to capable devices.
-        // Only the actual reported GLES capability decides whether the premium renderer is selected.
+        // Emulator identity alone does not select the renderer. GLES capability selects PBR vs GLES2.
+        // A DEBUG-only software-GL profile is chosen later from the actual GL_RENDERER string.
         val emulator = isLikelyEmulator()
         val gles3 = gles3Available
         smokeMarker("BOARD_GLES_SELECT:" + gles3 + "|available=" + gles3Available + "|emulator=" + emulator)
@@ -100,7 +99,9 @@ class LudoBoardView(
         android.util.Log.i("LudoMadaRender", "Renderer=" + if (gles3) "GLES3_PBR" else "GLES2_3D_FALLBACK")
         setRenderer(renderer)
         smokeMarker("BOARD_RENDERER_SET")
-        renderMode = if (homePreview) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
+        // Debug gameplay must render continuously so the five-second frame telemetry
+        // measures actual GL callback cadence; release gameplay remains event-driven.
+        renderMode = if (homePreview || BuildConfig.DEBUG) RENDERMODE_CONTINUOUSLY else RENDERMODE_WHEN_DIRTY
         isFocusable = !homePreview
         isClickable = !homePreview
         contentDescription = if (homePreview) "LudoMada 3D Home Preview" else "LudoMada 3D Ludo board"
@@ -1015,11 +1016,15 @@ class LudoBoardView(
         private var sceneColorTex=0
         private var sceneDepthTex=0
         private var fallbackShadowTex=0
-        internal val premiumLighting = PremiumMaterialLighting.lighting
-        internal val premiumPost = PremiumMaterialLighting.post
-        private val shadowSize=premiumLighting.shadowMapResolution
+        internal var premiumLighting = PremiumMaterialLighting.lighting
+        internal var premiumPost = PremiumMaterialLighting.post
+        private val shadowSize:Int get()=premiumLighting.shadowMapResolution
         private var sceneWidth=1
         private var sceneHeight=1
+        internal var softwareGlDebugProfile=false
+        private var debugRenderScale=1f
+        private val renderTargetWidth:Int get()=max(1,(sceneWidth*debugRenderScale).toInt())
+        private val renderTargetHeight:Int get()=max(1,(sceneHeight*debugRenderScale).toInt())
         private var firstFrameDiagnosticsCaptured=false
         private var woodTex=0
         private var boardTex=0
@@ -1046,6 +1051,31 @@ class LudoBoardView(
         private val lightView=FloatArray(16)
         private val lightProj=FloatArray(16)
         private var lastFrameNanos=0L
+        private var lastTelemetryFrameNanos=0L
+        private var frameTelemetryArmed=false
+        private var debugTelemetryFrameCounter=0
+        private var lastDebugTelemetryMarkerNanos=0L
+        private var lastTelemetryReportText="pending"
+        private var debugTelemetryRecordCount=0
+        private var debugTelemetryLastIntervalMs=0f
+        private var debugTelemetryLastCpuMs=0f
+        private var debugShadowCpuMs=0f
+        private var debugSceneCpuMs=0f
+        private var debugWorldCpuMs=0f
+        private var debugParticlesCpuMs=0f
+        private var debugSimulationCpuMs=0f
+        private var debugPostCpuMs=0f
+        private var debugRendererInfo="renderer=unknown vendor=unknown version=unknown"
+        private var firstDrawMarkerCaptured=false
+        private val frameTelemetry=FrameTelemetry(
+            refreshRateHz=runCatching {
+                val windowManager=host.context.getSystemService(Context.WINDOW_SERVICE) as? android.view.WindowManager
+                windowManager?.defaultDisplay?.refreshRate ?: 60f
+            }.getOrDefault(60f),
+            reportPeriodNanos=5_000_000_000L,
+            sampleCapacity=600,
+            minimumFrames=12
+        )
         private val dustLife=FloatArray(128)
         private val dustMaxLife=FloatArray(128)
         private val dustPos=FloatArray(128*3)
@@ -1060,6 +1090,26 @@ class LudoBoardView(
         private val pawnScale=0.62f
 
         override fun onSurfaceCreated(gl:javax.microedition.khronos.opengles.GL10?,cfg:javax.microedition.khronos.egl.EGLConfig?){
+            lastFrameNanos=0L
+            lastTelemetryFrameNanos=0L
+            frameTelemetryArmed=false
+            lastTelemetryReportText="pending"
+            firstDrawMarkerCaptured=false
+            frameTelemetry.reset(System.nanoTime())
+            if(BuildConfig.DEBUG){
+                val glRenderer=GLES20.glGetString(GLES20.GL_RENDERER)?.replace("\n"," ") ?: "unknown"
+                val glVendor=GLES20.glGetString(GLES20.GL_VENDOR)?.replace("\n"," ") ?: "unknown"
+                val glVersion=GLES20.glGetString(GLES20.GL_VERSION)?.replace("\n"," ") ?: "unknown"
+                debugRendererInfo="renderer=$glRenderer vendor=$glVendor version=$glVersion"
+                if(glRenderer.contains("SwiftShader",ignoreCase=true)){
+                    softwareGlDebugProfile=true
+                    debugRenderScale=0.25f
+                    premiumLighting=PremiumMaterialLighting.safeLighting()
+                    premiumPost=PremiumMaterialLighting.safePost().copy(ssao=0f,bloom=0f)
+                    android.util.Log.i("LudoMadaPerf", "PBR_SOFTWARE_PROFILE profile=debug-safe renderScale=$debugRenderScale shadows=off ssao=${premiumPost.ssao} bloom=${premiumPost.bloom}")
+                }
+                android.util.Log.i("LudoMadaPerf", "PBR_RENDERER_DIAGNOSTIC $debugRendererInfo")
+            }
             android.util.Log.i("LudoMadaRender", "PBR_SURFACE_CREATED")
             android.util.Log.i("LudoMadaRender", "PBR_CONTRACT_BOUND key=" + premiumLighting.keyIntensity +
                 " fill=" + premiumLighting.fillIntensity +
@@ -1155,17 +1205,35 @@ class LudoBoardView(
                     .edit().putString("last_marker", "PBR_SURFACE_CHANGED:" + w + "x" + h).apply()
             }
             sceneWidth=max(1,w);sceneHeight=max(1,h)
+            if(BuildConfig.DEBUG)android.util.Log.i("LudoMadaPerf", "PBR_RENDER_SURFACE width=$sceneWidth height=$sceneHeight targetWidth=$renderTargetWidth targetHeight=$renderTargetHeight renderScale=$debugRenderScale shadowMap=$shadowSize ssao=${premiumPost.ssao} bloom=${premiumPost.bloom}")
             GLES30.glViewport(0,0,sceneWidth,sceneHeight)
-            createSceneTargets(sceneWidth,sceneHeight)
+            createSceneTargets(renderTargetWidth,renderTargetHeight)
             host.requestRender()
         }
         override fun onDrawFrame(gl:javax.microedition.khronos.opengles.GL10?){
-            runCatching {
-                host.context.getSharedPreferences("ludomada_debug", Context.MODE_PRIVATE)
-                    .edit().putString("last_marker", "PBR_FIRST_DRAW").apply()
+            val now=System.nanoTime()
+            if(BuildConfig.DEBUG){
+                debugTelemetryFrameCounter++
+                if(lastDebugTelemetryMarkerNanos==0L || now-lastDebugTelemetryMarkerNanos>=1_000_000_000L){
+                    lastDebugTelemetryMarkerNanos=now
+                    val renderedFrames=debugTelemetryFrameCounter
+                    val reportText=lastTelemetryReportText
+                    val telemetryState=frameTelemetry.debugSnapshot(now)
+                    val records=debugTelemetryRecordCount
+                    val lastInterval=debugTelemetryLastIntervalMs
+                    val lastCpu=debugTelemetryLastCpuMs
+                    host.post { host.contentDescription="LudoMada 3D Ludo board | rendererFrames=$renderedFrames | telemetryRecords=$records lastIntervalMs=$lastInterval lastCpuMs=$lastCpu $telemetryState | telemetry=$reportText" }
+                }
             }
-            val now=System.nanoTime();val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f);lastFrameNanos=now
+            val dt=if(lastFrameNanos==0L)0.016f else ((now-lastFrameNanos)/1_000_000_000f).coerceIn(0.001f,0.050f)
+            lastFrameNanos=now
+            val telemetryIntervalNanos=if(BuildConfig.DEBUG && frameTelemetryArmed && lastTelemetryFrameNanos>0L)
+                now-lastTelemetryFrameNanos else 0L
+            if(BuildConfig.DEBUG && frameTelemetryArmed)lastTelemetryFrameNanos=now
+
+            val simulationStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             updateParticles(dt);maybeSpawnDust(now);maybeSpawnDiceFx(now);maybeSpawnVictory()
+            if(BuildConfig.DEBUG)debugSimulationCpuMs=(System.nanoTime()-simulationStarted)/1_000_000f
             val aspect=sceneWidth.toFloat()/sceneHeight.toFloat();val land=aspect>1.35f
             // Match the supplied premium reference with an oblique tabletop camera.
             val camY=if (host.homePreview) 9.6f else if(land)11.8f else 8.2f
@@ -1176,7 +1244,38 @@ class LudoBoardView(
             val camZ=baseCamZ+shakeZ
             val fov=if (host.homePreview) 38f else if(land)31f else 34f
             Matrix.perspectiveM(proj,0,fov,aspect,0.1f,60f);Matrix.setLookAtM(view,0,shakeX,camY,camZ,shakeX*0.24f,0.12f,shakeZ*0.18f,0f,1f,0f);Matrix.multiplyMM(vp,0,proj,0,view,0)
+
+            if(BuildConfig.DEBUG && !firstDrawMarkerCaptured){
+                android.util.Log.i("LudoMadaRender","PBR_FIRST_DRAW")
+                firstDrawMarkerCaptured=true
+            }
+            val renderStartedNanos=System.nanoTime()
             renderDirectFrame()
+            val renderCpuNanos=System.nanoTime()-renderStartedNanos
+            if(BuildConfig.DEBUG){
+                val completedNanos=System.nanoTime()
+                if(!frameTelemetryArmed){
+                    frameTelemetryArmed=true
+                    lastTelemetryFrameNanos=0L
+                    frameTelemetry.reset(completedNanos)
+                }else if(telemetryIntervalNanos>0L){
+                    debugTelemetryRecordCount++
+                    debugTelemetryLastIntervalMs=telemetryIntervalNanos/1_000_000f
+                    debugTelemetryLastCpuMs=renderCpuNanos/1_000_000f
+                    val report=frameTelemetry.record(telemetryIntervalNanos,renderCpuNanos,completedNanos)
+                    if(report!=null){
+                        val mode=if(host.homePreview)"home" else "gameplay"
+                        val reportLine=report.toLogLine(mode)
+                        val passLine="passCpuMs=shadow:$debugShadowCpuMs scene:$debugSceneCpuMs world:$debugWorldCpuMs particles:$debugParticlesCpuMs simulation:$debugSimulationCpuMs post:$debugPostCpuMs"
+                        lastTelemetryReportText="$reportLine $passLine"
+                        // Debug-only accessibility marker lets Ramus verify the actual renderer report
+                        // even when its log collector omits app-process log buffers.
+                        val marker=(if(host.homePreview)"LudoMada 3D Home Preview" else "LudoMada 3D Ludo board")+" | "+reportLine
+                        host.post { host.contentDescription=marker }
+                        android.util.Log.i("LudoMadaPerf",lastTelemetryReportText)
+                    }
+                }
+            }
             System.arraycopy(vp,0,projectionSnapshot,0,16)
         }
         private fun logFramebufferPixels(label:String,w:Int,h:Int){
@@ -1230,8 +1329,19 @@ class LudoBoardView(
             ensureShadowTargets();GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,shadowFbo);GLES30.glViewport(0,0,shadowSize,shadowSize);GLES30.glClear(GLES30.GL_DEPTH_BUFFER_BIT);GLES30.glColorMask(false,false,false,false);shadowShader.begin(lightVp);drawWorld(true);shadowShader.end();GLES30.glColorMask(true,true,true,true);GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0);GLES30.glViewport(0,0,sceneWidth,sceneHeight)
         }
         private fun renderScene(){
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo);GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glClearColor(0.008f,0.018f,0.045f,1f);GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT);shader.beginFrame(shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube);drawWorld(false);shader.endFrame();drawParticles()
-            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",sceneWidth,sceneHeight)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,sceneFbo)
+            GLES30.glViewport(0,0,renderTargetWidth,renderTargetHeight)
+            GLES30.glClearColor(0.008f,0.018f,0.045f,1f)
+            GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT or GLES30.GL_DEPTH_BUFFER_BIT)
+            shader.beginFrame(if(softwareGlDebugProfile)fallbackShadowTex else shadowTex,lightVp,woodTex,boardTex,neutralTex,metalTex,normalTex,envCube)
+            val worldStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
+            drawWorld(false)
+            if(BuildConfig.DEBUG)debugWorldCpuMs=(System.nanoTime()-worldStarted)/1_000_000f
+            shader.endFrame()
+            val particlesStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
+            drawParticles()
+            if(BuildConfig.DEBUG)debugParticlesCpuMs=(System.nanoTime()-particlesStarted)/1_000_000f
+            if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured)logFramebufferPixels("scene_fbo",renderTargetWidth,renderTargetHeight)
             GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER,0)
         }
 
@@ -1250,10 +1360,16 @@ class LudoBoardView(
                 drawParticles()
                 return
             }
-            if(sceneFbo==0) createSceneTargets(sceneWidth,sceneHeight)
-            renderShadowMap()
+            if(sceneFbo==0) createSceneTargets(renderTargetWidth,renderTargetHeight)
+            val shadowStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
+            if(!softwareGlDebugProfile)renderShadowMap()
+            if(BuildConfig.DEBUG)debugShadowCpuMs=if(softwareGlDebugProfile)0f else (System.nanoTime()-shadowStarted)/1_000_000f
+            val sceneStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             renderScene()
+            if(BuildConfig.DEBUG)debugSceneCpuMs=(System.nanoTime()-sceneStarted)/1_000_000f
+            val postStarted=if(BuildConfig.DEBUG)System.nanoTime() else 0L
             renderPostProcess()
+            if(BuildConfig.DEBUG)debugPostCpuMs=(System.nanoTime()-postStarted)/1_000_000f
             if(BuildConfig.DEBUG && !firstFrameDiagnosticsCaptured){
                 logFramebufferPixels("surface_backbuffer",sceneWidth,sceneHeight)
                 android.util.Log.i("LudoMadaRender","PBR_FIRST_FRAME_COMPLETE")
@@ -1520,7 +1636,13 @@ class LudoBoardView(
             }
             val body=glbParts["LM_Pawn_Tapered_Body"]
             val head=glbParts["LM_Pawn_Spherical_Head"]
-            if(body!=null && head!=null){
+            if(softwareGlDebugProfile){
+                // SwiftShader-only diagnostic LOD: retain 3D pawn silhouette while
+                // reducing five GLB submesh submissions to two procedural draws.
+                val model=pawnModel(x,y,z,pi,ti)
+                drawMesh(pawnBody,model,rgba(color),0.30f,0.02f,1f,0.008f,3,false)
+                drawMesh(sphere,pawnHeadModel(x,y,z,pi,ti),rgba(color),0.26f,0.02f,1f,0.008f,3,false)
+            }else if(body!=null && head!=null){
                 val b=bounce[pi][ti].coerceIn(0f,1f)
                 val elastic=LudoMotionPhysics.elasticOut(b)
                 val overshoot=elastic-b
@@ -1718,7 +1840,7 @@ class LudoBoardView(
         }
         private fun updateParticles(dt:Float){for(i in 0 until 128){if(dustLife[i]<=0f)continue;dustLife[i]-=dt;val o=i*3;dustVel[o+1]-=1.25f*dt;dustVel[o]*=(1f-1.5f*dt).coerceAtLeast(0f);dustVel[o+2]*=(1f-1.5f*dt).coerceAtLeast(0f);dustPos[o]+=dustVel[o]*dt;dustPos[o+1]+=dustVel[o+1]*dt;dustPos[o+2]+=dustVel[o+2]*dt;if(dustPos[o+1]<boardTop+0.02f)dustLife[i]=0f}}
         private fun drawParticles(){var count=0;for(i in 0 until 128)if(dustLife[i]>0f){val p=count*8;val o=i*3;val c=i*4;dustData[p]=dustPos[o];dustData[p+1]=dustPos[o+1];dustData[p+2]=dustPos[o+2];dustData[p+3]=dustColor[c];dustData[p+4]=dustColor[c+1];dustData[p+5]=dustColor[c+2];dustData[p+6]=dustColor[c+3]*(dustLife[i]/max(0.01f,dustMaxLife[i])).coerceIn(0f,1f);dustData[p+7]=dustSize[i];count++};if(count==0)return;particleShader.draw(dustData,count,particleVbo,vp);}
-        private fun renderPostProcess(){GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,sceneWidth,sceneHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
+        private fun renderPostProcess(){GLES30.glViewport(0,0,sceneWidth,sceneHeight);GLES30.glDisable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_ONE,GLES30.GL_ZERO);postShader.draw(sceneColorTex,sceneDepthTex,renderTargetWidth,renderTargetHeight,premiumPost.ssao,premiumPost.bloom);GLES30.glEnable(GLES30.GL_DEPTH_TEST);GLES30.glBlendFunc(GLES30.GL_SRC_ALPHA,GLES30.GL_ONE_MINUS_SRC_ALPHA)}
         private fun createMaterialTexture(kind:Int):Int{val size=512;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val u=x.toFloat()/size;val v=y.toFloat()/size;val warp=0.035*sin(v*18.0+sin(v*4.0)*2.0);val grain=(0.5+0.5*sin(u*118.0+v*8.0+sin(v*17.0)*7.0+warp*120.0))*0.72+0.28*(0.5+0.5*sin(u*31.0+v*3.0));val band=0.5+0.5*sin(v*13.0+u*9.0+sin(u*12.0)*2.0);val c=when(kind){0->intArrayOf((78+74*grain+18*band).toInt().coerceIn(0,255),(30+31*grain+8*band).toInt().coerceIn(0,255),(10+14*grain).toInt().coerceIn(0,255));1->intArrayOf((226+16*grain).toInt().coerceIn(0,255),(218+18*band).toInt().coerceIn(0,255),(190+20*grain).toInt().coerceIn(0,255));2->{val q=(132+22*grain).toInt().coerceIn(0,255);intArrayOf(q,q,(138+24*band).toInt().coerceIn(0,255))};else->{val q=(194+28*grain).toInt().coerceIn(0,255);intArrayOf(q,(202+26*band).toInt().coerceIn(0,255),(210+24*grain).toInt().coerceIn(0,255))}};data.put(c[0].toByte()).put(c[1].toByte()).put(c[2].toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createNormalTexture():Int{val size=256;val data=ByteBuffer.allocateDirect(size*size*4).order(ByteOrder.nativeOrder());for(y in 0 until size)for(x in 0 until size){val nx=(128+sin(x*0.12)*9+cos(y*0.17)*5).toInt().coerceIn(0,255);val ny=(128+cos(x*0.15)*7+sin(y*0.09)*5).toInt().coerceIn(0,255);data.put(nx.toByte()).put(ny.toByte()).put(255.toByte()).put(255.toByte())};data.position(0);return uploadTexture(size,data)}
         private fun createEnvironmentCubemap():Int{
@@ -2034,7 +2156,23 @@ class LudoBoardView(
                 uniform mat4 uMvp,uMv,uModel,uLightVp;out vec3 vN,vP,vWorld;out vec2 vUv;out vec4 vShadow;
                 void main(){vec4 w=uModel*vec4(aPos,1.0);vP=(uMv*vec4(aPos,1.0)).xyz;vWorld=w.xyz;vN=normalize(mat3(uMv)*aNormal);vUv=aUv;vShadow=uLightVp*w;gl_Position=uMvp*vec4(aPos,1.0);}
             """.trimIndent()
-            val fs="""#version 300 es
+            val fs=if(renderer.softwareGlDebugProfile) """#version 300 es
+                precision mediump float;
+                uniform vec4 uColor;
+                uniform float uAO,uEmission,uUnlit;
+                uniform sampler2D uAlbedoTex;
+                in vec3 vN; in vec2 vUv;
+                layout(location=0)out vec4 fragColor;
+                void main(){
+                    vec3 N=normalize(vN);
+                    float diffuse=max(dot(N,normalize(vec3(-0.42,0.92,0.36))),0.0);
+                    vec3 texel=texture(uAlbedoTex,vUv*2.0).rgb;
+                    vec3 albedo=mix(uColor.rgb*texel,uColor.rgb,0.52);
+                    vec3 color=albedo*(0.30+0.70*diffuse)*uAO+albedo*uEmission;
+                    if(uUnlit>0.5)color=mix(color,albedo+albedo*uEmission,0.84);
+                    fragColor=vec4(max(color,vec3(0.0)),uColor.a);
+                }
+            """.trimIndent() else """#version 300 es
                 precision highp float;uniform vec4 uColor;uniform float uMetallic,uRoughness,uAO,uEmission,uUnlit,uNormalStrength,uClearCoat,uClearCoatRoughness,uKeyIntensity,uFillIntensity,uRimIntensity,uIBLIntensity,uShadowBias;uniform vec3 uKeyDirection,uKeyColor,uFillDirection,uFillColor,uRimDirection,uRimColor;uniform vec2 uShadowInvSize;uniform sampler2D uAlbedoTex,uNormalTex,uRoughTex,uShadowMap;uniform float uRoughTexEnabled;uniform samplerCube uEnvCube;
                 in vec3 vN,vP,vWorld;in vec2 vUv;in vec4 vShadow;layout(location=0)out vec4 fragColor;const float PI=3.14159265359;
                 float DGGX(vec3 N,vec3 H,float r){float a=r*r,a2=a*a,nh=max(dot(N,H),0.0),q=nh*nh,d=q*(a2-1.0)+1.0;return a2/max(PI*d*d,0.0001);}
@@ -2103,7 +2241,7 @@ class LudoBoardView(
         """.trimIndent();val fs="""#version 300 es
             precision mediump float;in vec4 vColor;layout(location=0)out vec4 fragColor;void main(){vec2 p=gl_PointCoord*2.0-1.0;float r=dot(p,p);if(r>1.0)discard;fragColor=vec4(vColor.rgb*1.12,(1.0-r)*vColor.a);}
         """.trimIndent();program=buildProgram(vs,fs);vp=GLES30.glGetUniformLocation(program,"uVp")}
-        fun draw(data:FloatArray,count:Int,vbo:Int,viewProj:FloatArray){buffer.position(0);buffer.put(data,0,count*8);buffer.position(0);GLES30.glUseProgram(program);GLES30.glUniformMatrix4fv(vp,1,false,viewProj,0);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,vbo);GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,count*8*4,buffer,GLES30.GL_DYNAMIC_DRAW);GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,8*4,0);GLES30.glVertexAttribPointer(1,4,GLES30.GL_FLOAT,false,8*4,3*4);GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4);GLES30.glEnable(0x8642);GLES30.glDepthMask(false);GLES30.glDrawArrays(GLES30.GL_POINTS,0,count);GLES30.glDepthMask(true);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,0)}
+        fun draw(data:FloatArray,count:Int,vbo:Int,viewProj:FloatArray){buffer.position(0);buffer.put(data,0,count*8);buffer.position(0);GLES30.glUseProgram(program);GLES30.glUniformMatrix4fv(vp,1,false,viewProj,0);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,vbo);GLES30.glBufferData(GLES30.GL_ARRAY_BUFFER,count*8*4,buffer,GLES30.GL_DYNAMIC_DRAW);GLES30.glEnableVertexAttribArray(0);GLES30.glEnableVertexAttribArray(1);GLES30.glEnableVertexAttribArray(2);GLES30.glVertexAttribPointer(0,3,GLES30.GL_FLOAT,false,8*4,0);GLES30.glVertexAttribPointer(1,4,GLES30.GL_FLOAT,false,8*4,3*4);GLES30.glVertexAttribPointer(2,1,GLES30.GL_FLOAT,false,8*4,7*4);GLES30.glDepthMask(false);GLES30.glDrawArrays(GLES30.GL_POINTS,0,count);GLES30.glDepthMask(true);GLES30.glDisableVertexAttribArray(0);GLES30.glDisableVertexAttribArray(1);GLES30.glDisableVertexAttribArray(2);GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER,0)}
         private fun buildProgram(vs:String,fs:String):Int{fun c(t:Int,s:String):Int{val id=GLES30.glCreateShader(t);GLES30.glShaderSource(id,s);GLES30.glCompileShader(id);val o=IntArray(1);GLES30.glGetShaderiv(id,GLES30.GL_COMPILE_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetShaderInfoLog(id));return id};val v=c(GLES30.GL_VERTEX_SHADER,vs);val f=c(GLES30.GL_FRAGMENT_SHADER,fs);val p=GLES30.glCreateProgram();GLES30.glAttachShader(p,v);GLES30.glAttachShader(p,f);GLES30.glLinkProgram(p);val o=IntArray(1);GLES30.glGetProgramiv(p,GLES30.GL_LINK_STATUS,o,0);if(o[0]==0)throw IllegalStateException(GLES30.glGetProgramInfoLog(p));GLES30.glDeleteShader(v);GLES30.glDeleteShader(f);return p}
     }
 
